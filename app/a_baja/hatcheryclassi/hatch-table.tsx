@@ -1,120 +1,94 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ColumnDef,
-  useReactTable,
+  flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
+  useReactTable,
 } from "@tanstack/react-table"
 
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, Plus } from "lucide-react"
+import { Plus, RefreshCw, Search } from "lucide-react"
 
-import { HatchClassification } from "@/lib/types"
-import { listHatchClassification } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import { listHatchClassification, type HatchClassificationRow } from "./new/api"
 
 export default function HatchTable() {
-  const [items, setItems] = useState<HatchClassification[]>([])
+  const router = useRouter()
+
+  const [items, setItems] = useState<HatchClassificationRow[]>([])
   const [sorting, setSorting] = useState<any>([])
   const [columnFilters, setColumnFilters] = useState<any>([])
   const [columnVisibility, setColumnVisibility] = useState<any>({})
   const [rowSelection, setRowSelection] = useState<any>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string>("")
 
-  const router = useRouter()
-
-  useEffect(() => {
-    ; (async () => {
-      router.prefetch("/a_baja/hatcheryclassi/new")
-      const data = await listHatchClassification()
-
-      if (
-        (data && !Array.isArray(data)) ||
-        (Array.isArray(data) && data.length > 0 && "error" in data[0])
-      ) {
-        setItems([])
-      } else {
-        setItems(
-          (Array.isArray(data) ? data : []) as unknown as HatchClassification[]
-        )
-      }
-    })()
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await listHatchClassification(50)
+      setItems(Array.isArray(data) ? data : [])
+      setLastUpdated(new Date().toLocaleString())
+    } catch (e) {
+      console.error(e)
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  const columns: ColumnDef<HatchClassification>[] = [
-    {
-      accessorKey: "id",
-      header: "#",
-      cell: ({ row }) => row.index + 1,
-    },
-    {
-      accessorKey: "daterec",
-      header: "Date Recorded",
-    },
-    {
-      accessorKey: "br_no",
-      header: "Breeder Ref. No.",
-    },
-    {
-      accessorKey: "trans_crack",
-      header: "Transport Crack",
-    },
-    {
-      accessorKey: "good_egg",
-      header: "Good Egg",
-    },
-    {
-      accessorKey: "hatc_crack",
-      header: "Hatch Crack",
-    },
-    {
-      accessorKey: "trans_condemn",
-      header: "Transport Condemn",
-    },
-    {
-      accessorKey: "hatc_condemn",
-      header: "Hatch Condemn",
-    },
-    {
-      accessorKey: "thin_shell",
-      header: "Thin Shell",
-    },
-    {
-      accessorKey: "pee_wee",
-      header: "Pee Wee",
-    },
-    {
-      accessorKey: "small",
-      header: "Small",
-    },
-    {
-      accessorKey: "jumbo",
-      header: "Jumbo",
-    },
-    {
-      accessorKey: "d_yolk",
-      header: "Double Yolk",
-    },
-    {
-      accessorKey: "ttl_count",
-      header: "Total Count",
-    },
-  ]
+  useEffect(() => {
+    router.prefetch("/a_baja/hatcheryclassi/new")
+    load()
+  }, [router, load])
+
+  const columns = useMemo<ColumnDef<HatchClassificationRow>[]>(
+    () => [
+      {
+        id: "row_no",
+        header: "#",
+        cell: ({ row }) => row.index + 1,
+      },
+      {
+        accessorKey: "date_classify",
+        header: "Date Classified",
+        cell: ({ row }) => row.original.date_classify ?? "",
+      },
+      {
+        accessorKey: "br_no",
+        header: "Breeder Ref. No.",
+        cell: ({ row }) => row.original.br_no ?? "",
+      },
+      { accessorKey: "good_egg", header: "Hatching Egg" },
+      { accessorKey: "trans_crack", header: "Transport Crack" },
+      { accessorKey: "hatc_crack", header: "Hatch Crack" },
+      { accessorKey: "trans_condemn", header: "Transport Condemn" },
+      { accessorKey: "hatc_condemn", header: "Hatch Condemn" },
+      { accessorKey: "thin_shell", header: "Thin Shell" },
+      { accessorKey: "pee_wee", header: "Pee Wee" },
+      { accessorKey: "small", header: "Small" },
+      { accessorKey: "jumbo", header: "Jumbo" },
+      { accessorKey: "d_yolk", header: "Double Yolk" },
+      { accessorKey: "ttl_count", header: "Total Count" },
+    ],
+    []
+  )
 
   const table = useReactTable({
     data: items,
@@ -136,34 +110,49 @@ export default function HatchTable() {
   })
 
   return (
-    <div className="rounded-md   p-4">
-      {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-8">
-          <Breadcrumb
-            FirstPreviewsPageName="Hatchery"
-            CurrentPageName="Hatchery Classification" />
+    <div className="rounded-md p-4">
+      <Breadcrumb
+        FirstPreviewsPageName="Hatchery"
+        CurrentPageName="Hatchery Classification"
+      />
+      <br />
 
+      {/* Top Controls */}
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-3">
           <div className="relative w-72">
             <Input
               placeholder="Filter Breeder Ref. No."
               className="pl-10"
-              value={
-                (table.getColumn("br_no")?.getFilterValue() as string) ?? ""
-              }
+              value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
               onChange={(e) =>
                 table.getColumn("br_no")?.setFilterValue(e.target.value)
               }
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </Button>
+{/* 
+          {lastUpdated ? (
+            <div className="text-xs text-muted-foreground">
+              Last updated: {lastUpdated}
+            </div>
+          ) : null} */}
         </div>
 
         <Button
           type="button"
-          onClick={() =>
-            router.push("/a_baja/hatcheryclassi/new")
-          }
+          onClick={() => router.push("/a_baja/hatcheryclassi/new")}
           className="flex items-center gap-2"
         >
           <Plus className="size-4" />
@@ -175,18 +164,19 @@ export default function HatchTable() {
       <div className="rounded-md border p-4 bg-white">
         <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
+            {table.getHeaderGroups().map((hg) => (
+              <TableRow key={hg.id}>
+                {hg.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="whitespace-nowrap wrap-break-word text-left align-middle">
+                    className="whitespace-nowrap text-left align-middle"
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -209,11 +199,8 @@ export default function HatchTable() {
               ))
             ) : (
               <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  {isLoading ? "Loading..." : "No results."}
                 </TableCell>
               </TableRow>
             )}

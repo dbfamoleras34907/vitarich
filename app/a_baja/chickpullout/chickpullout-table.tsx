@@ -1,15 +1,15 @@
 // app/a_baja/chickpullout/chickpullout-table.tsx
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ColumnDef,
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getFilteredRowModel,
   flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  useReactTable,
 } from "@tanstack/react-table"
 
 import {
@@ -23,37 +23,53 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Pencil, Plus, RefreshCw, Trash2, Search } from "lucide-react"
+import { Plus, RefreshCw, Search } from "lucide-react"
 
-import { ChickPulloutProcess, listChickPulloutProcess, deleteChickPulloutProcess } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
+import {
+  ChickPulloutProcess,
+  listChickPulloutProcess,
+  deleteChickPulloutProcess,
+} from "./new/api"
 
 export default function ChickPulloutTable() {
   const router = useRouter()
+
   const [items, setItems] = useState<ChickPulloutProcess[]>([])
   const [globalFilter, setGlobalFilter] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string>("")
 
-  async function load() {
-    const data = await listChickPulloutProcess()
-    setItems(data)
-  }
-
-  useEffect(() => {
-    load().catch(console.error)
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await listChickPulloutProcess()
+      setItems(Array.isArray(data) ? data : [])
+      setLastUpdated(new Date().toLocaleString())
+    } catch (e) {
+      console.error(e)
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  async function onDelete(id: number) {
-    if (!confirm("Delete this record?")) return
-    await deleteChickPulloutProcess(id)
-    await load()
-    router.refresh()
-  }
+  useEffect(() => {
+    router.prefetch("/a_baja/chickpullout/new")
+    load()
+  }, [router, load])
 
   const columns = useMemo<ColumnDef<ChickPulloutProcess>[]>(
     () => [
       {
+        id: "row_no",
+        header: "#",
+        cell: ({ row }) => row.index + 1,
+      },
+      {
         accessorKey: "egg_ref_no",
-        header: "Egg Ref. No.",
+        header: "Egg Reference No.",
       },
       {
         accessorKey: "chick_hatch_ref_no",
@@ -93,32 +109,18 @@ export default function ChickPulloutTable() {
         header: "Hatch Window",
       },
       {
-        id: "actions",
-        header: "Actions",
-        cell: ({ row }) => {
-          const item = row.original
-          return (
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => router.push(`/a_baja/chickpullout/new?id=${item.id}`)}
-              >
-                <Pencil className="h-4 w-4" />Edit
-              </Button>
-              {/* <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => onDelete(item.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button> */}
-            </div>
-          )
-        },
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => ( 
+            <EditActionButton
+              id={row.original?.id}
+              href={(id) => `/a_baja/chickpullout/new?id=${id}`}
+            /> 
+          
+        ),
       },
     ],
-    [router]
+    []
   )
 
   const table = useReactTable({
@@ -146,41 +148,45 @@ export default function ChickPulloutTable() {
 
   return (
     <div className="rounded-md border p-4">
-      <div className="flex items-center justify-between mb-4">
+      <Breadcrumb
+        SecondPreviewPageName="Hatchery"
+        CurrentPageName="Chick Pullout"
+      />
+      <br />
 
-
-        <div className="relative flex gap-4  items-center  ">
-          <Breadcrumb
-            SecondPreviewPageName="Hatchery"
-            // FirstPreviewsPageName="Egg Transfer"
-            CurrentPageName="Chick Pullout "
-          />
-          <div>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative w-72">
             <Input
-              placeholder="Filter Egg Ref. No."
+              placeholder="Search Egg Reference No."
               className="pl-10"
-              value={
-                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
-              }
+              value={globalFilter ?? ""}
+              onChange={(e) => setGlobalFilter(e.target.value)}
             />
-
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </Button>
+ 
         </div>
 
-
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => load()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={() => router.push("/a_baja/chickpullout/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Chick Pullout
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={() => router.push("/a_baja/chickpullout/new")}
+          className="flex items-center gap-2"
+        >
+          <Plus className="size-4" />
+          New Chick Pullout
+        </Button>
       </div>
 
       <div className="rounded-2xl p-4 bg-white shadow">
@@ -189,13 +195,19 @@ export default function ChickPulloutTable() {
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id} className="whitespace-normal wrap-break-word text-left align-middle">
-                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                  <TableHead
+                    key={h.id}
+                    className="whitespace-normal wrap-break-word text-left align-middle"
+                  >
+                    {h.isPlaceholder
+                      ? null
+                      : flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
               </TableRow>
             ))}
           </TableHeader>
+
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((r) => (
@@ -212,16 +224,15 @@ export default function ChickPulloutTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                  {isLoading ? "Loading..." : "No results."}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
-
         </Table>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 mt-4">
         <Button
           variant="outline"
           size="sm"

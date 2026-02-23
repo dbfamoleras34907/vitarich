@@ -23,6 +23,7 @@ import {
   listEggReferences,
   updateChickGradingProcess,
 } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 // non-negative number helper (handles NaN, null, undefined)
 function n(v: any) {
@@ -529,7 +530,16 @@ export default function Chickgradingform() {
         </div>
 
         {/* Buttons */}
-        <div className="flex flex-col md:flex-row gap-4">
+
+              <FormActionButtons
+                          saving={saving}
+                          // isEdit={isEdit}
+                          // disabled={disabledAll}
+                          cancelPath="/a_baja/chickgrading"
+                          onSave={onSave}
+                        />
+                        
+        {/* <div className="flex flex-col md:flex-row gap-4">
           <Button onClick={onSave} disabled={saving} className="w-[10%] justify-left">
             {saving ? "Saving..." : "Save"}
           </Button>
@@ -542,7 +552,7 @@ export default function Chickgradingform() {
           >
             Cancel
           </Button>
-        </div>
+        </div> */}
       </CardContent>
     </Card>
   )

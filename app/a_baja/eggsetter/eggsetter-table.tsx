@@ -23,10 +23,11 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, Plus, RefreshCw } from "lucide-react"
+import { Search, Plus, RefreshCw, Pencil } from "lucide-react"
 
 import { SetterIncubation, listSetterIncubations } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 
 export default function EggsetterTable() {
   const [items, setItems] = useState<SetterIncubation[]>([])
@@ -51,7 +52,7 @@ export default function EggsetterTable() {
   }
 
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       router.prefetch("/a_baja/eggsetter/new")
       await fetchData()
     })()
@@ -60,10 +61,8 @@ export default function EggsetterTable() {
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return ""
-
     const d = new Date(value)
     const pad = (n: number) => String(n).padStart(2, "0")
-
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
@@ -80,7 +79,7 @@ export default function EggsetterTable() {
     {
       accessorKey: "setting_date",
       header: "Setting Date",
-      cell: ({ row }) => formatDateTime(row.original.setting_date)
+      cell: ({ row }) => formatDateTime(row.original.setting_date),
     },
     {
       accessorKey: "farm_source",
@@ -93,20 +92,19 @@ export default function EggsetterTable() {
     {
       accessorKey: "total_eggs",
       header: "Total Eggs",
-      cell: ({ getValue }) =>
-        getValue<number>()?.toLocaleString() ?? "",
+      cell: ({ getValue }) => getValue<number>()?.toLocaleString() ?? "",
     },
     {
       accessorKey: "incubation_duration",
-      header: "Incubation Duration (days)",
+      header: "Incubation (days)",
     },
     {
       accessorKey: "setter_temp",
-      header: "Setter Temp (°C)",
+      header: "Temp (°C)",
     },
     {
       accessorKey: "setter_humidity",
-      header: "Setter Humidity (%)",
+      header: "Humidity (%)",
     },
     {
       accessorKey: "turning_interval",
@@ -123,11 +121,22 @@ export default function EggsetterTable() {
     {
       accessorKey: "egg_shell_temp_dt",
       header: "Egg Shell Temp Date & Time",
-      cell: ({ row }) => formatDateTime(row.original.egg_shell_temp_dt)
+      cell: ({ row }) => formatDateTime(row.original.egg_shell_temp_dt),
     },
     {
       accessorKey: "egg_shell_orientation",
       header: "Egg Shell Orientation",
+    },
+
+    {
+      id: "action",
+      header: "Action",
+      cell: ({ row }) => (
+        <EditActionButton
+          id={row.original?.id}
+          href={(id) => `/a_baja/eggsetter/new?id=${id}`}
+        />
+      ),
     },
   ]
 
@@ -153,20 +162,18 @@ export default function EggsetterTable() {
   return (
     <div className="rounded-md border p-4">
       {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <Breadcrumb
-            SecondPreviewPageName="Hatchery" 
-            CurrentPageName="Egg Setter List"
+          <Breadcrumb SecondPreviewPageName="Hatchery" 
+          CurrentPageName="Egg Setter List" 
           />
+          <br />
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4"> 
           <div className="relative w-72">
             <Input
               placeholder="Filter Reference Number"
               className="pl-10"
               value={(table.getColumn("ref_no")?.getFilterValue() as string) ?? ""}
-              onChange={(e) =>
-                table.getColumn("ref_no")?.setFilterValue(e.target.value)
-              }
+              onChange={(e) => table.getColumn("ref_no")?.setFilterValue(e.target.value)}
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
@@ -206,10 +213,7 @@ export default function EggsetterTable() {
                   >
                     {header.isPlaceholder
                       ? null
-                      : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
+                      : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
               </TableRow>
@@ -222,10 +226,7 @@ export default function EggsetterTable() {
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>

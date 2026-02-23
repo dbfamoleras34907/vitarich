@@ -1,30 +1,32 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ColumnDef,
-  useReactTable,
+  flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
+  useReactTable,
 } from "@tanstack/react-table"
 
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Pencil, Plus, RefreshCwIcon, Search } from "lucide-react"
+import { Plus, RefreshCw, Search } from "lucide-react"
 
+import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 import { listEggPreWarming, type EggPreWarming } from "./new/api"
 
 function fmtDuration(mins: number | null) {
@@ -37,119 +39,163 @@ function fmtDuration(mins: number | null) {
 
 export default function PrewarmTable() {
   const router = useRouter()
+
   const [items, setItems] = useState<EggPreWarming[]>([])
   const [sorting, setSorting] = useState<any>([])
   const [columnFilters, setColumnFilters] = useState<any>([])
-  const [globalFilter, setGlobalFilter] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [columnVisibility, setColumnVisibility] = useState<any>({})
+  const [rowSelection, setRowSelection] = useState<any>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string>("")
 
-  async function load() {
-    setLoading(true)
+  const load = useCallback(async () => {
+    setIsLoading(true)
     try {
       const rows = await listEggPreWarming()
-      setItems(rows)
+      setItems(Array.isArray(rows) ? rows : [])
+      setLastUpdated(new Date().toLocaleString())
     } catch (e) {
       console.error(e)
-      alert("Failed to load data.")
+      setItems([])
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
-  }
-
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const columns: ColumnDef<EggPreWarming>[] = [ 
-    {
-      accessorKey: "egg_ref_no",
-      header: "Egg Reference No.",
-      cell: ({ row }) => row.original.egg_ref_no ?? "",
-    },
-    {
-      accessorKey: "pre_temp",
-      header: "Pre-Warming Temp",
-      cell: ({ row }) => row.original.pre_temp ?? "",
-    },
-    {
-      accessorKey: "egg_temp",
-      header: "Egg Shell Temp",
-      cell: ({ row }) => row.original.egg_temp ?? "",
-    },
-    {
-      accessorKey: "duration",
-      header: "Duration",
-      cell: ({ row }) => fmtDuration((row.original.duration as number | null) ?? null),
-    },
-    {
-      accessorKey: "remarks",
-      header: "Remarks",
-      cell: ({ row }) => row.original.remarks ?? "",
-    },
-        {
-      id: "action",
-      header: "Action",
-      cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => router.push(`/a_baja/prewarming/new?id=${row.original.id}`)}
-          title="Edit"
-        >
-          <Pencil className="h-4 w-4" />Edit
-        </Button>
-      ),
-    }
-  ]
+  useEffect(() => {
+    router.prefetch("/a_baja/prewarming/new")
+    load()
+  }, [router, load])
+
+  const columns = useMemo<ColumnDef<EggPreWarming>[]>(
+    () => [
+      {
+        id: "row_no",
+        header: "#",
+        cell: ({ row }) => row.index + 1,
+      },
+      {
+        accessorKey: "egg_ref_no",
+        header: "Egg Reference No.",
+        cell: ({ row }) => row.original.egg_ref_no ?? "",
+      },
+      {
+        accessorKey: "pre_temp",
+        header: "Pre-Warming Temp",
+        cell: ({ row }) => row.original.pre_temp ?? "",
+      },
+      {
+        accessorKey: "egg_temp",
+        header: "Egg Shell Temp",
+        cell: ({ row }) => row.original.egg_temp ?? "",
+      },
+      {
+        accessorKey: "duration",
+        header: "Duration",
+        cell: ({ row }) => fmtDuration((row.original.duration as number | null) ?? null),
+      },
+      {
+        accessorKey: "remarks",
+        header: "Remarks",
+        cell: ({ row }) => row.original.remarks ?? "",
+      },
+      {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <EditActionButton
+            id={row.original?.id}
+            href={(id) => `/a_baja/prewarming/new?id=${id}`}
+          />
+        ),
+      },
+    ],
+    []
+  )
 
   const table = useReactTable({
     data: items,
     columns,
-    state: { sorting, columnFilters, globalFilter },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    },
   })
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="relative w-70">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+    <div className="rounded-md p-4">
+      <Breadcrumb
+        FirstPreviewsPageName="Hatchery"
+        CurrentPageName="Pre-Warming"
+      />
+      <br />
+
+      {/* Top Controls */}
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative w-72">
             <Input
-              value={globalFilter ?? ""}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="Search..."
-              className="pl-8"
+              placeholder="Filter Egg Reference No."
+              className="pl-10"
+              value={
+                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
+              }
+              onChange={(e) =>
+                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
+              }
             />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
 
-          <Button variant="outline" onClick={load} disabled={loading}>
-            <RefreshCwIcon className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </Button> 
         </div>
 
-        <Button onClick={() => router.push("/a_baja/prewarming/new")}>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button
+          type="button"
+          onClick={() => router.push("/a_baja/prewarming/new")}
+          className="flex items-center gap-2"
+        >
+          <Plus className="size-4" />
           New Pre-Warming
         </Button>
       </div>
 
-      <div className="rounded-md border">
+      {/* Table */}
+      <div className="rounded-md border p-4 bg-white">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
-                {hg.headers.map((h) => (
-                  <TableHead key={h.id}>
-                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                {hg.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    className="whitespace-nowrap text-left align-middle"
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -157,12 +203,15 @@ export default function PrewarmTable() {
           </TableHeader>
 
           <TableBody>
-            {table.getRowModel().rows?.length ? (
+            {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -170,7 +219,7 @@ export default function PrewarmTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {loading ? "Loading..." : "No results."}
+                  {isLoading ? "Loading..." : "No results."}
                 </TableCell>
               </TableRow>
             )}
@@ -178,7 +227,8 @@ export default function PrewarmTable() {
         </Table>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      {/* Pagination */}
+      <div className="flex items-center justify-end space-x-2 py-4">
         <Button
           variant="outline"
           size="sm"
@@ -187,6 +237,7 @@ export default function PrewarmTable() {
         >
           Previous
         </Button>
+
         <Button
           variant="outline"
           size="sm"

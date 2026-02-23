@@ -25,6 +25,7 @@ import {
   updateEggStorage,
   type EggStorageInsert,
 } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 type HatchClassiRefOption = {
   classi_ref_no: string
@@ -275,7 +276,15 @@ export default function Eggstorageform() {
             </div>
 
             {/* ACTIONS */}
-            <div className="flex gap-2 justify-end">
+               <FormActionButtons
+                              saving={saving}
+                              isEdit={isEdit}
+                              // disabled={disabledAll}
+                              cancelPath="/a_baja/eggstorage"
+                              onSave={onSave}
+                            />
+                            
+            {/* <div className="flex gap-2 justify-end">
               <Button type="button" onClick={onSave} disabled={saving}>
                 {saving ? "Saving..." : isEdit ? "Update" : "Save"}
               </Button>
@@ -287,7 +296,7 @@ export default function Eggstorageform() {
               >
                 Cancel
               </Button>
-            </div>
+            </div> */}
           </>
         )}
       </CardContent>

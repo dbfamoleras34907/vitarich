@@ -24,6 +24,7 @@ import {
 
 import Breadcrumb from "@/lib/Breadcrumb"
 import { Separator } from "@/components/ui/separator"
+import FormActionButtons from "@/components/FormActionButtons"
 
 function toDatetimeLocalValue(v: string | null | undefined) {
   if (!v) return ""
@@ -367,8 +368,16 @@ export default function EggHatchform() {
                 />
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button type="button" onClick={onSave} disabled={saving}>
+      
+              <FormActionButtons
+                  saving={saving}
+                  isEdit={isEdit}
+                  // disabled={disabledAll}
+                  cancelPath="/a_baja/egghatcheryprocessform"
+                  onSave={onSave}
+                />
+                                
+                {/* <Button type="button" onClick={onSave} disabled={saving}>
                   {saving ? "Saving..." : isEdit ? "Update" : "Save"}
                 </Button>
 
@@ -379,20 +388,8 @@ export default function EggHatchform() {
                   disabled={saving}
                 >
                   Cancel
-                </Button>
-
-                {/* optional delete */}
-                {isEdit ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={onDelete}
-                    disabled={saving}
-                  >
-                    Delete
-                  </Button>
-                ) : null}
-              </div>
+                </Button> */} 
+              
             </div>
           )}
         </CardContent>

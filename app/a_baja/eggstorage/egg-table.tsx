@@ -27,6 +27,7 @@ import { Search, Plus, Pencil, Trash2, RefreshCw } from "lucide-react"
 
 import { EggStorageMngt, listEggStorage, deleteEggStorage } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 
 function fmtDuration(sec: number | null) {
   if (sec == null) return ""
@@ -114,49 +115,18 @@ export default function EggTable() {
     },
 
     // ✅ ACTIONS
-    {
-      id: "actions",
-      header: "Action",
-      enableSorting: false,
-      enableColumnFilter: false,
-      cell: ({ row }) => {
-        const id = row.original.id
 
-        return (
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push(`/a_baja/eggstorage/new?id=${id}`)}
-              title="Edit"
-            >
-              <Pencil className="h-4 w-4" />Edit
-            </Button>
-
-            {/* <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title="Delete"
-              onClick={async () => {
-                const ok = confirm("Delete this record?")
-                if (!ok) return
-                try {
-                  await deleteEggStorage(id)
-                  await fetchItems()
-                  router.refresh()
-                } catch (e: any) {
-                  alert(e?.message ?? "Failed to delete.")
-                }
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button> */}
-          </div>
-        )
-      },
-    },
+        {
+          id: "action",
+          header: "Action",
+          cell: ({ row }) => (
+            <EditActionButton
+              id={row.original?.id}
+              href={(id) => `/a_baja/eggstorage/new?id=${id}`}
+            />
+          ),
+        },
+         
   ]
 
   const table = useReactTable({
@@ -180,21 +150,23 @@ export default function EggTable() {
 
   return (
     <div className="rounded-md border p-4">
-      {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
+      {/* Top Controls */} 
           <Breadcrumb
             CurrentPageName="Egg Storage Management"
             FirstPreviewsPageName="Hatchery "
           />
+          <br />
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+    
 
           <div className="relative w-72">
             <Input
-              placeholder="Filter Remarks"
+              placeholder="Filter Reference No."
               className="pl-10"
-              value={(table.getColumn("remarks")?.getFilterValue() as string) ?? ""}
+              value={(table.getColumn("classi_ref_no")?.getFilterValue() as string) ?? ""}
               onChange={(e) =>
-                table.getColumn("remarks")?.setFilterValue(e.target.value)
+                table.getColumn("classi_ref_no")?.setFilterValue(e.target.value)
               }
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />

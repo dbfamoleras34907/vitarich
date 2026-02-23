@@ -16,6 +16,7 @@ import {
 import { db } from "@/lib/Supabase/supabaseClient"
 import { useRouter } from "next/navigation"
 import { createHatchClassification, HatchClassificationInsert } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 type ViewForHatcheryClassi = {
   id: string | null
@@ -77,7 +78,7 @@ export default function Hatchform() {
 
   const numericFields = useMemo(
     () => [
-      { label: "Good Egg", name: "good_egg", placeholder: "0" },
+      { label: "Hatching Egg", name: "good_egg", placeholder: "0" },
       { label: "Transport Crack", name: "trans_crack", placeholder: "0" },
       { label: "Transport Condemn", name: "trans_condemn", placeholder: "0" }, 
       { label: "Hatch Crack", name: "hatc_crack", placeholder: "0" },
@@ -349,7 +350,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
             {/* Good Egg (single wide row-left feel) */}
             <div className="md:col-span-1">
               <NumberField
-                label="Good Egg"
+                label="Hatching Egg"
                 name="good_egg"
                 placeholder="0"
                 form={form}
@@ -440,7 +441,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
             <NumberField label="Discrepancy" name="discrepancy" form={form} disabled />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          {/* <div className="flex justify-end gap-3 pt-2">
             <Button onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save"}
             </Button>
@@ -450,7 +451,15 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
             >
               Cancel
             </Button>
-          </div>
+          </div> */}
+                        <FormActionButtons
+                          saving={saving}
+                          // isEdit={isEdit}
+                          // disabled={disabledAll}
+                          cancelPath="/a_baja/hatcheryclassi"
+                          onSave={handleSave}
+                        />
+
         </CardContent>
       </Card>
     </div>

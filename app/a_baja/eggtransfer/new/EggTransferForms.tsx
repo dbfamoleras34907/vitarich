@@ -24,6 +24,7 @@ import {
   getEggTransferById,
   listClassiRefNos,
 } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 type FormState = {
   ref_no: string
@@ -312,7 +313,15 @@ export default function EggTransferForm() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2">
+                <FormActionButtons
+                  saving={saving}
+                  isEdit={isEdit}
+                  // disabled={disabledAll}
+                  cancelPath="/a_baja/eggtransfer"
+                  onSave={onSave}
+                />
+              
+              {/* <div className="flex items-center justify-end gap-2 pt-2">
                 <Button type="button" onClick={onSave} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </Button>
@@ -325,7 +334,7 @@ export default function EggTransferForm() {
                 >
                   Cancel
                 </Button>
-              </div>
+              </div> */}
             </>
           )}
         </CardContent>

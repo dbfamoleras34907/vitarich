@@ -23,6 +23,7 @@ import {
   getEggReferenceMeta,
   updateChickPulloutProcess,
 } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 function num(v: any) {
   const n = Number(v)
@@ -282,8 +283,16 @@ function onNumChange<K extends keyof ChickPulloutProcess>(key: K) {
           <Label>Mortality Rate</Label>
           <Input value={`${mortalityRate.toFixed(2)} %`} disabled />
         </div>
-
-        <div className="flex gap-2 pt-2">
+       {/* Actions */}
+                <FormActionButtons
+                  saving={saving}
+                  // isEdit={isEdit}
+                  // disabled={disabledAll}
+                  cancelPath="/a_baja/chickpullout"
+                  onSave={onSave}
+                />
+                
+        {/* <div className="flex gap-2 pt-2">
           <Button onClick={onSave} disabled={saving} className="w-32">
             {saving ? "Saving..." : "Save"}
           </Button>
@@ -295,7 +304,9 @@ function onNumChange<K extends keyof ChickPulloutProcess>(key: K) {
           >
             Cancel
           </Button>
-        </div>
+        </div> */}
+
+
       </CardContent>
     </Card>
   )

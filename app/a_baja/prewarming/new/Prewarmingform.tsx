@@ -25,6 +25,7 @@ import {
   listHatchClassiRefs,
   type HatchClassiRefOption,
 } from "./api"
+import FormActionButtons from "@/components/FormActionButtons"
 
 type FormState = {
   egg_ref_no: string
@@ -288,19 +289,13 @@ export default function Prewarmingform() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button type="button" onClick={onSave} disabled={saving || loading || refLoading}>
-              {saving ? "Saving..." : isEdit ? "Update" : "Save"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push("/a_baja/prewarming")}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-          </div>
+             <FormActionButtons
+                            saving={saving}
+                            isEdit={isEdit}
+                            // disabled={disabledAll}
+                            cancelPath="/a_baja/prewarming"
+                            onSave={onSave}
+                          /> 
         </CardContent>
       </Card>
     </div>

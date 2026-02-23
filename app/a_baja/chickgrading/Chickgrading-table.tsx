@@ -1,14 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ColumnDef,
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getFilteredRowModel,
   flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  useReactTable,
 } from "@tanstack/react-table"
 
 import {
@@ -22,33 +22,56 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Pencil, Plus, RefreshCw, Trash2, Search } from "lucide-react"
+import { Plus, RefreshCw, Search } from "lucide-react"
 
-import { ChickGradingProcess, deleteChickGradingProcess, listChickGradingProcess } from "./new/api"
+import {
+  ChickGradingProcess,
+  deleteChickGradingProcess,
+  listChickGradingProcess,
+} from "./new/api"
+
+import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return ""
   const d = new Date(v)
   if (Number.isNaN(d.getTime())) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+    d.getDate()
+  )} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function ChickgradingTable() {
   const router = useRouter()
+
   const [items, setItems] = useState<ChickGradingProcess[]>([])
   const [columnFilters, setColumnFilters] = useState<any>([])
+  const [sorting, setSorting] = useState<any>([])
+  const [columnVisibility, setColumnVisibility] = useState<any>({})
+  const [rowSelection, setRowSelection] = useState<any>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string>("")
 
-  async function load() {
-    const data = await listChickGradingProcess()
-    setItems(data)
-  }
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await listChickGradingProcess()
+      setItems(Array.isArray(data) ? data : [])
+      setLastUpdated(new Date().toLocaleString())
+    } catch (e) {
+      console.error(e)
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    load().catch(console.error)
-  }, [])
+    router.prefetch("/a_baja/chickgrading/new")
+    load()
+  }, [router, load])
 
   async function onDelete(id: number) {
     if (!confirm("Delete this record?")) return
@@ -59,84 +82,114 @@ export default function ChickgradingTable() {
 
   const columns = useMemo<ColumnDef<ChickGradingProcess>[]>(
     () => [
-      { accessorKey: "egg_ref_no", header: "Filter Egg Ref. No." },
+      {
+        id: "row_no",
+        header: "#",
+        cell: ({ row }) => row.index + 1,
+      },
+      { accessorKey: "egg_ref_no", header: "Egg Ref. No." },
       { accessorKey: "batch_code", header: "Batch code" },
-      { accessorKey: "grading_datetime", header: "Grading date & time",cell: ({ row }) => fmtDateTime(row.original.grading_datetime), },
+      {
+        accessorKey: "grading_datetime",
+        header: "Grading date & time",
+        cell: ({ row }) => fmtDateTime(row.original.grading_datetime),
+      },
       { accessorKey: "total_chicks", header: "Total chicks" },
       { accessorKey: "good_quality_chicks", header: "Good quality chicks" },
       { accessorKey: "quality_grade_rate", header: "Quality grade rate %" },
       { accessorKey: "cull_rate", header: "Cull rate %" },
       { accessorKey: "grading_personnel", header: "Grading personnel" },
       {
-        id: "actions",
-        header: "Actions",
-        cell: ({ row }) => {
-          const item = row.original
-          return (
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => router.push(`/a_baja/chickgrading/new?id=${item.id}`)}
-              >
-                <Pencil className="h-4 w-4" />Edit
-              </Button>
-              {/* <Button size="sm" variant="destructive" onClick={() => onDelete(item.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button> */}
-            </div>
-          )
-        },
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <EditActionButton
+              id={row.original?.id}
+              href={(id) => `/a_baja/chickgrading/new?id=${id}`}
+            />
+            {/* Optional delete button if you want it */}
+            {/* <Button variant="ghost" size="icon" onClick={() => onDelete(row.original.id)}>
+              <Trash2 className="size-4" />
+            </Button> */}
+          </div>
+        ),
       },
     ],
-    [router]
+    []
   )
 
   const table = useReactTable({
     data: items,
     columns,
-    state: { columnFilters },
-    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    state: {
+      columnFilters,
+      sorting,
+      columnVisibility,
+      rowSelection,
+    },
   })
 
   return (
     <div className="rounded-md border p-4">
-      <div className="flex items-center justify-between gap-2">
-        {/* Filter like your egg-table */}
-        <div className="relative w-72">
-          <Input
-            placeholder="Filter Egg Ref. No."
-            className="pl-10"
-            value={(table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""}
-            onChange={(e) => table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)}
-          />
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      <Breadcrumb SecondPreviewPageName="Hatchery" CurrentPageName="Chick Grading" />
+      <br />
+
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative w-72">
+            <Input
+              placeholder="Filter Egg Ref. No."
+              className="pl-10"
+              value={
+                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
+              }
+              onChange={(e) =>
+                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
+              }
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </Button> 
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => load()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-
-          <Button onClick={() => router.push("/a_baja/chickgrading/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Check Grading
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={() => router.push("/a_baja/chickgrading/new")}
+          className="flex items-center gap-2"
+        >
+          <Plus className="size-4" />
+          New Chick Grading
+        </Button>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border bg-white">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
                 {hg.headers.map((h) => (
                   <TableHead key={h.id} className="whitespace-nowrap">
-                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                    {h.isPlaceholder
+                      ? null
+                      : flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
               </TableRow>
@@ -159,7 +212,7 @@ export default function ChickgradingTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                  {isLoading ? "Loading..." : "No results."}
                 </TableCell>
               </TableRow>
             )}
@@ -167,7 +220,7 @@ export default function ChickgradingTable() {
         </Table>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 mt-4">
         <Button
           variant="outline"
           size="sm"

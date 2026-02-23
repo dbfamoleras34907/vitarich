@@ -28,6 +28,7 @@ import { Pencil, Plus, RefreshCw, Search } from "lucide-react"
 
 import { listEggHatcheryProcess, type EggHatcheryProcess } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return ""
@@ -90,9 +91,9 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
   const columns = useMemo<ColumnDef<EggHatcheryProcess>[]>(
     () => [
       {
-        accessorKey: "id",
-        header: "ID",
-        cell: ({ row }) => row.original.id,
+      accessorKey: "id",
+      header: "#",
+      cell: ({ row }) => row.index + 1,
       },
       {
         accessorKey: "egg_ref",
@@ -139,21 +140,32 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
         header: "Total Egg",
         cell: ({ row }) => fmtNumber(row.original.total_egg),
       },
-      {
-        id: "actions",
-        header: "Actions",
-        cell: ({ row }) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => router.push(`/a_baja/egghatcheryprocessform/new?id=${row.original.id}`)}
-          >
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-        ),
-      },
+       {
+            id: "action",
+            header: "Action",
+            cell: ({ row }) => (
+              <EditActionButton
+                id={row.original?.id}
+                href={(id) => `/a_baja/egghatcheryprocessform/new?id=${id}`}
+              />
+            ),
+          },
+          
+      // {
+      //   id: "actions",
+      //   header: "Actions",
+      //   cell: ({ row }) => (
+      //     <Button
+      //       type="button"
+      //       size="sm"
+      //       variant="outline"
+      //       onClick={() => router.push(`/a_baja/egghatcheryprocessform/new?id=${row.original.id}`)}
+      //     >
+      //       <Pencil className="h-4 w-4 mr-2" />
+      //       Edit
+      //     </Button>
+      //   ),
+      // },
     ],
     [router]
   )
@@ -179,14 +191,13 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
 
   return (
     <div className="rounded-md p-2">
-      <div className="flex flex-col md:flex-row md:items-center gap-2 justify-between">
-        <div className="flex items-center gap-4 py-4">
-          <Breadcrumb
+        <Breadcrumb
             SecondPreviewPageName="Hatchery"
             // FirstPreviewsPageName="Egg Transfer"
             CurrentPageName="Egg Hatchery"
           />
-
+      <div className="flex flex-col md:flex-row md:items-center gap-2 justify-between">
+        <div className="flex items-center gap-4 py-4"> 
           <div className="relative">
             <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
