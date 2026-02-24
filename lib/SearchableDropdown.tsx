@@ -21,9 +21,11 @@ type Props<T> = {
   codeLabel: keyof T
   nameLabel?: keyof T
   value?: string
+  showNameOnly?: boolean
   placeholder?: string
   width?: number
   onChange: (value: string, item: T) => void
+
 }
 
 export default function SearchableDropdown<T extends Record<string, any>>({
@@ -32,6 +34,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   nameLabel,
   value,
   placeholder = 'Select...',
+  showNameOnly = false,
   width = 260,
   onChange,
 }: Props<T>) {
@@ -42,9 +45,11 @@ export default function SearchableDropdown<T extends Record<string, any>>({
     const found = list.find(i => String(i[codeLabel]) === value)
     if (!found) return placeholder
 
-    return nameLabel
-      ? `${found[codeLabel]} — ${found[nameLabel]}`
-      : String(found[codeLabel])
+    if (!nameLabel) return String(found[codeLabel])
+
+    return showNameOnly
+      ? String(found[nameLabel])
+      : `${found[codeLabel]} — ${found[nameLabel]}`
   })()
 
   const filtered = useMemo(() => {
@@ -114,9 +119,15 @@ export default function SearchableDropdown<T extends Record<string, any>>({
                 key={idx}
                 onSelect={() => selectItem(item)}
               >
-                {nameLabel
+                {/* {nameLabel
                   ? `${item[codeLabel]} — ${item[nameLabel]}`
-                  : item[codeLabel]}
+                  : item[codeLabel]} */}
+
+                {nameLabel
+                  ? showNameOnly
+                    ? String(item[nameLabel])
+                    : `${item[codeLabel]} — ${item[nameLabel]}`
+                  : String(item[codeLabel])}
               </CommandItem>
             ))}
           </CommandGroup>

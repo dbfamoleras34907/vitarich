@@ -158,7 +158,7 @@ export default function Layout() {
                 <h2 className="text-lg font-semibold mx-4">For Receiving Items</h2>
             </div>
             {!loading && (
-                <DynamicTable 
+                <DynamicTable  
                     initialFilters={[
                         {
                             id: "",

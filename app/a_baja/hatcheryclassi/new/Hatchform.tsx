@@ -59,18 +59,17 @@ export default function Hatchform() {
   classfi_ref_no: "",   
   classi_ref_no: "",
   date_classify: "",
-
   // numeric...
-  good_egg: null as number | null,
-  trans_crack: null as number | null,
-  trans_condemn: null as number | null,
-  hatc_crack: null as number | null,
-  thin_shell: null as number | null,
-  hatc_condemn: null as number | null,
-  small: null as number | null,
-  pee_wee: null as number | null,
-  d_yolk: null as number | null,
-  jumbo: null as number | null, 
+  good_egg: 0,
+  trans_crack: 0,
+  trans_condemn: 0,
+  hatc_crack: 0,
+  thin_shell: 0,
+  hatc_condemn: 0,
+  small: 0,
+  pee_wee: 0,
+  d_yolk: 0,
+  jumbo: 0, 
   ttl_count: 0,
   discrepancy: 0,
 })
@@ -355,6 +354,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
                 form={form}
                 onChange={handleChange}
                  min={0}
+                 
               />
             </div>
             <div className="md:col-span-2" />
@@ -498,6 +498,7 @@ function NumberField({
       <Label>{label}</Label>
       <Input
         type="number"
+        className="focus:select all in input"// -> please update to select when focus
         name={name}
         placeholder={placeholder}
         disabled={disabled}
@@ -508,6 +509,7 @@ function NumberField({
         inputMode="numeric"
         onKeyDown={blockBadKeys}
         onPaste={blockNegativePaste}
+        onFocus={(e) => e.target.select()}
       />
     </div>
   )

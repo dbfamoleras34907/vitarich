@@ -1,12 +1,22 @@
 'use client'
 
+import { formatDateTime } from '@/lib/formatDate'
 import { MoveDown, MoveUp, Search } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
+
+// export type Column<T> = {
+//   key: keyof T | string
+//   label: string
+//   align?: 'left' | 'right' | 'center'
+//   type?: 'text' | 'date' | 'button' | string  
+//   render?: (row: T) => React.ReactNode
+// }
 
 export type Column<T> = {
   key: keyof T | string
   label: string
   align?: 'left' | 'right' | 'center'
+  type?: 'text' | 'date' | 'button' | string
   render?: (row: T) => React.ReactNode
 }
 
@@ -379,14 +389,25 @@ export default function DynamicTable<T extends Record<string, any>>({
             </tr>
           </thead>
 
+
+
+
           <tbody>
             {paginatedData.map((row, i) => (
               <tr key={i} className="border-t hover:bg-background">
-                {columns.map(col => (
-                  <td key={String(col.key)} className="p-3 whitespace-nowrap">
-                    {col.render
-                      ? col.render(row)
-                      : String(row[col.key as keyof T] ?? '')}
+                {columns.map((col, i) => (
+                  <td key={i} className="p-3 whitespace-nowrap">
+                    {(() => {
+                      const value = row[col.key as keyof T]
+                      if (col.type === 'date' && value) {
+                        return formatDateTime(String(value))
+                      }
+
+                      if (col.render) {
+                        return col.render(row)
+                      }
+                      return String(value ?? '')
+                    })()}
                   </td>
                 ))}
               </tr>

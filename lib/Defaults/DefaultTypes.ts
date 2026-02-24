@@ -36,12 +36,15 @@ export type ColumnConfig = {
     label: string;
     searchWithKey?: string | null;
     searchOutputKey?: string | null;
+    codeKey?: string | null;
+    nameKey?: string | null;
     filterWith?: string | null;
     type: "text" | "number" | "currency" | "date" | "search" | "button";
     data?: any[];
     required?: boolean;
     disabled?: boolean;
     width?: number | string;
+
 };
 
 
