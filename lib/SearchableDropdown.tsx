@@ -15,6 +15,7 @@ import {
   CommandItem,
 } from '@/components/ui/command'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { GlassWater, Search } from 'lucide-react'
 
 type Props<T> = {
   list: T[]
@@ -86,10 +87,10 @@ export default function SearchableDropdown<T extends Record<string, any>>({
         <PopoverTrigger asChild>
           <TooltipTrigger asChild>
             <Button
-              className=" bg-background text-foreground hover:bg-white/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap border border-green-500"
+              className=" bg-background text-foreground hover:bg-white/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap border border-primary"
             >
-              <span className="truncate">
-                {displayText}
+              <span className="truncate flex items-center gap-2">
+                {displayText === "" || undefined ? <><Search /> Search... </> : displayText}
               </span>
             </Button>
           </TooltipTrigger>

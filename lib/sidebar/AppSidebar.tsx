@@ -863,14 +863,14 @@ export function AppSidebar() {
       className={`flex flex-col h-screen    bg-background transition-all ${collapsed ? "w-16" : "w-72"
         } duration-300`}
     >
-      <div className="px-3   h-13.5 shadow  bg-white">
+      <div className="px-3   h-13.5  mt-1  z-50">
         <div className="flex items-center justify-between">
           {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
           <Button className="m-3 text-foreground" variant="ghost" size="icon" onClick={toggle} >
             <Menu className="size-5" />
           </Button>
           {!collapsed &&
-            <div className="">
+            <div className="mt-2">
 
               <GlobalSearch collapsed={collapsed} />
             </div>

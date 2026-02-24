@@ -69,29 +69,30 @@ export default function WarehouseLayout() {
       </div>
 
       <Separator className='my-2' />
+      <div className='rounded-2xl bg-white pt-4 px-2'>
+        <div className='mx-4 flex gap-2'>
+          <Input className='w-4xs' placeholder='Search location...' />
+          <Input className='w-4xs' placeholder='Search status...' />
+        </div>
 
-      <div className='mx-4 flex gap-2'>
-        <Input className='w-4xs' placeholder='Search location...' />
-        <Input className='w-4xs' placeholder='Search status...' />
-      </div>
-
-      <div className='mx-4 mt-2'>
-        {isLoading && data.length === 0 ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="animate-spin h-8 w-8 text-gray-400" />
-          </div>
-        ) : (
-          <DataTable
-            widthFull
-            columns={tableColumnsx}
-            rows={data}
-            DisableAddLine
-            rowOnClick={(row) => {
-              // Navigate to detail page using the row ID
-              // router.push(`/a_dean/warehouse/${row.id}`)
-            }}
-          />
-        )}
+        <div className='mx-4 mt-2 '>
+          {isLoading && data.length === 0 ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="animate-spin h-8 w-8 text-gray-400" />
+            </div>
+          ) : (
+            <DataTable
+              widthFull
+              columns={tableColumnsx}
+              rows={data}
+              DisableAddLine
+              rowOnClick={(row) => {
+                // Navigate to detail page using the row ID
+                // router.push(`/a_dean/warehouse/${row.id}`)
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

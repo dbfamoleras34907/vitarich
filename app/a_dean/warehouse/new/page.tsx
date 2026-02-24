@@ -8,9 +8,9 @@ import Layout from './Layout'
 export default function page() {
     return (
         <div>
-            {/* <NavigationBar currentLabel='New Warehouse' fatherLink='./' fatherLabel='Warehouse Master'> */}
-            <Layout />
-            {/* </NavigationBar> */}
+            <NavigationBar currentLabel='' fatherLink='./' fatherLabel='Warehouse Master'>
+                <Layout />
+            </NavigationBar>
 
         </div>
     )

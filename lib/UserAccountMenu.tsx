@@ -35,7 +35,7 @@ export default function UserAccountMenu({ session, collapsed }: any) {
         <div
           className={`
             absolute top-full right-0 mb-2 w-full min-w-50
-            bg-popover border border-border rounded-lg shadow-xl 
+              border border-border rounded-lg shadow-xl 
             p-2 z-40 animate-in fade-in slide-in-from-bottom-2
           `}
         >
@@ -57,7 +57,7 @@ export default function UserAccountMenu({ session, collapsed }: any) {
             Logout
           </Button>
 
-          <Separator className="my-2 bg-secondary/50" />
+          <Separator className="my-2 " />
 
           {/* These components now live in a simple div, no "Dropdown Context" to break them */}
           <div className="flex flex-col gap-1">

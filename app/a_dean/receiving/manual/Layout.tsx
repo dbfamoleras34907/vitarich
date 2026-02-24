@@ -282,9 +282,9 @@ export default function ApprovalDecisionForm() {
               <Input
                 type={field.type || 'text'}
                 value={field.value}
-                // readOnly={field.readOnly}
+                // readOnly disabled ={field.readOnly disabled }
                 onChange={
-                  // field.readOnly
+                  // field.readOnly disabled 
                     // ? undefined
                     /*:*/ e => field.onChange?.(e.target.value)
                 }
@@ -423,9 +423,9 @@ export default function ApprovalDecisionForm() {
                         />
                       </TableCell>
 
-                      <TableCell><Input type="number" value={item.jr || 0} readOnly /></TableCell>
-                      <TableCell><Input type="number" value={item.he || 0} readOnly /></TableCell>
-                      <TableCell><Input type="number" value={total} readOnly /></TableCell>
+                      <TableCell><Input type="number" value={item.jr || 0} readOnly disabled  /></TableCell>
+                      <TableCell><Input type="number" value={item.he || 0} readOnly disabled  /></TableCell>
+                      <TableCell><Input type="number" value={total} readOnly disabled  /></TableCell>
 
                       <TableCell>
                         <Input
@@ -448,7 +448,7 @@ export default function ApprovalDecisionForm() {
                       </TableCell>
 
                       <TableCell>
-                        <Input type="number" value={actualTotal} readOnly />
+                        <Input type="number" value={actualTotal} readOnly disabled  />
                       </TableCell>
 
                     </TableRow>
