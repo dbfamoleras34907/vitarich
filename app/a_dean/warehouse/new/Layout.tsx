@@ -122,6 +122,7 @@ export default function Layout() {
   })
 
   const warehouseDetail: FormItem[] = [
+    { code: "whse_code", name: "Warehouse Code", disabled: false, type: "text", required: true },
     { code: "whse_name", name: "Warehouse Name", disabled: false, type: "text", required: true },
     { code: "warehouse_type", name: "Warehouse Type", disabled: false, type: "select", required: true },
     { code: "subinventory_desc", name: "Sub Inventory Desc", disabled: false, type: "text", required: false },

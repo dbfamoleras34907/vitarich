@@ -14,6 +14,7 @@ import { today } from '@/lib/Defaults/DefaultValues'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { createReceiving } from './api'
+import { Plus, Save } from 'lucide-react'
 
 type DraftItem = {
   id: number
@@ -239,15 +240,17 @@ export default function ApprovalDecisionForm() {
     <Card className="w-full border-none shadow-none bg-background p-0">
       <CardHeader className="border-b">
         <div className="flex justify-between items-center">
-          <Breadcrumb
-            FirstPreviewsPageName='Receiving'
-            SecondPreviewPageName='Hatchery'
-            CurrentPageName='Manual Receiving'
-          />
+          <div className='mt-8'>
+            <Breadcrumb
+              FirstPreviewsPageName='Receiving'
+              SecondPreviewPageName='Hatchery'
+              CurrentPageName='Manual Receiving'
+            />
+          </div>
           <Button
             onClick={insertMe}
           >
-            Add Record
+          <Save/>  Add Record
           </Button>
 
         </div>
@@ -262,7 +265,7 @@ export default function ApprovalDecisionForm() {
           {/* ✅ SOLD TO DROPDOWN */}
 
           <div>
-            <Label>Sold To</Label>
+            <Label className='pb-2'>Delivered From</Label>
             <SearchableDropdown
               list={farms}
               codeLabel="code"
@@ -278,7 +281,7 @@ export default function ApprovalDecisionForm() {
 
           {headerFields.map((field, i) => (
             <div key={i}>
-              <Label>{field.label}</Label>
+              <Label className='pb-2'>{field.label}</Label>
               <Input
                 type={field.type || 'text'}
                 value={field.value}
@@ -305,7 +308,9 @@ export default function ApprovalDecisionForm() {
                   Remove Selected
                 </Button>
               )}
-              <Button variant="outline" onClick={addRow}>Add Row</Button>
+              <Button onClick={addRow}>
+                <Plus/>
+                Add Row</Button>
             </div>
           </div>
 
@@ -423,9 +428,9 @@ export default function ApprovalDecisionForm() {
                         />
                       </TableCell>
 
-                      <TableCell><Input type="number" value={item.jr || 0} readOnly disabled  /></TableCell>
-                      <TableCell><Input type="number" value={item.he || 0} readOnly disabled  /></TableCell>
-                      <TableCell><Input type="number" value={total} readOnly disabled  /></TableCell>
+                      <TableCell><Input type="number" value={item.jr || 0} readOnly disabled /></TableCell>
+                      <TableCell><Input type="number" value={item.he || 0} readOnly disabled /></TableCell>
+                      <TableCell><Input type="number" value={total} readOnly disabled /></TableCell>
 
                       <TableCell>
                         <Input
@@ -448,7 +453,7 @@ export default function ApprovalDecisionForm() {
                       </TableCell>
 
                       <TableCell>
-                        <Input type="number" value={actualTotal} readOnly disabled  />
+                        <Input type="number" value={actualTotal} readOnly disabled />
                       </TableCell>
 
                     </TableRow>
@@ -463,7 +468,7 @@ export default function ApprovalDecisionForm() {
 
         <div className="grid grid-cols-5 gap-6">
           <div>
-            <Label>No Of Crates</Label>
+            <Label className='pb-2'>No Of Crates</Label>
             <Input
               value={footer.crates}
               onChange={e => setFooter(f => ({ ...f, crates: e.target.value }))}
@@ -471,7 +476,7 @@ export default function ApprovalDecisionForm() {
           </div>
 
           <div>
-            <Label>No. of Tray</Label>
+            <Label className='pb-2'>No. of Tray</Label>
             <Input
               value={footer.trays}
               onChange={e => setFooter(f => ({ ...f, trays: e.target.value }))}
@@ -479,7 +484,7 @@ export default function ApprovalDecisionForm() {
           </div>
 
           <div>
-            <Label>Van Plate No.</Label>
+            <Label className='pb-2'>Van Plate No.</Label>
             <Input
               value={footer.van_plate}
               onChange={e => setFooter(f => ({ ...f, van_plate: e.target.value }))}
@@ -487,7 +492,7 @@ export default function ApprovalDecisionForm() {
           </div>
 
           <div>
-            <Label>Driver</Label>
+            <Label className='pb-2'>Driver</Label>
             <Input
               value={footer.driver}
               onChange={e => setFooter(f => ({ ...f, driver: e.target.value }))}
@@ -495,7 +500,7 @@ export default function ApprovalDecisionForm() {
           </div>
 
           <div>
-            <Label>Serial Number</Label>
+            <Label className='pb-2'>Serial Number</Label>
             <Input
               value={footer.serial}
               onChange={e => setFooter(f => ({ ...f, serial: e.target.value }))}

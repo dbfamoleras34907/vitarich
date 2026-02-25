@@ -75,7 +75,7 @@ export default function Layout() {
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'doc_date', label: 'Doc Date', type: 'text', disabled: true },
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
-        { key: 'status', label: 'Status', type: 'text', disabled: true },
+        // { key: 'status', label: 'Status', type: 'text', disabled: true },
         { key: 'soldTo', label: 'Sold To', type: 'text', disabled: true },
         { key: 'po_no', label: 'PO No.', type: 'text', disabled: true },
         { key: 'voyage_no', label: 'Voyage No.', type: 'text', disabled: true },

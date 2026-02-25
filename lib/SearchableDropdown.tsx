@@ -34,7 +34,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   codeLabel,
   nameLabel,
   value,
-  placeholder = 'Select...',
+  placeholder = '',
   showNameOnly = false,
   width = 260,
   onChange,
