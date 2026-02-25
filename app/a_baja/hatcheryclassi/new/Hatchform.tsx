@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, ChangeEvent } from "react"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label" 
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -17,6 +16,8 @@ import { db } from "@/lib/Supabase/supabaseClient"
 import { useRouter } from "next/navigation"
 import { createHatchClassification, HatchClassificationInsert } from "./api"
 import FormActionButtons from "@/components/FormActionButtons"
+import SearchableDropdown from "@/lib/SearchableDropdown"
+import Breadcrumb from "@/lib/Breadcrumb"
 
 type ViewForHatcheryClassi = {
   id: string | null
@@ -30,17 +31,7 @@ type ViewForHatcheryClassi = {
   actual_count: number | null
   classfi_ref_no: string | null
 }
-
-function pad3(n: number) {
-  return String(n).padStart(3, "0")
-}
-
-function ddmmyyFromYYYYMMDD(dateStr: string) {
-  // dateStr expected: YYYY-MM-DD
-  const [y, m, d] = dateStr.split("-")
-  if (!y || !m || !d) return ""
-  return `${d}${m}${y.slice(-2)}`
-}
+  
 
 export default function Hatchform() {
   const router = useRouter()
@@ -60,7 +51,7 @@ export default function Hatchform() {
   classfi_ref_no: "",   
   classi_ref_no: "",
   date_classify: "",
-  // numeric...
+  // numeric...  
   good_egg: 0,
   trans_crack: 0,
   trans_condemn: 0,
@@ -70,9 +61,10 @@ export default function Hatchform() {
   small: 0,
   pee_wee: 0,
   d_yolk: 0,
-  jumbo: 0, 
+  jumbo: 0,
   ttl_count: 0,
   discrepancy: 0,
+
 })
 
   const numericFields = useMemo(
@@ -207,29 +199,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     return updated
   })
 }
-
-
-  useEffect(() => {
-  const run = async () => {
-    if (!form.date_classify) return
-    if (!form.classi_ref_no) return
-
-    try {
-      setRefLoading(true)
-      const finalRef = await generateRef(form.date_classify, form.classi_ref_no)
-      setForm((p) => ({ ...p, classi_ref_no: finalRef }))
-    } catch (e) {
-      console.error(e)
-      setForm((p) => ({ ...p, classi_ref_no: "" }))
-    } finally {
-      setRefLoading(false)
-    }
-  }
-
-  run()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [form.date_classify])
-
+ 
 
   const handleSave = async () => {
     // required checks
@@ -284,26 +254,45 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
   }
 
   return (
-    <div className="max-w-6xl ml-0 p-6 space-y-2">
-      <h1 className="text-2xl font-bold">Hatch Classification</h1>
-
+    // <div className="max-w-6xl ml-0 p-6 space-y-2">
+    //   <h1 className="text-2xl font-bold">Hatch Classification</h1>
+    <div className="space-y-4 mt-4">
+      <Breadcrumb
+        SecondPreviewPageName="Hatchery"
+        FirstPreviewsPageName="Hatch Classification"
+        CurrentPageName="New Classification"
+        // CurrentPageName={isEdit ? "Edit Entry" : "New Entry"}
+      />
       {/* TOP CARD (Breeder + view fields) */}
       <Card>
-        <CardContent className="pt-4 space-y-3">
+        <CardContent className="pt-4 space-y-4">
           <div className="space-y-1 max-w-sm">
             <Label>Breeder Ref. No.</Label>
-            <Select onValueChange={handleBreederChange}>
+            {/* <Select onValueChange={handleBreederChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Breeder Ref No" />
               </SelectTrigger>
-              <SelectContent>
-                {breeders.map((b, i) => (
-                  <SelectItem key={i} value={b.brdr_ref_no ?? ""}>
-                    {b.brdr_ref_no} 
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectContent>
+                  {breeders
+                    .filter((b) => (b.brdr_ref_no ?? "").trim() !== "")
+                    .map((b) => (
+                      <SelectItem key={b.brdr_ref_no!} value={b.brdr_ref_no!}>
+                        {b.brdr_ref_no}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select> */}
+            <SearchableDropdown
+              list={breeders}
+              codeLabel="brdr_ref_no"
+              nameLabel="brdr_ref_no"
+              showNameOnly
+              value={form.br_no}
+              onChange={(val,selected) => {
+                console.log({val, selected})
+                handleBreederChange(val)}}
+            />
+
           </div>
 
           <Separator />
@@ -355,7 +344,6 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
                 form={form}
                 onChange={handleChange}
                  min={0}
-                 
               />
             </div>
             <div className="md:col-span-2" />
@@ -507,7 +495,6 @@ function NumberField({
       <Label>{label}</Label>
       <Input
         type="number"
-        className="focus:select all in input"// -> please update to select when focus
         name={name}
         placeholder={placeholder}
         disabled={disabled}
@@ -519,6 +506,7 @@ function NumberField({
         onKeyDown={blockBadKeys}
         onPaste={blockNegativePaste}
         onFocus={(e) => e.target.select()}
+        className="focus:select all in input"
       />
     </div>
   )

@@ -22,8 +22,8 @@ export default function FormActionButtons({
   const router = useRouter()
 
   return (
-    <div className="flex items-center justify-end gap-2 pt-2">
-      <Button type="button" onClick={onSave} disabled={disabled}>
+    <div className="flex items-center justify-end gap-2 pt-2 ">
+      <Button type="button" onClick={onSave} disabled={disabled} className="w-full md:w-auto h-full md:h-auto">
         {saving ? (
           <>
             <Loader2 className="mr-4 h-4 w-4 animate-spin" />
@@ -36,7 +36,7 @@ export default function FormActionButtons({
           </>
         ) : (
           <>
-            <Save className="mr-2 h-4 w-4" />
+            <Save className="mr-2 " />
             Save
           </>
         )}
@@ -47,7 +47,7 @@ export default function FormActionButtons({
         variant="outline"
         onClick={() => router.push(cancelPath)}
         disabled={disabled}
-        className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700"
+        className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 w-full md:w-auto h-full md:h-auto"
       >
         <X className="mr-2 h-4 w-4" />
         Cancel

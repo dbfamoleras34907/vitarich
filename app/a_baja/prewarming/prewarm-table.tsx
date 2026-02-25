@@ -74,6 +74,16 @@ export default function PrewarmTable() {
         header: "#",
         cell: ({ row }) => row.index + 1,
       },
+            {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <EditActionButton
+            id={row.original?.id}
+            href={(id) => `/a_baja/prewarming/new?id=${id}`}
+          />
+        ),
+      },
       {
         accessorKey: "egg_ref_no",
         header: "Egg Reference No.",
@@ -98,17 +108,7 @@ export default function PrewarmTable() {
         accessorKey: "remarks",
         header: "Remarks",
         cell: ({ row }) => row.original.remarks ?? "",
-      },
-      {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <EditActionButton
-            id={row.original?.id}
-            href={(id) => `/a_baja/prewarming/new?id=${id}`}
-          />
-        ),
-      },
+      }, 
     ],
     []
   )
@@ -162,7 +162,7 @@ export default function PrewarmTable() {
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
             {isLoading ? "Refreshing..." : "Refresh"}
@@ -172,7 +172,7 @@ export default function PrewarmTable() {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/prewarming/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
           New Pre-Warming

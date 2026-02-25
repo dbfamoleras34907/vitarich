@@ -67,6 +67,17 @@ export default function ChickPulloutTable() {
         header: "#",
         cell: ({ row }) => row.index + 1,
       },
+            {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => ( 
+            <EditActionButton
+              id={row.original?.id}
+              href={(id) => `/a_baja/chickpullout/new?id=${id}`}
+            /> 
+          
+        ),
+      },
       {
         accessorKey: "egg_ref_no",
         header: "Egg Reference No.",
@@ -108,17 +119,6 @@ export default function ChickPulloutTable() {
         accessorKey: "hatch_window",
         header: "Hatch Window",
       },
-      {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => ( 
-            <EditActionButton
-              id={row.original?.id}
-              href={(id) => `/a_baja/chickpullout/new?id=${id}`}
-            /> 
-          
-        ),
-      },
     ],
     []
   )
@@ -147,7 +147,7 @@ export default function ChickPulloutTable() {
   })
 
   return (
-    <div className="rounded-md border p-4">
+    <div className="rounded-md p-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         CurrentPageName="Chick Pullout"
@@ -171,7 +171,7 @@ export default function ChickPulloutTable() {
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto" 
           >
             <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
             {isLoading ? "Refreshing..." : "Refresh"}
@@ -182,7 +182,7 @@ export default function ChickPulloutTable() {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/chickpullout/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
           New Chick Pullout

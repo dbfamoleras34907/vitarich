@@ -106,6 +106,16 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
       header: "#",
       cell: ({ row }) => row.index + 1,
     },
+        {
+      id: "action",
+      header: "Action",
+      cell: ({ row }) => (
+        <EditActionButton
+          id={row.original?.id}
+          href={(id) => `/a_baja/eggtransfer/new?id=${id}`}
+        />
+      ),
+    }, 
     {
       accessorKey: "ref_no",
       header: "Reference No.",
@@ -138,17 +148,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
       accessorKey: "total_egg_transfer",
       header: "Total Egg Transfer",
       cell: ({ row }) => row.original.total_egg_transfer ?? "",
-    }, 
-    {
-      id: "action",
-      header: "Action",
-      cell: ({ row }) => (
-        <EditActionButton
-          id={row.original?.id}
-          href={(id) => `/a_baja/eggtransfer/new?id=${id}`}
-        />
-      ),
-    }, 
+    },  
   ]
 
   const table = useReactTable({
@@ -171,7 +171,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
   })
 
   return (
-    <div className="rounded-md   p-4 mt-5">
+    <div className="rounded-md p-4">
           <Breadcrumb
             SecondPreviewPageName="Hatchery"
             CurrentPageName="Egg Transfer"
@@ -200,7 +200,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
             variant="outline"
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw className="size-4" />
             {loading ? "Refreshing..." : "Refresh"}
@@ -210,7 +210,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/eggtransfer/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" /> Egg Transfer
         </Button>

@@ -73,6 +73,16 @@ export default function EggsetterTable() {
       cell: ({ row }) => row.index + 1,
     },
     {
+      id: "action",
+      header: "Action",
+      cell: ({ row }) => (
+        <EditActionButton
+          id={row.original?.id}
+          href={(id) => `/a_baja/eggsetter/new?id=${id}`}
+        />
+      ),
+    },
+    {
       accessorKey: "ref_no",
       header: "Reference Number",
     },
@@ -126,18 +136,7 @@ export default function EggsetterTable() {
     {
       accessorKey: "egg_shell_orientation",
       header: "Egg Shell Orientation",
-    },
-
-    {
-      id: "action",
-      header: "Action",
-      cell: ({ row }) => (
-        <EditActionButton
-          id={row.original?.id}
-          href={(id) => `/a_baja/eggsetter/new?id=${id}`}
-        />
-      ),
-    },
+    }, 
   ]
 
   const table = useReactTable({
@@ -160,7 +159,7 @@ export default function EggsetterTable() {
   })
 
   return (
-    <div className="rounded-md border p-4">
+    <div className="rounded-md p-4">
       {/* Top Controls */}
           <Breadcrumb SecondPreviewPageName="Hatchery" 
           CurrentPageName="Egg Setter List" 
@@ -183,7 +182,7 @@ export default function EggsetterTable() {
             variant="outline"
             onClick={fetchData}
             disabled={loading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw className="size-4" />
             {loading ? "Refreshing..." : "Refresh"}
@@ -193,7 +192,7 @@ export default function EggsetterTable() {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/eggsetter/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
           New Record

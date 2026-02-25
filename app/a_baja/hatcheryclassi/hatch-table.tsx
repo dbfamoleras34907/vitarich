@@ -118,8 +118,8 @@ export default function HatchTable() {
       <br />
 
       {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3">
           <div className="relative w-72">
             <Input
               placeholder="Filter Breeder Ref. No."
@@ -137,23 +137,17 @@ export default function HatchTable() {
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
             {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
-{/* 
-          {lastUpdated ? (
-            <div className="text-xs text-muted-foreground">
-              Last updated: {lastUpdated}
-            </div>
-          ) : null} */}
+          </Button> 
         </div>
 
         <Button
           type="button"
           onClick={() => router.push("/a_baja/hatcheryclassi/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
           New Classification

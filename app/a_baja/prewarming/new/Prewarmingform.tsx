@@ -196,7 +196,7 @@ export default function Prewarmingform() {
         CurrentPageName={isEdit ? "Edit Entry" : "New Entry"}
       />
 
-      <Card className="max-w-4xl ml-0 p-6 space-y-4"> 
+      <Card > 
         <CardContent className="pt-4 space-y-4">
           {(loading || refLoading) && (
             <div className="text-sm text-muted-foreground">

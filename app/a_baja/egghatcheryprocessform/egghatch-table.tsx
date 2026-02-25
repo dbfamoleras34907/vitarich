@@ -96,6 +96,16 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
       cell: ({ row }) => row.index + 1,
       },
       {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <EditActionButton
+            id={row.original?.id}
+            href={(id) => `/a_baja/egghatcheryprocessform/new?id=${id}`}
+          />
+        ),
+      },
+      {
         accessorKey: "egg_ref",
         header: "Egg Ref",
         cell: ({ row }) => row.original.egg_ref ?? "",
@@ -140,32 +150,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
         header: "Total Egg",
         cell: ({ row }) => fmtNumber(row.original.total_egg),
       },
-       {
-            id: "action",
-            header: "Action",
-            cell: ({ row }) => (
-              <EditActionButton
-                id={row.original?.id}
-                href={(id) => `/a_baja/egghatcheryprocessform/new?id=${id}`}
-              />
-            ),
-          },
-          
-      // {
-      //   id: "actions",
-      //   header: "Actions",
-      //   cell: ({ row }) => (
-      //     <Button
-      //       type="button"
-      //       size="sm"
-      //       variant="outline"
-      //       onClick={() => router.push(`/a_baja/egghatcheryprocessform/new?id=${row.original.id}`)}
-      //     >
-      //       <Pencil className="h-4 w-4 mr-2" />
-      //       Edit
-      //     </Button>
-      //   ),
-      // },
+
     ],
     [router]
   )
@@ -190,7 +175,7 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
   })
 
   return (
-    <div className="rounded-md p-2">
+    <div className="rounded-md p-4">
         <Breadcrumb
             SecondPreviewPageName="Hatchery"
             // FirstPreviewsPageName="Egg Transfer"
@@ -208,13 +193,13 @@ function fmtDurationHHMM(mins: number | string | null | undefined) {
             />
           </div>
 
-          <Button type="button" variant="outline" onClick={load} disabled={loading}>
+          <Button type="button" variant="outline" onClick={load} disabled={loading} className="w-full md:w-auto h-full md:h-auto">
             <RefreshCw className="h-4 w-4 mr-2" />
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
 
-        <Button type="button" onClick={() => router.push("/a_baja/egghatcheryprocessform/new")}>
+        <Button type="button" className="w-full md:w-auto h-full md:h-auto" onClick={() => router.push("/a_baja/egghatcheryprocessform/new")}>
           <Plus className="h-4 w-4 mr-2" />
           New Egg Hatch
         </Button>

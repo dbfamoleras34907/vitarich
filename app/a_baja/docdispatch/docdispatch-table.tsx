@@ -30,6 +30,7 @@ import { Pencil, Plus, RefreshCwIcon, Search, Trash2 } from "lucide-react"
 
 import { listDispatchDocs, softDeleteDispatchDoc } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
+import EditActionButton from "@/components/EditActionButton"
 
 type Row = {
   id: number
@@ -86,6 +87,21 @@ export default function DocdispatchTable() {
 
   const columns = useMemo<ColumnDef<Row>[]>(
     () => [ 
+      {
+      accessorKey: "id",
+      header: "#",
+      cell: ({ row }) => row.index + 1,
+      }, 
+      {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <EditActionButton
+            id={row.original?.id}
+            href={(id) => `/a_baja/docdispatch/new?id=${id}`}
+          />
+        ),
+      },
       { accessorKey: "doc_date", header: "Date" },
       { accessorKey: "dr_no", header: "Delivery Receipt No." },
       { accessorKey: "farm_name", header: "Farm Name" },
@@ -99,32 +115,7 @@ export default function DocdispatchTable() {
           row.original.chick_van_temp_c == null ? "" : `${row.original.chick_van_temp_c} °C`,
       },
       { accessorKey: "number_of_fans", header: "Number of Fans" },
-      { accessorKey: "remarks", header: "Remarks" },
-            {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => router.push(`/a_baja/docdispatch/new?id=${row.original.id}`)}
-              title="Edit"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => onDelete(row.original.id)}
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ),
-      },
+      { accessorKey: "remarks", header: "Remarks" },     
     ],
     [router]
   )
@@ -165,14 +156,14 @@ export default function DocdispatchTable() {
   })
 
   return (
-    <div className="space-y-4">
+    <div className="rounded-md p-4">
          <Breadcrumb
             SecondPreviewPageName="Hatchery"
             // FirstPreviewsPageName="Egg Transfer"
             CurrentPageName="Doc Dispatch "
           />
 
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -184,19 +175,25 @@ export default function DocdispatchTable() {
             />
           </div>
 
-          <Button variant="outline" onClick={load} disabled={loading}>
+          <Button type="button" 
+            variant="outline" 
+            onClick={load} disabled={loading} 
+            className="w-full md:w-auto h-full md:h-auto">
             <RefreshCwIcon className="h-4 w-4 mr-2" />
             Refresh
           </Button>
         </div>
 
-        <Button onClick={() => router.push("/a_baja/docdispatch/new")}>
+        <Button 
+          type="button"
+          className="w-full md:w-auto h-full md:h-auto" 
+          onClick={() => router.push("/a_baja/docdispatch/new")}>
           <Plus className="h-4 w-4 mr-2" />
-          New Dispatch Doc
+            New Dispatch Doc
         </Button>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
+      <div className="rounded-md border p-4 bg-white">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (

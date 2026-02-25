@@ -72,6 +72,16 @@ export default function EggTable() {
       header: "#",
       cell: ({ row }) => row.index + 1,
     },
+      {
+    id: "action",
+    header: "Action",
+    cell: ({ row }) => (
+      <EditActionButton
+        id={row.original?.id}
+        href={(id) => `/a_baja/eggstorage/new?id=${id}`}
+      />
+    ),
+  },
     {
       accessorKey: "classi_ref_no",
       header: "Reference No.",
@@ -112,21 +122,7 @@ export default function EggTable() {
     {
       accessorKey: "remarks",
       header: "Remarks",
-    },
-
-    // ✅ ACTIONS
-
-        {
-          id: "action",
-          header: "Action",
-          cell: ({ row }) => (
-            <EditActionButton
-              id={row.original?.id}
-              href={(id) => `/a_baja/eggstorage/new?id=${id}`}
-            />
-          ),
-        },
-         
+    },    
   ]
 
   const table = useReactTable({
@@ -149,7 +145,7 @@ export default function EggTable() {
   })
 
   return (
-    <div className="rounded-md border p-4">
+    <div className="rounded-md p-4">
       {/* Top Controls */} 
           <Breadcrumb
             CurrentPageName="Egg Storage Management"
@@ -175,7 +171,7 @@ export default function EggTable() {
           <Button
             type="button"
             variant="outline"
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
             onClick={fetchItems}
             disabled={loading}
             title="Refresh"
@@ -188,7 +184,7 @@ export default function EggTable() {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/eggstorage/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" /> Egg Storage
         </Button>

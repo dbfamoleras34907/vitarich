@@ -233,13 +233,13 @@ export default function DocdispatchForm() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* <Breadcrumb /> */}
-
-      <Card className="max-w-6xl ml-0">
-        <CardHeader>
-          <CardTitle>{isEdit ? "Edit Delivery Receipt" : "Delivery Receipt"}</CardTitle>
-        </CardHeader>
+    <div className="space-y-4 mt-4">
+      <Breadcrumb
+        SecondPreviewPageName="Hatchery"
+        FirstPreviewsPageName="Egg Setter List"
+        CurrentPageName={isEdit ? "Edit Delivery Receipt" : "Delivery Receipt"}
+      /> 
+      <Card className="max-w-4xl ml-0"> 
 
         <Separator />
 

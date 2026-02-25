@@ -87,6 +87,18 @@ export default function ChickgradingTable() {
         header: "#",
         cell: ({ row }) => row.index + 1,
       },
+      {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <EditActionButton
+              id={row.original?.id}
+              href={(id) => `/a_baja/chickgrading/new?id=${id}`}
+            /> 
+          </div>
+        ),
+      },
       { accessorKey: "egg_ref_no", header: "Egg Ref. No." },
       { accessorKey: "batch_code", header: "Batch code" },
       {
@@ -98,23 +110,7 @@ export default function ChickgradingTable() {
       { accessorKey: "good_quality_chicks", header: "Good quality chicks" },
       { accessorKey: "quality_grade_rate", header: "Quality grade rate %" },
       { accessorKey: "cull_rate", header: "Cull rate %" },
-      { accessorKey: "grading_personnel", header: "Grading personnel" },
-      {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <EditActionButton
-              id={row.original?.id}
-              href={(id) => `/a_baja/chickgrading/new?id=${id}`}
-            />
-            {/* Optional delete button if you want it */}
-            {/* <Button variant="ghost" size="icon" onClick={() => onDelete(row.original.id)}>
-              <Trash2 className="size-4" />
-            </Button> */}
-          </div>
-        ),
-      },
+      { accessorKey: "grading_personnel", header: "Grading personnel" }, 
     ],
     []
   )
@@ -138,8 +134,8 @@ export default function ChickgradingTable() {
   })
 
   return (
-    <div className="rounded-md border p-4">
-      <Breadcrumb SecondPreviewPageName="Hatchery" CurrentPageName="Chick Grading" />
+    <div className="rounded-md p-4">
+      <Breadcrumb SecondPreviewPageName="Hatchery" CurrentPageName="Doc Classification" />
       <br />
 
       <div className="flex items-center justify-between mb-4 gap-3">
@@ -163,7 +159,7 @@ export default function ChickgradingTable() {
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
             {isLoading ? "Refreshing..." : "Refresh"}
@@ -173,7 +169,7 @@ export default function ChickgradingTable() {
         <Button
           type="button"
           onClick={() => router.push("/a_baja/chickgrading/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
           New Chick Grading
