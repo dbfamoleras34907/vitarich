@@ -7,8 +7,8 @@ import { HandCoins, Plus, Ticket } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
-import { getActiveProjects } from './New/api'
+import { toast } from 'sonner' 
+import { getActiveProjects } from './new/api'
 
 export default function Layout() {
     const route = useRouter()
@@ -26,7 +26,7 @@ export default function Layout() {
         ],
         [initialRows]
     )
-
+// 
     const getInitialData = async () => {
         setLoading(true)
 

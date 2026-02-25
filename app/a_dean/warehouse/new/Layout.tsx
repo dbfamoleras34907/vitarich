@@ -175,7 +175,7 @@ export default function Layout() {
 
         <Separator />
 
-        <div className="max-w-content mx-auto px-8 py-8">
+        <div className="max-w-content mx-auto px-8 py-8 bg-white rounded-2xl my-4">
           <h2 className="mb-6 text-lg font-semibold">Warehouse Detail</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-4">
             {warehouseDetail.map((item) => (
@@ -191,7 +191,7 @@ export default function Layout() {
 
         <Separator />
 
-        <div className="max-w-content mx-auto px-8 py-8">
+        <div className="max-w-content mx-auto px-8 py-8 bg-white rounded-2xl mt-4">
           <div className="flex items-center space-x-2 mb-6">
             <h2 className="text-lg font-semibold">Warehouse Location Info</h2>
           </div>

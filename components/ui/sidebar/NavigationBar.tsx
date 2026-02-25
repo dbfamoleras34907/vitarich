@@ -54,31 +54,16 @@ export default function NavigationBar({
     return (
         <SidebarProvider >
             <SidebarInset>
-                <header className="flex bg-white shadow  max-h-15 items-center gap-2 px-4  mx-auto w-full">
+                <header className="
+                        fixed top-0 left-0
+                        w-full z-0
+                        bg-white shadow
+                        h-15    
+                        flex items-center gap-2 px-4
+                        ">
                     <div className="w-10 sm:w-0"></div>
-                    {/* <Separator
-                        orientation="vertical"
-                        className="mr-2 data-[orientation=vertical]:h-4"
-                    />
-                    <Breadcrumb className="flex justify-center" >
-                        <BreadcrumbList >
-                            {fatherLabel && (
-                                <>
-                                    <BreadcrumbItem className="hidden md:block">
-                                        <BreadcrumbLink href={fatherLink}>
-                                            {fatherLabel}
-                                        </BreadcrumbLink>
-                                    </BreadcrumbItem>
-                                    <BreadcrumbSeparator className="hidden mt-1 md:block" />
-                                </>
-                            )}
 
-                            <BreadcrumbItem>
-                                <BreadcrumbPage><div className="font-semibold">{currentLabel}</div></BreadcrumbPage>
-                            </BreadcrumbItem>
-                        </BreadcrumbList>
-                    </Breadcrumb> */}
-                    <div className="float-right ml-auto flex gap-4 items-center">
+                    <div className="ml-auto flex gap-4 items-center">
                         {/* <GlobalSearch />
                         {/* <DefaultBranch /> */}
                         {/* <GlobalDefaults /> */}
@@ -109,7 +94,7 @@ export default function NavigationBar({
                     </div>
                 </header>
                 {/* <Separator className=""/> */}
-                <div className="overflow-auto pt-8   mx-auto w-full p-3">
+                <div className="overflow-auto pt-15   mx-auto w-full p-3">
                     {children}
                 </div>
             </SidebarInset>

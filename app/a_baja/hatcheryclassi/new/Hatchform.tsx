@@ -51,7 +51,7 @@ export default function Hatchform() {
   classfi_ref_no: "",   
   classi_ref_no: "",
   date_classify: "",
-  // numeric...  
+  // numeric...
   good_egg: 0,
   trans_crack: 0,
   trans_condemn: 0,
@@ -61,23 +61,22 @@ export default function Hatchform() {
   small: 0,
   pee_wee: 0,
   d_yolk: 0,
-  jumbo: 0,
+  jumbo: 0, 
   ttl_count: 0,
   discrepancy: 0,
-
 })
 
   const numericFields = useMemo(
     () => [
       { label: "Hatching Egg", name: "good_egg", placeholder: "0" },
       { label: "Transport Crack", name: "trans_crack", placeholder: "0" },
-      { label: "Transport Condemn", name: "trans_condemn", placeholder: "0" }, 
+      { label: "Transport Condemn", name: "trans_condemn", placeholder: "0" },
       { label: "Hatch Crack", name: "hatc_crack", placeholder: "0" },
       { label: "Thin Shell", name: "thin_shell", placeholder: "0" },
-      { label: "Hatch Condemn", name: "hatc_condemn", placeholder: "0" }, 
+      { label: "Hatch Condemn", name: "hatc_condemn", placeholder: "0" },
       { label: "Small", name: "small", placeholder: "0" },
       { label: "Pee Wee", name: "pee_wee", placeholder: "0" },
-      { label: "Double Yolk", name: "d_yolk", placeholder: "0" }, 
+      { label: "Double Yolk", name: "d_yolk", placeholder: "0" },
       { label: "Jumbo", name: "jumbo", placeholder: "0" },
     ],
     []
@@ -89,27 +88,131 @@ export default function Hatchform() {
       const { data, error } = await db
         .from("viewforhatcheryclassi")
         .select("dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no")
-        .order("doc_date", { ascending: false }) 
+        .order("doc_date", { ascending: false })
+      console.log({ data })
       if (!error && data) setBreeders(data as any)
       if (error) console.error(error)
     }
     loadBreeders()
   }, [])
 
-useEffect(() => {
-  const run = async () => {
-    if (!form.date_classify) return
-    if (!form.classfi_ref_no) return
+  useEffect(() => {
+    const run = async () => {
+      if (!form.date_classify) return
+      if (!form.classfi_ref_no) return
+
+      try {
+        setRefLoading(true)
+        const finalRef = await generateRef(form.date_classify, form.classfi_ref_no)
+        setForm((p) => ({ ...p, classi_ref_no: finalRef }))
+      } catch (e: any) {
+        // ✅ show real error details
+        console.error("RPC generate_hatch_classi_ref failed:", e?.message ?? e, e)
+        setForm((p) => ({ ...p, classi_ref_no: "" }))
+        alert(e?.message ?? "Failed to generate Classification Ref No.")
+      } finally {
+        setRefLoading(false)
+      }
+    }
+
+    run()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.date_classify, form.classfi_ref_no])
+
+  // breeder selected -> auto populate
+  const generateRef = async (dateClassify: string, baseRef: string) => {
+    const { data, error } = await db.rpc("generate_hatch_classi_ref", {
+      p_date_classify: dateClassify,     // expects YYYY-MM-DD
+      p_classfi_ref_no: baseRef,
+    })
+
+    if (error) throw error
+    // data is array with 1 row: [{ seq, classi_ref_no }]
+    return data?.[0]?.classi_ref_no as string
+  }
+
+  const handleBreederChange = async (value: string) => {
+    const selected = breeders.find((b) => b.brdr_ref_no === value)
+    if (!selected) return
+
+    const baseRef = selected.classfi_ref_no ?? ""
+    const dateClassify = form.date_classify // current state
+
+    // populate view fields + base ref
+    setForm((prev) => ({
+      ...prev,
+      br_no: selected.brdr_ref_no ?? "",
+      dr_no: selected.dr_num ?? "",
+      dr_date: selected.doc_date ?? "",
+      temperature: selected.temperature ?? "",
+      sku: selected.sku ?? "",
+      uom: selected.UoM ?? "",
+      total_count_view: Number(selected.actual_count ?? 0),
+      classfi_ref_no: baseRef, // ✅ store base
+      classi_ref_no: "",       // reset generated
+    }))
+
+    // trigger when selecting breeder ref no (ONLY if date already chosen)
+    if (!dateClassify || !baseRef) return
 
     try {
       setRefLoading(true)
-      const finalRef = await generateRef(form.date_classify, form.classfi_ref_no)
-      setForm((p) => ({ ...p, classi_ref_no: finalRef }))
+      const finalRef = await generateRef(dateClassify, baseRef)
+      setForm((prev) => ({ ...prev, classi_ref_no: finalRef }))
     } catch (e: any) {
-      // ✅ show real error details
       console.error("RPC generate_hatch_classi_ref failed:", e?.message ?? e, e)
-      setForm((p) => ({ ...p, classi_ref_no: "" }))
+      setForm((prev) => ({ ...prev, classi_ref_no: "" }))
       alert(e?.message ?? "Failed to generate Classification Ref No.")
+    } finally {
+      setRefLoading(false)
+    }
+  }
+
+
+  // handle inputs (numbers + date_classify)
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target
+
+    setForm((prev) => {
+      const updated: any = { ...prev }
+
+      if (type === "number") {
+        if (value === "") {
+          updated[name] = null
+        } else {
+          let n = Number(value)
+          if (!Number.isFinite(n)) n = 0
+          if (n < 0) n = 0 // ✅ clamp
+          updated[name] = n
+        }
+      } else {
+        updated[name] = value
+      }
+
+      const total = numericFields.reduce(
+        (sum, f) => sum + Number(updated[f.name] || 0),
+        0
+      )
+      updated.ttl_count = total
+      updated.discrepancy = Number(updated.total_count_view || 0) - total
+
+    return updated
+  })
+}
+
+
+  useEffect(() => {
+  const run = async () => {
+    if (!form.date_classify) return
+    if (!form.classi_ref_no) return
+
+    try {
+      setRefLoading(true)
+      const finalRef = await generateRef(form.date_classify, form.classi_ref_no)
+      setForm((p) => ({ ...p, classi_ref_no: finalRef }))
+    } catch (e) {
+      console.error(e)
+      setForm((p) => ({ ...p, classi_ref_no: "" }))
     } finally {
       setRefLoading(false)
     }
@@ -117,89 +220,8 @@ useEffect(() => {
 
   run()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [form.date_classify, form.classfi_ref_no])
+}, [form.date_classify])
 
-  // breeder selected -> auto populate
-const generateRef = async (dateClassify: string, baseRef: string) => {
-  const { data, error } = await db.rpc("generate_hatch_classi_ref", {
-    p_date_classify: dateClassify,     // expects YYYY-MM-DD
-    p_classfi_ref_no: baseRef,
-  })
-
-  if (error) throw error
-  // data is array with 1 row: [{ seq, classi_ref_no }]
-  return data?.[0]?.classi_ref_no as string
-}
-
-const handleBreederChange = async (value: string) => {
-  const selected = breeders.find((b) => b.brdr_ref_no === value)
-  if (!selected) return
-
-  const baseRef = selected.classfi_ref_no ?? ""
-  const dateClassify = form.date_classify // current state
-
-  // populate view fields + base ref
-  setForm((prev) => ({
-    ...prev,
-    br_no: selected.brdr_ref_no ?? "",
-    dr_no: selected.dr_num ?? "",
-    dr_date: selected.doc_date ?? "",
-    temperature: selected.temperature ?? "",
-    sku: selected.sku ?? "",
-    uom: selected.UoM ?? "",
-    total_count_view: Number(selected.actual_count ?? 0),
-    classfi_ref_no: baseRef, // ✅ store base
-    classi_ref_no: "",       // reset generated
-  }))
-
-  // trigger when selecting breeder ref no (ONLY if date already chosen)
-  if (!dateClassify || !baseRef) return
-
-  try {
-    setRefLoading(true)
-    const finalRef = await generateRef(dateClassify, baseRef)
-    setForm((prev) => ({ ...prev, classi_ref_no: finalRef }))
-  } catch (e: any) {
-    console.error("RPC generate_hatch_classi_ref failed:", e?.message ?? e, e)
-    setForm((prev) => ({ ...prev, classi_ref_no: "" }))
-    alert(e?.message ?? "Failed to generate Classification Ref No.")
-  } finally {
-    setRefLoading(false)
-  }
-}
-  
-
-// handle inputs (numbers + date_classify)
-const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-  const { name, value, type } = e.target
-
-  setForm((prev) => {
-    const updated: any = { ...prev }
-
-    if (type === "number") {
-      if (value === "") {
-        updated[name] = null
-      } else {
-        let n = Number(value)
-        if (!Number.isFinite(n)) n = 0
-        if (n < 0) n = 0 // ✅ clamp
-        updated[name] = n
-      }
-    } else {
-      updated[name] = value
-    }
-
-    const total = numericFields.reduce(
-      (sum, f) => sum + Number(updated[f.name] || 0),
-      0
-    )
-    updated.ttl_count = total
-    updated.discrepancy = Number(updated.total_count_view || 0) - total
-
-    return updated
-  })
-}
- 
 
   const handleSave = async () => {
     // required checks
@@ -212,8 +234,8 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
       return
     }
     if (!form.classi_ref_no) {
-    alert("Classification Ref. No. not generated yet.")
-    return
+      alert("Classification Ref. No. not generated yet.")
+      return
     }
     if (Number(form.ttl_count) !== Number(form.total_count_view)) {
       alert("Total Classify must be equal to Total Count.")
@@ -224,7 +246,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
       setSaving(true)
 
       const payload: HatchClassificationInsert = {
-        created_at: new Date().toISOString(), 
+        created_at: new Date().toISOString(),
         date_classify: form.date_classify,
         classi_ref_no: form.classi_ref_no || null,
         br_no: form.br_no,
@@ -254,15 +276,9 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
   }
 
   return (
-    // <div className="max-w-6xl ml-0 p-6 space-y-2">
-    //   <h1 className="text-2xl font-bold">Hatch Classification</h1>
-    <div className="space-y-4 mt-4">
-      <Breadcrumb
-        SecondPreviewPageName="Hatchery"
-        FirstPreviewsPageName="Hatch Classification"
-        CurrentPageName="New Classification"
-        // CurrentPageName={isEdit ? "Edit Entry" : "New Entry"}
-      />
+    <div className="max-w-6xl ml-0 p-6 space-y-2">
+      <h1 className="text-2xl font-bold">Hatch Classification</h1>
+
       {/* TOP CARD (Breeder + view fields) */}
       <Card>
         <CardContent className="pt-4 space-y-4">
@@ -272,27 +288,14 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
               <SelectTrigger>
                 <SelectValue placeholder="Select Breeder Ref No" />
               </SelectTrigger>
-                <SelectContent>
-                  {breeders
-                    .filter((b) => (b.brdr_ref_no ?? "").trim() !== "")
-                    .map((b) => (
-                      <SelectItem key={b.brdr_ref_no!} value={b.brdr_ref_no!}>
-                        {b.brdr_ref_no}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select> */}
-            <SearchableDropdown
-              list={breeders}
-              codeLabel="brdr_ref_no"
-              nameLabel="brdr_ref_no"
-              showNameOnly
-              value={form.br_no}
-              onChange={(val,selected) => {
-                console.log({val, selected})
-                handleBreederChange(val)}}
-            />
-
+              <SelectContent>
+                {breeders.map((b, i) => (
+                  <SelectItem key={i} value={b.brdr_ref_no ?? ""}>
+                    {b.brdr_ref_no} 
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <Separator />
@@ -325,12 +328,13 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
             <div className="space-y-1">
               <Label>Classification Ref. No.</Label>
               <Input
+              
                 value={
                   refLoading ? "Generating..." : form.classi_ref_no ?? ""
                 }
                 disabled
               />
-            </div> 
+            </div>
           </div>
 
           {/* fields layout like image */}
@@ -344,6 +348,7 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
                 form={form}
                 onChange={handleChange}
                  min={0}
+                 
               />
             </div>
             <div className="md:col-span-2" />
@@ -440,13 +445,13 @@ const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
               Cancel
             </Button>
           </div> */}
-                        <FormActionButtons
-                          saving={saving}
-                          // isEdit={isEdit}
-                          // disabled={disabledAll}
-                          cancelPath="/a_baja/hatcheryclassi"
-                          onSave={handleSave}
-                        />
+          <FormActionButtons
+            saving={saving}
+            // isEdit={isEdit}
+            // disabled={disabledAll}
+            cancelPath="/a_baja/hatcheryclassi"
+            onSave={handleSave}
+          />
 
         </CardContent>
       </Card>
