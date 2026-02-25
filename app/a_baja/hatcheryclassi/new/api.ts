@@ -46,7 +46,7 @@ export type HatchClassificationRow = HatchClassificationInsert & {
   updated_at: string | null;
   updated_by: string | null;
 };
-
+// build 
 export async function createHatchClassification(payload: HatchClassificationInsert) {
   const { data, error } = await db
     .from("hatch_classification")

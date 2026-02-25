@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { getActiveProjects } from './New/api'
+import { getActiveProjects } from './newx/api'
 
 export default function Layout() {
     const route = useRouter()
