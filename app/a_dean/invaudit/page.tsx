@@ -114,14 +114,19 @@ export default function Page() {
       <div className='overflow-x-auto border rounded-lg'>
         <table className='w-full text-sm'>
           <thead className='bg-muted'>
-            <tr>
+            <tr className='whitespace-nowrap'>
               <th className='p-2 text-left'>Date</th>
               <th className='p-2 text-left'>Doc Type</th>
               <th className='p-2 text-left'>Doc Entry</th>
               <th className='p-2 text-left'>Item</th>
+              <th className='p-2 text-left'>Type</th>
               <th className='p-2 text-left'>Warehouse</th>
               <th className='p-2 text-left'>Bin</th>
-              <th className='p-2 text-right'>Qty</th>
+              <th className='p-2 text-left'>Qty</th>
+              <th className='p-2 text-left'>Reference</th>
+              <th className='p-2 text-left'>Reference Type</th>
+              <th className='p-2 text-left'>Reference 2</th>
+              <th className='p-2 text-left'>Reference Type 2</th>
             </tr>
           </thead>
 
@@ -134,9 +139,14 @@ export default function Page() {
                 <td className='p-2'>{row.source_doc_type}</td>
                 <td className='p-2'>{row.source_docentry}</td>
                 <td className='p-2'>{row.item_code}</td>
+                <td className='p-2'>{row.transfer_type}</td>
                 <td className='p-2'>{row.warehouse_code}</td>
                 <td className='p-2'>{row.bin_code}</td>
-                <td className='p-2 text-right'>{row.qty}</td>
+                <td className='p-2 '>{row.qty}</td>
+                <td className='p-2 '>{row.ref}</td>
+                <td className='p-2 '>{row.ref_type}</td>
+                <td className='p-2 '>{row.ref}</td>
+                <td className='p-2 '>{row.ref_type2}</td>
               </tr>
             ))}
 

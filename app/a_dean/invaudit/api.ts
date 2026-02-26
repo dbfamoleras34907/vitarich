@@ -6,11 +6,16 @@ export interface InventoryPostingData {
   source_doc_type: string
   source_docentry: number
   item_code: string
+  transfer_type: string
   warehouse_code: string
   bin_code: string
   qty: number
   created_at: string
   created_by: string
+  ref: string
+  ref2: string
+  ref_type: string
+  ref_type2: string
 }
 
 interface Filters {
