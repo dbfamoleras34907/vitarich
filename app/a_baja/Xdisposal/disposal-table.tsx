@@ -28,10 +28,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Pencil, Plus, RefreshCwIcon, Search, Trash2 } from "lucide-react"
 
-import { listDispatchDocs, softDeleteDispatchDoc } from "./new/api"
 import Breadcrumb from "@/lib/Breadcrumb"
 import EditActionButton from "@/components/EditActionButton"
-
+import { listDispatchDocs, softDeleteDispatchDoc } from "../docdispatch/new/api"
+// 
 type Row = {
   id: number
   doc_date: string
