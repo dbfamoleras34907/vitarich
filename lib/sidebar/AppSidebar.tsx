@@ -902,7 +902,7 @@ export function AppSidebar() {
               ) : (
                 <Button
                   variant="ghost"
-                  className="w-full justify-between"
+                  className="w-full justify-between h-6"
                   onClick={() => toggleFolder(folder.id)}
                 >
                   <div className="flex items-center gap-2 hover:bg-primary/5 hover:text-primary p-1 w-full">
@@ -934,7 +934,7 @@ export function AppSidebar() {
                           <Button
                             key={ci}
                             variant="ghost"
-                            className={`w-full rounded-none justify-start hover:bg-primary/5 hover:text-primary   pl-4 ${pathname.startsWith(child.url)
+                            className={`h-7 w-full rounded-none justify-start hover:bg-primary/5 hover:text-primary   pl-4 ${pathname.startsWith(child.url)
                               ? "bg-accent"
                               : ""
                               }`}

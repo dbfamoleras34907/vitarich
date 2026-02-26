@@ -59,6 +59,7 @@ export default function Layout() {
     const [loading, setLoading] = useState(true)
     const tableColumnsx: ColumnConfig[] = useMemo(
         () => [
+            { key: 'action', label: 'Action', type: 'button', disabled: false },
             { key: 'id', label: 'Approval ID', type: 'text', disabled: true },
             { key: 'dr_num', label: 'Dr #', type: 'text', disabled: true },
             { key: 'status', label: 'Status', type: 'text', disabled: true },
@@ -66,7 +67,6 @@ export default function Layout() {
             { key: 'decided_at', label: 'Decision Date', type: 'text', disabled: true },
             { key: 'remarks', label: 'Remarks', type: 'text', disabled: true },
             { key: 'created_at', label: 'Created At', type: 'text', disabled: true },
-            { key: 'action', label: 'Action', type: 'button', disabled: false },
         ],
         [initialRows]
     )

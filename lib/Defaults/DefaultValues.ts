@@ -6,6 +6,7 @@ import {
   DollarSign,
   EggFried,
   FileSliders,
+  Home,
   PenBoxIcon,
   ShoppingCartIcon,
   Wrench,
@@ -14,7 +15,20 @@ import { CodeNameBase } from "./DefaultTypes";
 
 export const NavFolders = [
 
-
+  {
+    id: 0,
+    title: "Home",
+    url: "/home",
+    icon: Home,
+    items: [
+      {
+        group: "Reports",
+        children: [
+          { type: "Report", title: "Dashboard", url: "/home" },
+        ],
+      },
+    ],
+  },
   {
     id: 1,
     title: "Hatchery",

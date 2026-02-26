@@ -34,9 +34,10 @@ export default function UserAccountMenu({ session, collapsed }: any) {
       {isOpen && (
         <div
           className={`
+            bg-white mt-2  
             absolute top-full right-0 mb-2 w-full min-w-50
               border border-border rounded-lg shadow-xl 
-            p-2 z-40 animate-in fade-in slide-in-from-bottom-2
+            p-2 animate-in fade-in slide-in-from-bottom-2
           `}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">

@@ -46,7 +46,7 @@ export default function WarehouseLayout() {
 
   return (
     <div className='mt-2'>
-      <div className='flex justify-between mx-4'>
+      <div className='flex justify-between mx-4 mt-8 items-center'>
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
           FirstPreviewsPageLink="/a_dean/inventory"

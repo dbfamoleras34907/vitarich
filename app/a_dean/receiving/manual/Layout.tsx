@@ -15,6 +15,7 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { createReceiving } from './api'
 import { Plus, Save } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type DraftItem = {
   id: number
@@ -66,6 +67,7 @@ const emptyApprovalRecord: DataRecordApproval = {
 
 
 export default function ApprovalDecisionForm() {
+  const router = useRouter()
   const { getValue } = useGlobalContext()
 
   const [farms, setfarms] = useState<Farms[]>([])
@@ -89,6 +91,7 @@ export default function ApprovalDecisionForm() {
   // ---------- INIT
 
   useEffect(() => {
+    router.prefetch("/a_dean/receiving/") // prefetch the receiving list page for faster navigation after form submission
     const init = () => {
       setItemMaster(getValue("itemmaster") || [])
       setfarms(getValue("getFarmDB") || [])
@@ -227,7 +230,7 @@ export default function ApprovalDecisionForm() {
     }
 
     const res = await createReceiving(payload)
-
+    router.push("/a_dean/receiving/")
     if (res.success) {
       alert(`Saved! DocEntry: ${res.docentry}`)
     } else {
@@ -250,7 +253,7 @@ export default function ApprovalDecisionForm() {
           <Button
             onClick={insertMe}
           >
-          <Save/>  Add Record
+            <Save />  Add Record
           </Button>
 
         </div>
@@ -309,7 +312,7 @@ export default function ApprovalDecisionForm() {
                 </Button>
               )}
               <Button onClick={addRow}>
-                <Plus/>
+                <Plus />
                 Add Row</Button>
             </div>
           </div>

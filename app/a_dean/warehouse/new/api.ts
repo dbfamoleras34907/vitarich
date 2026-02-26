@@ -5,9 +5,9 @@ export async function createWarehouse(data: WarehouseData) {
     try {
         const { data: result, error } = await db
             .from('i_warehouse')
-            .insert([data])
+            .insert(data)
             .select()
-
+        console.log({ result, error, data })
         if (error) throw error
         return { success: true, data: result }
     } catch (error: any) {

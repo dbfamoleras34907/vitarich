@@ -169,18 +169,25 @@ export interface Warehouse {
 
 
 export interface WarehouseData {
-  whse_name: string;
-  warehouse_type: string;
-  subinventory_code: string;
-  subinventory_desc?: string;
-  phone?: string;
-  addr1?: string;
-  mobile?: string;
-  addr2?: string;
-  city?: string;
-  province?: string;
-  is_active?: boolean;
-  bin_activated?: boolean;
+  id?: number;
+  created_at?: string;
+  created_by?: string | null;
+  whse_code?: string | null;     
+  whse_name?: string | null;
+  full_location_code?: string | null;
+  warehouse_type?: string | null;
+  subinventory_code?: string | null;
+  subinventory_desc?: string | null;
+  is_active?: boolean | null;
+  bin_activated?: boolean | null;
+  address?: string | null;
+  remarks?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  addr1?: string | null;
+  addr2?: string | null;
+  city?: string | null;
+  province?: string | null;
 }
 
 
