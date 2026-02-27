@@ -20,7 +20,7 @@ export default function Layout() {
 
       </div>
 
-
+{/*  */}
       <div>
       {/* <Image src="/assets/images/print.png" alt="Print Layout" width={1200} height={800} className='mx-auto mt-8' />
 app/a_dean/disposal/[disposalID]/print/vitarich.png */}
