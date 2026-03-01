@@ -266,15 +266,15 @@ export default function Eggsetterform() {
   const disabledAll = saving || loadingRecord
 
   return (
-    <div className="space-y-4 mt-8">
+    <div className="w-full  px-6 py-6  mt-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="Egg Setter List"
         CurrentPageName={isEdit ? "Edit Entry" : "New Egg Setter"}
       />
 
-      <Card className="max-w-4xl ml-0">
-        <CardContent className="p-4 space-y-4">
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
+        <CardContent className="max-w-2xl p-4 space-y-4">
           {/* SECTION 1 */}
           <div className="rounded-md border p-4 space-y-4">
             <div className="space-y-2">

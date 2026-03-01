@@ -202,19 +202,16 @@ export default function EggTransferForm() {
   }
 
   return (
-    <div className="mt-8 space-y-4">
+    <div className="w-full  px-6 py-6  mt-4 space-y-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="Egg Transfer"
         CurrentPageName={isEdit ? "Edit Entry" : "New Entry"}
       />
 
-      <Card className="max-w-3xl ml-0">
-        {/* <CardHeader>
-          <CardTitle>{isEdit ? "Edit Egg Transfer" : "Egg Transfer"}</CardTitle>
-        </CardHeader> */}
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2"> 
 
-        <CardContent className="pt-2 space-y-4">
+        <CardContent className="max-w-2xl p-4 space-y-4">
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading...</div>
           ) : (

@@ -168,14 +168,14 @@ export default function Eggstorageform() {
 
   return (
 
-    <div className="space-y-4 mt-8"> 
+    <div className="w-full  px-6 py-6  mt-4"> 
       <Breadcrumb
         FirstPreviewsPageName="Egg Storage Management"
         SecondPreviewPageName="Hatchery "
         CurrentPageName={isEdit ? "Edit Record" : "New Record"}
       />
-      <Card className="max-w-6xl ml-0 p-6 space-y-2"> 
-      <CardContent className="p-2 space-y-2">
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2"> 
+      <CardContent className="max-w-2xl p-4 space-y-4">
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading...</div>
         ) : (

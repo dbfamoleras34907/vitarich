@@ -389,15 +389,15 @@ const goodQualityPreview = useMemo(() => {
   const disabledAll = saving || loading
 
   return (
-    <div className="space-y-4 mt-8">
+    <div className="w-full  px-6 py-6  mt-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="DOC Classification"
         CurrentPageName={isEdit ? "Edit Entry" : "New DOC Classification"}
       />
 
-      <Card className="max-w-5xl ml-0 p-6">
-        <CardContent className="px-0 pt-4">
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
+        <CardContent className="max-w-2xl p-4 space-y-4">
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading...</div>
           ) : (

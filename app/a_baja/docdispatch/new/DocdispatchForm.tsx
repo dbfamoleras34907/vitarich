@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-
+import { Printer } from "lucide-react"
+import { printTransferSlip } from "./printTransferSlip"
 import {
   Select,
   SelectContent,
@@ -399,15 +400,15 @@ async function handleSkuChange(skuName: string) {
   }
 
   return (
-    <div className="space-y-4 mt-8">
+    <div className="w-full  px-6 py-6  mt-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="DOC Dispatch"
         CurrentPageName={isEdit ? "Edit Delivery Receipt" : "Delivery Receipt"}
       />
 
-      <Card className="max-w-4xl ml-0 p-6">
-        <CardContent className="px-0 pt-4">
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
+        <CardContent className="max-w-4xl p-4 space-y-4">
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading...</div>
           ) : (
@@ -440,7 +441,7 @@ async function handleSkuChange(skuName: string) {
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1 max-w-xl">
                     <Label>Farm Name</Label>
                     <Select
                       value={form.farm_name}
@@ -448,7 +449,7 @@ async function handleSkuChange(skuName: string) {
                       disabled={saving}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select farm" />
+                        <SelectValue placeholder="Select Farm..." />
                       </SelectTrigger>
                       <SelectContent>
                         {FARM_OPTIONS.map((f) => (
@@ -725,13 +726,46 @@ async function handleSkuChange(skuName: string) {
                   disabled={saving}
                 />
               </div>
-
+ <div className="space-y-1">
               <FormActionButtons
                 saving={saving}
                 isEdit={isEdit}
                 cancelPath="/a_baja/docdispatch"
                 onSave={onSave}
               />
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!form.dr_no.trim()) return alert("DR No is required to print.")
+                    if (!form.doc_date) return alert("Date is required to print.")
+                    if (!form.farm_name.trim()) return alert("Farm Name is required to print.")
+                    if (!items.length) return alert("Please add at least 1 item to print.")
+
+                    printTransferSlip({
+                      dr_no: form.dr_no.trim(),
+                      doc_date: form.doc_date,
+                      farm_name: form.farm_name.trim(),
+                      address: "", // optional: add farm address if you have it
+                      from_name: "Hatchery / Dispatch", // or form.hauler_name, your choice
+                      remarks: form.remarks ?? "",
+                      items: items.map((it: any) => ({
+                        doc_batch_code: it.doc_batch_code,
+                        sku_name: it.sku_name,
+                        classification: it.classification ?? "",
+                        uom: it.uom ?? "",
+                        qty: Number(it.qty ?? 0),
+                      })),
+                    })
+                  }}
+                  disabled={saving || loading}
+                >
+                  <Printer className="size-4 mr-2" />
+                  Print
+                </Button>
+              </div>
+              </div>
             </div>
           )}
         </CardContent>

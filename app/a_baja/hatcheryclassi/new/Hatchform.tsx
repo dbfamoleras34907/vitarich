@@ -389,8 +389,7 @@ export default function Hatchform() {
   const disabledAll = saving || loading
 
   return (
-    <div className="space-y-4 mt-4">
-      <br />
+    <div className="space-y-4 mt-8"> 
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="Hatch Classification"

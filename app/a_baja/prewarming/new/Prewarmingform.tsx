@@ -190,15 +190,15 @@ export default function Prewarmingform() {
   }
 
   return (
-    <div className="space-y-4 mt-8">
+    <div className="w-full  px-6 py-6  mt-4"> 
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="Egg Pre-Warming"
         CurrentPageName={isEdit ? "Edit Entry" : "New Entry"}
       />
 
-      <Card className="max-w-4xl ml-0 p-6 space-y-2"> 
-        <CardContent className="p-2 space-y-2"> 
+      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-2 mt-2"> 
+        <CardContent className="max-w-2xl p-2 space-y-2"> 
           {(loading || refLoading) && (
             <div className="text-sm text-muted-foreground">
               {loading ? "Loading record..." : "Loading egg references..."}
