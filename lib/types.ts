@@ -309,3 +309,41 @@ export type ChickGradingInventory = {
   ref: string
   UoM: string
 }
+
+
+export type ReceivingListRow = {
+  id: number
+  created_at: string
+  created_by: string
+  updated_at: string | null
+  doc_date: string | null
+  dr_num: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  temperature: string | null
+  humidity: string | null
+  draft_id: number | null
+  soldTo: string | null
+  Attention: string | null
+  po_no: string | null
+  voyage_no: string | null
+  shipped_via: string | null
+  no_of_crates: string | null
+  no_of_tray: string | null
+  plate_no: string | null
+  driver: string | null
+  serial_no: string | null
+
+  // item fields
+  item_id: number | null
+  brdr_ref_no: string | null
+  sku: string | null
+  UoM: string | null
+  expected_count: number | null
+  actual_count: number | null
+  lot_no: string | null
+  prod_date: string | null
+  age: string | null
+  house_no: string | null
+  jr: string | null
+  he: string | null
+}

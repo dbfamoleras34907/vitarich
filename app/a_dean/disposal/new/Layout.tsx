@@ -20,7 +20,7 @@ export default function Layout() {
   const [saving, setSaving] = useState(false)
 
   const headerFieldsTop = [
-    { code: "created_at", label: 'Date', type: 'date' },
+    { code: "doc_date", label: 'Date', type: 'date' },
     { code: "ds_no", label: 'Delivery Reciept No.', type: 'text', disabled: true },
     { code: "cardname", label: 'Customer Name', type: 'text' },
     { code: "contact_no", label: 'Contact No.', type: 'text' },

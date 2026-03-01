@@ -102,7 +102,7 @@ export default function DataTable({
     ) {
       return (
         <div
-          className="min-h-[32px] flex items-center px-2 cursor-text hover:bg-muted rounded"
+          className="min-h-8 flex items-center px-2 cursor-text hover:bg-muted rounded"
           onClick={() =>
             setEditingCell({ row: rowIndex, col: col.code })
           }

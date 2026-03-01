@@ -166,3 +166,30 @@
     transform: scaleX(1);
   }
 }
+
+
+/* Print settings */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  .a4-page {
+    width: 210mm;
+    height: 297mm;
+    page-break-after: always;
+  }
+}
+
+.a4-page {
+  width: 210mm;
+  height: 297mm;
+  padding: 8mm;
+  box-sizing: border-box;
+}

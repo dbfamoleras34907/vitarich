@@ -13,7 +13,7 @@ import ScannerModal from '@/components/ScannerModal'
 import Breadcrumb from '@/lib/Breadcrumb'
 import DataTableV2 from '@/components/ui/DataTableV2'
 import DynamicTable from '@/components/ui/DataTableV2'
-import { EditIcon, HandCoins, Plus, QrCode, RefreshCcw } from 'lucide-react'
+import { EditIcon, HandCoins, Map, Plus, QrCode, RefreshCcw } from 'lucide-react'
 
 
 
@@ -72,18 +72,25 @@ export default function Layout() {
     )
 
     const receivedColumns: ColumnConfig[] = [
+        { key: 'action', label: 'Trace', type: 'button', disabled: true },
         { key: 'id', label: 'ID', type: 'text', disabled: true },
+        { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
+        { key: 'jr', label: 'JR', type: 'text', disabled: true },
+        { key: 'he', label: 'HE', type: 'text', disabled: true },
+        { key: 'actual_count', label: 'Total', type: 'text', disabled: true },
+
         { key: 'doc_date', label: 'Doc Date', type: 'text', disabled: true },
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
         // { key: 'status', label: 'Status', type: 'text', disabled: true },
         { key: 'soldTo', label: 'Sold To', type: 'text', disabled: true },
-        { key: 'po_no', label: 'PO No.', type: 'text', disabled: true },
+        // { key: 'po_no', label: 'PO No.', type: 'text', disabled: true },
         { key: 'voyage_no', label: 'Voyage No.', type: 'text', disabled: true },
         { key: 'shipped_via', label: 'Shipped Via', type: 'text', disabled: true },
         { key: 'plate_no', label: 'Plate No.', type: 'text', disabled: true },
         { key: 'driver', label: 'Driver', type: 'text', disabled: true },
-        { key: 'temperature', label: 'Temp', type: 'text', disabled: true },
-        { key: 'humidity', label: 'Humidity', type: 'text', disabled: true },
+        // { key: 'temperature', label: 'Temp', type: 'text', disabled: true },
+        // { key: 'humidity', label: 'Humidity', type: 'text', disabled: true },
+
     ]
 
 
@@ -100,7 +107,7 @@ export default function Layout() {
         setLoadingReceived(true)
 
         const data = await getReceivingList()
-
+        console.log({ data })
         setReceivedRows(data)
         setLoadingReceived(false)
     }
@@ -158,7 +165,7 @@ export default function Layout() {
                 <h2 className="text-lg font-semibold mx-4">For Receiving Items</h2>
             </div>
             {!loading && (
-                <DynamicTable  
+                <DynamicTable
                     initialFilters={[
                         {
                             id: "",
@@ -166,7 +173,7 @@ export default function Layout() {
                             operator: 'equals',
                             value: 'Pending',
                             joiner: 'and',
-                        }, 
+                        },
                     ]}
                     columns={tableColumnsx.map((col) => ({
                         key: col.key,
@@ -233,11 +240,38 @@ export default function Layout() {
                             align: 'left',
 
                             render: (row: RowDataKey) => {
-                                const value = row[col.key]
 
-                                if (value === null || value === undefined || value === '') return '-'
+                                if (col.key === 'action') {
+                                    return (
+                                        <div className="flex justify-end gap-2">
+                                            <Button
+                                                className=' border hover:bg-foreground/10 bg-white border-green-400 text-green-400 p-1 rounded-xs   '
 
-                                return String(value)
+                                                onClick={() => {
+                                                    if (row.status === "Approved") {
+                                                        toast.warning(
+                                                            "Only pending documents are allowed to be edited on this module"
+                                                        )
+                                                        return
+                                                    }
+                                                    // console.log({})
+                                                    // setValue("forApproval", { row })
+                                                    route.push("/a_dean/trace/" + row.brdr_ref_no)
+                                                }}
+                                            >
+                                                <Map />
+                                                Trace
+                                            </Button>
+                                        </div>
+                                    )
+                                } else {
+
+                                    const value = row[col.key]
+
+                                    if (value === null || value === undefined || value === '') return '-'
+
+                                    return String(value)
+                                }
                             },
                         }))}
 
