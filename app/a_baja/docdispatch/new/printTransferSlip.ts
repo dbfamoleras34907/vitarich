@@ -1,27 +1,27 @@
 type PrintItem = {
-  doc_batch_code: string
-  sku_name: string
-  classification?: string | null
-  uom?: string | null
-  qty: number
-}
+  doc_batch_code: string;
+  sku_name: string;
+  classification?: string | null;
+  uom?: string | null;
+  qty: number;
+};
 
 type PrintPayload = {
-  dr_no: string
-  doc_date: string // YYYY-MM-DD
-  farm_name: string
-  address?: string | null
-  from_name?: string | null
-  remarks?: string | null
-  items: PrintItem[]
-}
+  dr_no: string;
+  doc_date: string; // YYYY-MM-DD
+  farm_name: string;
+  address?: string | null;
+  from_name?: string | null;
+  remarks?: string | null;
+  items: PrintItem[];
+};
 
 function fmtDateMDY(ymd: string) {
   // 2026-02-27 -> 02/27/2026
-  if (!ymd) return ""
-  const [y, m, d] = ymd.split("-")
-  if (!y || !m || !d) return ymd
-  return `${m}/${d}/${y}`
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-");
+  if (!y || !m || !d) return ymd;
+  return `${m}/${d}/${y}`;
 }
 
 function escapeHtml(s: any) {
@@ -30,7 +30,7 @@ function escapeHtml(s: any) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
+    .replaceAll("'", "&#039;");
 }
 
 export function printTransferSlip(payload: PrintPayload) {
@@ -39,7 +39,9 @@ export function printTransferSlip(payload: PrintPayload) {
     // We'll use:
     // PROD CODE = doc_batch_code
     // DESCRIPTION = sku_name (you may append classification if you want)
-    const desc = it.classification ? `${it.sku_name} (${it.classification})` : it.sku_name
+    const desc = it.classification
+      ? `${it.sku_name} (${it.classification})`
+      : it.sku_name;
     return `
       <tr>
         <td>${escapeHtml(it.doc_batch_code)}</td>
@@ -47,17 +49,17 @@ export function printTransferSlip(payload: PrintPayload) {
         <td style="text-align:right;">${escapeHtml(it.qty)}</td>
         <td>${escapeHtml(it.uom ?? "")}</td>
       </tr>
-    `
-  })
+    `;
+  });
 
   // Keep at least ~8 empty rows like the template look
-  const minRows = 8
+  const minRows = 8;
   while (rows.length < minRows) {
     rows.push(`
       <tr>
         <td>&nbsp;</td><td></td><td></td><td></td>
       </tr>
-    `)
+    `);
   }
 
   const html = `
@@ -193,14 +195,18 @@ export function printTransferSlip(payload: PrintPayload) {
   </script>
 </body>
 </html>
-`
+`;
 
-  const w = window.open("", "_blank", "noopener,noreferrer,width=900,height=650")
+  const w = window.open(
+    "",
+    "_blank",
+    "noopener,noreferrer,width=900,height=650",
+  );
   if (!w) {
-    alert("Popup blocked. Please allow popups for printing.")
-    return
+    alert("Popup blocked. Please allow popups for printing.");
+    return;
   }
-  w.document.open()
-  w.document.write(html)
-  w.document.close()
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
