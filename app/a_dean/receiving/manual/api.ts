@@ -78,3 +78,5 @@ export async function createReceiving(payload: any) {
     }
   }
 }
+
+// dmf_trg_post_inventory_from_recieving_items

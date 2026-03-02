@@ -364,3 +364,20 @@ export type DisposalPrintRow = {
   middlename: string | null
   lastname: string | null
 }
+
+export type DraftItem = {
+  id: number
+  brdr_ref_no: string
+  sku: string
+  UoM: string
+  lot_no?: string
+  breed?: string
+  prod_date?: string
+  age?: string
+  house_no?: string
+
+  total?: number        // from API
+  actual_total?: number // user input
+
+  isNew?: boolean
+}

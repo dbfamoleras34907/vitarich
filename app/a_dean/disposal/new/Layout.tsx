@@ -75,7 +75,7 @@ export default function Layout() {
       type: "button",
       render: (row) => (
         <Button size="sm" variant="secondary" onClick={() => unpickRow(row)}>
-         Return
+          Return
         </Button>
       ),
     },
@@ -113,6 +113,7 @@ export default function Layout() {
     setSaving(false)
 
     if (!res.success) {
+      console.error({ res })
       alert("Save failed")
       return
     }
@@ -197,7 +198,7 @@ export default function Layout() {
           ))}
         </div>
 
-        <Separator className='my-6'/>
+        <Separator className='my-6' />
 
         <div className="xl:grid grid-cols-2 gap-10 xl:gap-2">
 

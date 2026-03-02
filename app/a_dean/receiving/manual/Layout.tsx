@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { DataRecordApproval, Farms } from '@/lib/types'
+import { DataRecordApproval, DraftItem, Farms } from '@/lib/types'
 import { today } from '@/lib/Defaults/DefaultValues'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -17,24 +17,7 @@ import { createReceiving } from './api'
 import { Plus, Save } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
-type DraftItem = {
-  id: number
-  brdr_ref_no: string
-  sku: string
-  UoM: string
-  lot_no?: string
-  breed?: string
-  prod_date?: string
-  age?: string
-  house_no?: string
-  jr?: number
-  he?: number
-  actual_jr?: number
-  actual_he?: number
-  expected_count: number
-  actual_count?: number
-  isNew?: boolean
-}
+
 
 type ItemMasterType = {
   id: number
@@ -192,20 +175,60 @@ export default function ApprovalDecisionForm() {
   //     alert(res.error)
   //   }
   // }
+  // const insertMe = async () => {
+
+  //   const transformedItems = items.map(i => {
+  //     const actualTotal = (i.actual_jr || 0) + (i.actual_he || 0)
+
+  //     return {
+  //       ...i,
+
+  //       // ✅ overwrite values as requested
+  //       jr: i.actual_jr ?? 0,
+  //       he: i.actual_he ?? 0,
+  //       actual_count: actualTotal,
+  //     }
+  //   })
+
+  //   const payload = {
+  //     doc_date: header?.doc_date,
+  //     temperature,
+  //     humidity,
+
+  //     soldTo: header?.soldTo,
+  //     Attention: header?.Attention,
+  //     po_no: header?.po_no,
+  //     voyage_no: header?.voyage_no,
+  //     shipped_via: header?.shipped_via,
+  //     dr_num: header?.dr_num,
+
+  //     no_of_crates: footer.crates,
+  //     no_of_tray: footer.trays,
+  //     plate_no: footer.van_plate,
+  //     driver: footer.driver,
+  //     serial_no: footer.serial,
+
+  //     // ✅ send transformed items
+  //     items: transformedItems,
+  //   }
+
+  //   const res = await createReceiving(payload)
+  //   router.push("/a_dean/receiving/")
+  //   if (res.success) {
+  //     alert(`Saved! DocEntry: ${res.docentry}`)
+  //   } else {
+  //     alert(res.error)
+  //   }
+  // }
   const insertMe = async () => {
 
-    const transformedItems = items.map(i => {
-      const actualTotal = (i.actual_jr || 0) + (i.actual_he || 0)
+    const transformedItems = items.map(i => ({
+      ...i,
 
-      return {
-        ...i,
-
-        // ✅ overwrite values as requested
-        jr: i.actual_jr ?? 0,
-        he: i.actual_he ?? 0,
-        actual_count: actualTotal,
-      }
-    })
+      // DB mapping
+      total_api: i.total ?? 0,
+      actual_count: i.actual_total ?? 0,
+    }))
 
     const payload = {
       doc_date: header?.doc_date,
@@ -225,19 +248,18 @@ export default function ApprovalDecisionForm() {
       driver: footer.driver,
       serial_no: footer.serial,
 
-      // ✅ send transformed items
       items: transformedItems,
     }
 
     const res = await createReceiving(payload)
     router.push("/a_dean/receiving/")
+
     if (res.success) {
       alert(`Saved! DocEntry: ${res.docentry}`)
     } else {
       alert(res.error)
     }
   }
-
 
   return (
     <Card className="w-full border-none shadow-none bg-background p-0">
@@ -264,7 +286,7 @@ export default function ApprovalDecisionForm() {
         {/* HEADER */}
 
         <div className="grid grid-cols-3 gap-6">
-{/*  */}
+          {/*  */}
           {/* ✅ SOLD TO DROPDOWN */}
 
           <div>
@@ -321,29 +343,23 @@ export default function ApprovalDecisionForm() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead></TableHead>
-                  <TableHead>Line No</TableHead>
-                  <TableHead>BREEDER REF. NO.</TableHead>
-                  <TableHead>EGG SKU</TableHead>
-                  <TableHead>UoM</TableHead>
-                  <TableHead>Lot No.</TableHead>
-                  <TableHead>Breed</TableHead>
-                  <TableHead>Production Date</TableHead>
-                  <TableHead>Age</TableHead>
-                  <TableHead>House No.</TableHead>
-                  <TableHead>JR</TableHead>
-                  <TableHead>HE</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Actual JR</TableHead>
-                  <TableHead>Actual HE</TableHead>
-                  <TableHead>Actual Total</TableHead>
+                  <TableHead className=''></TableHead>
+                  <TableHead className=''>Line No</TableHead>
+                  <TableHead className='min-w-25'>BREEDER REF. NO.</TableHead>
+                  <TableHead className=''>EGG SKU</TableHead>
+                  <TableHead className=''>UoM</TableHead>
+                  <TableHead className='min-w-25'>Lot No.</TableHead>
+                  <TableHead className='min-w-25'>Breed</TableHead>
+                  <TableHead className='min-w-25'>Production Date</TableHead>
+                  <TableHead className='min-w-25'>Age</TableHead>
+                  <TableHead className='min-w-25'>House No.</TableHead>
+                  <TableHead className='min-w-25'>Total</TableHead>
+                  <TableHead className='min-w-25'>Actual Total</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {items.map((item, index) => {
-                  const total = (item.jr || 0) + (item.he || 0)
-                  const actualTotal = (item.actual_jr || 0) + (item.actual_he || 0)
 
                   return (
                     <TableRow key={item.id}>
@@ -431,32 +447,27 @@ export default function ApprovalDecisionForm() {
                         />
                       </TableCell>
 
-                      <TableCell><Input type="number" value={item.jr || 0} readOnly disabled /></TableCell>
-                      <TableCell><Input type="number" value={item.he || 0} readOnly disabled /></TableCell>
-                      <TableCell><Input type="number" value={total} readOnly disabled /></TableCell>
-
+                      {/* ✅ TOTAL (FROM API / EXPECTED) */}
                       <TableCell>
                         <Input
                           type="number"
-                          value={item.actual_jr ?? 0}
-                          onChange={e =>
-                            updateItem(item.id, { actual_jr: Number(e.target.value) })
-                          }
+                          value={item.total ?? 0}
+                          readOnly
+                          disabled
                         />
                       </TableCell>
 
+                      {/* ✅ ACTUAL TOTAL (USER INPUT) */}
                       <TableCell>
                         <Input
                           type="number"
-                          value={item.actual_he ?? 0}
+                          value={item.actual_total ?? 0}
                           onChange={e =>
-                            updateItem(item.id, { actual_he: Number(e.target.value) })
+                            updateItem(item.id, {
+                              actual_total: Number(e.target.value)
+                            })
                           }
                         />
-                      </TableCell>
-
-                      <TableCell>
-                        <Input type="number" value={actualTotal} readOnly disabled />
                       </TableCell>
 
                     </TableRow>

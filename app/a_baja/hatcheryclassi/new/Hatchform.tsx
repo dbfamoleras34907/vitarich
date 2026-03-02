@@ -26,6 +26,7 @@ type ViewForHatcheryClassi = {
   humidity: string | null
   brdr_ref_no: string | null
   sku: string | null
+  itemcodedesc: string | null
   UoM: string | null
   actual_count: number | null
   classfi_ref_no: string | null
@@ -36,6 +37,7 @@ type FormState = {
   dr_no: string
   dr_date: string
   temperature: string
+  itemcodedesc: string
   sku: string
   uom: string
   total_count_view: number
@@ -64,6 +66,7 @@ const emptyForm: FormState = {
   dr_date: "",
   temperature: "",
   sku: "",
+  itemcodedesc: "",
   uom: "",
   total_count_view: 0,
   classfi_ref_no: "",
@@ -131,7 +134,7 @@ export default function Hatchform() {
       const { data, error } = await db
         .from("viewforhatcheryclassi")
         .select(
-          "dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no"
+          "itemcodedesc,dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no"
         )
         .order("doc_date", { ascending: false })
 
@@ -142,13 +145,13 @@ export default function Hatchform() {
   }, [])
 
   // load record when editing
-  useEffect(() => {
+  useEffect(() => { 
     const run = async () => {
       if (!isEdit || !id) return
       try {
         setLoading(true)
         const row = await getHatchClassificationById(id)
-
+        console.log("Loaded hatch classification:", row)
         // NOTE: row must include at least these columns from hatch_classification table:
         // br_no, date_classify, classi_ref_no, good_egg... jumbo, ttl_count
         // If you want view fields (dr_no, dr_date, temperature, sku, uom, total_count_view),
@@ -177,6 +180,7 @@ export default function Hatchform() {
           base.dr_date = selected.doc_date ?? ""
           base.temperature = selected.temperature ?? ""
           base.sku = selected.sku ?? ""
+          base.itemcodedesc = selected.itemcodedesc ?? ""
           base.uom = selected.UoM ?? ""
           base.total_count_view = Number(selected.actual_count ?? 0)
           base.classfi_ref_no = selected.classfi_ref_no ?? ""
@@ -236,6 +240,7 @@ export default function Hatchform() {
   // breeder selected -> auto populate view fields
   const handleBreederChange = async (value: string) => {
     const selected = breeders.find((b) => b.brdr_ref_no === value)
+    console.log({ selected })
     if (!selected) return
 
     const baseRef = selected.classfi_ref_no ?? ""
@@ -249,6 +254,8 @@ export default function Hatchform() {
         dr_date: selected.doc_date ?? "",
         temperature: selected.temperature ?? "",
         sku: selected.sku ?? "",
+        // sku: selected.sku ?? "",
+        itemcodedesc: selected.itemcodedesc ?? "",
         uom: selected.UoM ?? "",
         total_count_view: Number(selected.actual_count ?? 0),
         classfi_ref_no: baseRef,
@@ -389,7 +396,7 @@ export default function Hatchform() {
   const disabledAll = saving || loading
 
   return (
-    <div className="space-y-4 mt-8"> 
+    <div className="space-y-4 mt-8">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         FirstPreviewsPageName="Hatch Classification"
@@ -407,7 +414,7 @@ export default function Hatchform() {
               showNameOnly
               value={form.br_no}
               onChange={(val) => handleBreederChange(val)}
-              // disabled={disabledAll}
+            // disabled={disabledAll}
             />
           </div>
 
@@ -417,7 +424,7 @@ export default function Hatchform() {
             <DisabledField label="DR No." value={form.dr_no} />
             <DisabledField label="DR Date" value={form.dr_date} />
             <DisabledField label="Temperature" value={form.temperature} />
-            <DisabledField label="SKU" value={form.sku} />
+            <DisabledField label="SKU" value={form.itemcodedesc} />
             <DisabledField label="UOM" value={form.uom} />
             <DisabledField label="Total Count" value={form.total_count_view} />
           </div>

@@ -91,7 +91,7 @@ export async function create_disposal(
       const { error: itemError } = await db
         .from("disposal_item")
         .insert(items)
-
+      console.log({ itemError })
       if (itemError) throw itemError
     }
 
