@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ColumnDef,
   flexRender,
@@ -9,7 +9,7 @@ import {
   getFilteredRowModel,
   getPaginationRowModel,
   useReactTable,
-} from "@tanstack/react-table"
+} from "@tanstack/react-table";
 
 import {
   Table,
@@ -18,66 +18,66 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Plus, RefreshCw, Search } from "lucide-react"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Plus, RefreshCw, Search } from "lucide-react";
 
 import {
   ChickGradingProcess,
   deleteChickGradingProcess,
   listChickGradingProcess,
-} from "./new/api"
+} from "./new/api";
 
-import Breadcrumb from "@/lib/Breadcrumb"
-import EditActionButton from "@/components/EditActionButton"
+import Breadcrumb from "@/lib/Breadcrumb";
+import EditActionButton from "@/components/EditActionButton";
 
 function fmtDateTime(v: string | null | undefined) {
-  if (!v) return ""
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return ""
-  const pad = (n: number) => String(n).padStart(2, "0")
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate()
-  )} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    d.getDate(),
+  )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function ChickgradingTable() {
-  const router = useRouter()
+  const router = useRouter();
 
-  const [items, setItems] = useState<ChickGradingProcess[]>([])
-  const [columnFilters, setColumnFilters] = useState<any>([])
-  const [sorting, setSorting] = useState<any>([])
-  const [columnVisibility, setColumnVisibility] = useState<any>({})
-  const [rowSelection, setRowSelection] = useState<any>({})
-  const [isLoading, setIsLoading] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<string>("")
+  const [items, setItems] = useState<ChickGradingProcess[]>([]);
+  const [columnFilters, setColumnFilters] = useState<any>([]);
+  const [sorting, setSorting] = useState<any>([]);
+  const [columnVisibility, setColumnVisibility] = useState<any>({});
+  const [rowSelection, setRowSelection] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const load = useCallback(async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const data = await listChickGradingProcess()
-      setItems(Array.isArray(data) ? data : [])
-      setLastUpdated(new Date().toLocaleString())
+      const data = await listChickGradingProcess();
+      setItems(Array.isArray(data) ? data : []);
+      setLastUpdated(new Date().toLocaleString());
     } catch (e) {
-      console.error(e)
-      setItems([])
+      console.error(e);
+      setItems([]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    router.prefetch("/a_baja/chickgrading/new")
-    load()
-  }, [router, load])
+    router.prefetch("/a_baja/chickgrading/new");
+    load();
+  }, [router, load]);
 
   async function onDelete(id: number) {
-    if (!confirm("Delete this record?")) return
-    await deleteChickGradingProcess(id)
-    await load()
-    router.refresh()
+    if (!confirm("Delete this record?")) return;
+    await deleteChickGradingProcess(id);
+    await load();
+    router.refresh();
   }
 
   const columns = useMemo<ColumnDef<ChickGradingProcess>[]>(
@@ -95,7 +95,7 @@ export default function ChickgradingTable() {
             <EditActionButton
               id={row.original?.id}
               href={(id) => `/a_baja/chickgrading/new?id=${id}`}
-            /> 
+            />
           </div>
         ),
       },
@@ -106,14 +106,28 @@ export default function ChickgradingTable() {
         header: "Grading date & time",
         cell: ({ row }) => fmtDateTime(row.original.grading_datetime),
       },
-      { accessorKey: "total_chicks", header: "Total chicks" },
-      { accessorKey: "good_quality_chicks", header: "Good quality chicks" },
+      {
+        accessorKey: "total_chicks",
+        header: "Total chicks",
+        cell: ({ row }) => {
+          const value = row.original.total_chicks ?? 0;
+          return Number(value).toLocaleString();
+        },
+      },
+      {
+        accessorKey: "good_quality_chicks",
+        header: "Good quality chicks",
+        cell: ({ row }) => {
+          const value = row.original.good_quality_chicks ?? 0;
+          return Number(value).toLocaleString();
+        },
+      },
       { accessorKey: "quality_grade_rate", header: "Quality grade rate %" },
       { accessorKey: "cull_rate", header: "Cull rate %" },
-      { accessorKey: "grading_personnel", header: "Grading personnel" }, 
+      { accessorKey: "grading_personnel", header: "Grading personnel" },
     ],
-    []
-  )
+    [],
+  );
 
   const table = useReactTable({
     data: items,
@@ -131,12 +145,14 @@ export default function ChickgradingTable() {
       columnVisibility,
       rowSelection,
     },
-  })
+  });
 
   return (
-    <div className="rounded-md p-4 mt-4"> 
-      <Breadcrumb SecondPreviewPageName="Hatchery" 
-      CurrentPageName="Doc Classification" /> 
+    <div className="rounded-md p-4 mt-4">
+      <Breadcrumb
+        SecondPreviewPageName="Hatchery"
+        CurrentPageName="Doc Classification"
+      />
 
       <div className="flex items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-3">
@@ -145,7 +161,8 @@ export default function ChickgradingTable() {
               placeholder="Filter Egg Reference No."
               className="pl-10"
               value={
-                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
+                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ??
+                ""
               }
               onChange={(e) =>
                 table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
@@ -161,9 +178,11 @@ export default function ChickgradingTable() {
             disabled={isLoading}
             className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
-            <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
+            />
             {isLoading ? "Refreshing..." : "Refresh"}
-          </Button> 
+          </Button>
         </div>
 
         <Button
@@ -207,7 +226,10 @@ export default function ChickgradingTable() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
                   {isLoading ? "Loading..." : "No results."}
                 </TableCell>
               </TableRow>
@@ -235,5 +257,5 @@ export default function ChickgradingTable() {
         </Button>
       </div>
     </div>
-  )
+  );
 }
