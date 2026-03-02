@@ -790,7 +790,7 @@ export default function DocdispatchForm() {
                   cancelPath="/a_baja/docdispatch"
                   onSave={onSave}
                 />
-                <div className="flex items-center justify-end gap-2">
+                {/* <div className="flex items-center justify-end gap-2">
                   <Button
                     type="button"
                     variant="outline"
@@ -825,7 +825,7 @@ export default function DocdispatchForm() {
                     <Printer className="size-4 mr-2" />
                     Print
                   </Button>
-                </div>
+                </div> */}
               </div>
             </div>
           )}
