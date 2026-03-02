@@ -47,7 +47,7 @@ export default function ProjectTicketsPage() {
     const { data, error } = await db
       .from("dmfvw_get_issue_w_proj")
       .select("*")
-      .eq("project_id", projectId)
+      .eq("project_id", decodeURIComponent(projectId as string))
       .order("id", { ascending: false })
     console.log({ data })
     if (error) {

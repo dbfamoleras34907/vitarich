@@ -101,7 +101,7 @@ export default function TraceTimeline() {
         setLoading(true)
         const { data } = await db.rpc(
             "trace_lifecycle_nodes",
-            { start_ref: ref }
+            { start_ref: decodeURIComponent(ref as string) }
         );
 
         if (!data) return;

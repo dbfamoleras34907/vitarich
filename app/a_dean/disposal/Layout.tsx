@@ -86,7 +86,8 @@ export default function Layout() {
                     <Button
                       onMouseEnter={() => route.prefetch(printUrl)}
                       onFocus={() => route.prefetch(printUrl)}
-                      onClick={() => route.push(printUrl)}
+                      // onClick={() => route.push(printUrl)}
+                      onClick={() =>  window.open(printUrl, '_blank')}
                       className='border border-green-500 bg-white text-black'
                       size="sm"
                     >

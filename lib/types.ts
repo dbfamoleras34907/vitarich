@@ -347,3 +347,20 @@ export type ReceivingListRow = {
   jr: string | null
   he: string | null
 }
+
+
+export type DisposalPrintRow = {
+  ds_no: string | null
+  created_at: string | null   // timestamptz → string in Supabase
+  cardname: string | null
+  contact_no: string | null
+  customer_address: string | null
+  ifrom: string | null
+  sku: string | null
+  description: string | null
+  qty: number | null
+  unit: string | null
+  firstname: string | null
+  middlename: string | null
+  lastname: string | null
+}

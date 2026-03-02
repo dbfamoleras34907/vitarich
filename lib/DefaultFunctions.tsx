@@ -52,3 +52,14 @@ export const extractNumbersArray = (str: string): number[] => {
   const matches = str.match(/\d+/g);
   return matches ? matches.map(Number) : [];
 };
+
+
+
+
+export function getDateOnly(input?: Date | string | number): string {
+  const d = input ? new Date(input) : new Date();
+
+  if (isNaN(d.getTime())) return '';
+
+  return d.toISOString().split('T')[0];
+}
