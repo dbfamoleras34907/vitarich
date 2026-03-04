@@ -14,7 +14,6 @@ import {
 import { CodeNameBase } from "./DefaultTypes";
 
 export const NavFolders = [
-
   {
     id: 0,
     title: "Home",
@@ -23,9 +22,7 @@ export const NavFolders = [
     items: [
       {
         group: "Reports",
-        children: [
-          { type: "Report", title: "Dashboard", url: "/home" },
-        ],
+        children: [{ type: "Report", title: "Dashboard", url: "/home" }],
       },
     ],
   },
@@ -38,17 +35,40 @@ export const NavFolders = [
       {
         group: "Hatchery Masters",
         children: [
-
           { type: "Module", title: "Receiving", url: "/a_dean/receiving" },
 
-          { type: "Module", title: "Hatchery Classification", url: "/a_baja/hatcheryclassi" },
+          {
+            type: "Module",
+            title: "Egg Classification",
+            url: "/a_baja/hatcheryclassi",
+          },
           { type: "Module", title: "Egg Storage", url: "/a_baja/eggstorage" },
-          { type: "Module", title: "Egg Pre-Warming Process", url: "/a_baja/prewarming" },
+          {
+            type: "Module",
+            title: "Egg Pre-Warming Process",
+            url: "/a_baja/prewarming",
+          },
           { type: "Module", title: "Egg Setter", url: "/a_baja/eggsetter" },
-          { type: "Module", title: "Egg Transfer Process", url: "/a_baja/eggtransfer" },
-          { type: "Module", title: "Egg Hatcher Process", url: "/a_baja/egghatcheryprocessform" },
-          { type: "Module", title: "Chick Pullout Process", url: "/a_baja/chickpullout" },
-          { type: "Module", title: "Doc Classification", url: "/a_baja/chickgrading" },
+          {
+            type: "Module",
+            title: "Egg Transfer Process",
+            url: "/a_baja/eggtransfer",
+          },
+          {
+            type: "Module",
+            title: "Egg Hatcher Process",
+            url: "/a_baja/egghatcheryprocessform",
+          },
+          {
+            type: "Module",
+            title: "Chick Pullout Process",
+            url: "/a_baja/chickpullout",
+          },
+          {
+            type: "Module",
+            title: "Doc Classification",
+            url: "/a_baja/chickgrading",
+          },
           { type: "Module", title: "Doc Dispatch", url: "/a_baja/docdispatch" },
           { type: "Module", title: "Disposal", url: "/a_dean/disposal" },
         ],
@@ -72,7 +92,11 @@ export const NavFolders = [
         group: "Item Management",
         children: [
           { type: "Module", title: "Item Master Data", url: "/a_dean/items" },
-          { type: "Module", title: "Warehouse Master Data", url: "/a_dean/warehouse" },
+          {
+            type: "Module",
+            title: "Warehouse Master Data",
+            url: "/a_dean/warehouse",
+          },
           { type: "Module", title: "Bin  Master Data", url: "#" },
           // { type: "Module", title: "Alternative Items", url: "#" },
         ],
@@ -98,13 +122,16 @@ export const NavFolders = [
       {
         group: "Inventory Reports",
         children: [
-          { type: "Report", title: "Inventory Posting Report", url: "/a_dean/invaudit" },
+          {
+            type: "Report",
+            title: "Inventory Posting Report",
+            url: "/a_dean/invaudit",
+          },
           { type: "Report", title: "Inventory Status", url: "#" },
           { type: "Report", title: "Warehouse Content List", url: "#" },
         ],
       },
     ],
-
   },
   {
     id: 99,
@@ -117,6 +144,11 @@ export const NavFolders = [
         children: [
           { type: "Module", title: "User Management", url: "/admin/user" },
           { type: "Module", title: "Farm Settings", url: "/a_dean/farm" },
+          {
+            type: "Module",
+            title: "Boiler Settings",
+            url: "/a_baja/boilermasterdata",
+          },
           { type: "Module", title: "General Settings", url: "#" },
           { type: "Module", title: "Document Settings", url: "#" },
           // { type: "Module", title: "User Details / Roles & Permissions", url: "/admin/user/new/" },
@@ -133,16 +165,12 @@ export const ListOfYear: CodeNameBase[] = Array.from(
   (_, i) => {
     const year = (startYear + i).toString();
     return { code: year, name: year };
-  }
+  },
 );
 
 export const DefaultGenders = [{ code: "Male" }, { code: "Female" }];
 
-export const today = new Date().toISOString().slice(0, 10)
-
-
-
-
+export const today = new Date().toISOString().slice(0, 10);
 
 export type IssueStatus =
   | "todo"
@@ -150,38 +178,34 @@ export type IssueStatus =
   | "in_review"
   | "blocked"
   | "done"
-  | "reopened"
+  | "reopened";
 
 export const ISSUE_STATUSES: {
-  code: IssueStatus
-  name: string
-  color: string
+  code: IssueStatus;
+  name: string;
+  color: string;
 }[] = [
-    { code: "todo", name: "To Do", color: "gray" },
-    { code: "in_progress", name: "In Progress", color: "blue" },
-    { code: "in_review", name: "In Review", color: "purple" },
-    { code: "blocked", name: "Blocked", color: "red" },
-    { code: "done", name: "Done", color: "green" },
-    { code: "reopened", name: "Reopened", color: "orange" },
-  ]
+  { code: "todo", name: "To Do", color: "gray" },
+  { code: "in_progress", name: "In Progress", color: "blue" },
+  { code: "in_review", name: "In Review", color: "purple" },
+  { code: "blocked", name: "Blocked", color: "red" },
+  { code: "done", name: "Done", color: "green" },
+  { code: "reopened", name: "Reopened", color: "orange" },
+];
 
-
-export type IssuePriority =
-  | "high"
-  | "medium"
-  | "low"
+export type IssuePriority = "high" | "medium" | "low";
 
 export const ISSUE_PRIORITIES: {
-  code: IssuePriority
-  name: string
-  color: string
+  code: IssuePriority;
+  name: string;
+  color: string;
 }[] = [
-    // { code: "highest", name: "Highest", color: "red" },
-    { code: "high", name: "High", color: "orange" },
-    { code: "medium", name: "Medium", color: "yellow" },
-    { code: "low", name: "Low", color: "blue" },
-    // { code: "lowest", name: "Lowest", color: "gray" },
-  ]
+  // { code: "highest", name: "Highest", color: "red" },
+  { code: "high", name: "High", color: "orange" },
+  { code: "medium", name: "Medium", color: "yellow" },
+  { code: "low", name: "Low", color: "blue" },
+  // { code: "lowest", name: "Lowest", color: "gray" },
+];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
@@ -189,5 +213,3 @@ export const ISSUE_PRIORITIES: {
 //   { code: "low", name: "Low", color: "blue" },
 //   { code: "lowest", name: "Lowest", color: "gray" },
 // ]
-
-

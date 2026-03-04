@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ColumnDef,
   useReactTable,
@@ -10,7 +10,7 @@ import {
   getSortedRowModel,
   getFilteredRowModel,
   flexRender,
-} from "@tanstack/react-table"
+} from "@tanstack/react-table";
 
 import {
   Table,
@@ -19,52 +19,52 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Search, Plus, RefreshCw, Pencil } from "lucide-react"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Search, Plus, RefreshCw, Pencil } from "lucide-react";
 
-import { SetterIncubation, listSetterIncubations } from "./new/api"
-import Breadcrumb from "@/lib/Breadcrumb"
-import EditActionButton from "@/components/EditActionButton"
+import { SetterIncubation, listSetterIncubations } from "./new/api";
+import Breadcrumb from "@/lib/Breadcrumb";
+import EditActionButton from "@/components/EditActionButton";
 
 export default function EggsetterTable() {
-  const [items, setItems] = useState<SetterIncubation[]>([])
-  const [sorting, setSorting] = useState<any>([])
-  const [columnFilters, setColumnFilters] = useState<any>([])
-  const [columnVisibility, setColumnVisibility] = useState<any>({})
-  const [rowSelection, setRowSelection] = useState<any>({})
-  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<SetterIncubation[]>([]);
+  const [sorting, setSorting] = useState<any>([]);
+  const [columnFilters, setColumnFilters] = useState<any>([]);
+  const [columnVisibility, setColumnVisibility] = useState<any>({});
+  const [rowSelection, setRowSelection] = useState<any>({});
+  const [loading, setLoading] = useState(false);
 
-  const router = useRouter()
+  const router = useRouter();
 
   const fetchData = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const data = await listSetterIncubations()
-      setItems((Array.isArray(data) ? data : []) as SetterIncubation[])
+      const data = await listSetterIncubations();
+      setItems((Array.isArray(data) ? data : []) as SetterIncubation[]);
     } catch (e) {
-      setItems([])
+      setItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    ;(async () => {
-      router.prefetch("/a_baja/eggsetter/new")
-      await fetchData()
-    })()
+    (async () => {
+      router.prefetch("/a_baja/eggsetter/new");
+      await fetchData();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   const formatDateTime = (value?: string | null) => {
-    if (!value) return ""
-    const d = new Date(value)
-    const pad = (n: number) => String(n).padStart(2, "0")
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  }
+    if (!value) return "";
+    const d = new Date(value);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
   const columns: ColumnDef<SetterIncubation>[] = [
     {
@@ -136,8 +136,8 @@ export default function EggsetterTable() {
     {
       accessorKey: "egg_shell_orientation",
       header: "Egg Shell Orientation",
-    }, 
-  ]
+    },
+  ];
 
   const table = useReactTable({
     data: items,
@@ -156,23 +156,28 @@ export default function EggsetterTable() {
       columnVisibility,
       rowSelection,
     },
-  })
+  });
 
   return (
     <div className="rounded-md p-4 mt-4">
       {/* Top Controls */}
-          <Breadcrumb SecondPreviewPageName="Hatchery" 
-          CurrentPageName="Egg Setter List" 
-          />
-          <br />
+      <Breadcrumb
+        SecondPreviewPageName="Hatchery"
+        CurrentPageName="Egg Setter List"
+      />
+      <br />
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4"> 
+        <div className="flex items-center gap-4">
           <div className="relative w-72">
             <Input
               placeholder="Filter Egg Reference Number"
               className="pl-10"
-              value={(table.getColumn("ref_no")?.getFilterValue() as string) ?? ""}
-              onChange={(e) => table.getColumn("ref_no")?.setFilterValue(e.target.value)}
+              value={
+                (table.getColumn("ref_no")?.getFilterValue() as string) ?? ""
+              }
+              onChange={(e) =>
+                table.getColumn("ref_no")?.setFilterValue(e.target.value)
+              }
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
@@ -212,7 +217,10 @@ export default function EggsetterTable() {
                   >
                     {header.isPlaceholder
                       ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -225,14 +233,20 @@ export default function EggsetterTable() {
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
                   No results.
                 </TableCell>
               </TableRow>
@@ -262,5 +276,5 @@ export default function EggsetterTable() {
         </Button>
       </div>
     </div>
-  )
+  );
 }

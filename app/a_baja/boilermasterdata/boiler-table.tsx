@@ -1,111 +1,102 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ColumnDef,
-  flexRender,
+  useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  useReactTable,
+  getFilteredRowModel,
+  flexRender,
 } from "@tanstack/react-table";
 
 import {
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
+  TableBody,
   TableRow,
+  TableHead,
+  TableCell,
 } from "@/components/ui/table";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search, Pencil } from "lucide-react";
+import { Search, Plus, RefreshCw } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import {
-  listHatchClassification,
-  type HatchClassificationRow,
-} from "./new/api";
 import EditActionButton from "@/components/EditActionButton";
 
-export default function HatchTable() {
-  const router = useRouter();
+import { BoilerMasterdata, listBoilerMasterdata } from "./new/api";
 
-  const [items, setItems] = useState<HatchClassificationRow[]>([]);
+export default function BoilerTable() {
+  const [items, setItems] = useState<BoilerMasterdata[]>([]);
   const [sorting, setSorting] = useState<any>([]);
   const [columnFilters, setColumnFilters] = useState<any>([]);
   const [columnVisibility, setColumnVisibility] = useState<any>({});
   const [rowSelection, setRowSelection] = useState<any>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const router = useRouter();
+
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const data = await listHatchClassification(50);
-      setItems(Array.isArray(data) ? data : []);
-      setLastUpdated(new Date().toLocaleString());
+      const data = await listBoilerMasterdata();
+      setItems((Array.isArray(data) ? data : []) as BoilerMasterdata[]);
     } catch (e) {
       console.error(e);
       setItems([]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    router.prefetch("/a_baja/hatcheryclassi/new");
-    load();
-  }, [router, load]);
+    (async () => {
+      router.prefetch("/a_baja/boilermasterdata/new");
+      await fetchData();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const columns = useMemo<ColumnDef<HatchClassificationRow>[]>(
-    () => [
-      {
-        id: "row_no",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
-      },
-      // {
-      //   id: "action",
-      //   header: "Action",
-      //   cell: ({ row }) => (
-      //     <div className="flex items-center gap-2">
-      //       <EditActionButton
-      //         id={row.original?.id}
-      //         href={(id) => `/a_baja/hatcheryclassi/new?id=${id}`}
-      //       />
-      //     </div>
-      //   ),
-      // },
-      {
-        accessorKey: "date_classify",
-        header: "Date Classified",
-        cell: ({ row }) => row.original.date_classify ?? "",
-      },
-      {
-        accessorKey: "br_no",
-        header: "Breeder Ref. No.",
-        cell: ({ row }) => row.original.br_no ?? "",
-      },
-      { accessorKey: "good_egg", header: "Hatching Egg" },
-      { accessorKey: "trans_crack", header: "Transport Crack" },
-      { accessorKey: "hatc_crack", header: "Hatch Crack" },
-      { accessorKey: "trans_condemn", header: "Transport Condemn" },
-      { accessorKey: "hatc_condemn", header: "Hatch Condemn" },
-      { accessorKey: "thin_shell", header: "Thin Shell" },
-      { accessorKey: "pee_wee", header: "Pee Wee" },
-      { accessorKey: "small", header: "Small" },
-      { accessorKey: "jumbo", header: "Jumbo" },
-      { accessorKey: "misshapen", header: "Misshapen" },
-      { accessorKey: "d_yolk", header: "Double Yolk" },
-      { accessorKey: "ttl_count", header: "Total Count" },
-    ],
-    [router],
-  );
+  const columns: ColumnDef<BoilerMasterdata>[] = [
+    {
+      accessorKey: "id",
+      header: "#",
+      cell: ({ row }) => row.index + 1,
+    },
+    {
+      id: "action",
+      header: "Action",
+      cell: ({ row }) => (
+        <EditActionButton
+          id={row.original?.id}
+          href={(id) => `/a_baja/boilermasterdata/new?id=${id}`}
+        />
+      ),
+    },
+    {
+      accessorKey: "boiler_name",
+      header: "Boiler Name",
+    },
+    {
+      accessorKey: "assigned_ta",
+      header: "Assigned TA",
+      cell: ({ row }) => row.original.assigned_ta ?? "",
+    },
+    {
+      accessorKey: "region",
+      header: "Region",
+      cell: ({ row }) => row.original.region ?? "",
+    },
+    {
+      accessorKey: "address",
+      header: "Address",
+      cell: ({ row }) => row.original.address ?? "",
+    },
+  ];
 
   const table = useReactTable({
     data: items,
@@ -124,28 +115,32 @@ export default function HatchTable() {
       columnVisibility,
       rowSelection,
     },
+    initialState: {
+      pagination: { pageSize: 15 },
+    },
   });
 
   return (
-    <div className="rounded-md p-4">
-      <br />
-      <Breadcrumb
-        FirstPreviewsPageName="Hatchery"
-        CurrentPageName="Egg Classification"
-      />
-
+    <div className="rounded-md p-4 mt-4">
       {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-3">
+      <Breadcrumb
+        SecondPreviewPageName="Master Data"
+        CurrentPageName="Boiler List"
+      />
+      <br />
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
           <div className="relative w-72">
             <Input
-              placeholder="Filter Breeder Ref. No."
+              placeholder="Filter Boiler Name"
               className="pl-10"
               value={
-                (table.getColumn("br_no")?.getFilterValue() as string) ?? ""
+                (table.getColumn("boiler_name")?.getFilterValue() as string) ??
+                ""
               }
               onChange={(e) =>
-                table.getColumn("br_no")?.setFilterValue(e.target.value)
+                table.getColumn("boiler_name")?.setFilterValue(e.target.value)
               }
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -154,37 +149,35 @@ export default function HatchTable() {
           <Button
             type="button"
             variant="outline"
-            onClick={load}
-            disabled={isLoading}
+            onClick={fetchData}
+            disabled={loading}
             className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
-            <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            {isLoading ? "Refreshing..." : "Refresh"}
+            <RefreshCw className="size-4" />
+            {loading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
 
         <Button
           type="button"
-          onClick={() => router.push("/a_baja/hatcheryclassi/new")}
+          onClick={() => router.push("/a_baja/boilermasterdata/new")}
           className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
         >
           <Plus className="size-4" />
-          New Classification
+          New Record
         </Button>
       </div>
 
       {/* Table */}
-      <div className="rounded-md border p-4 bg-white">
+      <div className="rounded-2xl p-4 bg-white">
         <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
+                    className="whitespace-normal wrap-break-word text-left align-middle"
                   >
                     {header.isPlaceholder
                       ? null
@@ -218,7 +211,7 @@ export default function HatchTable() {
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  {isLoading ? "Loading..." : "No results."}
+                  No results.
                 </TableCell>
               </TableRow>
             )}
