@@ -28,7 +28,7 @@ export type EggTransferInsert = {
 
 export type EggTransferUpdate = Partial<EggTransferInsert>
 
-const TABLE = "egg_transfer_process" // ✅ IMPORTANT: use the REAL table name
+const TABLE = "egg_transfer_process"  
 const HATCH_CLASSI_TABLE = "hatch_classification"
 
 export async function listClassiRefNos(): Promise<string[]> {
