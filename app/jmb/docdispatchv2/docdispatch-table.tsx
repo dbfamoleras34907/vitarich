@@ -35,7 +35,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { listDispatchDocs, softDeleteDispatchDoc } from "./new/api";
+import { listDispatchDocs, softDeleteDispatchDoc } from "./newv2/api";
 import Breadcrumb from "@/lib/Breadcrumb";
 import EditActionButton from "@/components/EditActionButton";
 
@@ -105,7 +105,7 @@ export default function DocdispatchTable() {
       //   cell: ({ row }) => (
       //     <EditActionButton
       //       id={row.original?.id}
-      //       href={(id) => `/a_baja/docdispatch/new?id=${id}`}
+      //       href={(id) => `/jmb/docdispatchv2/new?id=${id}`}
       //     />
       //   ),
       // },
@@ -116,14 +116,14 @@ export default function DocdispatchTable() {
         cell: ({ row }) => (
           <Button
             onMouseEnter={() =>
-              router.prefetch(`/a_baja/docdispatch/${row.original.id}/print`)
+              router.prefetch(`/jmb/docdispatchv2/${row.original.id}/print`)
             }
             onFocus={() =>
-              router.prefetch(`/a_baja/docdispatch/${row.original.id}/print`)
+              router.prefetch(`/jmb/docdispatchv2/${row.original.id}/print`)
             }
             onClick={() =>
               window.open(
-                `/a_baja/docdispatch/${row.original.id}/print`,
+                `/jmb/docdispatchv2/${row.original.id}/print`,
                 "_blank",
               )
             }
@@ -226,7 +226,7 @@ export default function DocdispatchTable() {
         <Button
           type="button"
           className="w-full md:w-auto h-full md:h-auto"
-          onClick={() => router.push("/a_baja/docdispatch/newv2")}
+          onClick={() => router.push("/jmb/docdispatchv2/newv2")}
         >
           <Plus className="h-4 w-4 mr-2" />
           New Dispatch Doc
