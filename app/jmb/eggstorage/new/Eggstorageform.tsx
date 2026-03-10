@@ -29,6 +29,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableDropdown from "@/lib/SearchableDropdown";
+import TemperatureConverter from "@/components/TemperatureConverter";
 
 type HatchClassiRefOption = {
   classi_ref_no: string;
@@ -180,24 +181,26 @@ export default function Eggstorageform() {
         CurrentPageName={isEdit ? "Edit Record" : "New Record"}
       />
       <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
-        <CardContent className="max-w-2xl p-4 space-y-4">
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Loading...</div>
-          ) : (
-            <>
-              {/* Reference No. */}
-              <div className="grid grid-cols-1 gap-2">
-                <RequiredLabel>Egg Reference No.</RequiredLabel>
-                <SearchableDropdown
-                  list={classiRefs}
-                  codeLabel="classi_ref_no"
-                  nameLabel="classi_ref_no"
-                  showNameOnly
-                  value={classiRefNo}
-                  onChange={(val) => setClassiRefNo(val)}
-                  disabled={saving || classiRefLoading}
-                />
-                {/* <Select value={classiRefNo} onValueChange={setClassiRefNo}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <CardContent className="max-w-2xl p-4 space-y-4">
+              {loading ? (
+                <div className="text-sm text-muted-foreground">Loading...</div>
+              ) : (
+                <>
+                  {/* Reference No. */}
+                  <div className="grid grid-cols-1 gap-2">
+                    <RequiredLabel>Egg Reference No.</RequiredLabel>
+                    <SearchableDropdown
+                      list={classiRefs}
+                      codeLabel="classi_ref_no"
+                      nameLabel="classi_ref_no"
+                      showNameOnly
+                      value={classiRefNo}
+                      onChange={(val) => setClassiRefNo(val)}
+                      disabled={saving || classiRefLoading}
+                    />
+                    {/* <Select value={classiRefNo} onValueChange={setClassiRefNo}>
                   <SelectTrigger disabled={classiRefLoading || saving}>
                     <SelectValue
                       placeholder={
@@ -215,95 +218,105 @@ export default function Eggstorageform() {
                     ))}
                   </SelectContent>
                 </Select> */}
-              </div>
-              <Separator />
-              {/* TEMPS / HUMI */}
-              <div className="grid grid-cols-1 md:grid-cols-1 gap-2">
-                <div className="grid grid-cols-1 gap-2">
-                  <RequiredLabel>Storage Temperature ℃</RequiredLabel>
-                  <Input
-                    value={stor_temp}
-                    onChange={(e) => setStorTemp(e.target.value)}
-                    disabled={saving}
+                  </div>
+                  <Separator />
+                  {/* TEMPS / HUMI */}
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
+                      <RequiredLabel>Storage Temperature ℃</RequiredLabel>
+                      <Input
+                        value={stor_temp}
+                        onChange={(e) => setStorTemp(e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <RequiredLabel>Room Temperature ℃</RequiredLabel>
+                      <Input
+                        value={room_temp}
+                        onChange={(e) => setRoomTemp(e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <RequiredLabel>Storage Humidity %</RequiredLabel>
+                      <Input
+                        value={stor_humi}
+                        onChange={(e) => setStorHumi(e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+
+                  {/* SHELL TEMP TIMESTAMPS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <div className="grid grid-cols-1 gap-2">
+                      <Label>Shell Temp DateTime Start</Label>
+                      <Input
+                        type="datetime-local"
+                        value={shellStartLocal}
+                        onChange={(e) => setShellStartLocal(e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <Label>Shell Temp DateTime End</Label>
+                      <Input
+                        type="datetime-local"
+                        value={shellEndLocal}
+                        onChange={(e) => setShellEndLocal(e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <Label>Duration</Label>
+                      <Input disabled value={durationDisplay} />
+                      {shellStartLocal &&
+                        shellEndLocal &&
+                        durationSeconds == null && (
+                          <p className="text-sm text-destructive mt-1">
+                            End must be greater than Start.
+                          </p>
+                        )}
+                    </div>
+                  </div>
+
+                  {/* REMARKS */}
+                  <div className="grid grid-cols-1 gap-2">
+                    <Label>Remarks</Label>
+                    <Textarea
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      className="min-h-30"
+                      disabled={saving}
+                    />
+                  </div>
+
+                  {/* ACTIONS */}
+                  <FormActionButtons
+                    saving={saving}
+                    isEdit={isEdit}
+                    // disabled={disabledAll}
+                    cancelPath="/jmb/eggstorage"
+                    onSave={onSave}
                   />
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  <RequiredLabel>Room Temperature ℃</RequiredLabel>
-                  <Input
-                    value={room_temp}
-                    onChange={(e) => setRoomTemp(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  <RequiredLabel>Storage Humidity %</RequiredLabel>
-                  <Input
-                    value={stor_humi}
-                    onChange={(e) => setStorHumi(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-
-              {/* SHELL TEMP TIMESTAMPS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <div className="grid grid-cols-1 gap-2">
-                  <Label>Shell Temp DateTime Start</Label>
-                  <Input
-                    type="datetime-local"
-                    value={shellStartLocal}
-                    onChange={(e) => setShellStartLocal(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  <Label>Shell Temp DateTime End</Label>
-                  <Input
-                    type="datetime-local"
-                    value={shellEndLocal}
-                    onChange={(e) => setShellEndLocal(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  <Label>Duration</Label>
-                  <Input disabled value={durationDisplay} />
-                  {shellStartLocal &&
-                    shellEndLocal &&
-                    durationSeconds == null && (
-                      <p className="text-sm text-destructive mt-1">
-                        End must be greater than Start.
-                      </p>
-                    )}
-                </div>
-              </div>
-
-              {/* REMARKS */}
-              <div className="grid grid-cols-1 gap-2">
-                <Label>Remarks</Label>
-                <Textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  className="min-h-30"
-                  disabled={saving}
-                />
-              </div>
-
-              {/* ACTIONS */}
-              <FormActionButtons
-                saving={saving}
-                isEdit={isEdit}
-                // disabled={disabledAll}
-                cancelPath="/jmb/eggstorage"
-                onSave={onSave}
-              />
-            </>
-          )}
-        </CardContent>
+                </>
+              )}
+            </CardContent>
+          </div>
+          <div className="lg:col-span-1">
+            <TemperatureConverter
+              title="Temperature"
+              defaultFromUnit="C"
+              defaultValue={0}
+              showApplyButton
+            />
+          </div>
+        </div>
       </Card>
     </div>
   );

@@ -25,8 +25,13 @@ export type ChickGradingProcess = {
 
   chick_room_temperature: number | null;
   grading_personnel: string | null;
-  grading_datetime: string; // timestamptz
+  grading_datetime: string;
 
+  exploder: number | null;
+  unhatched_good: number | null;
+  unhatched_bad: number | null;
+  infertile_good: number | null;
+  infertile_bad: number | null;
   // GENERATED columns (read-only)
   total_chicks: number | null;
   good_quality_chicks: number | null;

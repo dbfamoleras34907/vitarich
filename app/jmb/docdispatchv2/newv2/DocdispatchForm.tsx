@@ -85,8 +85,8 @@ const SKU_TO_FIELD: Record<string, keyof ChickGradingQtyRow> = {
 
 const SKU_OPTIONS: SkuOption[] = [
   { sku_name: "Class A", classification: "SALEABLE" },
-  { sku_name: "Class A Junior", classification: "SALEABLE" },
 
+  { sku_name: "Class A Junior", classification: "BY_PRODUCT" },
   { sku_name: "Class B", classification: "BY_PRODUCT" },
   { sku_name: "Class C", classification: "BY_PRODUCT" },
   { sku_name: "Infertile", classification: "BY_PRODUCT" },

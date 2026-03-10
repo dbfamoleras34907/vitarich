@@ -32,6 +32,8 @@ import { getProfileByAuthId } from "@/app/admin/user/api";
 import type { User } from "@supabase/supabase-js";
 import type { UserRow } from "@/lib/types";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import RequiredLabel from "@/components/RequiredLabel";
+import SearchableDropdown from "@/lib/SearchableDropdown";
 
 // non-negative number helper (handles NaN, null, undefined)
 function n(v: any) {
@@ -67,7 +69,7 @@ export default function Chickgradingform() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [eggRefs, setEggRefs] = useState<string[]>([]);
+  const [eggRefs, setEggRefs] = useState<Record<string, any>[]>([]);
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
 
   const [batchLoading, setBatchLoading] = useState(false);
@@ -98,6 +100,12 @@ export default function Chickgradingform() {
     dead_pip: 0,
     unhatched: 0,
     rotten: 0,
+
+    exploder: 0,
+    unhatched_good: 0,
+    unhatched_bad: 0,
+    infertile_good: 0,
+    infertile_bad: 0,
 
     chick_room_temperature: null,
 
@@ -179,7 +187,7 @@ export default function Chickgradingform() {
       try {
         const refs = await listEggReferences();
         if (!alive) return;
-        setEggRefs(refs);
+        setEggRefs(refs.map((ref) => ({ classi_ref_no: ref })));
       } catch (e) {
         console.error(e);
         if (!alive) return;
@@ -221,6 +229,12 @@ export default function Chickgradingform() {
           dead_pip: n(rec.dead_pip),
           unhatched: n(rec.unhatched),
           rotten: n(rec.rotten),
+
+          exploder: n(rec.exploder),
+          unhatched_good: n(rec.unhatched_good),
+          unhatched_bad: n(rec.unhatched_bad),
+          infertile_good: n(rec.infertile_good),
+          infertile_bad: n(rec.infertile_bad),
 
           total_chicks: rec.total_chicks ?? null,
           good_quality_chicks: rec.good_quality_chicks ?? null,
@@ -311,7 +325,12 @@ export default function Chickgradingform() {
       n(form.dead_pip) +
       n(form.unhatched) +
       n(form.rotten) +
-      n(form.cull_chicks)
+      n(form.cull_chicks) +
+      n(form.exploder) +
+      n(form.unhatched_good) +
+      n(form.unhatched_bad) +
+      n(form.infertile_good) +
+      n(form.infertile_bad)
     );
   }, [
     form.infertile,
@@ -322,6 +341,11 @@ export default function Chickgradingform() {
     form.unhatched,
     form.rotten,
     form.cull_chicks,
+    form.exploder,
+    form.unhatched_good,
+    form.unhatched_bad,
+    form.infertile_good,
+    form.infertile_bad,
   ]);
 
   const totalFromInputsPreview = useMemo(() => {
@@ -337,7 +361,12 @@ export default function Chickgradingform() {
       n(form.live_pip) +
       n(form.dead_pip) +
       n(form.unhatched) +
-      n(form.rotten)
+      n(form.rotten) +
+      n(form.exploder) +
+      n(form.unhatched_good) +
+      n(form.unhatched_bad) +
+      n(form.infertile_good) +
+      n(form.infertile_bad)
     );
   }, [
     form.class_a,
@@ -352,6 +381,11 @@ export default function Chickgradingform() {
     form.dead_pip,
     form.unhatched,
     form.rotten,
+    form.exploder,
+    form.unhatched_good,
+    form.unhatched_bad,
+    form.infertile_good,
+    form.infertile_bad,
   ]);
 
   // ---- PREVIEWS (UI computed) ----
@@ -452,6 +486,11 @@ export default function Chickgradingform() {
         dead_pip: n(form.dead_pip),
         unhatched: n(form.unhatched),
         rotten: n(form.rotten),
+        exploder: n(form.exploder),
+        unhatched_good: n(form.unhatched_good),
+        unhatched_bad: n(form.unhatched_bad),
+        infertile_good: n(form.infertile_good),
+        infertile_bad: n(form.infertile_bad),
 
         chick_room_temperature:
           form.chick_room_temperature === null ||
@@ -498,8 +537,18 @@ export default function Chickgradingform() {
               <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <Label>Egg Reference No.</Label>
-                    <Select
+                    <RequiredLabel>Egg Reference No.</RequiredLabel>
+                    <SearchableDropdown
+                      list={eggRefs}
+                      codeLabel="classi_ref_no"
+                      nameLabel="classi_ref_no"
+                      showNameOnly
+                      value={form.egg_ref_no ?? ""}
+                      onChange={(val) => setField("egg_ref_no", val)}
+                      disabled={saving || eggRefsLoading}
+                    />
+
+                    {/* <Select
                       value={form.egg_ref_no ?? ""}
                       onValueChange={(v) => setField("egg_ref_no", v)}
                       disabled={eggRefsLoading || saving}
@@ -520,7 +569,7 @@ export default function Chickgradingform() {
                           </SelectItem>
                         ))}
                       </SelectContent>
-                    </Select>
+                    </Select> */}
                   </div>
 
                   <div className="space-y-1">
@@ -646,6 +695,42 @@ export default function Chickgradingform() {
                         onBlur={onNumBlur("unhatched")}
                       />
                     </div>
+                    <div className="space-y-1">
+                      <Label>Unhatched Good</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumber(form.unhatched_good)}
+                        onChange={(e) =>
+                          handleFormattedNumberChange(e, "unhatched_good")
+                        }
+                        onBlur={onNumBlur("unhatched_good")}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Unhatched Bad</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumber(form.unhatched_bad)}
+                        onChange={(e) =>
+                          handleFormattedNumberChange(e, "unhatched_bad")
+                        }
+                        onBlur={onNumBlur("unhatched_bad")}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Infertile Good</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumber(form.infertile_good)}
+                        onChange={(e) =>
+                          handleFormattedNumberChange(e, "infertile_good")
+                        }
+                        onBlur={onNumBlur("infertile_good")}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -731,6 +816,30 @@ export default function Chickgradingform() {
                           handleFormattedNumberChange(e, "rotten")
                         }
                         onBlur={onNumBlur("rotten")}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Infertile Bad</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumber(form.infertile_bad)}
+                        onChange={(e) =>
+                          handleFormattedNumberChange(e, "infertile_bad")
+                        }
+                        onBlur={onNumBlur("infertile_bad")}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Exploder</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumber(form.exploder)}
+                        onChange={(e) =>
+                          handleFormattedNumberChange(e, "exploder")
+                        }
+                        onBlur={onNumBlur("exploder")}
                       />
                     </div>
                   </div>

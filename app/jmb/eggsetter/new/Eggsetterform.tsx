@@ -31,6 +31,7 @@ import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
 import { DefaultFarm } from "@/lib/types";
 import SearchableDropdown from "@/lib/SearchableDropdown";
+import TemperatureConverter from "@/components/TemperatureConverter";
 type FormState = {
   ref_no: string;
   setting_date: string; // datetime-local
@@ -323,21 +324,23 @@ export default function Eggsetterform() {
       />
 
       <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
-        <CardContent className="max-w-2xl p-4 space-y-4">
-          {/* SECTION 1 */}
-          <div className="rounded-md border p-4 space-y-4">
-            <div className="space-y-2">
-              <RequiredLabel>Egg Reference Number</RequiredLabel>
-              <SearchableDropdown
-                list={refOptions}
-                codeLabel="classi_ref_no"
-                nameLabel="classi_ref_no"
-                showNameOnly
-                value={form.ref_no}
-                onChange={(val) => handleSelectRef(val)}
-                disabled={saving || loadingRefs}
-              />
-              {/* <Select
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <CardContent className="max-w-2xl p-4 space-y-4">
+              {/* SECTION 1 */}
+              <div className="rounded-md border p-4 space-y-4">
+                <div className="space-y-2">
+                  <RequiredLabel>Egg Reference No.</RequiredLabel>
+                  <SearchableDropdown
+                    list={refOptions}
+                    codeLabel="classi_ref_no"
+                    nameLabel="classi_ref_no"
+                    showNameOnly
+                    value={form.ref_no}
+                    onChange={(val) => handleSelectRef(val)}
+                    disabled={saving || loadingRefs}
+                  />
+                  {/* <Select
                 value={form.ref_no}
                 onValueChange={handleSelectRef}
                 disabled={loadingRefs || disabledAll}
@@ -357,220 +360,239 @@ export default function Eggsetterform() {
                   ))}
                 </SelectContent>
               </Select> */}
-            </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Farm Source</Label>
-                <Input
-                  // value={form.farm_source}
-                  value={isEdit ? form.farm_source : (defaultFarm?.name ?? "")}
-                  // value={defaultFarm?.name || ""}
-                  readOnly
-                  placeholder=""
-                  disabled
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Farm Source</Label>
+                    <Input
+                      // value={form.farm_source}
+                      value={
+                        isEdit ? form.farm_source : (defaultFarm?.name ?? "")
+                      }
+                      // value={defaultFarm?.name || ""}
+                      readOnly
+                      placeholder=""
+                      disabled
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Total Number of Egg Set</Label>
+                    <Input
+                      value={form.total_eggs}
+                      readOnly
+                      placeholder=""
+                      disabled
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Total Number of Egg Set</Label>
-                <Input
-                  value={form.total_eggs}
-                  readOnly
-                  placeholder=""
-                  disabled
+              {/* SECTION 2 */}
+              <div className="rounded-md border p-4 space-y-3">
+                {loadingRecord ? (
+                  <div className="text-sm text-muted-foreground">
+                    Loading...
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  <RequiredLabel>Setting Date</RequiredLabel>
+                  <Input
+                    type="datetime-local"
+                    value={form.setting_date}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, setting_date: e.target.value }))
+                    }
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <RequiredLabel>Setter Machine ID</RequiredLabel>
+                  <Input
+                    value={form.machine_id}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, machine_id: e.target.value }))
+                    }
+                    placeholder=""
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Incubation Duration (days)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={form.incubation_duration}
+                    onKeyDown={blockNegativeKeys}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        incubation_duration: clampNonNegative(e.target.value),
+                      }))
+                    }
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Setter Temperature (°F)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.setter_temp}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        setter_temp: clampNonNegative(e.target.value, {
+                          allowDecimal: true,
+                        }),
+                      }))
+                    }
+                    placeholder=""
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Egg Shell Temperature (°F)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.egg_shell_temp}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        egg_shell_temp: clampNonNegative(e.target.value, {
+                          allowDecimal: true,
+                        }),
+                      }))
+                    }
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Setter Humidity (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.setter_humidity}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        setter_humidity: clampNonNegative(e.target.value, {
+                          allowDecimal: true,
+                        }),
+                      }))
+                    }
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Egg Shell Temp Date &amp; Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.egg_shell_temp_dt}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        egg_shell_temp_dt: e.target.value,
+                      }))
+                    }
+                    disabled={disabledAll}
+                  />
+                  {!isValidDates ? (
+                    <p className="text-xs text-destructive">
+                      Egg Shell Temp Date &amp; Time must be after Setting Date.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Turning Interval (mins)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={form.turning_interval}
+                    onKeyDown={blockNegativeKeys}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        turning_interval: clampNonNegative(e.target.value),
+                      }))
+                    }
+                    placeholder=""
+                    disabled={disabledAll}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Egg Shell Orientation</Label>
+                  <Select
+                    value={form.egg_shell_orientation}
+                    onValueChange={(v: any) =>
+                      setForm((p) => ({ ...p, egg_shell_orientation: v }))
+                    }
+                    disabled={disabledAll}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select orientation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pointed Down">Pointed Down</SelectItem>
+                      <SelectItem value="Pointed Up">Pointed Up</SelectItem>
+                      <SelectItem value="Pointed Middle">
+                        Pointed Middle
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Turning Angle (°)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.turning_angle}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        turning_angle: clampNonNegative(e.target.value, {
+                          allowDecimal: true,
+                        }),
+                      }))
+                    }
+                  />
+                </div>
+
+                {/* Actions */}
+                <FormActionButtons
+                  saving={saving}
+                  isEdit={isEdit}
+                  disabled={disabledAll}
+                  cancelPath="/jmb/eggsetter"
+                  onSave={onSave}
                 />
               </div>
-            </div>
+            </CardContent>
           </div>
-
-          {/* SECTION 2 */}
-          <div className="rounded-md border p-4 space-y-3">
-            {loadingRecord ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : null}
-
-            <div className="space-y-2">
-              <RequiredLabel>Setting Date</RequiredLabel>
-              <Input
-                type="datetime-local"
-                value={form.setting_date}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, setting_date: e.target.value }))
-                }
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <RequiredLabel>Setter Machine ID</RequiredLabel>
-              <Input
-                value={form.machine_id}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, machine_id: e.target.value }))
-                }
-                placeholder=""
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Incubation Duration (days)</Label>
-              <Input
-                type="number"
-                min={0}
-                inputMode="numeric"
-                value={form.incubation_duration}
-                onKeyDown={blockNegativeKeys}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    incubation_duration: clampNonNegative(e.target.value),
-                  }))
-                }
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Setter Temperature (°F)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.setter_temp}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    setter_temp: clampNonNegative(e.target.value, {
-                      allowDecimal: true,
-                    }),
-                  }))
-                }
-                placeholder=""
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Egg Shell Temperature (°F)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.egg_shell_temp}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    egg_shell_temp: clampNonNegative(e.target.value, {
-                      allowDecimal: true,
-                    }),
-                  }))
-                }
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Setter Humidity (%)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.setter_humidity}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    setter_humidity: clampNonNegative(e.target.value, {
-                      allowDecimal: true,
-                    }),
-                  }))
-                }
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Egg Shell Temp Date &amp; Time</Label>
-              <Input
-                type="datetime-local"
-                value={form.egg_shell_temp_dt}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, egg_shell_temp_dt: e.target.value }))
-                }
-                disabled={disabledAll}
-              />
-              {!isValidDates ? (
-                <p className="text-xs text-destructive">
-                  Egg Shell Temp Date &amp; Time must be after Setting Date.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Turning Interval (mins)</Label>
-              <Input
-                type="number"
-                min={0}
-                inputMode="numeric"
-                value={form.turning_interval}
-                onKeyDown={blockNegativeKeys}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    turning_interval: clampNonNegative(e.target.value),
-                  }))
-                }
-                placeholder=""
-                disabled={disabledAll}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Egg Shell Orientation</Label>
-              <Select
-                value={form.egg_shell_orientation}
-                onValueChange={(v: any) =>
-                  setForm((p) => ({ ...p, egg_shell_orientation: v }))
-                }
-                disabled={disabledAll}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select orientation" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Pointed Down">Pointed Down</SelectItem>
-                  <SelectItem value="Pointed Up">Pointed Up</SelectItem>
-                  <SelectItem value="Pointed Middle">Pointed Middle</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Turning Angle (°)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.turning_angle}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    turning_angle: clampNonNegative(e.target.value, {
-                      allowDecimal: true,
-                    }),
-                  }))
-                }
-              />
-            </div>
-
-            {/* Actions */}
-            <FormActionButtons
-              saving={saving}
-              isEdit={isEdit}
-              disabled={disabledAll}
-              cancelPath="/jmb/eggsetter"
-              onSave={onSave}
+          <div className="lg:col-span-1">
+            <TemperatureConverter
+              title="Temperature"
+              defaultFromUnit="C"
+              defaultValue={0}
+              showApplyButton
             />
           </div>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );

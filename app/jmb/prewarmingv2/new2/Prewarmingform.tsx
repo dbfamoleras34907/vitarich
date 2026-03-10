@@ -29,6 +29,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import SearchableDropdown from "@/lib/SearchableDropdown";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
+import TemperatureConverter from "@/components/TemperatureConverter";
 
 type FormState = {
   egg_ref_no: string;
@@ -213,30 +214,32 @@ export default function Prewarmingform() {
       />
 
       <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-2 mt-2">
-        <CardContent className="max-w-2xl p-2 space-y-2">
-          {(loading || refLoading) && (
-            <div className="text-sm text-muted-foreground">
-              {loading ? "Loading record..." : "Loading egg references..."}
-            </div>
-          )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <CardContent className="max-w-2xl p-2 space-y-2">
+              {(loading || refLoading) && (
+                <div className="text-sm text-muted-foreground">
+                  {loading ? "Loading record..." : "Loading egg references..."}
+                </div>
+              )}
 
-          {/* Row 1 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <RequiredLabel>Egg Reference No.</RequiredLabel>
-              <SearchableDropdown
-                list={eggRefs}
-                codeLabel="classi_ref_no"
-                nameLabel="classi_ref_no"
-                showNameOnly
-                value={form.egg_ref_no}
-                // onChange={(val) => handleFarmChange(val)}
+              {/* Row 1 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <RequiredLabel>Egg Reference No.</RequiredLabel>
+                  <SearchableDropdown
+                    list={eggRefs}
+                    codeLabel="classi_ref_no"
+                    nameLabel="classi_ref_no"
+                    showNameOnly
+                    value={form.egg_ref_no}
+                    // onChange={(val) => handleFarmChange(val)}
 
-                onChange={(v) => setForm((p) => ({ ...p, egg_ref_no: v }))}
-                disabled={saving || refLoading}
-              />
+                    onChange={(v) => setForm((p) => ({ ...p, egg_ref_no: v }))}
+                    disabled={saving || refLoading}
+                  />
 
-              {/* <Select
+                  {/* <Select
                 value={form.egg_ref_no}
                 onValueChange={(v) => setForm((p) => ({ ...p, egg_ref_no: v }))}
                 disabled={saving || refLoading}
@@ -256,91 +259,104 @@ export default function Prewarmingform() {
                   ))}
                 </SelectContent>
               </Select> */}
-            </div>
+                </div>
+              </div>
+              <Separator />
+              {/* Row 2 */}
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label>Pre-Warming Temp ℃</Label>
+                  <Input
+                    value={form.pre_temp}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, pre_temp: e.target.value }))
+                    }
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Egg Shell Temp ℃</Label>
+                  <Input
+                    value={form.egg_temp}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, egg_temp: e.target.value }))
+                    }
+                    disabled={saving}
+                  />
+                </div>
+                <div />
+              </div>
+
+              {/* Row 3 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.egg_temp_time_start}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        egg_temp_time_start: e.target.value,
+                      }))
+                    }
+                    disabled={saving}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>End Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.egg_temp_time_end}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        egg_temp_time_end: e.target.value,
+                      }))
+                    }
+                    disabled={saving}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Duration</Label>
+                  <Input value={durationDisplay ?? ""} disabled />
+                </div>
+              </div>
+
+              {/* Row 4 */}
+              <div className="space-y-2">
+                <Label>Remarks</Label>
+                <Textarea
+                  value={form.remarks}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, remarks: e.target.value }))
+                  }
+                  className="min-h-27.5"
+                  disabled={saving}
+                />
+              </div>
+
+              {/* Actions */}
+              <FormActionButtons
+                saving={saving}
+                isEdit={isEdit}
+                // disabled={disabledAll}
+                cancelPath="/jmb/prewarmingv2"
+                onSave={onSave}
+              />
+            </CardContent>
           </div>
-          <Separator />
-          {/* Row 2 */}
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-            <div className="space-y-2">
-              <Label>Pre-Warming Temp ℃</Label>
-              <Input
-                value={form.pre_temp}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, pre_temp: e.target.value }))
-                }
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Egg Shell Temp ℃</Label>
-              <Input
-                value={form.egg_temp}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, egg_temp: e.target.value }))
-                }
-                disabled={saving}
-              />
-            </div>
-            <div />
-          </div>
-
-          {/* Row 3 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Start Time</Label>
-              <Input
-                type="datetime-local"
-                value={form.egg_temp_time_start}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    egg_temp_time_start: e.target.value,
-                  }))
-                }
-                disabled={saving}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>End Time</Label>
-              <Input
-                type="datetime-local"
-                value={form.egg_temp_time_end}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, egg_temp_time_end: e.target.value }))
-                }
-                disabled={saving}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <Input value={durationDisplay ?? ""} disabled />
-            </div>
-          </div>
-
-          {/* Row 4 */}
-          <div className="space-y-2">
-            <Label>Remarks</Label>
-            <Textarea
-              value={form.remarks}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, remarks: e.target.value }))
-              }
-              className="min-h-27.5"
-              disabled={saving}
+          <div className="lg:col-span-1">
+            <TemperatureConverter
+              title="Temperature"
+              defaultFromUnit="C"
+              defaultValue={0}
+              showApplyButton
             />
           </div>
-
-          {/* Actions */}
-          <FormActionButtons
-            saving={saving}
-            isEdit={isEdit}
-            // disabled={disabledAll}
-            cancelPath="/jmb/prewarmingv2"
-            onSave={onSave}
-          />
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
