@@ -155,15 +155,7 @@ export default function Layout() {
                     {/* <Button
                         onClick={() => setIsScanning(true)}
                     ><QrCode />Scan Search</Button> */}
-                    <Button
-                        onClick={async () => {
-                            const { data: { session } } = await db.auth.getSession();
-                            console.log({ session })
-                        }}
-                    >
-                        check session
-
-                    </Button>
+                    
                     <Button
                         // onClick={() => setIsScanning(true)}
                         onClick={() => route.push("/a_dean/receiving/manual")}

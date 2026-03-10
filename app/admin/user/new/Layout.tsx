@@ -1,334 +1,275 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import ARegUser from './ARegUser'
-import React from 'react'
-import { useGlobalContext } from '@/lib/context/GlobalContext'
-
-import { upsertUserProfile, getProfileByAuthId, insertUserProfile, updateUserProfile } from '../api'
-import { User } from '@supabase/supabase-js'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { UserInsert, UserRow } from '@/lib/types'
-import RuleAndPerm from './RuleAndPerm'
-import SuperUser from './SuperUser'
-import { ColumnsYesOrNoCodeOnly } from '@/lib/Defaults/DefaultColumns'
+
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { db } from '@/lib/Supabase/supabaseClient'
-import { InputDropDown } from '@/components/ui/InputDropDown'
-import { DefaultGenders } from '@/lib/Defaults/DefaultValues'
-import { getvwdmf_get_farmlist_code_name_farmtype } from './api'
+
+import { updateUserProfile, getProfileByAuthId, getProfileNotByAuthIdIsSuper } from '../api'
+import { User } from '@supabase/supabase-js'
+import { SuperUsers, UserInsert, UserRow } from '@/lib/types'
+
+import SuperUser from './SuperUser'
+import RuleAndPerm from './RuleAndPerm'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 
+import { DefaultGenders } from '@/lib/Defaults/DefaultValues'
+import { ColumnsYesOrNoCodeOnly } from '@/lib/Defaults/DefaultColumns'
+import { InputDropDown } from '@/components/ui/InputDropDown'
+import { getvwdmf_get_farmlist_code_name_farmtype } from './api'
+import { sleep } from '@/lib/utils'
+
 type authProps = {
-  email: string;
-  id: string;
-  auth_id: string;
-}
-type farm_defaults = {
-  code: string;
-  name: string;
+  email: string
+  id: string
+  auth_id: string
 }
 
 export default function Layout() {
-  const [tab, setTab] = useState(1)
   const { getValue } = useGlobalContext()
-  const [loading, setLoading] = useState(false)
-  const [isInitialLoading, setIsInitialLoading] = useState(true)
-  const [loggedInUser, setLoggedInUser] = useState<User | null>(null)
+
+  const [tab, setTab] = useState(1)
   const [form, setForm] = useState<Partial<UserRow>>({})
-  const [authSelected, setauthSelected] = useState<authProps | undefined>()
-  const [defaultfarmlist, setdefaultfarmlist] = useState<farm_defaults[]>([])
+  const [authSelected, setAuthSelected] = useState<authProps>()
+  const [defaultfarmlist, setDefaultFarmList] = useState<any[]>([])
+  const [superuserlsit, setsuperuserlsit] = useState<SuperUsers[]>([])
+  const [loggedInUser, setLoggedInUser] = useState<User | null>(null)
+
+  const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
+
   const fields = [
-    { tabIndex: 1, required: true, key: 'firstname', label: 'First Name' },
-    { tabIndex: 2, required: false, key: 'middlename', label: 'Middle Name' },
-    { tabIndex: 3, required: true, key: 'lastname', label: 'Last Name' },
-    { tabIndex: 5, required: false, key: 'mobile', label: 'Mobile' },
-    { tabIndex: 6, required: false, key: 'birthdate', label: 'Birthdate', type: 'date' },
-    { tabIndex: 7, required: false, key: 'gender', label: 'Gender' },
-    { tabIndex: 8, required: false, key: 'phone', label: 'Phone' },
-    { tabIndex: 9, required: false, key: 'location', label: 'Address' },
-    { tabIndex: 10, required: false, key: 'default_farm', label: 'Default Farm', type: "list", list: defaultfarmlist },
-    { tabIndex: 11, required: false, key: 'remarks', label: 'Remarks', component: 'textarea' },
+    { key: 'firstname', label: 'First Name', required: true },
+    { key: 'middlename', label: 'Middle Name' },
+    { key: 'lastname', label: 'Last Name', required: true },
+    { key: 'mobile', label: 'Mobile' },
+    { key: 'birthdate', label: 'Birthdate', type: 'date' },
+    { key: 'gender', label: 'Gender', type: "list", list: DefaultGenders, code: "code", name: "name", showOnlyName: true },
+    { key: 'phone', label: 'Phone' },
+    { key: 'location', label: 'Address' },
+    { key: 'default_farm', label: 'Default Farm', type: 'list', list: defaultfarmlist, code: 'code', name: "name" },
+    { key: 'supervisor', label: 'Supervisor', type: 'list', list: superuserlsit, code: 'code', name: "name" },
+    // { key: 'supervisor', label: 'Supervisor', type: 'list', list: superuserlsit, code: 'code', name: "name" },
+    { key: 'remarks', label: 'Remarks', component: 'textarea' },
   ]
 
-  const handleTabChange = (e: number) => {
-    if (e === tab) return
-    setTab(e)
-  }
-
   const handleChange = useCallback((key: keyof UserInsert, value: any) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
+    setForm((p) => ({ ...p, [key]: value }))
   }, [])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault()
+  const handleSubmit = async () => {
+    if (!loggedInUser?.id) return toast.error('Administrator not authenticated')
+    if (!authSelected?.id) return toast.error('No user selected')
+    if (tab !== 1) return toast.warning("Go to 'Details' tab to save")
 
-    if (!loggedInUser?.id) {
-      toast.error("Administrator not authenticated. Cannot save profile.");
-      return;
-    }
-
-    if (!authSelected?.id) {
-      toast.error("No user selected for profile update.");
-      return;
-    }
-
-    if (tab !== 1) {
-      toast.warning("Go to 'Details' tab to save profile.");
-      return;
-    }
     setLoading(true)
+
     try {
-      const dataToUpsert: UserInsert = {
+      await updateUserProfile({
         ...form,
         auth_id: authSelected.auth_id,
         created_by: loggedInUser.id,
-      } as UserInsert
-      console.log(dataToUpsert)
-      await updateUserProfile(dataToUpsert)
-      toast.success(`Profile for ${authSelected.email} saved successfully!`)
-    } catch (error: any) {
-      toast.error(error.message || 'Error saving profile.')
+      } as UserInsert)
+
+      toast.success(`Profile for ${authSelected.email} saved`)
+    } catch (e: any) {
+      toast.error(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const getDefaultFarms = async () => {
-    const data = await getvwdmf_get_farmlist_code_name_farmtype()
-    console.log({ data })
-    setdefaultfarmlist(data)
-  }
+  // const fetchProfile = async () => {
 
-  // Get logged-in user
-  useEffect(() => {
-    getDefaultFarms()
-    const getSessionUser = async () => {
-      const { data: { session } } = await db.auth.getSession()
-      setLoggedInUser(session?.user ?? null)
-    }
-    getSessionUser()
-  }, [])
+  //   setInitialLoading(true)
 
-  // Load selected user
-  useEffect(() => {
-    const selected = getValue("selectedUser") as authProps;
-    console.log({ selected })
-    setauthSelected(selected);
-  }, [getValue]);
+  //   try {
+  //     const profile = await getProfileByAuthId(authSelected?.auth_id ?? "")
+  //     console.log({ profile })
+  //     setForm(profile || {})
+  //   } catch {
+  //     toast.error('Failed to load profile')
+  //   } finally {
+  //     setInitialLoading(false)
+  //   }
+  // }
 
-  // Fetch selected user profile
   const fetchProfile = async () => {
-    if (!authSelected?.id) {
-      setForm({});
-      setIsInitialLoading(false);
-      return;
-    }
-
-    setIsInitialLoading(true);
+    setInitialLoading(true)
 
     try {
-      const existingProfile = await getProfileByAuthId(authSelected.auth_id)
-      if (existingProfile) {
-        setForm(existingProfile)
-      } else {
-        setForm({});
-      }
+      const profile = await getProfileByAuthId(authSelected?.auth_id ?? "")
+      console.log({ profile })
+
+      setForm({
+        ...profile,
+        supervisor: profile?.supervisor ? String(profile.supervisor) : ""
+      })
     } catch {
-      toast.error('Failed to load user profile.')
+      toast.error('Failed to load profile')
     } finally {
-      setIsInitialLoading(false);
+      setInitialLoading(false)
     }
+  }
+  const togglePermissions = (enable: boolean) => {
+    const checkboxes = document.querySelectorAll<HTMLInputElement>(
+      '#permissions-container .permission-checkbox'
+    )
+
+    let changed = 0
+
+    checkboxes.forEach((c) => {
+      if (c.checked !== enable) {
+        c.click()
+        changed++
+      }
+    })
+
+    toast.success(
+      changed
+        ? `${enable ? 'Enabled' : 'Disabled'} ${changed} permissions`
+        : `All permissions already ${enable ? 'enabled' : 'disabled'}`
+    )
+  }
+
+  const getSuperUser = async () => {
+    const data = await getProfileNotByAuthIdIsSuper(authSelected?.auth_id || "")
+    console.log({ data })
+    setsuperuserlsit(data)
   }
 
   useEffect(() => {
+    const init = async () => {
+      const { data } = await db.auth.getSession()
+      setLoggedInUser(data.session?.user ?? null)
 
+      const farms = await getvwdmf_get_farmlist_code_name_farmtype()
+      setDefaultFarmList(farms)
+    }
 
+    init()
+
+  }, [])
+
+  useEffect(() => {
+    setAuthSelected(getValue('selectedUser'))
+  }, [getValue])
+
+  useEffect(() => {
+    if (!authSelected?.auth_id) return
+    console.log(authSelected?.auth_id)
+    getSuperUser()
     fetchProfile()
   }, [authSelected])
 
-  const isSaving = loading;
-  const isDisabled = isSaving || isInitialLoading || tab !== 1 || !authSelected?.id;
-  const saveButtonText = isInitialLoading
-    ? 'Loading...'
-    : isSaving
-      ? 'Saving...'
-      : 'Save';
-
-  const handleAllowAll = () => {
-    const checkboxes = document.querySelectorAll<HTMLInputElement>(
-      "#permissions-container .permission-checkbox"
-    );
-
-    let changed = 0;
-
-    checkboxes.forEach((checkbox) => {
-      if (!checkbox.checked) {
-        checkbox.click(); // 🔥 triggers toggleUserPermission()
-        changed++;
-      }
-    });
-
-    toast.success(
-      changed > 0 ? `Enabled ${changed} permissions` : "All permissions already enabled"
-    );
-  };
-
-
-  const handleRemoveAll = () => {
-    const checkboxes = document.querySelectorAll<HTMLInputElement>(
-      "#permissions-container .permission-checkbox"
-    );
-
-    let changed = 0;
-
-    checkboxes.forEach((checkbox) => {
-      if (checkbox.checked) {
-        checkbox.click(); // 🔥 triggers toggleUserPermission()
-        changed++;
-      }
-    });
-
-    toast.success(
-      changed > 0
-        ? `Disabled ${changed} permissions`
-        : "All permissions already disabled"
-    );
-  };
-
+  const disabled = loading || initialLoading || tab !== 1 || !authSelected?.id
 
   return (
     <div>
-
-
-      <div className='px-4 my-2 flex justify-between'>
-        <p className='font-bold text-xl'>
+      <div className="px-4 my-2 flex justify-between">
+        <p className="font-bold text-xl">
           {authSelected?.email || 'No User Selected'}
         </p>
-        <div className='flex gap-2'>
+
+        <div className="flex gap-2">
           {tab === 2 && (
             <>
               <Button
-                onClick={handleAllowAll}
                 variant="secondary"
-                disabled={isInitialLoading}
+                onClick={() => togglePermissions(true)}
               >
                 Allow All
               </Button>
 
               <Button
-                onClick={handleRemoveAll}
                 variant="destructive"
-                disabled={isInitialLoading}
+                onClick={() => togglePermissions(false)}
               >
                 Remove All
               </Button>
             </>
           )}
 
-          {/* <Button disabled={isInitialLoading || !authSelected?.id} variant='secondary'>
-            Change Password
-          </Button> */}
-          {/* <Button onClick={getDefaultFarms}>getDefaultFarms</Button> */}
-          <Button onClick={() => handleSubmit()} disabled={isDisabled}>
-            {saveButtonText}
+          <Button disabled={disabled} onClick={handleSubmit}>
+            {initialLoading ? 'Loading...' : loading ? 'Saving...' : 'Save'}
           </Button>
+          <Button onClick={getSuperUser}>check getSuperUser</Button>
+          <Button onClick={() => console.log({ form })}>check form</Button>
         </div>
       </div>
 
       <Separator />
 
-      <div className='px-4 flex items-center gap-2 my-2'>
+      <div className="px-4 flex gap-2 my-2">
         <Button
-          onClick={() => handleTabChange(1)}
-          variant={tab == 1 ? 'secondary' : 'ghost'}
-          disabled={isInitialLoading}
+          variant={tab === 1 ? 'secondary' : 'ghost'}
+          onClick={() => setTab(1)}
         >
           Details
         </Button>
 
         <Button
-          onClick={() => handleTabChange(2)}
-          variant={tab == 2 ? 'secondary' : 'ghost'}
-          disabled={isInitialLoading}
+          variant={tab === 2 ? 'secondary' : 'ghost'}
+          onClick={() => setTab(2)}
         >
           Roles & Permissions
         </Button>
-
-
       </div>
 
       <Separator />
 
       {tab === 1 && (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form className="space-y-4">
           <SuperUser />
-          <div>
-            <div className="md:grid md:grid-cols-3 gap-4 px-4">
-              {fields.map((field) => (
-                <div
-                  key={field.key}
-                  className={`${field.component === 'textarea' ? 'col-span-3' : ''} mt-2 grid gap-2`}
-                >
-                  <Label required={field.required}>{field.label}</Label>
 
-                  {field.key === "gender" ? (
+          <div className="bg-white p-4 rounded-md">
+            <div className="grid grid-cols-3 gap-4">
+              {fields.map((f) => (
+                <div
+                  key={f.key}
+                  className={`${f.component === 'textarea' ? 'col-span-3' : ''} grid gap-2`}
+                >
+                  <Label required={f.required}>{f.label}</Label>
+
+                  {f.key === 'gexnder' ? (
                     <InputDropDown
                       data={DefaultGenders}
                       columns={ColumnsYesOrNoCodeOnly as any}
-                      onClick={(e: { code: string }) =>
-                        handleChange(
-                          field.key as keyof UserInsert,
-                          field.type === 'date'
-                            ? new Date(e.code).toISOString()
-                            : e.code
-                        )
-                      }
+                      onClick={(e: any) => handleChange(f.key as any, e.code)}
                     />
-                  ) : field.component === 'textarea' ? (
+                  ) : f.component === 'textarea' ? (
                     <Textarea
-                      value={(form[field.key as keyof UserInsert]) || ''}
-                      onChange={(e) => handleChange(field.key as keyof UserInsert, e.target.value)}
-                    />
-                  ) : field.type === "list" ?
-                    <SearchableDropdown
-                      list={field.list || []}
-                      codeLabel="code"
-                      nameLabel="name"
-                      value={(form[field.key as keyof UserInsert] as string) || ''}
-                      onChange={(val) =>
-                        handleChange(field.key as keyof UserInsert, val)
+                      className="border-2 border-black/30"
+                      value={(form as any)[f.key] || ''}
+                      onChange={(e) =>
+                        handleChange(f.key as any, e.target.value)
                       }
                     />
-                    : (
-                      <Input
-                        className='date-input'
-                        tabIndex={field.tabIndex}
-                        required={field.required}
-                        type={field.type || 'text'}
-                        value={
-                          field.type === 'date'
-                            ? form[field.key as keyof UserInsert]
-                              ? (form[field.key as keyof UserInsert] as string).split('T')[0]
-                              : ''
-                            : (form[field.key as keyof UserInsert] as string) || ''
-                        }
-                        onChange={(e) =>
-                          handleChange(
-                            field.key as keyof UserInsert,
-                            field.type === 'date'
-                              ? new Date(e.target.value).toISOString()
-                              : e.target.value
-                          )
-                        }
-                      />
-                    )}
+                  ) : f.type === 'list' ? (
+                    <SearchableDropdown
+                      list={f.list || []}
+                      codeLabel={f.code || ""}
+                      nameLabel={f.name || ""}
+                      // showNameOnly
+                      value={(form as any)[f.key] || ''}
+                      onChange={(v) => handleChange(f.key as any, v)}
+                    />
+                  ) : (
+                    <Input
+                      type={f.type || 'text'}
+                      value={(form as any)[f.key] || ''}
+                      onChange={(e) =>
+                        handleChange(f.key as any, e.target.value)
+                      }
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -336,14 +277,11 @@ export default function Layout() {
         </form>
       )}
 
-      {tab === 2 && !isInitialLoading && (
-        <div className='px-4'>
+      {tab === 2 && !initialLoading && (
+        <div className="px-4">
           <RuleAndPerm userId={authSelected?.auth_id || '0'} />
         </div>
       )}
-
-      {/* <Button onClick={fetchProfile}>fetchProfile</Button> */}
     </div>
   )
 }
-

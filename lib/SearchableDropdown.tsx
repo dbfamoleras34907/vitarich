@@ -89,7 +89,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
           <TooltipTrigger asChild>
             <Button
               disabled={disabled}
-              className="bg-background text-foreground hover:bg-white/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-background  text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="truncate flex items-center gap-2">
                 {displayText === "" || undefined ? <><Search /> Search... </> : displayText}

@@ -17,6 +17,7 @@ import { NewUser } from './NewUser'
 import { DataTable } from '@/components/ui/DataTable'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import DynamicTable from '@/components/ui/DataTableV2'
+import Breadcrumb from '@/lib/Breadcrumb'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext()
@@ -114,7 +115,13 @@ export default function Layout() {
     <div>
       {/* Header */}
       <div className='px-4 mt-2 flex justify-between items-center'>
-        <p className='font-semibold text-xl'>Users</p>
+        {/* <p className='font-semibold text-xl'>Users</p> */}
+        <Breadcrumb
+          SecondPreviewPageName='Admin'
+          // SecondPreviewPageLink='./'
+          CurrentPageName='Users'
+        />
+
         <div className='flex gap-2'>
           <Button variant='secondary' onClick={handleReset}>
             <RefreshCw className='h-4 w-4' />
@@ -123,9 +130,9 @@ export default function Layout() {
         </div>
       </div>
 
-      <Separator className='my-2' />
+      {/* <Separator className='my-2' /> */}
 
-      <div className='px-4 flex flex-wrap gap-4 mt-4 items-end'>
+      <div className='flex flex-wrap gap-4 mt-4 items-end'>
 
       </div>
 

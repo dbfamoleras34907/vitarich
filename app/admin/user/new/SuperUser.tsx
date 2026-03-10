@@ -44,6 +44,7 @@ export default function SuperUser() {
             <Input
                 type='checkbox'
                 id='issuper'
+                disabled
                 checked={usersInfo?.issuper === "1"}
                 onChange={handleCheckboxChange}
                 name='issuper'

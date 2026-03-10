@@ -57,7 +57,7 @@ export default function RootLayout({
               </FloatingDialogProvider>
 
             </ConfirmProvider>
-            <Toaster />
+            <Toaster position='top-center'/>
           </ThemeProvider>
         </GlobalProvider>
       </body>

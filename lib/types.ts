@@ -94,9 +94,14 @@ export interface UserInsert {
   birthdate?: string | null;
   location?: string | null;
   remarks?: string | null;
+  supervisor?: string | null;
 }
 
 
+export interface SuperUsers {
+  code: string | null;
+  name: string | null;
+}
 export interface UserRow {
   id: number;
   created_at: string; // ISO timestamp string
@@ -116,6 +121,8 @@ export interface UserRow {
   remarks: string | null;
   auth_id: UUID | null;
   issuper: string | null;
+  supervisor?: string | null;
+
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';
 

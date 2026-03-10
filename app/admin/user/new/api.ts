@@ -30,13 +30,14 @@ export async function toggleUserPermission(
       .select();
 
     if (error) throw error;
-    toast.success(`Permission ${checked ? "granted" : "revoked"}: ${groupName} - ${title}`
-    );
+    toast.success(`Permission ${checked ? "granted" : "revoked"}: ${groupName} - ${title}`);
     console.log("Permission updated:", data);
     return data;
   } catch (err) {
-    console.error("Error updating permission:", err);
-    throw err;
+    // console.log("Error updating permission:", err);
+    toast.success(`Only [Super user] can update user permissions`);
+
+    // throw err;
   }
 }
 
@@ -57,6 +58,7 @@ export async function getUserPermissions(userId: string) {
     throw err;
   }
 }
+
 export async function getvwdmf_get_farmlist_code_name_farmtype() {
   try {
     const { data, error } = await db

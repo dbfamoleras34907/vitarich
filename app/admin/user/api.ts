@@ -1,9 +1,9 @@
- 
+
 
 
 // lib/db/users.ts
 import { db } from '@/lib/Supabase/supabaseClient'
-import { Customer, UserInsert, UserRow } from '@/lib/types'
+import { Customer, SuperUsers, UserInsert, UserRow } from '@/lib/types'
 import { createClient } from '@supabase/supabase-js'
 
 export async function insertUser(user: Omit<Customer, 'id' | 'created_at'>) {
@@ -164,6 +164,21 @@ export async function getProfileByAuthId(authId: string): Promise<UserRow | null
 
   // Returns the profile data or null if not found
   return data as UserRow | null;
+}
+
+
+
+export async function getProfileNotByAuthIdIsSuper(authId: string) {
+  const { data, error } = await db
+    .from('vwdmf_super_users')
+    .select(`*`)
+    .neq('auth_id', authId);
+  if (error) {
+    console.error('Supabase Select Error:', error);
+    throw new Error(error.message);
+  }
+
+  return data ;
 }
 
 

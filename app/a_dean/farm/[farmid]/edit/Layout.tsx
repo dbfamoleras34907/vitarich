@@ -216,7 +216,7 @@ export default function Layout() {
         // return
         await updateFarmFull(farmId, payload)
 
-        toast("Farm updated successfully")
+        toast("Farm updated successfully",{position:'top-center'})
 
         router.push("/a_dean/farm")
 

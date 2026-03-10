@@ -473,7 +473,7 @@ export default function ApprovalDecisionForm() {
                           }
                         }}>
                           <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                            <Button variant="outline" className="w-45 justify-start text-left font-normal">
                               <CalendarDays className="mr-2 h-4 w-4" />
                               {item.age || '26 Weeks, 0 Day(s)'}
                             </Button>
