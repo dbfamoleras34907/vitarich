@@ -89,6 +89,7 @@ export default function Layout() {
     //         setLoading(false)
     //     }
     // }
+    // for build
     async function handleApprove() {
         const selectedRows = receivedRows.filter(
             (row: any) => row.checkbox && row.status === "pending"
