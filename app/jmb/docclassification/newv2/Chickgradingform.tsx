@@ -23,6 +23,7 @@ import {
   updateChickGradingProcess,
   generateNextBatchCode,
   getChicksHatchedByEggRef,
+  getRemainingDocClassificationInventory,
 } from "./api";
 
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -77,6 +78,8 @@ export default function Chickgradingform() {
 
   const [loggedInUser, setLoggedInUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserRow | null>(null);
+
+  const [remainingInventory, setRemainingInventory] = useState<number>(0);
 
   // include class_c
   const [form, setForm] = useState<
@@ -259,14 +262,16 @@ export default function Chickgradingform() {
   }, []);
 
   // ✅ Auto-generate Batch Code when Egg Ref changes (NEW only)
+  // ✅ Load remaining inventory + auto batch code when Egg Ref changes
   useEffect(() => {
     const egg = (form.egg_ref_no ?? "").trim();
 
     if (!egg) {
+      setRemainingInventory(0);
       setForm((p) => ({
         ...p,
         batch_code: isEdit ? p.batch_code : "",
-        total_chicks: null, // clear total chicks when egg cleared
+        total_chicks: null,
       }));
       return;
     }
@@ -277,26 +282,35 @@ export default function Chickgradingform() {
       try {
         setTotalLoading(true);
 
-        // ✅ 1) Total chicks from chick_pullout_process
-        const chicks = await getChicksHatchedByEggRef(egg);
+        // ✅ Total chicks for DOC Classification = remaining inventory from inventory_postings
+        const remaining = await getRemainingDocClassificationInventory(egg);
         if (!alive) return;
+
+        setRemainingInventory(remaining);
 
         setForm((p) => ({
           ...p,
-          total_chicks: chicks, // ✅ Total chicks field will "play"
+          total_chicks: remaining,
         }));
 
-        // ✅ 2) Auto batch code (NEW only, do not overwrite edit)
+        // ✅ Auto batch code (NEW only)
         if (!isEdit) {
           setBatchLoading(true);
           const code = await generateNextBatchCode(egg, new Date());
           if (!alive) return;
-          setForm((p) => ({ ...p, batch_code: code }));
+
+          setForm((p) => ({
+            ...p,
+            batch_code: code,
+          }));
         }
       } catch (e: any) {
         console.error(e);
         if (!alive) return;
-        alert(e?.message ?? "Failed to load total chicks / batch code.");
+
+        alert(e?.message ?? "Failed to load remaining inventory / batch code.");
+
+        setRemainingInventory(0);
         setForm((p) => ({
           ...p,
           total_chicks: null,
@@ -314,7 +328,6 @@ export default function Chickgradingform() {
       alive = false;
     };
   }, [form.egg_ref_no, isEdit]);
-
   // ✅ Total of By Product and for Dispose
   const totalByProductPreview = useMemo(() => {
     return (
@@ -594,7 +607,9 @@ export default function Chickgradingform() {
                     <Label>Total Chicks</Label>
                     <Input
                       value={
-                        totalLoading ? "Loading..." : String(totalChicksPreview)
+                        totalLoading
+                          ? "Loading..."
+                          : formatNumber(remainingInventory)
                       }
                       disabled
                     />

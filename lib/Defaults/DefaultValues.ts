@@ -132,7 +132,8 @@ export const NavFolders = [
         ],
       },
     ],
-  }, {
+  },
+  {
     id: 3,
     title: "Workspace",
     url: "#",
@@ -146,7 +147,6 @@ export const NavFolders = [
           { type: "Module", title: "Sprints", url: "" },
         ],
       },
-
     ],
   },
   {
@@ -163,7 +163,7 @@ export const NavFolders = [
           { type: "Module", title: "Farm Settings", url: "/a_dean/farm" },
           {
             type: "Module",
-            title: "Boiler Settings",
+            title: "Broiler Settings",
             url: "/jmb/boilermasterdata",
           },
           { type: "Module", title: "General Settings", url: "#" },
@@ -185,7 +185,10 @@ export const ListOfYear: CodeNameBase[] = Array.from(
   },
 );
 
-export const DefaultGenders = [{ code: "Male", name: "Male" }, { code: "Female", name: "Female" }];
+export const DefaultGenders = [
+  { code: "Male", name: "Male" },
+  { code: "Female", name: "Female" },
+];
 
 export const today = new Date().toISOString().slice(0, 10);
 
@@ -202,13 +205,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-    { code: "todo", name: "To Do", color: "gray" },
-    { code: "in_progress", name: "In Progress", color: "blue" },
-    { code: "in_review", name: "In Review", color: "purple" },
-    { code: "blocked", name: "Blocked", color: "red" },
-    { code: "done", name: "Done", color: "green" },
-    { code: "reopened", name: "Reopened", color: "orange" },
-  ];
+  { code: "todo", name: "To Do", color: "gray" },
+  { code: "in_progress", name: "In Progress", color: "blue" },
+  { code: "in_review", name: "In Review", color: "purple" },
+  { code: "blocked", name: "Blocked", color: "red" },
+  { code: "done", name: "Done", color: "green" },
+  { code: "reopened", name: "Reopened", color: "orange" },
+];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -217,12 +220,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-    // { code: "highest", name: "Highest", color: "red" },
-    { code: "high", name: "High", color: "orange" },
-    { code: "medium", name: "Medium", color: "yellow" },
-    { code: "low", name: "Low", color: "blue" },
-    // { code: "lowest", name: "Lowest", color: "gray" },
-  ];
+  // { code: "highest", name: "Highest", color: "red" },
+  { code: "high", name: "High", color: "orange" },
+  { code: "medium", name: "Medium", color: "yellow" },
+  { code: "low", name: "Low", color: "blue" },
+  // { code: "lowest", name: "Lowest", color: "gray" },
+];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },

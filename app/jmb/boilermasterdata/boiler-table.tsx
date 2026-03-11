@@ -128,13 +128,13 @@ export default function BoilerTable() {
       {/* Top Controls */}
       <Breadcrumb
         SecondPreviewPageName="Master Data"
-        CurrentPageName="Boiler List"
+        CurrentPageName="Broiler List"
       />
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <div className="relative w-72">
             <Input
-              placeholder="Filter Boiler Name"
+              placeholder="Filter Broiler Name"
               className="pl-10"
               value={
                 (table.getColumn("boiler_name")?.getFilterValue() as string) ??

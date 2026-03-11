@@ -62,7 +62,7 @@ export default function BoilerForm() {
 
   function validate() {
     const name = form.boiler_name.trim();
-    if (!name) return "Boiler name is required.";
+    if (!name) return "Broiler name is required.";
     // If you want these required too, keep them required:
     const region = form.region.trim();
     const address = form.address.trim();
@@ -189,7 +189,7 @@ export default function BoilerForm() {
               <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                 {/* Boiler Name */}
                 <div className="space-y-1">
-                  <RequiredLabel>Boiler Name</RequiredLabel>
+                  <RequiredLabel>Broiler Name</RequiredLabel>
 
                   <Input
                     value={form.boiler_name}

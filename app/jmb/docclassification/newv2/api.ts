@@ -192,3 +192,36 @@ export async function getChicksHatchedByEggRef(eggRefNo: string) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
+
+export async function getRemainingDocClassificationInventory(eggRefNo: string) {
+  const egg = (eggRefNo ?? "").trim();
+  if (!egg) return 0;
+
+  const { data, error } = await db
+    .from("inventory_postings")
+    .select("qty, transfer_type")
+    .eq("source_doc_type", "CLASSIFICATION")
+    .eq("item_code", "HE")
+    .eq("warehouse_code", "HAT-G-A")
+    .eq("ref", egg);
+
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<{
+    qty: number | string | null;
+    transfer_type: string | null;
+  }>;
+
+  let totalIn = 0;
+  let totalOut = 0;
+
+  for (const row of rows) {
+    const qty = Math.max(0, Number(row.qty ?? 0));
+    const transferType = (row.transfer_type ?? "").trim().toUpperCase();
+
+    if (transferType === "IN") totalIn += qty;
+    if (transferType === "OUT") totalOut += qty;
+  }
+
+  return Math.max(0, totalIn - totalOut);
+}
