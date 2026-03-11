@@ -122,6 +122,7 @@ export interface UserRow {
   auth_id: UUID | null;
   issuper: string | null;
   supervisor?: string | null;
+  isactive?: string | null;
 
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';

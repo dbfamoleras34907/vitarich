@@ -44,7 +44,7 @@ export function LoginForm({
     } else {
       setGlobals()
       setValue('loading_g', true)
-      router.push("/home");
+      router.push("/init");
       setloading(false)
       setValue('loading_g', false)
     }
@@ -64,7 +64,7 @@ export function LoginForm({
       // console.log({ payload, session })
 
       // return
-      await createApprovalRequest(payload)  
+      await createApprovalRequest(payload)
       toast("Password reset request submitted")
       setOpenModal(false)
       setResetPassword("")
@@ -89,8 +89,9 @@ export function LoginForm({
           Enter your email below to login to your account
         </p>
       </div>
-
-      <div className="grid gap-6 bg-white p-4 rounded-md border">
+      <div>
+      </div>
+      <div className="grid gap-6 bg-white p-4 rounded-md border border-black/20 shadow">
         <div className="grid gap-3">
           <Label>Email</Label>
           <Input
@@ -124,7 +125,11 @@ export function LoginForm({
           {loading ? <LoaderIcon className="animate-spin" /> : "Login"}
         </Button>
       </div>
-
+      <div className=" gap-6  p-4 rounded-md border border-black/20 shadow flex text-sm text-center ">
+        <div className="mx-auto flex gap-2">
+          New to Hatchery?<a href="/signup" className="text-blue-600 font-semibold">Create an account</a>
+        </div>
+      </div>
       <Modal
         open={openModal}
         onOpenChange={setOpenModal}
