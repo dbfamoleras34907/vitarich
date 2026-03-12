@@ -10,6 +10,7 @@ import GlobalLoading from "@/loading";
 import { SidebarProvider } from "@/lib/sidebar/SidebarProvider";
 import AppSideBarControler from "@/lib/sidebar/AppSideBarControler";
 import { Toaster } from "sonner";
+import RouteGuard from '@/lib/SignupUpdateGuard';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,8 @@ export default function RootLayout({
       >
         <NextTopLoader color="#2563eb" showSpinner={false} />
         <GlobalProvider>
+          <RouteGuard />
+
           <ThemeProvider
             attribute="class"
             defaultTheme="light"
@@ -57,7 +60,7 @@ export default function RootLayout({
               </FloatingDialogProvider>
 
             </ConfirmProvider>
-            <Toaster position='top-center'/>
+            <Toaster position='top-center' />
           </ThemeProvider>
         </GlobalProvider>
       </body>

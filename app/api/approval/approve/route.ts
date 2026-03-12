@@ -3,8 +3,10 @@ import { db } from "@/lib/Supabase/supabaseClient"
 import { decryptValue } from "@/lib/decrypt"
 
 export async function POST(req: Request) {
+
   const { requestId, approvedBy } = await req.json()
 
+  /* get approval request */
   const { data: request, error } = await db
     .from("approval_requests")
     .select("*")
@@ -14,23 +16,43 @@ export async function POST(req: Request) {
   if (error) throw error
   if (!request) throw new Error("Request not found")
 
-  const password = decryptValue(request.value_encrypted)
+  /* PASSWORD RESET APPROVAL */
+  if (request.request_type === "password_reset") {
 
-  const { data: userRow, error: userError } = await db
-    .from("users")
-    .select("auth_id")
-    .eq("email", request.user_email)
-    .single()
+    const password = decryptValue(request.value_encrypted)
 
-  if (userError) throw userError
-  if (!userRow) throw new Error("User not found")
+    const { data: userRow, error: userError } = await db
+      .from("users")
+      .select("auth_id")
+      .eq("email", request.user_email)
+      .single()
 
-  const authId = userRow.auth_id
+    if (userError) throw userError
+    if (!userRow) throw new Error("User not found")
 
-  await admin_db.auth.admin.updateUserById(authId, {
-    password
-  })
+    const authId = userRow.auth_id
 
+    await admin_db.auth.admin.updateUserById(authId, {
+      password
+    })
+  }
+
+  /* USER ACTIVATION APPROVAL */
+  if (request.request_type === "user_activation") {
+
+    const email = request.value_encrypted
+
+    const { error: activateError } = await db
+      .from("users")
+      .update({
+        isactive: 1
+      })
+      .eq("email", email)
+
+    if (activateError) throw activateError
+  }
+
+  /* update approval request */
   const { error: updateError } = await db
     .from("approval_requests")
     .update({

@@ -22,7 +22,7 @@ import { decryptValue } from "@/lib/decrypt"
 //   return data
 // }
 
- 
+
 
 export async function getApprovalRequests() {
   const {
@@ -45,7 +45,7 @@ export async function getApprovalRequests() {
   )
 
   if (error) {
-    console.error({error})
+    console.error({ error })
     return []
   }
 

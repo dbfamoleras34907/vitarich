@@ -32,12 +32,6 @@ export function NewUser() {
           <div className="grid gap-4">
            <ARegUser/>
           </div>
-          {/* <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button type="submit">Save changes</Button>
-          </DialogFooter> */}
         </DialogContent>
       </form>
     </Dialog>

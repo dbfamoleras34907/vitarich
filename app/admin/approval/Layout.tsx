@@ -5,7 +5,7 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
-import {  getApprovalRequests, rejectApproval } from './api'
+import { getApprovalRequests, rejectApproval } from './api'
 import { getAuthId } from '@/lib/getAuthId'
 import { getProfileByAuthId } from '../user/api'
 import { toast } from 'sonner'
@@ -36,50 +36,67 @@ export default function Layout() {
     useEffect(() => {
         loadApprovals()
     }, [])
+
     // async function handleApprove() {
-    //     const selectedRows = receivedRows.filter((row: any) => row.checkbox)
+    //     const selectedRows = receivedRows.filter(
+    //         (row: any) => row.checkbox && row.status === "pending"
+    //     )
+
     //     if (selectedRows.length === 0) {
-    //         toast("No records selected")
+    //         toast("No pending records selected")
     //         return
     //     }
+
     //     setLoading(true)
+
     //     try {
     //         const authId = await getAuthId()
 
     //         if (!authId) {
-    //             toast("Session error: Unable to retrieve auth ID")
+    //             toast("Session error")
     //             return
     //         }
 
     //         const user = await getProfileByAuthId(authId)
 
     //         if (!user) {
-    //             toast("Session error: User profile not found")
+    //             toast("User profile not found")
     //             return
     //         }
+
     //         await Promise.all(
-    //             selectedRows.map((row) => {
-    //                 // console.log({ row }, user.id)
-    //                 approvePasswordReset(row.id, user.id)
-    //             }
+    //             selectedRows.map((row) =>
+    //                 fetch("/api/approval/approve", {
+    //                     method: "POST",
+    //                     headers: {
+    //                         "Content-Type": "application/json"
+    //                     },
+    //                     body: JSON.stringify({
+    //                         requestId: row.id,
+    //                         approvedBy: user.id
+    //                     })
+    //                 })
     //             )
     //         )
-    //         loadApprovals()
+
     //         toast("Selected requests approved successfully")
+    //         loadApprovals()
+
     //     } catch (error) {
-    //         console.error("Approve password reset error:", error)
-    //         toast("An unexpected error occurred while approving requests")
+    //         console.error(error)
+    //         toast("Error approving requests")
     //     } finally {
     //         setLoading(false)
     //     }
-    //     loadApprovals()
-
     // }
+    // for build
     async function handleApprove() {
-        const selectedRows = receivedRows.filter((row: any) => row.checkbox)
+        const selectedRows = receivedRows.filter(
+            (row: any) => row.checkbox && row.status === "pending"
+        )
 
         if (selectedRows.length === 0) {
-            toast("No records selected")
+            toast("No pending records selected")
             return
         }
 
@@ -109,14 +126,16 @@ export default function Layout() {
                         },
                         body: JSON.stringify({
                             requestId: row.id,
-                            approvedBy: user.id
+                            approvedBy: user.id,
+                            requestType: row.request_type,
+                            valueEncrypted: row.value_encrypted
                         })
                     })
                 )
             )
 
             toast("Selected requests approved successfully")
-            loadApprovals()
+            await loadApprovals()
 
         } catch (error) {
             console.error(error)
@@ -127,21 +146,23 @@ export default function Layout() {
     }
 
     async function handleReject() {
-        const selected = receivedRows.filter((r: any) => r.checkbox)
-        const selectedRows = receivedRows.filter((row: any) => row.checkbox)
+        const selectedRows = receivedRows.filter(
+            (row: any) => row.checkbox && row.status === "pending"
+        )
+
         if (selectedRows.length === 0) {
-            toast("No records selected")
+            toast("No pending records selected")
             return
         }
-        if (selected.length === 0) return
 
         setLoading(true)
 
         await Promise.all(
-            selected.map((row) => rejectApproval(row.id, 1))
+            selectedRows.map((row) => rejectApproval(row.id, 1))
         )
 
         await loadApprovals()
+        setLoading(false)
     }
 
     return (
@@ -165,6 +186,15 @@ export default function Layout() {
 
             <div className='mt-4 bg-white rounded-2xl px-4'>
                 <DynamicTable
+                    initialFilters={[
+                        {
+                            columnKey: "status",
+                            joiner: "and",
+                            id: "status",
+                            operator: "equals",
+                            value: "pending"
+                        }
+                    ]}
                     columns={receivedColumns.map((col) => ({
                         key: col.key,
                         label: col.label,
@@ -173,13 +203,20 @@ export default function Layout() {
                             const value = row[col.key]
 
                             if (col.key === 'checkbox') {
+                                const isPending = row.status === "pending"
+
                                 return (
                                     <input
                                         type="checkbox"
-                                        checked={!!row.checkbox}
+                                        disabled={!isPending}
+                                        checked={!!row.checkbox && isPending}
                                         onChange={(e) => {
+                                            if (!isPending) return
+
                                             const updated = receivedRows.map((r) =>
-                                                r.id === row.id ? { ...r, checkbox: e.target.checked } : r
+                                                r.id === row.id
+                                                    ? { ...r, checkbox: e.target.checked }
+                                                    : r
                                             )
                                             setReceivedRows(updated)
                                         }}
@@ -188,7 +225,19 @@ export default function Layout() {
                             }
 
                             if (col.type === "date") return formatDateTime(String(value))
-                            if (col.type === "status") return <Badge className='border-2 border-black/10 uppercase' variant={`${value === "pending" ? 'secondary' : "default"}`}>{value}</Badge>
+                            if (col.type === "status") return (
+                                <Badge
+                                    className="border-2 border-black/10 uppercase"
+                                    variant={
+                                        value === "pending"
+                                            ? "secondary"
+                                            : value === "rejected"
+                                                ? "destructive"
+                                                : "default"
+                                    }
+                                >
+                                    {value ?? "asd"}
+                                </Badge>)
 
                             if (value === null || value === undefined || value === '') return '-'
 
