@@ -400,7 +400,7 @@ export default function EggHatchform() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push("/a_baja/egghatcherv2")}
+                  onClick={() => router.push("/jmb/egghatcherv2")}
                   disabled={saving}
                 >
                   Cancel
