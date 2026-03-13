@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const { error: activateError } = await db
       .from("users")
       .update({
-        isactive: 1
+        isactive: '1'
       })
       .eq("email", email)
 

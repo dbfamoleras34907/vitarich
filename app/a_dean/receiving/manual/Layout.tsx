@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/popover"
 import { useConfirm } from '@/lib/ConfirmProvider'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
+import SearchableCombobox from '@/components/SearchableCombobox'
 
 type ItemMasterType = {
   id: number
@@ -323,7 +324,7 @@ export default function ApprovalDecisionForm() {
           <div className="sm:grid md:grid-cols-3 sm:grid-cols-2 gap-6">
             <div className='mt-2'>
               <Label className='pb-2'>Delivered From</Label>
-              <SearchableDropdown
+              {/* <SearchableDropdown
                 list={farms}
                 codeLabel="code"
                 nameLabel="name"
@@ -339,6 +340,28 @@ export default function ApprovalDecisionForm() {
                     } : h
                   )
                 }}
+              /> */}
+
+
+              <SearchableCombobox
+                multiple={true}
+                showCode
+                autoHighlight
+                items={farms}
+                value={header?.soldTo || ''}
+                className='w-full'
+                onValueChange={(val) => {
+                  const selectedFarm = farms.find((f: any) => f.code === val)
+                  setHeader(h =>
+                    h ? {
+                      ...h,
+                      soldTo: val,
+                      tin: selectedFarm?.tin || '',
+                      address: selectedFarm?.address || '',
+                    } : h
+                  )
+                }
+                }
               />
             </div>
             {headerFieldsLeft.map((field, i) => (
