@@ -310,9 +310,9 @@ export default function ApprovalDecisionForm() {
               />
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setloading(false)}>
+              {/* <Button type="button" variant="outline" onClick={() => setloading(false)}>
                 Check farms
-              </Button>
+              </Button> */}
               <Button type="submit" disabled={loading}>
                 <Save className="mr-2 h-4 w-4" /> Save Record
               </Button>
@@ -344,7 +344,7 @@ export default function ApprovalDecisionForm() {
 
 
               <SearchableCombobox
-                multiple={true}
+                multiple={false}
                 showCode
                 autoHighlight
                 items={farms}
@@ -362,6 +362,7 @@ export default function ApprovalDecisionForm() {
                   )
                 }
                 }
+
               />
             </div>
             {headerFieldsLeft.map((field, i) => (

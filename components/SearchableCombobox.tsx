@@ -74,14 +74,18 @@ export default function SearchableCombobox(props: Props) {
   const selectItem = (code: string) => {
     if (props.multiple) {
       const current = Array.isArray(props.value) ? props.value : []
+
       if (!current.includes(code)) {
         props.onValueChange([...current, code])
       }
+
+      // keep dropdown open for multiple select
     } else {
       props.onValueChange(code)
-    }
 
-    setOpen(false) // ✅ auto close dropdown
+      // close only for single select
+      setOpen(false)
+    }
   }
 
   return (
@@ -111,7 +115,9 @@ export default function SearchableCombobox(props: Props) {
           else props.onValueChange(val)
         }
 
-        setOpen(false) // also close when clicking item
+        if (!props.multiple) {
+          setOpen(false)
+        }
       }}
     >
       <ComboboxChips ref={anchor} className={`${className} w-full border`}>
@@ -120,8 +126,8 @@ export default function SearchableCombobox(props: Props) {
             const normalized = Array.isArray(values)
               ? values
               : values
-              ? [values]
-              : []
+                ? [values]
+                : []
 
             if (props.multiple) {
               return (
@@ -130,7 +136,7 @@ export default function SearchableCombobox(props: Props) {
                     const item = items.find((f) => f.code === val)
 
                     return (
-                      <ComboboxChip key={val}>
+                      <ComboboxChip key={val} className="bg-black/75 rounded-2xl text-white">
                         {formatLabel(item)}
                       </ComboboxChip>
                     )
