@@ -163,7 +163,7 @@ export default function Eggsetterform() {
     const id = Number(idParam);
     if (!Number.isFinite(id)) {
       alert("Invalid id.");
-      router.push("/a_baja/eggsetter");
+      router.push("/jmb/eggsetter");
       return;
     }
 
@@ -175,7 +175,7 @@ export default function Eggsetterform() {
         if (!mounted) return;
         if (!row) {
           alert("Record not found.");
-          router.push("/a_baja/eggsetter");
+          router.push("/jmb/eggsetter");
           return;
         }
 
@@ -304,7 +304,7 @@ export default function Eggsetterform() {
         await createSetterIncubation(payload);
       }
 
-      router.push("/a_baja/eggsetter");
+      router.push("/jmb/eggsetter");
       router.refresh();
     } catch (e: any) {
       alert(e?.message ?? "Failed to save.");

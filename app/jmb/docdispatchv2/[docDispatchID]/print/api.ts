@@ -1,5 +1,3 @@
-// app/a_baja/docdispatch/[docDispatchID]/print/api.ts
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from "@/lib/Supabase/supabaseClient";
 
 export type DocDispatchPrintHeader = {

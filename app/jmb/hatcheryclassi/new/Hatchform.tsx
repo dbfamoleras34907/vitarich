@@ -394,7 +394,7 @@ export default function Hatchform() {
         };
 
         await updateHatchClassification(id, payload);
-        router.push("/a_baja/hatcheryclassi");
+        router.push("/jmb/hatcheryclassi");
         return;
       }
 
@@ -421,7 +421,7 @@ export default function Hatchform() {
       };
 
       await createHatchClassification(payload);
-      router.push("/a_baja/hatcheryclassi");
+      router.push("/jmb/hatcheryclassi");
     } catch (err: any) {
       console.error(err);
       alert(err?.message ?? "Failed to save.");
