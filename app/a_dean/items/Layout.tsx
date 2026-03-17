@@ -70,6 +70,7 @@ export default function Layout() {
       {/* 🔹 Table */}
       {!loading && (
         <DynamicTable
+        loading={loading}
           columns={columns.map((col) => ({
             key: col.key,
             label: col.label,

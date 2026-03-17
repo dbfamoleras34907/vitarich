@@ -2,6 +2,8 @@
 
 import React from "react"
 import SearchableCombobox from "@/components/SearchableCombobox"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
 
 const numbers = [
     { code: "1", name: "one" },
@@ -77,7 +79,8 @@ export default function page() {
                         : "none"}
                 </div>
             </div>
-
+      <Button onClick={()=> toast("test")} >Toast test</Button>
+      // toast example
         </div>
     )
 }

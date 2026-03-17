@@ -33,7 +33,7 @@ type authProps = {
 }
 
 export default function Layout() {
-  const { getValue } = useGlobalContext()
+  const { getValue, setValue } = useGlobalContext()
 
   const [tab, setTab] = useState(1)
   const [form, setForm] = useState<Partial<UserRow>>({})
@@ -100,7 +100,9 @@ export default function Layout() {
   //     setInitialLoading(false)
   //   }
   // }
-
+  useEffect(() => {
+    setValue("loading_g", loading || initialLoading)
+  }, [loading, initialLoading])
   const fetchProfile = async () => {
     setInitialLoading(true)
 

@@ -38,19 +38,19 @@ export async function POST(req: Request) {
   }
 
   /* USER ACTIVATION APPROVAL */
-  if (request.request_type === "user_activation") {
+  // if (request.request_type === "user_activation") {
 
-    const email = request.value_encrypted
+  //   const email = request.value_encrypted
 
-    const { error: activateError } = await db
-      .from("users")
-      .update({
-        isactive: '1'
-      })
-      .eq("email", email)
+  //   const { error: activateError } = await db
+  //     .from("users")
+  //     .update({
+  //       isactive: '1'
+  //     })
+  //     .eq("email", email)
 
-    if (activateError) throw activateError
-  }
+  //   if (activateError) throw activateError
+  // }
 
   /* update approval request */
   const { error: updateError } = await db

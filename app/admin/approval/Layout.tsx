@@ -11,10 +11,12 @@ import { getProfileByAuthId } from '../user/api'
 import { toast } from 'sonner'
 import { formatDateTime } from '@/lib/formatDate'
 import { Badge } from '@/components/ui/badge'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 
 export default function Layout() {
     const [receivedRows, setReceivedRows] = useState<RowDataKey[]>([])
     const [loading, setLoading] = useState(false)
+    const { setValue } = useGlobalContext()
 
     const receivedColumns: ColumnConfig[] = [
         { key: 'checkbox', label: '#', type: 'checkbox', disabled: false },
@@ -37,59 +39,6 @@ export default function Layout() {
         loadApprovals()
     }, [])
 
-    // async function handleApprove() {
-    //     const selectedRows = receivedRows.filter(
-    //         (row: any) => row.checkbox && row.status === "pending"
-    //     )
-
-    //     if (selectedRows.length === 0) {
-    //         toast("No pending records selected")
-    //         return
-    //     }
-
-    //     setLoading(true)
-
-    //     try {
-    //         const authId = await getAuthId()
-
-    //         if (!authId) {
-    //             toast("Session error")
-    //             return
-    //         }
-
-    //         const user = await getProfileByAuthId(authId)
-
-    //         if (!user) {
-    //             toast("User profile not found")
-    //             return
-    //         }
-
-    //         await Promise.all(
-    //             selectedRows.map((row) =>
-    //                 fetch("/api/approval/approve", {
-    //                     method: "POST",
-    //                     headers: {
-    //                         "Content-Type": "application/json"
-    //                     },
-    //                     body: JSON.stringify({
-    //                         requestId: row.id,
-    //                         approvedBy: user.id
-    //                     })
-    //                 })
-    //             )
-    //         )
-
-    //         toast("Selected requests approved successfully")
-    //         loadApprovals()
-
-    //     } catch (error) {
-    //         console.error(error)
-    //         toast("Error approving requests")
-    //     } finally {
-    //         setLoading(false)
-    //     }
-    // }
-    // for build
     async function handleApprove() {
         const selectedRows = receivedRows.filter(
             (row: any) => row.checkbox && row.status === "pending"
@@ -164,7 +113,9 @@ export default function Layout() {
         await loadApprovals()
         setLoading(false)
     }
-
+    useEffect(() => {
+        setValue("loading_g", loading)
+    }, [loading])
     return (
         <div>
             <div className='px-2'>
@@ -186,6 +137,7 @@ export default function Layout() {
 
             <div className='mt-4 bg-white rounded-2xl px-4'>
                 <DynamicTable
+                loading={loading}
                     initialFilters={[
                         {
                             columnKey: "status",

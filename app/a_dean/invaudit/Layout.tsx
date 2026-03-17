@@ -150,6 +150,7 @@ export default function Layout() {
 
       {/* Dynamic Table */}
       <DynamicTable
+      loading={isLoading}
         initialFilters={[]}
         columns={tableColumns.map((col) => ({
           key: col.key,

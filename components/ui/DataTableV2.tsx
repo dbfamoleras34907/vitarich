@@ -3,6 +3,7 @@
 import { formatDateTime } from '@/lib/formatDate'
 import { MoveDown, MoveUp, Search } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
+import { Skeleton } from './skeleton'
 
 // export type Column<T> = {
 //   key: keyof T | string
@@ -34,7 +35,8 @@ export type FilterRule = {
 type Props<T> = {
   columns: Column<T>[]
   data: T[]
-  initialFilters?: FilterRule[] // ⭐ OPTIONAL PROGRAMMATIC FILTER
+  loading: boolean
+  initialFilters?: FilterRule[]
 }
 
 type SortState = {
@@ -45,6 +47,7 @@ type SortState = {
 export default function DynamicTable<T extends Record<string, any>>({
   columns,
   data,
+  loading,
   initialFilters,
 }: Props<T>) {
 
@@ -392,7 +395,7 @@ export default function DynamicTable<T extends Record<string, any>>({
 
 
 
-          <tbody>
+          {/* <tbody>
             {paginatedData.map((row, i) => (
               <tr key={i} className="border-t hover:bg-background">
                 {columns.map((col, i) => (
@@ -412,8 +415,49 @@ export default function DynamicTable<T extends Record<string, any>>({
                 ))}
               </tr>
             ))}
+          </tbody> */}
+
+          <tbody>
+
+            {/* LOADING STATE */}
+            {loading &&
+              Array.from({ length: 4 }).map((_, rowIndex) => (
+                <tr key={rowIndex} className="border-t">
+                  {columns.map((_, colIndex) => (
+                    <td key={colIndex} className="p-3">
+                      <Skeleton className="h-4 w-full" />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            }
+
+            {/* DATA ROWS */}
+            {!loading &&
+              paginatedData.map((row, i) => (
+                <tr key={i} className="border-t hover:bg-background">
+                  {columns.map((col, i) => (
+                    <td key={i} className="p-3 whitespace-nowrap">
+                      {(() => {
+                        const value = row[col.key as keyof T]
+
+                        if (col.type === "date" && value) {
+                          return formatDateTime(String(value))
+                        }
+
+                        if (col.render) {
+                          return col.render(row)
+                        }
+
+                        return String(value ?? "")
+                      })()}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
+      
       </div>
 
       {/* FOOTER */}

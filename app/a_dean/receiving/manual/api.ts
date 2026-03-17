@@ -79,12 +79,12 @@ export async function createReceiving(payload: any) {
 
       items,
     } = payload
-
+    console.log({ payload, items })
     const { data, error } = await db.rpc('insert_receiving', {
       p_doc_date: doc_date,
       p_temperature: temperature,
       p_humidity: humidity,
-
+// build2
       p_soldto: soldTo,
       p_attention: Attention,
       p_po_no: po_no,

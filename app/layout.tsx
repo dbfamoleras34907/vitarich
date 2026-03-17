@@ -38,7 +38,7 @@ export default function RootLayout({
       <body
         className={`  font-sans antialiased`}
       >
-        <NextTopLoader color="#2563eb" showSpinner={true} />
+        <NextTopLoader color="#2563eb" showSpinner={false} />
         <GlobalProvider>
           <RouteGuard />
           <GlobalLoaderController />

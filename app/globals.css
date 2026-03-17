@@ -152,7 +152,7 @@
 
 .loader-bar {
   height: 100%;
-  background: red;
+  background: rgb(44, 226, 68);
   /* Red for testing */
   animation: loading-animation 2s linear infinite;
   transform-origin: left;

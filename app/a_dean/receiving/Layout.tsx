@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/DataTable'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { getReceivingDraftPending, getReceivingList } from './api'
+import { getReceivingDraftPending, getReceivingList, getReceivingListByUser } from './api'
 import TableSkeleton from '@/components/ui/TableSkeleton'
 import { sleep } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -26,6 +26,7 @@ export default function Layout() {
         await new Promise(resolve => setTimeout(resolve, 3000))
 
     }
+
 
     const [receivedRows, setReceivedRows] = useState<RowDataKey[]>([])
     const [loadingReceived, setLoadingReceived] = useState(true)
@@ -138,9 +139,9 @@ export default function Layout() {
     }, [])
 
     useEffect(() => {
-     setValue("loading_g", loading)
+        setValue("loading_g", loading)
     }, [loading])
-    
+
 
     return (
         <div>
@@ -157,10 +158,19 @@ export default function Layout() {
                     CurrentPageName='Receiving List'
                 />
                 <div className='flex gap-4'>
-                  
+
                     <Button
                         // onClick={() => setIsScanning(true)}
-                        onClick={() => route.push("/a_dean/receiving/manual")}
+                        onClick={async () => {
+                            const isHasSuperVisor = await getReceivingListByUser()
+                            if (isHasSuperVisor == '') {
+                                toast.error("Your account is not yet assigned to a supervisor. Please contact your administrator.")
+                                return
+                            }
+                            route.push("/a_dean/receiving/manual")
+
+                        }
+                        }
                     ><Plus /> Receive Manually</Button>
                 </div>
             </div>
@@ -177,6 +187,7 @@ export default function Layout() {
             {
                 !loading && (
                     <DynamicTable
+                    loading={loading}
                         initialFilters={[
                             {
                                 id: "",
@@ -245,6 +256,7 @@ export default function Layout() {
 
                 {!loadingReceived && (
                     <DynamicTable
+                    loading={loadingReceived}
                         initialFilters={[]} // show all records
                         columns={receivedColumns.map((col) => ({
                             key: col.key,

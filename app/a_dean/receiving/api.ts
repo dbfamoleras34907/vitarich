@@ -27,3 +27,20 @@ export async function getReceivingList(): Promise<ReceivingListRow[]> {
 
   return data as ReceivingListRow[]
 }
+
+
+// get user where supervisor is not null
+export async function getReceivingListByUser(): Promise<string> {
+  // get session
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  const { data, error } = await db
+    .from('users')
+    .select('*')
+    .eq('auth_id', sessionData.session?.user.id)
+    .not('supervisor', 'is', null)
+  console.log({ data })
+  console.log({ error })
+  console.log(sessionData.session?.user.id)
+
+  return data?.[0]?.id || '';
+}

@@ -56,6 +56,7 @@ export default function Layout() {
                 <Button onClick={() => route.push("/a_dean/projects/new")}><Plus /> New Project</Button>
             </div>
             <DynamicTable
+            loading={loading}
                 // initialFilters={[
                 //     {
                 //         id: "",

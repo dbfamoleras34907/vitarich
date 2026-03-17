@@ -6,11 +6,12 @@ import React, { useEffect, useState } from 'react'
 import { getProfileByAuthId } from '../api'
 import { UserRow } from '@/lib/types'
 import { db } from '@/lib/Supabase/supabaseClient'
+import { BracketCheckbox } from '@/components/BracketCheckbox '
 
 export default function SuperUser() {
     const [loggedInUser, setLoggedInUser] = useState<User | null>(null)
     const [usersInfo, setusersInfo] = useState<UserRow | null>(null)
-
+    const [sampleChecked, setSampleChecked] = useState(false)
 
 
     const getUserInfoFromDatabase = async (authId: string) => {
@@ -19,8 +20,8 @@ export default function SuperUser() {
     }
 
 
-    const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isChecked = e.target.checked
+    const handleCheckboxChange = (isChecked: boolean) => {
+        // const isChecked = e.target.checked
         setusersInfo(prev => prev ? { ...prev, issuper: isChecked ? "1" : "0" } : null)
     }
 
@@ -41,14 +42,19 @@ export default function SuperUser() {
 
     return (
         <div className='mx-4 flex w-fit items-center'>
-            <Input
+            {/* <Input
                 type='checkbox'
                 id='issuper'
                 disabled
                 checked={usersInfo?.issuper === "1"}
                 onChange={handleCheckboxChange}
                 name='issuper'
-            />
+            /> */}
+            <BracketCheckbox checked={usersInfo?.issuper === "1"} onChange={handleCheckboxChange} />
+
+            {/* <BracketCheckbox checked={sampleChecked} onChange={() => setSampleChecked(prev => !prev)
+            } /> */}
+
             <label htmlFor='issuper' className='whitespace-nowrap mx-2'>Super User</label>
         </div>
     )

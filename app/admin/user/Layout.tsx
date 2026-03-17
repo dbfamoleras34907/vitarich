@@ -111,6 +111,11 @@ export default function Layout() {
     route.prefetch('/admin/user/new')
   }, [])
 
+
+  useEffect(() => {
+    setValue("loading_g", loading)
+  }, [loading,])
+
   return (
     <div>
       {/* Header */}
@@ -151,6 +156,7 @@ export default function Layout() {
       </div> */}
       <div className="px-4">
         <DynamicTable
+          loading={loading}
           initialFilters={[]} // show all records
           columns={tableColumnsx.map((col) => ({
             key: col.key,

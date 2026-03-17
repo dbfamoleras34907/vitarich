@@ -148,7 +148,7 @@ export default function ApprovalDecisionForm() {
     setItems(p => p.filter(i => !(i.isNew && selectedRows.includes(i.id))))
     setSelectedRows([])
   }
-
+  const [headerBreed, setHeaderBreed] = useState('')
   const headerFieldsLeft = [
     { required: true, disabled: false, code: "", label: 'Delivered Date', type: 'date', value: header?.doc_date || '', onChange: (v: string) => setHeader(h => h ? { ...h, doc_date: v } : h) },
     { required: true, disabled: true, code: "", label: 'Address', value: header?.address || '', onChange: (v: string) => setHeader(h => h ? { ...h, address: v } : h) },
@@ -178,11 +178,12 @@ export default function ApprovalDecisionForm() {
       if (!row.brdr_ref_no) missingFields.push("brdr_ref_no")
       if (!row.sku) missingFields.push("sku")
       if (!row.lot_no) missingFields.push("lot_no")
-      if (!row.breed) missingFields.push("breed")
+      // if (!row.breed) missingFields.push("breed")
       if (!row.prod_date) missingFields.push("prod_date")
       if (!row.age) missingFields.push("age")
       if (!row.house_no) missingFields.push("house_no")
       if (row.actual_total === undefined) missingFields.push("actual_total")
+      if (headerBreed == "" || headerBreed == null) missingFields.push("Breed")
 
       if (missingFields.length > 0) {
         alert(`Missing fields: ${missingFields.join(", ")}`)
@@ -245,6 +246,8 @@ export default function ApprovalDecisionForm() {
   //   setloading(false)
   // }
   const insertMe = async () => {
+
+
     setloading(true)
 
     const confirmed = await confirm({
@@ -256,13 +259,14 @@ export default function ApprovalDecisionForm() {
 
     setloading(confirmed)
     if (!confirmed) return;
-
+    console.log({ brdr_ref_no })
     const transformedItems = items.map(i => ({
       ...i,
       brdr_ref_no: `${brdr_ref_no ?? ""}-${i.house_no ?? ""}`,
       sku: i.sku ?? "",
       lot_no: i.lot_no ?? "",
-      breed: i.breed ?? "",
+      // www: i.breed ?? "",
+      breed: headerBreed || "",
       house_no: i.house_no ?? "",
       prod_date: i.prod_date ?? "",
       prod_date_to: i.prod_date_to ?? "",
@@ -270,7 +274,7 @@ export default function ApprovalDecisionForm() {
       total_api: i.total ?? 0,
       actual_count: i.actual_total ?? 0,
     }))
-
+    console.log({ transformedItems })
     const payload = {
       doc_date: header?.doc_date ?? "",
       temperature: Number(temperature) || 0,
@@ -416,6 +420,15 @@ export default function ApprovalDecisionForm() {
                 />
               </div>
             ))}
+
+            <div className='mt-1'>
+              <Label className='pb-2' required>Breed</Label>
+              <Input
+                required
+                value={headerBreed}
+                onChange={(e) => setHeaderBreed(e.target.value)}
+              />
+            </div>
           </div>
 
           <div>
@@ -443,7 +456,7 @@ export default function ApprovalDecisionForm() {
                     <TableHead>EGG SKU</TableHead>
                     <TableHead>UoM</TableHead>
                     <TableHead>Lot No.</TableHead>
-                    <TableHead>Breed</TableHead>
+                    {/* <TableHead>Breed</TableHead> */}
                     <TableHead>Production Date</TableHead>
                     <TableHead>Age</TableHead>
                     <TableHead>House No.</TableHead>
@@ -493,13 +506,13 @@ export default function ApprovalDecisionForm() {
                           onChange={e => updateItem(item.id, { lot_no: e.target.value })}
                         />
                       </TableCell>
-                      <TableCell>
+                      {/* <TableCell>
                         <Input
                           required
                           value={item.breed || ''}
                           onChange={e => updateItem(item.id, { breed: e.target.value })}
                         />
-                      </TableCell>
+                      </TableCell> */}
                       <TableCell>
                         <DateRangePicker
                           onChange={(e) => {

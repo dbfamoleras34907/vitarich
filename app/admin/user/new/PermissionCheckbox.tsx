@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { toggleUserPermission } from "./api";
+import { BracketCheckbox } from "@/components/BracketCheckbox ";
 
 interface PermissionCheckboxProps {
   groupName: string;
@@ -26,8 +27,8 @@ export const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
     setChecked(defaultValue);
   }, [defaultValue]);
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newChecked = e.target.checked;
+  const handleChange = async (newChecked: boolean) => {
+    
     setChecked(newChecked);
 
     await toggleUserPermission(userId, groupName, title, newChecked, url);
@@ -35,14 +36,17 @@ export const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
 
   return (
     <div className="flex items-center gap-2 mb-1">
-      <input
+      {/* <input
         type="checkbox"
         id={`${groupName}-${title}`}
-        className="permission-checkbox"   // 🔥 added for DOM targeting
+        className="permission-checkbox"   
         checked={checked}
         onChange={handleChange}
-      />
-      <label htmlFor={`${groupName}-${title}`}>
+      /> */}
+
+      <BracketCheckbox checked={checked} onChange={handleChange} />
+
+        < label htmlFor={`${groupName}-${title}`}>
         {title} ({type})
       </label>
     </div>

@@ -85,6 +85,7 @@ export default function Layout() {
 
       <div className='mt-4'>
         <DynamicTable
+        loading={loading}
           initialFilters={[]}
           columns={tableColumnsx.map((col) => ({
             key: col.key,
