@@ -29,6 +29,7 @@ import { EggTransferProcess, listEggTransfers } from "./newv2/api";
 import Breadcrumb from "@/lib/Breadcrumb";
 import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { formatNumber } from "@/lib/utils/numberFormat";
 
 function formatDateTime(v?: string | null) {
   if (!v) return "";
@@ -143,12 +144,12 @@ export default function EggTransferTable() {
     {
       accessorKey: "num_bangers",
       header: "No. of Bangers",
-      cell: ({ row }) => row.original.num_bangers ?? "",
+      cell: ({ getValue }) => formatNumber(getValue<number>()),
     },
     {
       accessorKey: "total_egg_transfer",
       header: "Total Egg Transfer",
-      cell: ({ row }) => row.original.total_egg_transfer ?? "",
+      cell: ({ getValue }) => formatNumber(getValue<number>()),
     },
   ];
 

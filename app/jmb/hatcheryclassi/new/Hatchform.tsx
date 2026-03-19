@@ -102,6 +102,7 @@ type FormState = {
   jumbo: number;
   misshapen: number;
   leakers: number;
+  dirties: number;
   ttl_count: number;
   discrepancy: number;
   percentage_egg_recovery: number;
@@ -131,6 +132,7 @@ const emptyForm: FormState = {
   jumbo: 0,
   misshapen: 0,
   leakers: 0,
+  dirties: 0,
   ttl_count: 0,
   discrepancy: 0,
   percentage_egg_recovery: 0,
@@ -164,6 +166,7 @@ export default function Hatchform() {
       { label: "Jumbo", name: "jumbo" },
       { label: "Misshapen", name: "misshapen" },
       { label: "Leakers", name: "leakers" },
+      { label: "Dirties", name: "dirties" },
     ],
     [],
   );
@@ -239,6 +242,7 @@ export default function Hatchform() {
         base.jumbo = Number(row.jumbo ?? 0);
         base.misshapen = Number(row.misshapen ?? 0);
         base.leakers = Number(row.leakers ?? 0);
+        base.dirties = Number(row.dirties ?? 0);
 
         // Try to populate "view" fields from the breeders view by br_no
         const selected = breeders.find((b) => b.brdr_ref_no === base.br_no);
@@ -432,6 +436,7 @@ export default function Hatchform() {
           jumbo: form.jumbo,
           misshapen: form.misshapen,
           leakers: form.leakers,
+          dirties: form.dirties,
           ttl_count: form.ttl_count,
           is_active: true,
         };
@@ -459,6 +464,7 @@ export default function Hatchform() {
         jumbo: form.jumbo,
         misshapen: form.misshapen,
         leakers: form.leakers,
+        dirties: form.dirties,
         ttl_count: form.ttl_count,
         is_active: true,
       };
@@ -642,6 +648,16 @@ export default function Hatchform() {
               <NumberField
                 label="Leakers"
                 name="leakers"
+                placeholder="0"
+                form={form}
+                onChange={handleChange}
+                disabled={disabledAll}
+              />
+            </div>
+            <div className="md:col-span-1">
+              <NumberField
+                label="Dirties"
+                name="dirties"
                 placeholder="0"
                 form={form}
                 onChange={handleChange}

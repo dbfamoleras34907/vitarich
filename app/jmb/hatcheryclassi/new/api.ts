@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { ReceivingListRow } from "@/lib/types";
 
 export type HatchClassification = {
   created_at: string;
@@ -20,6 +21,7 @@ export type HatchClassification = {
   date_classify: string | null;
   misshapen: number | null;
   leakers: number | null;
+  dirties: number | null;
 };
 
 export type HatchClassificationInsert = {
@@ -41,6 +43,7 @@ export type HatchClassificationInsert = {
   date_classify: string | null;
   misshapen: number | null;
   leakers: number | null;
+  dirties: number | null;
 };
 
 export type HatchClassificationRow = HatchClassificationInsert & {
@@ -50,6 +53,11 @@ export type HatchClassificationRow = HatchClassificationInsert & {
   updated_at: string | null;
   updated_by: string | null;
 };
+
+export type HatchForClassificationRow = ReceivingListRow & {
+  id: number;
+};
+
 // build
 export async function createHatchClassification(
   payload: HatchClassificationInsert,
@@ -73,17 +81,6 @@ export async function getHatchClassificationById(id: number) {
 
   if (error) throw new Error(error.message);
   return data as HatchClassificationRow;
-}
-
-export async function listHatchClassification(limit = 50) {
-  const { data, error } = await db
-    .from("hatch_classification")
-    .select("*")
-    .order("id", { ascending: false })
-    .limit(limit);
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as HatchClassificationRow[];
 }
 
 export async function updateHatchClassification(
@@ -116,3 +113,24 @@ export type HatchClassificationUpdate = Partial<
 > & {
   updated_at?: string;
 };
+export async function listHatchClassification(limit = 50) {
+  const { data, error } = await db
+    .from("hatch_classification")
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as HatchClassificationRow[];
+}
+export async function getReceivingList(limit = 50) {
+  const { data, error } = await db
+    .from("vwdmf_receiving_list")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  return data as ReceivingListRow[];
+}
