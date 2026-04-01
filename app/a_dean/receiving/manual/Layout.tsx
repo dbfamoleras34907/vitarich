@@ -29,6 +29,7 @@ import {
 import { useConfirm } from '@/lib/ConfirmProvider'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import SearchableCombobox from '@/components/SearchableCombobox'
+import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 
 type ItemMasterType = {
   id: number
@@ -157,7 +158,12 @@ export default function ApprovalDecisionForm() {
   ]
 
   const headerFieldsRight = [
-    { disabled: true, code: "", label: 'Shipped To', type: 'text', value: defaultFarm?.code + ' - ' + defaultFarm?.name, onChange: setPostingDate },
+    // {
+    //   disabled: true, code: "", label: 'Shipped To', type: 'text',
+    //   value: defaultFarm?.code + ' - ' + defaultFarm?.name,
+    //   onChange: setPostingDate
+    // },
+    // { disabled: true, code: "", label: 'Shipped To', type: 'text', value: defaultFarm?.code + ' - ' + defaultFarm?.name, onChange: setPostingDate },
     { required: false, disabled: false, code: "", label: 'Shipped Via', value: header?.shipped_via || '', onChange: (v: string) => setHeader(h => h ? { ...h, shipped_via: v } : h) },
     { required: true, disabled: false, code: "", label: 'Posting Date', type: 'date', value: postingDate, onChange: setPostingDate },
     { required: false, disabled: false, code: "", label: 'P.O No', value: header?.po_no || '', onChange: (v: string) => setHeader(h => h ? { ...h, po_no: v } : h) },
@@ -194,7 +200,7 @@ export default function ApprovalDecisionForm() {
     return true
   }
 
- 
+
   const insertMe = async () => {
     setloading(true)
     const confirmed = await confirm({
@@ -355,6 +361,19 @@ export default function ApprovalDecisionForm() {
           <Separator className='my-2' />
 
           <div className="sm:grid md:grid-cols-3 sm:grid-cols-2 gap-6">
+
+            <div className='mt-1'>
+              <DefaultFarmComboBox
+                label="Shipped To"
+                value={header?.delivered_to || ''}
+                setValue={(val) =>
+                  setHeader(h =>
+                    h ? { ...h, delivered_to: val } : h
+                  )
+                }
+              />
+            </div>
+
             {headerFieldsRight.map((field, i) => (
               <div key={i} className='mt-1'>
                 <Label required={field.required} className='pb-2 mt-1'>{field.label}</Label>
