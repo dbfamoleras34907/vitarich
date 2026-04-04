@@ -20,7 +20,6 @@ import { useRouter } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { toast } from 'sonner'
-import { VerticalRuler } from '@/components/VerticalRuler'
 import {
   Popover,
   PopoverContent,
@@ -522,7 +521,7 @@ export default function ApprovalDecisionForm() {
                               /> */}
 
                               <VerticalRuler2
-                                label="Height (cm)"
+                                label='Weeks'
                                 min={26}
                                 max={104}
                                 value={activeWeeks}
@@ -530,7 +529,7 @@ export default function ApprovalDecisionForm() {
                               />
 
                                <VerticalRuler2
-                                label="Height (cm)"
+                                label='Days'
                                 min={0}
                                 max={6}
                                 value={activeDays}
