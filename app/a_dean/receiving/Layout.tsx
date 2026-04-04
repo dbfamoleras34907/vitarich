@@ -80,8 +80,8 @@ export default function Layout() {
         { key: 'action', label: 'Trace', type: 'button', disabled: true },
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
-        { key: 'jr', label: 'JR', type: 'text', disabled: true },
-        { key: 'he', label: 'HE', type: 'text', disabled: true },
+        { key: 'itemcode', label: 'Item', type: 'text', disabled: true },
+        // { key: 'he', label: 'HE', type: 'text', disabled: true },
         { key: 'actual_count', label: 'Total', type: 'text', disabled: true },
 
         { key: 'doc_date', label: 'Doc Date', type: 'text', disabled: true },
@@ -117,7 +117,7 @@ export default function Layout() {
         setLoadingReceived(false)
     }
 
-    useEffect(() => {
+    useEffect(() => {   
         refreshSessionx(route);
     }, [])
 
@@ -187,7 +187,7 @@ export default function Layout() {
             {
                 !loading && (
                     <DynamicTable
-                    loading={loading}
+                        loading={loading}
                         initialFilters={[
                             {
                                 id: "",
@@ -256,7 +256,7 @@ export default function Layout() {
 
                 {!loadingReceived && (
                     <DynamicTable
-                    loading={loadingReceived}
+                        loading={loadingReceived}
                         initialFilters={[]} // show all records
                         columns={receivedColumns.map((col) => ({
                             key: col.key,

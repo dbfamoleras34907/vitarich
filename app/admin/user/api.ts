@@ -154,6 +154,9 @@ export async function updateUserProfile(
   userProfileData: UserInsert,
   defaultFarms?: string[] | []
 ) {
+
+
+  console.log({ userProfileData, defaultFarms })
   const payload = {
     p_auth_id: userProfileData.auth_id,
     p_updated_by: userProfileData.created_by,

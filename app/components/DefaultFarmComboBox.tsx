@@ -21,24 +21,21 @@ export default function DefaultFarmComboBox({
 
     const [farmList, setFarmList] = useState<any[]>([])
     const [authSelected, setAuthSelected] = useState<AuthUser | null>(null)
- 
+
     useEffect(() => {
-        const selectedUser = getValue('selectedUser')
+        const selectedUser = getValue('UserInfoAuthSession')
         if (selectedUser) {
-            setAuthSelected(selectedUser)
+            setAuthSelected(selectedUser[0])
         }
     }, [getValue])
 
- 
+
     useEffect(() => {
         if (!authSelected?.id) return
-
         const init = async () => {
             const farms = await getUserFarms(Number(authSelected.id))
-            console.log({ farms })
             setFarmList(farms || [])
         }
-
         init()
 
     }, [authSelected])

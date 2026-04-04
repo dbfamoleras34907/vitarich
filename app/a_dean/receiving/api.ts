@@ -19,7 +19,7 @@ export async function getReceivingDraftPending() {
 
 export async function getReceivingList(): Promise<ReceivingListRow[]> {
   const { data, error } = await db
-    .from('vwdmf_receiving_list')
+    .from('recieving')
     .select('*')
     .order('created_at', { ascending: false })
 

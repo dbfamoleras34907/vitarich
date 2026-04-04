@@ -5,12 +5,15 @@ import { useRouter } from 'next/navigation'
 import React, { useLayoutEffect } from 'react'
 import { sleep } from '@/lib/utils';
 import { logout } from '@/lib/Supabase/supabaseClient';
+import { useGlobalContext } from '@/lib/context/GlobalContext';
 export default function Layout() {
     const router = useRouter();
+    const { clearStore } = useGlobalContext();
     useLayoutEffect(() => {
         const x = async () => {
             sleep(500)
             await logout();
+            clearStore();
             router.push("/");
         };
         x();

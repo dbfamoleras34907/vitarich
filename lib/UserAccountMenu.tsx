@@ -58,7 +58,7 @@ export default function UserAccountMenu({ session, collapsed }: any) {
           >
             Logout
           </Button>
-          <GlobalFarmUserSettings />
+          {/* <GlobalFarmUserSettings /> */}
 
           <Separator className="my-2 " />
 
