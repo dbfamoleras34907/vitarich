@@ -303,14 +303,14 @@ export default function CheckPulloutForm() {
                   <Input value={String(form.hatch_window ?? 0)} disabled />
                 </div>
 
-                <div className="space-y-1">
+                {/* <div className="space-y-1">
                   <Label>Farm Source</Label>
                   <Input
                     value={form.farm_source ?? ""}
                     disabled
                     placeholder=""
                   />
-                </div>
+                </div> */}
 
                 <div className="space-y-1">
                   <Label>Machine Number</Label>

@@ -356,6 +356,8 @@ export type ReceivingListRow = {
   house_no: string | null
   jr: string | null
   he: string | null
+  farm_id: number | null
+  farm_name: string | null
 }
 
 

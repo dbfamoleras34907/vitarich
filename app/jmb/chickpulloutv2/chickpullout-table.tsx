@@ -87,10 +87,10 @@ export default function ChickPulloutTable() {
         accessorKey: "chick_hatch_ref_no",
         header: "Chick Hatch Ref. No.",
       },
-      {
-        accessorKey: "farm_source",
-        header: "Farm Source",
-      },
+      // {
+      //   accessorKey: "farm_source",
+      //   header: "Farm Source",
+      // },
       {
         accessorKey: "machine_no",
         header: "Machine",

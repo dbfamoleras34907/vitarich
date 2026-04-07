@@ -323,14 +323,14 @@ export default function EggHatchform() {
                   </Select>
                 </div>
                 <Separator />
-                <div className="space-y-1">
+                {/* <div className="space-y-1">
                   <Label>Farm Source</Label>
                   <Input
                     value={form.farm_source}
                     onChange={(e) => setField("farm_source", e.target.value)}
                     placeholder=""
                   />
-                </div>
+                </div> */}
 
                 <div className="space-y-1">
                   <Label>Date Received</Label>
