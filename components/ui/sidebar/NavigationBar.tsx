@@ -56,7 +56,7 @@ export default function NavigationBar({
             <SidebarInset>
                 <header className="
                         fixed top-0 left-0
-                        w-full z-0
+                        w-full z-5
                         bg-white shadow
                         h-15    
                         flex items-center gap-2 px-4

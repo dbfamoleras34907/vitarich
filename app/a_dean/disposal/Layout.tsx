@@ -34,6 +34,7 @@ export default function Layout() {
       .from("disposal")
       .select("*")
       .eq("void", false)
+      .eq("farm_id", getValue("DefaultFarmId") || "")
       .order("id", { ascending: false })
 
     if (!error && data) {
@@ -70,13 +71,12 @@ export default function Layout() {
           CurrentPageName='Disposal'
         />
         <div>
-          <Button onClick={() => 
-          {
+          <Button onClick={() => {
             setLoading(true)
             route.push("/a_dean/disposal/new")
 
           }
-            }>
+          }>
             <Edit />
             New Disposal
           </Button>
@@ -85,7 +85,7 @@ export default function Layout() {
 
       <div className='mt-4'>
         <DynamicTable
-        loading={loading}
+          loading={loading}
           initialFilters={[]}
           columns={tableColumnsx.map((col) => ({
             key: col.key,

@@ -228,6 +228,11 @@ export default function ApprovalDecisionForm() {
 
 
   const insertMe = async () => {
+
+  }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validateLineItems()) return
     setloading(true)
     const confirmed = await confirm({
       title: "Receive items?",
@@ -238,13 +243,11 @@ export default function ApprovalDecisionForm() {
 
     setloading(confirmed)
     if (!confirmed) return;
-    // console.log({ brdr_ref_no })
     const transformedItems = items.map(i => ({
       ...i,
       brdr_ref_no: `${brdr_ref_no ?? ""}-${i.house_no ?? ""}`,
       sku: i.sku ?? "",
       lot_no: i.lot_no ?? "",
-      // www: i.breed ?? "",
       breed: headerBreed || "",
       house_no: i.house_no ?? "",
       prod_date: i.prod_date ?? "",
@@ -253,7 +256,6 @@ export default function ApprovalDecisionForm() {
       total_api: i.total ?? 0,
       actual_count: i.actual_total ?? 0,
     }))
-    // console.log({ transformedItems })
     const payload = {
       doc_date: header?.doc_date ?? "",
       temperature: Number(temperature) || 0,
@@ -285,11 +287,6 @@ export default function ApprovalDecisionForm() {
     console.log({ payload })
     setloading(false)
   }
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validateLineItems()) return
-    await insertMe()
-  }
 
   const [footer, setFooter] = useState({
     crates: '',
@@ -320,7 +317,7 @@ export default function ApprovalDecisionForm() {
               </Button> */}
               <Button type="submit" disabled={loading}>
                 <Save className="mr-2 h-4 w-4" /> Save Record
-              </Button> 
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -368,15 +365,17 @@ export default function ApprovalDecisionForm() {
           <Separator className='my-2' />
 
           <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-
+            {/* base on this add a condition where "scanning = 1 on the addition row  " */}
             <div className='mt-1'>
               <DefaultFarmComboBox
                 label="Shipped To"
                 value={header?.delivered_to || ''}
-                setValue={(val) =>
+                setValue={(val) => {
+                  console.log({ val })
                   setHeader(h =>
                     h ? { ...h, delivered_to: val } : h
                   )
+                }
                 }
               />
             </div>
@@ -450,7 +449,7 @@ export default function ApprovalDecisionForm() {
                         )}
                       </TableCell>
                       <TableCell>{index + 1}</TableCell>
-                 
+
                       <TableCell>
                         <SearchableDropdown
                           list={ItemMaster}
@@ -528,7 +527,7 @@ export default function ApprovalDecisionForm() {
                                 onChange={setActiveWeeks}
                               />
 
-                               <VerticalRuler2
+                              <VerticalRuler2
                                 label='Days'
                                 min={0}
                                 max={6}

@@ -14,8 +14,12 @@ import {
   CommandInput,
   CommandItem,
 } from '@/components/ui/command'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { GlassWater, Search } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { Search } from 'lucide-react'
 
 type Props<T> = {
   list: T[]
@@ -26,10 +30,13 @@ type Props<T> = {
   placeholder?: string
   width?: number
   disabled?: boolean
+  allowFreeText?: boolean
   onChange: (value: string, item: T) => void
 }
 
-export default function SearchableDropdown<T extends Record<string, any>>({
+export default function SearchableDropdown<
+  T extends Record<string, any>
+>({
   list,
   codeLabel,
   nameLabel,
@@ -38,14 +45,18 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   showNameOnly = false,
   width = 400,
   disabled = false,
+  allowFreeText = false,
   onChange,
 }: Props<T>) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
 
   const displayText = (() => {
-    const found = list.find(i => String(i[codeLabel]) === value)
-    if (!found) return placeholder
+    const found = list.find(
+      i => String(i[codeLabel]) === value
+    )
+
+    if (!found) return value || placeholder
 
     if (!nameLabel) return String(found[codeLabel])
 
@@ -61,6 +72,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
 
     return list.filter(item => {
       const code = String(item[codeLabel]).toLowerCase()
+
       const name = nameLabel
         ? String(item[nameLabel]).toLowerCase()
         : ''
@@ -75,24 +87,49 @@ export default function SearchableDropdown<T extends Record<string, any>>({
     setSearch('')
   }
 
+  const selectFreeText = () => {
+    const newItem: T = {
+      [codeLabel]: search,
+      ...(nameLabel
+        ? { [nameLabel]: search }
+        : {}),
+    } as T
+
+    onChange(search, newItem)
+    setOpen(false)
+    setSearch('')
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Tab' && filtered.length > 0) {
-      selectItem(filtered[0])
+    if (e.key === 'Tab') {
+      if (filtered.length > 0) {
+        selectItem(filtered[0])
+      } else if (allowFreeText && search) {
+        selectFreeText()
+      }
     }
   }
 
   return (
-    <Popover open={open} onOpenChange={(o) => !disabled && setOpen(o)} >
+    <Popover
+      open={open}
+      onOpenChange={(o) => !disabled && setOpen(o)}
+    >
       <Tooltip>
-        {/* PopoverTrigger wraps TooltipTrigger OR vice-versa — both asChild */}
         <PopoverTrigger asChild>
           <TooltipTrigger asChild>
             <Button
               disabled={disabled}
-              className="bg-background  text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="truncate flex items-center gap-2">
-                {displayText === "" || undefined ? <><Search /> Search... </> : displayText}
+                {!displayText ? (
+                  <>
+                    <Search /> Search...
+                  </>
+                ) : (
+                  displayText
+                )}
               </span>
             </Button>
           </TooltipTrigger>
@@ -104,7 +141,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
       </Tooltip>
 
       <PopoverContent
-        className="p-0 max-h-[50vh]"
+        className="p-0 max-h-[min(50vh,calc(100vh-120px))] overflow-auto"
         style={{ width }}
       >
         <Command onKeyDown={handleKeyDown}>
@@ -114,19 +151,23 @@ export default function SearchableDropdown<T extends Record<string, any>>({
             onValueChange={setSearch}
           />
 
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>
+            {allowFreeText && search ? (
+              <CommandItem onSelect={selectFreeText}>
+                Use: "{search}"
+              </CommandItem>
+            ) : (
+              'No results found.'
+            )}
+          </CommandEmpty>
 
-          <CommandGroup className=''>
+          <CommandGroup>
             {filtered.map((item, idx) => (
               <CommandItem
                 key={idx}
                 onSelect={() => selectItem(item)}
-                className='w-full whitespace-nowrap px-4'
+                className="w-full whitespace-nowrap px-4"
               >
-                {/* {nameLabel
-                  ? `${item[codeLabel]} — ${item[nameLabel]}`
-                  : item[codeLabel]} */}
-
                 {nameLabel
                   ? showNameOnly
                     ? String(item[nameLabel])
@@ -134,10 +175,17 @@ export default function SearchableDropdown<T extends Record<string, any>>({
                   : String(item[codeLabel])}
               </CommandItem>
             ))}
+
+            {allowFreeText  &&
+              // filtered.length === 0 && (
+                <CommandItem onSelect={selectFreeText}>
+                  Use: "{search}"
+                </CommandItem>
+              // )
+              }
           </CommandGroup>
         </Command>
       </PopoverContent>
     </Popover>
-
   )
 }

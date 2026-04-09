@@ -410,11 +410,11 @@ export default function Layout() {
         </div>
       )}
 
-      <DefaultFarmComboBox
+      {/* <DefaultFarmComboBox
         label='Default farm'
         setValue={setFarm}
         value={farm}
-      />
+      /> */}
     </div>
   )
 }

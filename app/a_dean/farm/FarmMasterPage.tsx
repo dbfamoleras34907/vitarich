@@ -32,8 +32,8 @@ type Section = {
 }
 
 export default function FarmMasterPage() {
-    const { setValue, getValue } = useGlobalContext()
-  
+  const { setValue, getValue } = useGlobalContext()
+
   const router = useRouter()
   const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
   const [loading, setLoading] = useState(false)
@@ -54,7 +54,7 @@ export default function FarmMasterPage() {
     setLoading(true)
     const data = await getFarms()
     console.log({ data })
-    setinitialRows(data)
+    setinitialRows(data ?? [])  
     setLoading(false)
 
   }
@@ -82,7 +82,7 @@ export default function FarmMasterPage() {
 
       {!loading ? (
         <DynamicTable
-        loading={loading}
+          loading={loading}
           columns={tableColumnsx.map((col) => ({
             key: col.key,
             label: col.label,

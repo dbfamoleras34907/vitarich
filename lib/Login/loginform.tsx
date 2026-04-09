@@ -33,20 +33,24 @@ export function LoginForm({
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setloading(true)
-    const { error } = await db.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error } = await db.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      toast(error.message)
-      setloading(false)
-    } else {
-      setGlobals()
-      setValue('loading_g', true)
-      router.push("/init");
-      setloading(false)
-      setValue('loading_g', false)
+      if (error) {
+        toast(error.message)
+        setloading(false)
+      } else {
+        setGlobals()
+        setValue('loading_g', true)
+        router.push("/init");
+        setloading(false)
+        setValue('loading_g', false)
+      }
+    } catch (error) {
+      alert("An error occurred during login. Please try again.")
     }
   }
 

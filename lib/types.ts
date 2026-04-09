@@ -282,6 +282,8 @@ export type Farms = {
   barangay: string
   city: string
   province: string
+  ref: string | null
+  ref_type: string | null
 }
 
 // DMF - 27022026
@@ -484,4 +486,28 @@ export interface UserProfileSafe {
   isactive: boolean
 
   users_farms: string[]
+}
+
+export type ReceivingItemRow = {
+  id: number
+  created_at: string
+  docentry: number
+  brdr_ref_no: string
+  sku: string
+  UoM: string
+  expected_count: string
+  actual_count: string
+  lot_no: string
+  prod_date: string
+  age: string
+  house_no: string
+  jr: string | null
+  he: string | null
+  total_api: string | null
+  prod_date_to: string | null
+}
+
+export type ReceivingListRow2 = {
+  id: number
+  recieving_items: ReceivingItemRow[]
 }

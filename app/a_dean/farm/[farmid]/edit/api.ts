@@ -17,7 +17,7 @@ export async function getFarmFull(id: number) {
 
 
 export async function updateFarmFull(id: number, payload: any) {
-
+  
   const { data, error } = await db.rpc(
     "update_farm_full",
     {

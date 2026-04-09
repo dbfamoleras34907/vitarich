@@ -1,5 +1,5 @@
 import { db } from '@/lib/Supabase/supabaseClient'
-import { DocumentApproval, ReceivingListRow } from '@/lib/types'
+import { DocumentApproval, ReceivingItemRow, ReceivingListRow, ReceivingListRow2 } from '@/lib/types'
 
 export async function getReceivingDraftPending() {
   const { data, error } = await db
@@ -16,18 +16,31 @@ export async function getReceivingDraftPending() {
 
 
 
+// export async function getReceivingList(): Promise<ReceivingItemRow[]> {
+//   const { data, error } = await db
+//     .from('recieving')
+//     .select(`
+//       id,
+//       recieving_items (*)
+//     `)
+//     .order('created_at', { ascending: false })
 
-export async function getReceivingList(): Promise<ReceivingListRow[]> {
+//   if (error) throw error
+
+//   return data as ReceivingItemRow[]
+// }
+
+export async function getReceivingList(): Promise<ReceivingListRow2[]> {
   const { data, error } = await db
-    .from('recieving')
-    .select('*')
+    .from('vwdmf_getreceived')
+    .select(`*
+    `)
     .order('created_at', { ascending: false })
 
   if (error) throw error
 
-  return data as ReceivingListRow[]
+  return data as ReceivingListRow2[]
 }
-
 
 // get user where supervisor is not null
 export async function getReceivingListByUser(): Promise<string> {

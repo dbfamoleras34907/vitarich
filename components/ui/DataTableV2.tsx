@@ -437,7 +437,7 @@ export default function DynamicTable<T extends Record<string, any>>({
               paginatedData.map((row, i) => (
                 <tr key={i} className="border-t hover:bg-background">
                   {columns.map((col, i) => (
-                    <td key={i} className="p-3 whitespace-nowrap">
+                    <td key={i} className="px-2 whitespace-nowrap">
                       {(() => {
                         const value = row[col.key as keyof T]
 

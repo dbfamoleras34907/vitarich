@@ -21,7 +21,7 @@ export async function get_chick_grading_inventory(batchcode: string) {
 }
 // 
 
-export async function get_available_chick_grading_batch_refs() {
+export async function get_available_chick_grading_batch_refs(farmcode: string) {
   try {
     const { data, error } = await db.rpc(
       "fndmf_get_available_chick_grading_batch_refs" // list of batch base on inventory posting
@@ -69,6 +69,7 @@ export async function create_disposal(
         mode_of_release: Number(header.mode_of_release) || null,
         batch_code: header.batch_code,
         sku_class: header.sku_class,
+        farm_id: header.farm_id,
       })
       .select()
       .single()
