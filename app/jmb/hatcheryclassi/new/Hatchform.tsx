@@ -481,7 +481,6 @@ export default function Hatchform() {
         ttl_count: form.ttl_count,
         is_active: true,
         farm_id: form.farm_id ? Number(form.farm_id) : null,
-        farm_name: form.farm_name,
         hairline: form.hairline ?? null,
       };
 
@@ -523,8 +522,8 @@ export default function Hatchform() {
 
           <Separator />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DisabledField label="Farm ID" value={form.farm_id} />
-            <DisabledField label="Farm Name" value={form.farm_name} />
+            <DisabledField label="Hatchery ID" value={form.farm_id} />
+            <DisabledField label="Hatchery Name" value={form.farm_name} />
             <DisabledField label="DR No." value={form.dr_no} />
             <DisabledField label="DR Date" value={form.dr_date} />
             <DisabledField label="Temperature" value={form.temperature} />

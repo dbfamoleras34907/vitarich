@@ -48,8 +48,7 @@ export type HatchClassificationInsert = {
   leakers: number | null;
   dirties: number | null;
   farm_id: number | null;
-  hairline: number | null;
-  farm_name: string | null;
+  hairline: number | null; 
 };
 
 export type HatchClassificationRow = HatchClassificationInsert & {
@@ -130,7 +129,7 @@ export async function listHatchClassification(limit = 50) {
   if (error) throw new Error(error.message);
   return (data ?? []) as HatchClassificationRow[];
 }
-export async function getReceivingList(limit = 50) {
+export async function getReceivingList(limit = 100) {
   const { data, error } = await db
     .from("view_for_classification")
     .select("*")
