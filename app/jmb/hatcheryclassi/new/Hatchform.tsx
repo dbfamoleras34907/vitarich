@@ -77,6 +77,8 @@ type ViewForHatcheryClassi = {
   classfi_ref_no: string | null;
   farm_id: string | null;
   farm_name: string | null;
+  ttlclassify: number | null;
+  ttlremaining: number | null;
 };
 
 type FormState = {
@@ -110,6 +112,8 @@ type FormState = {
   farm_id?: number;
   hairline?: number;
   farm_name: string;
+  ttlclassify: number;
+  ttlremaining: number;
 };
 
 const emptyForm: FormState = {
@@ -143,6 +147,8 @@ const emptyForm: FormState = {
   farm_id: 0,
   hairline: 0,
   farm_name: "",
+  ttlclassify: 0,
+  ttlremaining: 0,
 };
 
 export default function Hatchform() {
@@ -207,7 +213,7 @@ export default function Hatchform() {
       const { data, error } = await db
         .from("viewforhatcheryclassi")
         .select(
-          "itemcodedesc,dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no,farm_id,farm_name",
+          "itemcodedesc,dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no,farm_id,farm_name,ttlclassify,ttlremaining",
         )
         .order("doc_date", { ascending: false });
 
@@ -266,6 +272,8 @@ export default function Hatchform() {
           base.classfi_ref_no = selected.classfi_ref_no ?? "";
           base.farm_id = Number(selected.farm_id ?? 0);
           base.farm_name = selected.farm_name ?? "";
+          base.ttlclassify = Number(selected.ttlclassify ?? 0);
+          base.ttlremaining = Number(selected.ttlremaining ?? 0);
         }
 
         recalcTotals(base);
@@ -529,10 +537,13 @@ export default function Hatchform() {
             <DisabledField label="Temperature" value={form.temperature} />
             <DisabledField label="SKU" value={form.itemcodedesc} />
             <DisabledField label="UOM" value={form.uom} />
+           
             <DisabledField
               label="Total Received"
               value={form.total_count_view}
             />
+              <DisabledField label="Ttl Classified" value={form.ttlclassify} />
+              <DisabledField label="Ttl Remaining" value={form.ttlremaining} />
           </div>
         </CardContent>
       </Card>
