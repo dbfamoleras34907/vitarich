@@ -21,9 +21,9 @@ export async function refreshSessionx(router: ReturnType<typeof useRouter>) {
   }
 
   const lastRefresh = localStorage.getItem('last_refresh_time')
-  console.log(lastRefresh)
-  console.log(fifteenMinutes)
-  console.log(now - parseInt(lastRefresh || ""))
+  // // console.log(lastRefresh)
+  // // console.log(fifteenMinutes)
+  // // console.log(now - parseInt(lastRefresh || ""))
   const needRefresh = !lastRefresh || now - parseInt(lastRefresh) >= fifteenMinutes
 
   if (!needRefresh) {

@@ -54,7 +54,7 @@ export default function FarmMasterPage() {
     setLoading(true)
     const data = await getFarms()
     console.log({ data })
-    setinitialRows(data ?? [])  
+    setinitialRows(data ?? [])
     setLoading(false)
 
   }
@@ -77,6 +77,11 @@ export default function FarmMasterPage() {
         <div className='flex gap-2'>
           <Button onClick={getData}><RefreshCcw /></Button>
           <Button onClick={() => router.push("/a_dean/farm/new")}><Plus /> New Farm</Button>
+          <Button onClick={() => {
+            console.log(getValue("getFarmDB"))
+          }
+
+          }><Plus /> check forApproval</Button>
         </div>
       </div>
 

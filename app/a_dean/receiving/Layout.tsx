@@ -47,7 +47,7 @@ export default function Layout() {
             return;
         }
 
-        // console.log("Found match via scan:", matchedRow);
+        // // console.loglog("Found match via scan:", matchedRow);
 
         setValue("forApproval", { row: matchedRow });
         route.push("/a_dean/receiving/approval");
@@ -149,7 +149,7 @@ export default function Layout() {
                     return true
                 })
 
-            console.log({ filtered })
+            // console.loglog({ filtered })
 
             setinitialRows(filtered)
 
@@ -164,14 +164,14 @@ export default function Layout() {
         setLoadingReceived(true)
 
         const data = await getReceivingList()
-        // // console.log({ data })
+        // // // console.loglog({ data })
         setReceivedRows(data)
         setLoadingReceived(false)
     }
 
     const getFarms = async () => {
         const user = getValue('UserInfoAuthSession')
-        console.log({ user })
+        // console.loglog({ user })
         if (!user) {
             toast.error("User information is not available. Please log in again.")
             return
@@ -179,7 +179,7 @@ export default function Layout() {
         if (user[0].id === undefined) return
 
         const farms = await getDefaultFarm(user[0].id)
-        console.log({ farms })
+        // console.loglog({ farms })
         setfarms(farms)
     }
 
@@ -226,7 +226,7 @@ export default function Layout() {
                     onClose={() => setIsScanning(false)}
                 />
             )}
-            <div className='mx-4 flex justify-between items-center mb-4 mt-4'>
+            <div className='mx-4 flex justify-between items-center mb-4 mt-8'>
 
                 <Breadcrumb
                     FirstPreviewsPageName='Hatchery'
@@ -287,12 +287,9 @@ export default function Layout() {
                                                 className='bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
 
                                                 onClick={() => {
-
-                                                    console.log({ row })
-                                                    setValue("forApproval", { row })
+                                                    setValue("forApproval", row)
                                                     setValue("scanning", "on")
-                                                    console.log({ row })
-                                                    // route.push("/a_dean/receiving/manual")
+                                                    route.push("/a_dean/receiving/manual")
                                                 }}
                                             >
                                                 <HandCoins />
@@ -302,7 +299,6 @@ export default function Layout() {
                                     )
                                 }
 
-                                // 📝 Default rendering
                                 const value = row[col.key]
 
                                 if (!value) return "-"
@@ -352,7 +348,7 @@ export default function Layout() {
                                                         )
                                                         return
                                                     }
-                                                    // // console.log({})
+                                                    // // // console.loglog({})
                                                     // setValue("forApproval", { row })
                                                     setValue("traceBreederRef", row.brdr_ref_no)
                                                     route.push("/a_dean/trace/")

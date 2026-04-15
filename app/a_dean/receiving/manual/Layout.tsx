@@ -1,6 +1,6 @@
-
 'use client'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useState } from 'react'
+import { format } from "date-fns"
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -62,7 +62,10 @@ const emptyApprovalRecord: DataRecordApproval = {
 export default function ApprovalDecisionForm() {
   const confirm = useConfirm();
   const router = useRouter()
+
   const { getValue, setValue } = useGlobalContext()
+
+  const [isAutoReceiving, setisAutoReceiving] = useState(false)
   const [loading, setloading] = useState(false)
   const [farms, setfarms] = useState<Farms[]>([])
   const [header, setHeader] = useState<DataRecordApproval | null>(null)
@@ -88,11 +91,22 @@ export default function ApprovalDecisionForm() {
     return { w: 26, d: 0 }
   }
 
-  // const getDefaultFarm = async () => {
-  //   const data = await getUserInfo()
-  //   setdefaultFarm(data[0])
-  //   setHeader(h => h ? { ...h, delivered_to: data[0].code } : h)
-  // }
+  const extractProdDate = (skuText?: string) => {
+    if (!skuText) return undefined
+
+    const match = skuText.match(/-(\d{8})-/)
+    if (!match) return undefined
+
+    const raw = match[1] // 03252026
+
+    const month = raw.substring(0, 2)
+    const day = raw.substring(2, 4)
+    const year = raw.substring(4, 8)
+
+    const parsedDate = new Date(`${year}-${month}-${day}`)
+
+    return format(parsedDate, "dd/MM/yyyy")
+  }
 
   const getDefaultFarm = async () => {
     const defaultFarmId = getValue("DefaultFarmId")
@@ -134,14 +148,15 @@ export default function ApprovalDecisionForm() {
 
       const items = getValue("itemmaster")
       const filterd = items.filter((items: any) => items.item_group === 'receiving_egg')
-      console.log({ filterd })
       setItemMaster(filterd)
       setfarms(getValue("getFarmDB_breeder") || [])
-      setHeader(emptyApprovalRecord)
       setPostingDate(today)
     }
     init()
+
+    setHeaderValuesFromScanning()
   }, [getValue])
+
 
   const updateItem = (id: number, changes: Partial<DraftItem>) =>
     setItems(p => p.map(i => i.id === id ? { ...i, ...changes } : i))
@@ -151,6 +166,7 @@ export default function ApprovalDecisionForm() {
     {
       id: Date.now(),
       brdr_ref_no: '',
+      brdr_ref_noVx: '',
       sku: '',
       UoM: 'PCS',
       expected_count: 0,
@@ -184,12 +200,6 @@ export default function ApprovalDecisionForm() {
   ]
 
   const headerFieldsRight = [
-    // {
-    //   disabled: true, code: "", label: 'Shipped To', type: 'text',
-    //   value: defaultFarm?.code + ' - ' + defaultFarm?.name,
-    //   onChange: setPostingDate
-    // },
-    // { disabled: true, code: "", label: 'Shipped To', type: 'text', value: defaultFarm?.code + ' - ' + defaultFarm?.name, onChange: setPostingDate },
     { required: false, disabled: false, code: "", label: 'Shipped Via', value: header?.shipped_via || '', onChange: (v: string) => setHeader(h => h ? { ...h, shipped_via: v } : h) },
     { required: true, disabled: false, code: "", label: 'Posting Date', type: 'date', value: postingDate, onChange: setPostingDate },
     { required: false, disabled: false, code: "", label: 'P.O No', value: header?.po_no || '', onChange: (v: string) => setHeader(h => h ? { ...h, po_no: v } : h) },
@@ -231,7 +241,9 @@ export default function ApprovalDecisionForm() {
 
   }
   const handleSubmit = async (e: React.FormEvent) => {
+
     e.preventDefault()
+
     if (!validateLineItems()) return
     setloading(true)
     const confirmed = await confirm({
@@ -243,9 +255,13 @@ export default function ApprovalDecisionForm() {
 
     setloading(confirmed)
     if (!confirmed) return;
-    const transformedItems = items.map(i => ({
+
+    console.log({ items })
+
+    const transformedItems = items.map((i, e) => ({
       ...i,
-      brdr_ref_no: `${brdr_ref_no ?? ""}-${i.house_no ?? ""}`,
+      // brdr_ref_no: `${brdr_ref_no ?? ""}-${i.house_no ?? ""}-${e}`,
+      brdr_ref_no: isAutoReceiving ? i.brdr_ref_noVx : `${brdr_ref_no ?? ""}-${i.house_no ?? ""}-${e}`,
       sku: i.sku ?? "",
       lot_no: i.lot_no ?? "",
       breed: headerBreed || "",
@@ -256,6 +272,8 @@ export default function ApprovalDecisionForm() {
       total_api: i.total ?? 0,
       actual_count: i.actual_total ?? 0,
     }))
+    console.log({ transformedItems })
+
     const payload = {
       doc_date: header?.doc_date ?? "",
       temperature: Number(temperature) || 0,
@@ -275,7 +293,10 @@ export default function ApprovalDecisionForm() {
       brdr_ref_no: brdr_ref_no ?? "",
       items: transformedItems,
     }
+    setloading(false)
 
+    console.log({ payload })
+    return
     const res = await createReceiving(payload)
 
     if (res.success) {
@@ -284,9 +305,17 @@ export default function ApprovalDecisionForm() {
     } else {
       alert(res.error)
     }
-    console.log({ payload })
     setloading(false)
   }
+
+  const extractDateFromSku = (sku?: string) => {
+    if (!sku) return ""
+
+    const match = sku.match(/-(\d{8})-/)
+    return match ? match[1] : ""
+  }
+
+
 
   const [footer, setFooter] = useState({
     crates: '',
@@ -296,9 +325,118 @@ export default function ApprovalDecisionForm() {
     serial: ''
   })
 
+  const setHeaderValuesFromScanning = () => {
+    const scanning = getValue("scanning")
+    if (scanning !== "on") return
+    setloading(true)
+    setTimeout(() => {
+      console.log("")
+    }, 1000)
+
+    const payload = getValue("forApproval")
+    const farmsDB = getValue("getFarmDB")
+
+    setisAutoReceiving(true)
+
+    if (!payload || !farmsDB) return
+
+    const refNumber =
+      payload.dr && payload.dr !== "0"
+        ? payload.dr
+        : payload.ts || ""
+
+    const firstSku = payload.modified_dispatchbody?.[0]?.skuText
+
+    const prodDateRaw = extractDateFromSku(firstSku)
+
+    const breederRefNo = `${prodDateRaw}${refNumber}`
+    setbrdr_ref_no(breederRefNo)
+
+    const farmMatch = farmsDB.find(
+      (f: any) =>
+        String(f.ref) === String(payload.farmid) &&
+        f.ref_type === "BE"
+    )
+
+    const destinationMatch = farmsDB.find(
+      (f: any) =>
+        String(f.ref) === String(payload.destinationid) &&
+        f.ref_type === "HA"
+    )
+
+    console.log("destinationMatch:", destinationMatch)
+
+    if (!farmMatch || !destinationMatch) {
+      console.log("Missing farmMatch or destinationMatch", {
+        farmMatch,
+        destinationMatch,
+      })
+      return
+    }
+    const classificationMap: Record<string, string> = {
+      good_egg: "HE",
+      junior: "JR",
+    }
+
+    setHeader(prev => ({
+      ...(prev ?? emptyApprovalRecord),
+      soldTo: farmMatch.code,
+      delivered_to: destinationMatch.id,
+      dr_num: payload.dr,
+      po_no: payload.ts,
+    }))
+
+
+
+    const mappedItems = (payload.modified_dispatchbody || []).map(
+      (row: any, index: number) => {
+        const prodDate = extractProdDate(row.skuText)
+        return {
+          id: Date.now() + index,
+          brdr_ref_no: row.skuText || "",
+          brdr_ref_noVx: row.skuText || "",
+          sku: classificationMap[row.classification] || "",
+          UoM: "PCS",
+          total: row.qty,
+          actual_total: 0,
+          age: "26 Weeks, 0 Day(s)",
+          prod_date: prodDate,
+          prod_date_to: prodDate,
+          isNew: false,
+        }
+      }
+    )
+
+    setloading(false)
+    setItems(mappedItems)
+    setValue("scanning", "false")
+  }
+
   useEffect(() => {
     setValue("loading_g", loading)
   }, [loading])
+
+  useLayoutEffect(() => {
+    if (items.length === 0) addRow()
+  }, [])
+
+  useEffect(() => {
+    if (!header?.soldTo || farms.length === 0) return
+
+    const selectedFarm = farms.find(f => f.code === header.soldTo)
+    if (!selectedFarm) return
+    setHeader(prev =>
+      prev
+        ? {
+          ...prev,
+          tin: selectedFarm.tin || '',
+          address: selectedFarm.address || '',
+        }
+        : prev
+    )
+  }, [header?.soldTo, farms])
+
+
   return (
     <form onSubmit={handleSubmit}>
       <Card className="w-full border-none shadow-none bg-background p-0">
@@ -312,11 +450,15 @@ export default function ApprovalDecisionForm() {
               />
             </div>
             <div className="flex gap-2">
-              {/* <Button type="button" variant="outline" onClick={() => setloading(false)}>
-                Check farms
-              </Button> */}
               <Button type="submit" disabled={loading}>
                 <Save className="mr-2 h-4 w-4" /> Save Record
+              </Button>
+              <Button type="button" onClick={() => {
+                const getdata = getValue("forApproval")
+                console.log({ getdata })
+
+              }}>
+                get header
               </Button>
             </div>
           </div>
@@ -335,6 +477,7 @@ export default function ApprovalDecisionForm() {
                 className='w-full'
                 onValueChange={(val) => {
                   const selectedFarm = farms.find((f: any) => f.code === val)
+
                   setHeader(h =>
                     h ? {
                       ...h,
@@ -365,13 +508,11 @@ export default function ApprovalDecisionForm() {
           <Separator className='my-2' />
 
           <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-            {/* base on this add a condition where "scanning = 1 on the addition row  " */}
             <div className='mt-1'>
               <DefaultFarmComboBox
                 label="Shipped To"
                 value={header?.delivered_to || ''}
                 setValue={(val) => {
-                  console.log({ val })
                   setHeader(h =>
                     h ? { ...h, delivered_to: val } : h
                   )
@@ -424,11 +565,9 @@ export default function ApprovalDecisionForm() {
                   <TableRow>
                     <TableHead></TableHead>
                     <TableHead>Line No</TableHead>
-                    {/* <TableHead>BREEDER REF. NO.</TableHead> */}
                     <TableHead>EGG SKU</TableHead>
                     <TableHead>UoM</TableHead>
                     <TableHead>Lot No.</TableHead>
-                    {/* <TableHead>Breed</TableHead> */}
                     <TableHead>Production Date</TableHead>
                     <TableHead>Age</TableHead>
                     <TableHead>House No.</TableHead>
@@ -474,9 +613,15 @@ export default function ApprovalDecisionForm() {
                       </TableCell>
                       <TableCell>
                         <DateRangePicker
+                          value={{
+                            from: item.prod_date,
+                            to: item.prod_date_to,
+                          }}
                           onChange={(e) => {
-                            updateItem(item.id, { prod_date: e.from })
-                            updateItem(item.id, { prod_date_to: e.to })
+                            updateItem(item.id, {
+                              prod_date: e.from,
+                              prod_date_to: e.to,
+                            })
                           }}
                         />
                       </TableCell>
@@ -502,26 +647,9 @@ export default function ApprovalDecisionForm() {
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-4" align="start">
                             <div className="flex gap-4 items-center justify-center">
-                              {/* <VerticalRuler
-                                label="Weeks"
-                                min={26}
-                                max={104}
-                                value={activeWeeks}
-                                autoOpen
-
-                                onChange={setActiveWeeks}
-                              />
-                              <VerticalRuler
-                                label="Days"
-                                min={0}
-                                max={6}
-                                value={activeDays}
-                                onChange={setActiveDays}
-                              /> */}
-
                               <VerticalRuler2
                                 label='Weeks'
-                                min={26}
+                                min={23}
                                 max={104}
                                 value={activeWeeks}
                                 onChange={setActiveWeeks}
@@ -548,7 +676,6 @@ export default function ApprovalDecisionForm() {
                           value={item.house_no || ''}
                           onChange={e => {
                             const houseNo = e.target.value.slice(0, 3)
-                            console.log(`${brdr_ref_no}-${houseNo}`)
                             updateItem(item.id, {
                               house_no: houseNo,
                             })
@@ -564,6 +691,7 @@ export default function ApprovalDecisionForm() {
                           value={item.total ?? 0}
                           readOnly
                           disabled
+                          className='w-fit'
                         />
                       </TableCell>
                       <TableCell>

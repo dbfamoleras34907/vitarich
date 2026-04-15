@@ -382,6 +382,7 @@ export type DisposalPrintRow = {
 export type DraftItem = {
   id: number
   brdr_ref_no: string
+  brdr_ref_noVx: string
   sku: string
   UoM: string
   lot_no?: string
