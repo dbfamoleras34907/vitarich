@@ -78,6 +78,7 @@ function getFormulaText(
 }
 
 export default function TemperatureConverter({
+  title = "Temperature",
   defaultFromUnit = "C",
   defaultValue = 0,
   className = "",
@@ -143,7 +144,7 @@ export default function TemperatureConverter({
   return (
     <div className={`space-y-4 ${className}`}>
       <div className="space-y-2">
-        <Label>{"Temperature Converter"}</Label>
+        <Label>{`${title} Converter`}</Label>
         {/* <Select value="temperature" disabled>
           <SelectTrigger>
             <SelectValue placeholder="Temperature" />
@@ -200,6 +201,11 @@ export default function TemperatureConverter({
         <Button type="button" variant="outline" onClick={handleSwap}>
           Swap
         </Button>
+        {showApplyButton ? (
+          <Button type="button" onClick={handleApply}>
+            Apply Result
+          </Button>
+        ) : null}
 
         <div className="text-sm wrap-break-words">
           <span className="rounded bg-yellow-200 px-2 py-0.5 font-medium">

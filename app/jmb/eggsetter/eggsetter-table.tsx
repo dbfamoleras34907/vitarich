@@ -90,6 +90,7 @@ export default function EggsetterTable() {
     {
       accessorKey: "ref_no",
       header: "Egg Reference No.",
+      cell: ({ row }) => row.original.ref_no ?? "",
     },
     {
       accessorKey: "setting_date",

@@ -5,6 +5,7 @@ import {
   DockIcon,
   DollarSign,
   EggFried,
+  EggIcon,
   FileSliders,
   Home,
   PenBoxIcon,
@@ -12,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
+import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
 
 export const NavFolders = [
   {
@@ -30,7 +32,7 @@ export const NavFolders = [
     id: 1,
     title: "Hatchery",
     url: "/a_dean/hatchery",
-    icon: EggFried,
+    icon: EggIcon,
     items: [
       {
         group: "Hatchery Masters",
@@ -84,6 +86,68 @@ export const NavFolders = [
   },
   {
     id: 2,
+    title: "Breeder Management",
+    url: "/jmb/breeder",
+    icon: EggFried,
+    items: [
+      {
+        group: "Breeder Masters",
+        children: [
+          { type: "Module", title: "Placement", url: "/a_dean/hatchery" },
+
+          {
+            type: "Module",
+            title: "Growing Period",
+            // url: "/jmb/hatcheryclassi", /home
+            url: "/home",
+          },
+          {
+            type: "Module",
+            title: "Egg Storage",
+            // url: "/jmb/eggstorage" },
+            url: "/home",
+          },
+          {
+            type: "Module",
+            // title: "Egg Pre-Warming Process",
+            url: "/jmb/prewarmingv2",
+          },
+          { type: "Module", title: "Egg Setter", url: "/jmb/eggsetter" },
+          {
+            type: "Module",
+            title: "Egg Transfer Process",
+            url: "/jmb/eggtransferv2",
+          },
+          {
+            type: "Module",
+            title: "Egg Hatcher Process",
+            url: "/jmb/egghatcherv2",
+          },
+          {
+            type: "Module",
+            title: "Chick Pullout Process",
+            url: "/jmb/chickpulloutv2",
+          },
+          {
+            type: "Module",
+            title: "Doc Classification",
+            url: "/jmb/docclassification",
+          },
+          { type: "Module", title: "Doc Dispatch", url: "/jmb/docdispatchv2" },
+          { type: "Module", title: "Disposal", url: "/a_dean/disposal" },
+        ],
+      },
+      {
+        group: "Reports",
+        children: [
+          { type: "Report", title: "Room Monitoring", url: "#" },
+          { type: "Report", title: "Machine Monitoring", url: "#" },
+        ],
+      },
+    ],
+  },
+  {
+    id: 3,
     title: "Inventory Management",
     url: "/a_dean/inventory",
     icon: Boxes, // Example icon name
@@ -134,7 +198,7 @@ export const NavFolders = [
     ],
   },
   {
-    id: 3,
+    id: 4,
     title: "Workspace",
     url: "#",
     icon: Boxes, // Example icon name

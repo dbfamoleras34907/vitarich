@@ -39,7 +39,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   codeLabel,
   nameLabel,
   value = [],
-  placeholder = "Select...",
+  placeholder = "Select Egg Reference No...",
   showNameOnly = false,
   width = 400,
   disabled = false,

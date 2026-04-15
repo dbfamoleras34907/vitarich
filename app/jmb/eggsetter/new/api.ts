@@ -6,6 +6,11 @@ export type HatchClassiRefOption = {
   good_egg: number | null;
 };
 
+export type SetterRefHistory = {
+  ref_no: string | null;
+  qty_set_egg: number | null;
+};
+
 export async function listHatchClassiRefs(): Promise<HatchClassiRefOption[]> {
   const { data, error } = await db
     .from("hatch_classification")
@@ -85,6 +90,14 @@ export async function createSetterIncubation(payload: SetterIncubationInsert) {
   return data as SetterIncubation;
 }
 
+export async function createSetterIncubationBatch(
+  payloads: SetterIncubationInsert[],
+) {
+  const { data, error } = await db.from(TABLE).insert(payloads).select("*");
+  if (error) throw error;
+  return (data ?? []) as SetterIncubation[];
+}
+
 export async function updateSetterIncubation(
   id: number,
   payload: Partial<SetterIncubationInsert>,
@@ -104,6 +117,16 @@ export async function deleteSetterIncubation(id: number) {
   const { error } = await db.from(TABLE).delete().eq("id", id);
   if (error) throw error;
   return true;
+}
+
+export async function listSetterReferenceHistory() {
+  const { data, error } = await db
+    .from(TABLE)
+    .select("ref_no, qty_set_egg")
+    .not("ref_no", "is", null);
+
+  if (error) throw error;
+  return (data ?? []) as SetterRefHistory[];
 }
 
 export async function getUserInfo() {
