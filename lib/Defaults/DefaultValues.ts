@@ -84,68 +84,68 @@ export const NavFolders = [
       },
     ],
   },
-  {
-    id: 2,
-    title: "Breeder Management",
-    url: "/jmb/breeder",
-    icon: EggFried,
-    items: [
-      {
-        group: "Breeder Masters",
-        children: [
-          { type: "Module", title: "Placement", url: "/a_dean/hatchery" },
+  // {
+  //   id: 2,
+  //   title: "Breeder Management",
+  //   url: "/jmb/breeder",
+  //   icon: EggFried,
+  //   items: [
+  //     {
+  //       group: "Breeder Masters",
+  //       children: [
+  //         { type: "Module", title: "Placement", url: "/a_dean/hatchery" },
 
-          {
-            type: "Module",
-            title: "Growing Period",
-            // url: "/jmb/hatcheryclassi", /home
-            url: "/home",
-          },
-          {
-            type: "Module",
-            title: "Egg Storage",
-            // url: "/jmb/eggstorage" },
-            url: "/home",
-          },
-          {
-            type: "Module",
-            // title: "Egg Pre-Warming Process",
-            url: "/jmb/prewarmingv2",
-          },
-          { type: "Module", title: "Egg Setter", url: "/jmb/eggsetter" },
-          {
-            type: "Module",
-            title: "Egg Transfer Process",
-            url: "/jmb/eggtransferv2",
-          },
-          {
-            type: "Module",
-            title: "Egg Hatcher Process",
-            url: "/jmb/egghatcherv2",
-          },
-          {
-            type: "Module",
-            title: "Chick Pullout Process",
-            url: "/jmb/chickpulloutv2",
-          },
-          {
-            type: "Module",
-            title: "Doc Classification",
-            url: "/jmb/docclassification",
-          },
-          { type: "Module", title: "Doc Dispatch", url: "/jmb/docdispatchv2" },
-          { type: "Module", title: "Disposal", url: "/a_dean/disposal" },
-        ],
-      },
-      {
-        group: "Reports",
-        children: [
-          { type: "Report", title: "Room Monitoring", url: "#" },
-          { type: "Report", title: "Machine Monitoring", url: "#" },
-        ],
-      },
-    ],
-  },
+  //         {
+  //           type: "Module",
+  //           title: "Growing Period",
+  //           // url: "/jmb/hatcheryclassi", /home
+  //           url: "/home",
+  //         },
+  //         {
+  //           type: "Module",
+  //           title: "Egg Storage",
+  //           // url: "/jmb/eggstorage" },
+  //           url: "/home",
+  //         },
+  //         {
+  //           type: "Module",
+  //           // title: "Egg Pre-Warming Process",
+  //           url: "/jmb/prewarmingv2",
+  //         },
+  //         { type: "Module", title: "Egg Setter", url: "/jmb/eggsetter" },
+  //         {
+  //           type: "Module",
+  //           title: "Egg Transfer Process",
+  //           url: "/jmb/eggtransferv2",
+  //         },
+  //         {
+  //           type: "Module",
+  //           title: "Egg Hatcher Process",
+  //           url: "/jmb/egghatcherv2",
+  //         },
+  //         {
+  //           type: "Module",
+  //           title: "Chick Pullout Process",
+  //           url: "/jmb/chickpulloutv2",
+  //         },
+  //         {
+  //           type: "Module",
+  //           title: "Doc Classification",
+  //           url: "/jmb/docclassification",
+  //         },
+  //         { type: "Module", title: "Doc Dispatch", url: "/jmb/docdispatchv2" },
+  //         { type: "Module", title: "Disposal", url: "/a_dean/disposal" },
+  //       ],
+  //     },
+  //     {
+  //       group: "Reports",
+  //       children: [
+  //         { type: "Report", title: "Room Monitoring", url: "#" },
+  //         { type: "Report", title: "Machine Monitoring", url: "#" },
+  //       ],
+  //     },
+  //   ],
+  // },
   {
     id: 3,
     title: "Inventory Management",
@@ -197,22 +197,22 @@ export const NavFolders = [
       },
     ],
   },
-  {
-    id: 4,
-    title: "Workspace",
-    url: "#",
-    icon: Boxes, // Example icon name
-    items: [
-      {
-        group: "Overview",
-        children: [
-          { type: "Module", title: "Projects", url: "" },
-          { type: "Module", title: "Task", url: "" },
-          { type: "Module", title: "Sprints", url: "" },
-        ],
-      },
-    ],
-  },
+  // {
+  //   id: 4,
+  //   title: "Workspace",
+  //   url: "#",
+  //   icon: Boxes, // Example icon name
+  //   items: [
+  //     {
+  //       group: "Overview",
+  //       children: [
+  //         { type: "Module", title: "Projects", url: "" },
+  //         { type: "Module", title: "Task", url: "" },
+  //         { type: "Module", title: "Sprints", url: "" },
+  //       ],
+  //     },
+  //   ],
+  // },
   {
     id: 99,
     title: "Settings",
