@@ -43,6 +43,7 @@
     "react-mobile-picker": "^1.2.0",
     "react-to-print": "^3.3.0",
     "reactflow": "^11.11.4",
+    "recharts": "^3.8.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0"
   },
