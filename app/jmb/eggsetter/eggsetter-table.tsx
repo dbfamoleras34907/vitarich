@@ -97,10 +97,10 @@ export default function EggsetterTable() {
       header: "Setting Date",
       cell: ({ row }) => formatDateTime(row.original.setting_date),
     },
-    {
-      accessorKey: "farm_source",
-      header: "Farm Source",
-    },
+    // {
+    //   accessorKey: "farm_source",
+    //   header: "Farm Source",
+    // },
     {
       accessorKey: "machine_id",
       header: "Setter Machine ID",

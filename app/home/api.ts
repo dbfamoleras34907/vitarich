@@ -162,28 +162,26 @@ export async function getDashboardSummary(
   };
 }
 
-
-
-type GroupBy = "daily" | "weekly" | "monthly"
+type GroupBy = "daily" | "weekly" | "monthly";
 
 export interface HatchabilityTrendRow {
-  period_type: "DAILY" | "WEEKLY" | "MONTHLY"
-  period: string
-  total_eggs_set: number
-  total_eggs_hatched: number
-  hatchability_rate_percent: number
+  period_type: "DAILY" | "WEEKLY" | "MONTHLY";
+  period: string;
+  total_eggs_set: number;
+  total_eggs_hatched: number;
+  hatchability_rate_percent: number;
 }
 
 export async function getHatchabilityTrendDB(
   from: string,
   to: string,
-  groupBy: GroupBy
+  groupBy: GroupBy,
 ) {
   const periodMap = {
     daily: "DAILY",
     weekly: "WEEKLY",
     monthly: "MONTHLY",
-  }
+  };
 
   const { data, error } = await db
     .from("dmfvw_hatchability_summary")
@@ -191,21 +189,19 @@ export async function getHatchabilityTrendDB(
     .eq("period_type", periodMap[groupBy])
     .gte("period", from)
     .lte("period", to)
-    .order("period", { ascending: true })
+    .order("period", { ascending: true });
 
   if (error) {
-    throw error
+    throw error;
   }
 
-  return data as HatchabilityTrendRow[]
+  return data as HatchabilityTrendRow[];
 }
 
-
-
 export interface EggIntakeTrendRow {
-  period_type: "DAILY" | "WEEKLY" | "MONTHLY"
-  period: string
-  total_eggs_received: number
+  period_type: "DAILY" | "WEEKLY" | "MONTHLY";
+  period: string;
+  total_eggs_received: number;
 }
 
 /**
@@ -214,13 +210,13 @@ export interface EggIntakeTrendRow {
 export async function getEggIntakeTrendDB(
   from: string,
   to: string,
-  groupBy: GroupBy
+  groupBy: GroupBy,
 ) {
   const periodMap = {
     daily: "DAILY",
     weekly: "WEEKLY",
     monthly: "MONTHLY",
-  }
+  };
 
   const { data, error } = await db
     .from("dmfvw_egg_intake_summary")
@@ -228,11 +224,11 @@ export async function getEggIntakeTrendDB(
     .eq("period_type", periodMap[groupBy])
     .gte("period", from)
     .lte("period", to)
-    .order("period", { ascending: true })
+    .order("period", { ascending: true });
 
   if (error) {
-    throw error
+    throw error;
   }
 
-  return data as EggIntakeTrendRow[]
+  return data as EggIntakeTrendRow[];
 }
