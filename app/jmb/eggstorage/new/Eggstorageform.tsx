@@ -1,48 +1,8 @@
-/**
- * Egg Storage Form Component
- *
- * A comprehensive form for creating and editing egg storage records in the hatchery management system.
- * Handles temperature, humidity, and shell temperature monitoring data for stored eggs.
- *
- * @component
- * @returns {JSX.Element} The rendered egg storage form with validation and duration calculation
- *
- * @example
- * ```tsx
- * <Eggstorageform />
- * ```
- *
- * @remarks
- * - Supports both create (new record) and update (edit existing) modes
- * - Automatically calculates storage duration between shell start and end times
- * - Loads available egg reference numbers from the hatch_classification table
- * - Includes a temperature converter utility in the sidebar
- * - Requires authenticated session (checked via refreshSessionx)
- * - Uses Supabase as the backend database
- *
- * @state
- * - `loading` - Loading state for initial record fetch in edit mode
- * - `saving` - Saving state during form submission
- * - `classiRefNo` - Selected egg classification reference number
- * - `classiRefs` - Array of available egg reference options
- * - `classiRefLoading` - Loading state for reference dropdown
- * - `stor_temp` - Storage temperature in Celsius
- * - `room_temp` - Room temperature in Celsius
- * - `stor_humi` - Storage humidity percentage
- * - `shellStartLocal` - Shell temperature measurement start datetime (local format)
- * - `shellEndLocal` - Shell temperature measurement end datetime (local format)
- * - `remarks` - Additional notes about the storage record
- *
- * @effects
- * - Loads classification references on component mount
- * - Validates user session on mount
- * - Loads existing record data in edit mode based on URL parameter
- * - Calculates duration whenever shell timestamps change
- */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Thermometer } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -51,12 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { db } from "@/lib/Supabase/supabaseClient";
@@ -69,7 +29,6 @@ import {
 import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableDropdown from "@/lib/SearchableDropdown";
 import TemperatureConverter from "@/components/TemperatureConverter";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 
@@ -77,6 +36,8 @@ type HatchClassiRefOption = {
   classi_ref_no: string;
   date_classify: string | null;
 };
+
+type TemperatureFieldKey = "stor_temp" | "room_temp";
 
 function toDatetimeLocalValue(iso: string | null) {
   if (!iso) return "";
@@ -93,6 +54,75 @@ function fromDatetimeLocalValue(value: string) {
   return d.toISOString();
 }
 
+function clampNonNegative(raw: string, opts?: { allowDecimal?: boolean }) {
+  if (raw === "") return "";
+
+  let v = raw.replace(/-/g, "");
+
+  if (opts?.allowDecimal) {
+    v = v.replace(/[^0-9.]/g, "");
+    const parts = v.split(".");
+    if (parts.length > 2) v = `${parts[0]}.${parts.slice(1).join("")}`;
+  } else {
+    v = v.replace(/[^0-9]/g, "");
+  }
+
+  if (opts?.allowDecimal && v.startsWith(".")) v = `0${v}`;
+
+  const num = Number(v);
+  if (!Number.isFinite(num)) return "";
+  return String(Math.max(0, num));
+}
+
+function TemperatureInput({
+  label,
+  value,
+  onChange,
+  onOpenConverter,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onOpenConverter: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2">
+      <RequiredLabel>{label}</RequiredLabel>
+      <div className="relative">
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={value}
+          onChange={(e) =>
+            onChange(
+              clampNonNegative(e.target.value, {
+                allowDecimal: true,
+              }),
+            )
+          }
+          className="pr-24"
+          disabled={disabled}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onOpenConverter}
+          disabled={disabled}
+          className="absolute right-1 top-1/2 h-8 -translate-y-1/2 gap-1 px-2 text-muted-foreground hover:text-foreground"
+          aria-label={`Open temperature converter for ${label}`}
+        >
+          <Thermometer className="size-4" />
+          <span className="text-xs font-medium">C/F</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Eggstorageform() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -103,7 +133,6 @@ export default function Eggstorageform() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // dropdown
   const [classiRefNos, setClassiRefNos] = useState<string[]>([]);
   const [classiRefs, setClassiRefs] = useState<HatchClassiRefOption[]>([]);
   const [classiRefLoading, setClassiRefLoading] = useState(false);
@@ -114,7 +143,9 @@ export default function Eggstorageform() {
   const [shellStartLocal, setShellStartLocal] = useState("");
   const [shellEndLocal, setShellEndLocal] = useState("");
   const [remarks, setRemarks] = useState("");
-  // load ref options
+  const [converterField, setConverterField] =
+    useState<TemperatureFieldKey | null>(null);
+
   useEffect(() => {
     const loadClassiRefs = async () => {
       try {
@@ -127,20 +158,21 @@ export default function Eggstorageform() {
 
         if (error) throw error;
         setClassiRefs((data ?? []) as HatchClassiRefOption[]);
-      } catch (e) {
-        console.error(e);
+      } catch (error) {
+        console.error(error);
         setClassiRefs([]);
       } finally {
         setClassiRefLoading(false);
       }
     };
+
     loadClassiRefs();
   }, []);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
-  // load record if edit
+  }, [router]);
+
   useEffect(() => {
     if (!isEdit) return;
 
@@ -156,8 +188,8 @@ export default function Eggstorageform() {
         setShellStartLocal(toDatetimeLocalValue(data.shell_start));
         setShellEndLocal(toDatetimeLocalValue(data.shell_end));
         setRemarks(data.remarks ?? "");
-      } catch (e) {
-        console.error(e);
+      } catch (error) {
+        console.error(error);
         alert("Failed to load record.");
         router.push("/jmb/eggstorage");
       } finally {
@@ -184,35 +216,18 @@ export default function Eggstorageform() {
     return `${hours}h ${minutes}m`;
   }, [durationSeconds]);
 
-  // async function onSave() {
-  //   try {
-  //     setSaving(true);
-
-  //     const payload: EggStorageInsert = {
-  //       stor_temp: stor_temp || null,
-  //       room_temp: room_temp || null,
-  //       stor_humi: stor_humi || null,
-  //       shell_start: fromDatetimeLocalValue(shellStartLocal),
-  //       shell_end: fromDatetimeLocalValue(shellEndLocal),
-  //       duration: durationSeconds,
-  //       remarks: remarks || null,
-  //       classi_ref_no: classiRefNo || null,
-  //     };
-
-  //     if (isEdit) {
-  //       await updateEggStorage(editId as number, payload); // ✅ 2 args
-  //     } else {
-  //       await createEggStorage(payload);
-  //     }
-
-  //     router.push("/jmb/eggstorage");
-  //     router.refresh();
-  //   } catch (err: any) {
-  //     alert(err?.message ?? "Failed to save.");
-  //   } finally {
-  //     setSaving(false);
-  //   }
-  // }
+  const converterLabel =
+    converterField === "stor_temp"
+      ? "Storage Temperature"
+      : converterField === "room_temp"
+        ? "Room Temperature"
+        : "Temperature";
+  const converterInputValue =
+    converterField === "stor_temp"
+      ? Number(stor_temp)
+      : converterField === "room_temp"
+        ? Number(room_temp)
+        : 0;
 
   async function onSave() {
     try {
@@ -234,19 +249,17 @@ export default function Eggstorageform() {
       };
 
       if (isEdit) {
-        // ⚠️ Usually edit = single record only
         await updateEggStorage(editId as number, {
           ...basePayload,
           classi_ref_no: classiRefNos[0] ?? null,
         });
       } else {
-        // ✅ Insert multiple rows
         const payloads: EggStorageInsert[] = classiRefNos.map((ref) => ({
           ...basePayload,
           classi_ref_no: ref,
         }));
 
-        await createEggStorage(payloads); // ← must support bulk insert
+        await createEggStorage(payloads);
       }
 
       router.push("/jmb/eggstorage");
@@ -259,13 +272,13 @@ export default function Eggstorageform() {
   }
 
   return (
-    <div className="w-full  px-6 py-6  mt-4">
+    <div className="w-full px-6 py-6 mt-4">
       <Breadcrumb
         FirstPreviewsPageName="Egg Storage Management"
         SecondPreviewPageName="Hatchery "
         CurrentPageName={isEdit ? "Edit Record" : "New Record"}
       />
-      <Card className="w-full  min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
+      <Card className="w-full min-h-[calc(90vh-120px)] p-6 space-y-4 mt-2">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <CardContent className="max-w-2xl p-4 space-y-4">
@@ -273,7 +286,6 @@ export default function Eggstorageform() {
                 <div className="text-sm text-muted-foreground">Loading...</div>
               ) : (
                 <>
-                  {/* Reference No. */}
                   <div className="grid grid-cols-1 gap-2">
                     <RequiredLabel>Egg Reference No.</RequiredLabel>
                     <SearchableDropdown1
@@ -286,57 +298,46 @@ export default function Eggstorageform() {
                       multiple
                       disabled={saving || classiRefLoading}
                     />
-                    {/* <Select value={classiRefNo} onValueChange={setClassiRefNo}>
-                  <SelectTrigger disabled={classiRefLoading || saving}>
-                    <SelectValue
-                      placeholder={
-                        classiRefLoading
-                          ? "Loading..."
-                          : "Select Egg Reference No."
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classiRefs.map((r) => (
-                      <SelectItem key={r.classi_ref_no} value={r.classi_ref_no}>
-                        {r.classi_ref_no}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select> */}
                   </div>
-                  <Separator />
-                  {/* TEMPS / HUMI */}
-                  <div className="grid grid-cols-1 md:grid-cols-1 gap-2">
-                    <div className="grid grid-cols-1 gap-2">
-                      <RequiredLabel>Storage Temperature ℃</RequiredLabel>
-                      <Input
-                        value={stor_temp}
-                        onChange={(e) => setStorTemp(e.target.value)}
-                        disabled={saving}
-                      />
-                    </div>
 
-                    <div className="grid grid-cols-1 gap-2">
-                      <RequiredLabel>Room Temperature ℃</RequiredLabel>
-                      <Input
-                        value={room_temp}
-                        onChange={(e) => setRoomTemp(e.target.value)}
-                        disabled={saving}
-                      />
-                    </div>
+                  <Separator />
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <TemperatureInput
+                      label="Storage Temperature (°C)"
+                      value={stor_temp}
+                      onChange={setStorTemp}
+                      onOpenConverter={() => setConverterField("stor_temp")}
+                      disabled={saving}
+                    />
+
+                    <TemperatureInput
+                      label="Room Temperature (°C)"
+                      value={room_temp}
+                      onChange={setRoomTemp}
+                      onOpenConverter={() => setConverterField("room_temp")}
+                      disabled={saving}
+                    />
 
                     <div className="grid grid-cols-1 gap-2">
                       <RequiredLabel>Storage Humidity %</RequiredLabel>
                       <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
                         value={stor_humi}
-                        onChange={(e) => setStorHumi(e.target.value)}
+                        onChange={(e) =>
+                          setStorHumi(
+                            clampNonNegative(e.target.value, {
+                              allowDecimal: true,
+                            }),
+                          )
+                        }
                         disabled={saving}
                       />
                     </div>
                   </div>
 
-                  {/* SHELL TEMP TIMESTAMPS */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                     <div className="grid grid-cols-1 gap-2">
                       <Label>Shell Temp DateTime Start</Label>
@@ -371,7 +372,6 @@ export default function Eggstorageform() {
                     </div>
                   </div>
 
-                  {/* REMARKS */}
                   <div className="grid grid-cols-1 gap-2">
                     <Label>Remarks</Label>
                     <Textarea
@@ -382,11 +382,9 @@ export default function Eggstorageform() {
                     />
                   </div>
 
-                  {/* ACTIONS */}
                   <FormActionButtons
                     saving={saving}
                     isEdit={isEdit}
-                    // disabled={disabledAll}
                     cancelPath="/jmb/eggstorage"
                     onSave={onSave}
                   />
@@ -394,16 +392,46 @@ export default function Eggstorageform() {
               )}
             </CardContent>
           </div>
-          <div className="lg:col-span-1">
-            <TemperatureConverter
-              title="Temperature"
-              defaultFromUnit="C"
-              defaultValue={0}
-              showApplyButton
-            />
-          </div>
         </div>
       </Card>
+
+      <Dialog
+        open={!!converterField}
+        onOpenChange={(open) => {
+          if (!open) setConverterField(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{converterLabel} Converter</DialogTitle>
+            <DialogDescription>
+              Convert temperatures and apply the result back to the selected
+              field.
+            </DialogDescription>
+          </DialogHeader>
+
+          <TemperatureConverter
+            key={`${converterField ?? "temperature"}-${converterInputValue}`}
+            title={converterLabel}
+            defaultFromUnit="C"
+            defaultValue={
+              Number.isFinite(converterInputValue) ? converterInputValue : 0
+            }
+            showApplyButton
+            onApply={(value) => {
+              const nextValue = String(Number(value.toFixed(2)));
+
+              if (converterField === "stor_temp") {
+                setStorTemp(nextValue);
+              } else if (converterField === "room_temp") {
+                setRoomTemp(nextValue);
+              }
+
+              setConverterField(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

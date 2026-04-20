@@ -1,92 +1,80 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { format } from "date-fns"
-import {
-    Area,
-    AreaChart,
-    CartesianGrid,
-    XAxis,
-} from "recharts"
+import { useEffect, useState } from "react";
+import { format } from "date-fns";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 
 import {
-    ChartContainer,
-    ChartTooltip,
-    ChartTooltipContent,
-    type ChartConfig,
-} from "@/components/ui/chart"
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
-import { DateRange } from "react-day-picker"
-import { EggIntakeTrendRow, getEggIntakeTrendDB } from "./api"
+import { DateRange } from "react-day-picker";
+import { EggIntakeTrendRow, getEggIntakeTrendDB } from "./api";
 
 interface Props {
-    date?: DateRange
-    groupBy: "daily" | "weekly" | "monthly"
+  date?: DateRange;
+  groupBy: "daily" | "weekly" | "monthly";
 }
 
 const chartConfig = {
-    total_eggs_received: {
-        label: "Eggs Received",
-        color: "var(--chart-2)",
-    },
-} satisfies ChartConfig
+  total_eggs_received: {
+    label: "Eggs Received",
+    color: "var(--chart-2)",
+  },
+} satisfies ChartConfig;
 
+export default function EggIntakeTrend({ date, groupBy }: Props) {
+  const [data, setData] = useState<EggIntakeTrendRow[]>([]);
 
-export default function EggIntakeTrend({
-    date,
-    groupBy,
-}: Props) {
+  useEffect(() => {
+    if (!date?.from || !date?.to) return;
 
-    const [data, setData] = useState<EggIntakeTrendRow[]>([])
+    const load = async () => {
+      const res = await getEggIntakeTrendDB(
+        format(date.from!, "yyyy-MM-dd"),
+        format(date.to!, "yyyy-MM-dd"),
+        groupBy,
+      );
 
-    useEffect(() => {
-        if (!date?.from || !date?.to) return
+      setData(res);
+    };
 
-        const load = async () => {
-            const res = await getEggIntakeTrendDB(
-                format(date.from!, "yyyy-MM-dd"),
-                format(date.to!, "yyyy-MM-dd"),
-                groupBy
-            )
+    load();
+  }, [date, groupBy]);
 
-            setData(res)
-        }
+  return (
+    <ChartContainer config={chartConfig} className="h-full w-full">
+      <AreaChart
+        accessibilityLayer
+        data={data}
+        margin={{ left: 12, right: 12 }}
+      >
+        <CartesianGrid vertical={false} />
 
-        load()
-    }, [date, groupBy])
+        <XAxis
+          dataKey="period"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={(value) => format(new Date(value), "MMM dd")}
+        />
 
-    return (
-        <ChartContainer config={chartConfig} className="h-full w-full">
-            <AreaChart
-                accessibilityLayer
-                data={data}
-                margin={{ left: 12, right: 12 }}
-            >
-                <CartesianGrid vertical={false} />
+        <ChartTooltip
+          cursor={false}
+          content={<ChartTooltipContent indicator="line" />}
+        />
 
-                <XAxis
-                    dataKey="period"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) =>
-                        format(new Date(value), "MMM dd")
-                    }
-                />
-
-                <ChartTooltip
-                    cursor={false}
-                    content={<ChartTooltipContent indicator="line" />}
-                />
-
-                <Area
-                    dataKey="total_eggs_received"
-                    type="natural"
-                    fill="var(--color-total_eggs_received)"
-                    fillOpacity={0.4}
-                    stroke="var(--color-total_eggs_received)"
-                />
-            </AreaChart>
-        </ChartContainer>
-    )
+        <Area
+          dataKey="total_eggs_received"
+          type="natural"
+          fill="var(--color-total_eggs_received)"
+          fillOpacity={0.4}
+          stroke="var(--color-total_eggs_received)"
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
 }
