@@ -173,7 +173,7 @@ export async function updateUserProfile(
     p_supervisor: userProfileData.supervisor,
     p_default_farms: defaultFarms,
   };
-// app/admin/user/api.ts
+  // app/admin/user/api.ts
   const { error } = await db.rpc(
     'fn_update_user_profile_with_farms',
     payload
@@ -184,6 +184,36 @@ export async function updateUserProfile(
     throw new Error(error.message);
   }
 }
+
+export async function signupUser(
+  userProfileData: UserInsert
+) {
+
+  console.log({ userProfileData });
+
+  const payload = {
+    p_auth_id: userProfileData.auth_id,
+    p_email: userProfileData.email,
+    p_firstname: userProfileData.firstname,
+    p_middlename: userProfileData.middlename,
+    p_lastname: userProfileData.lastname,
+    p_gender: userProfileData.gender,
+    p_birthdate: userProfileData.birthdate,
+    p_location: userProfileData.location,
+    p_updated_by: userProfileData.created_by,
+  };
+
+  const { error } = await db.rpc(
+    'dmffn_insert_user_profile',
+    payload
+  );
+
+  if (error) {
+    console.error('Supabase RPC Error:', error);
+    throw new Error(error.message);
+  }
+}
+
 
 export async function getProfileByAuthId(authId: string): Promise<UserRow | null> {
   const { data, error } = await db
@@ -221,12 +251,12 @@ export async function getUserInfoById(authId: string) {
   const { data, error } = await db
     .from('vw_users_with_farms')
     .select(`*`)
-   .eq('id', authId);
+    .eq('id', authId);
   if (error) {
     console.error('Supabase Select Error:', error);
     throw new Error(error.message);
   }
-  console.log({ authId  })
+  console.log({ authId })
 
   return data;
 }

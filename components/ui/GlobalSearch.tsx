@@ -85,10 +85,10 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     <>
       {/* SEARCH BUTTON */}
       <Button
-        variant="secondary"
         type="button"
+        variant={"secondary"}
         onClick={() => setOpen(true)}
-        className={`relative h-9 w-56 justify-start gap-2 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary ${collapsed ? "justify-center" : ""
+        className={`mr-5 bg-muted relative h-9 w-48   gap-2 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50  : ""
           }`}
       >
         <Search className="h-4 w-4" />

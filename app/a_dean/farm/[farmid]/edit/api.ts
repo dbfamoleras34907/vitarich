@@ -17,34 +17,42 @@ export async function getFarmFull(id: number) {
 
 
 export async function updateFarmFull(id: number, payload: any) {
-  
-  const { data, error } = await db.rpc(
-    "update_farm_full",
-    {
-      p_farm_id: id,
-      payload
-    }
-  )
+  try {
 
-  if (error) throw error
+    const { data, error } = await db.rpc(
+      "update_farm_full",
+      {
+        p_farm_id: id,
+        payload
+      }
+    )
 
-  return data
+    if (error) throw error
+
+    return data
+  } catch (error) {
+
+  }
 }
 
 
 
 export async function getLastCode(viewName: string): Promise<number> {
+  try {
+    const { data, error } = await db
+      .from(viewName)
+      .select("last_number")
+      .single()
 
-  const { data, error } = await db
-    .from(viewName)
-    .select("last_number")
-    .single()
+    console.log({ data, error })
 
-  console.log({ data, error })
+    if (error) throw error
 
-  if (error) throw error
-
-  return data?.last_number ?? 0
+    return data?.last_number ?? 0
+  } catch (error) {
+    console.log(`Error fetching last code from ${viewName}:`, error)
+    throw error
+  }
 }
 
 

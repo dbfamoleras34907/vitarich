@@ -7,7 +7,7 @@ export default function page() {
 
     const check = async () => {
         const authId = await getAuthId();
-
+        console.log("Auth ID:", authId);
         await checkUserActive(authId || "");
     }
     useLayoutEffect(() => {

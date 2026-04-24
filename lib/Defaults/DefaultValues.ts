@@ -225,7 +225,7 @@ export const NavFolders = [
       {
         group: "Timesheet",
         children: [
-          { type: "Module", title: "Timesheet", url: "/wks/Timesheet" },
+          { type: "Module", title: "Timesheet", url: "/wks/timelines" },
           { type: "Module", title: "Activity Type", url: "" },
           { type: "Module", title: "Reports", url: "" },
         ],

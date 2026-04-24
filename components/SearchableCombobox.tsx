@@ -174,9 +174,13 @@ export default function SearchableCombobox(props: Props) {
   return (
     <div className="relative overflow-x-auto">
       <div className="flex justify-between items-center">
-        <Label className="mb-2" required={props.required}>
-          {props.label}
-        </Label>
+        {props.label && (
+          <Label className="mb-2" required={props.required} >
+            {props.label}
+          </Label>
+        )
+        }
+
         {renderHiddenBadge()}
       </div>
 
@@ -234,7 +238,7 @@ export default function SearchableCombobox(props: Props) {
                   <div className="flex flex-col w-full min-w-0 gap-1">
                     <div className="flex items-center gap-1 overflow-hidden flex-nowrap">
                       {first && (
-                        <ComboboxChip className="bg-black/75 rounded-2xl text-white shrink-0">
+                        <ComboboxChip className="bg-secondary  rounded-2xl text-secondary-foreground shrink-0">
                           <span className="truncate">
                             {formatLabel(firstItem)}
                           </span>
@@ -260,8 +264,14 @@ export default function SearchableCombobox(props: Props) {
           </ComboboxValue>
         </ComboboxChips>
 
-        <ComboboxContent anchor={anchor}>
-          <div className="p-2">
+        {/* <ComboboxContent anchor={anchor}> */}
+
+        <ComboboxContent
+          anchor={anchor}
+          onMouseDownCapture={(e) => e.stopPropagation()}
+          onPointerDownCapture={(e) => e.stopPropagation()}
+        >
+          <div className="">
             <Input
               ref={searchRef}
               className="w-full"
@@ -287,7 +297,7 @@ export default function SearchableCombobox(props: Props) {
               <>
                 <button
                   type="button"
-                  className="bg-card-foreground/80 text-white rounded-md px-2 text-sm font-semibold"
+                  className="bg-secondary text-secondary-foreground text rounded-md px-2 text-sm font-semibold"
                   onClick={() => {
                     const current =
                       normalizedValue as string[]
@@ -312,7 +322,7 @@ export default function SearchableCombobox(props: Props) {
 
                 <button
                   type="button"
-                  className="bg-card-foreground/80 text-white rounded-md px-2 text-sm font-semibold"
+                  className="bg-secondary text-secondary-foreground text rounded-md px-2 text-sm font-semibold"
                   onClick={() =>
                     props.onValueChange([])
                   }

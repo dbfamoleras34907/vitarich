@@ -181,11 +181,6 @@ export default function GlobalDefaults({ collapsed }: CollapsedProps) {
   );
 }
 
-
-
-
-
-
 export async function getActiveUsers() {
   const { data: { session },
   } = await db.auth.getSession();

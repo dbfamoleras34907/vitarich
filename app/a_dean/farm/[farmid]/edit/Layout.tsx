@@ -290,21 +290,25 @@ export default function Layout() {
     // ================= LOAD COUNTERS =================
 
     useEffect(() => {
+        try {
 
-        async function loadCounters() {
+            async function loadCounters() {
 
-            const bLast = await getLastCode("v_last_building_code")
-            const pLast = await getLastCode("v_last_pen_code")
-            const mLast = await getLastCode("v_last_machine_code")
+                const bLast = await getLastCode("v_last_building_code")
+                const pLast = await getLastCode("v_last_pen_code")
+                const mLast = await getLastCode("v_last_machine_code")
 
-            setBuildingCounter(bLast)
-            setPenCounter(pLast)
-            setMachineCounter(mLast)
+                setBuildingCounter(bLast)
+                setPenCounter(pLast)
+                setMachineCounter(mLast)
 
+            }
+
+            loadCounters()
+
+        } catch (error) {
+            console.log("Error loading counters:", error)
         }
-
-        loadCounters()
-
     }, [])
 
     return (

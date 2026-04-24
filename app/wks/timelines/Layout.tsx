@@ -8,7 +8,7 @@ import { RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
-import { getTask } from './api'
+import { getTimesheets } from './api'
 
 export default function Layout() {
   const route = useRouter()
@@ -18,15 +18,13 @@ export default function Layout() {
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
       { key: 'action', label: 'Action', type: 'button' },
-      { key: 'subject', label: 'Subject', type: 'text' },
-      { key: 'task_type', label: 'Type', type: 'text' },
-      { key: 'assigned_to', label: 'Assigned To', type: 'text' },
-      { key: 'created_at', label: 'Created At', type: 'text' },
+      { key: 'date', label: 'Date', type: 'text' },
+      { key: 'total_hours', label: 'Total Hours', type: 'text' },
     ],
     []
   )
   useEffect(() => {
-    route.prefetch("/wks/tasks/new")
+    route.prefetch("/wks/timelines/new")
   }, [])
 
 
@@ -36,9 +34,9 @@ export default function Layout() {
       setLoading(true)
 
       try {
-        const data = await getTask()
+        const data = await getTimesheets()
 
-        console.log("Fetched Tasks:", data)
+        console.log("Fetched Timesheets:", data)
         setinitialRows(data)
       } catch (err) {
         console.error(err)
@@ -60,18 +58,18 @@ export default function Layout() {
     <div>
       <div className='flex items-center justify-between mt-8 mx-4'>
         <Breadcrumb
-          CurrentPageName='Tasks'
+          CurrentPageName='Timesheets'
           FirstPreviewsPageName='Workspace'
         />
         <div>
           <Button size="sm"
 
-            onClick={() => route.push("/wks/tasks/new")}>
-            <Plus /> New Task
+            onClick={() => route.push("/wks/timelines/new")}>
+            <Plus /> New Timesheet
           </Button>
         </div>
       </div>
-      <p className='text-gray-600 mx-4'>Manage your tasks and related tasks here.</p>
+      <p className='text-gray-600 mx-4'>Manage your timesheets and related timesheets here.</p>
       <DynamicTable
         loading={loading}
 
@@ -88,7 +86,7 @@ export default function Layout() {
                     size={"sm"}
                     className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
                     onClick={() => {
-                      route.push(`/wks/tasks/${row.id}`)
+                      route.push(`/wks/timelines/${row.id}`)
                     }}
                   >
 
@@ -113,5 +111,3 @@ export default function Layout() {
     </div>
   )
 } 
-
-// app/wks/tasks/Layout.tsx

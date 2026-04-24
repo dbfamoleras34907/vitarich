@@ -8,11 +8,14 @@ export async function checkUserActive(authId: string) {
   const user = await getProfileByAuthId(authId);
 
   if (!user) {
+    toast("Your account has not been activated yet. Please contact your manager for assistance--101");
+
     redirect("/logout");
   }
 
   if (user.isactive === "0") {
-    toast("Your account has not been activated yet. Please contact your manager for assistance")
+    console.log("Inactive user, logging out");
+    toast("Your account has not been activated yet. Please contact your manager for assistance--102");
     redirect("/logout");
   }
 

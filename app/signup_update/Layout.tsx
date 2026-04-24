@@ -10,8 +10,9 @@ import { LoaderIcon } from "lucide-react"
 import SignUpStage from "../signup/SignUpStage"
 import SearchableDropdown from "@/lib/SearchableDropdown"
 import { db } from "@/lib/Supabase/supabaseClient"
-import { updateUserProfile } from "../admin/user/api"
+import { getUserInfoAuthSession,  signupUser, updateUserProfile } from "../admin/user/api"
 import Image from "next/image"
+import { useGlobalContext } from "@/lib/context/GlobalContext"
 
 const details = [
   { required: true, key: "firstname", label: "First Name", type: "text" },
@@ -34,7 +35,8 @@ const details = [
 export default function Layout() {
 
   const router = useRouter()
-
+  const { getValue } = useGlobalContext();
+  const [email, setemail] = useState("")
   const [form, setForm] = useState<any>({})
   const [loading, setLoading] = useState(false)
   const [sessionUser, setSessionUser] = useState<any>(null)
@@ -99,13 +101,14 @@ export default function Layout() {
 
     try {
 
-      await updateUserProfile({
+      await signupUser({
         ...form,
         auth_id: sessionUser.id,
         created_by: sessionUser.id,
-      
+        email: sessionUser.email,
+
         // profile_completed: true
-        
+
       })
 
       toast.success(`Profile for ${sessionUser.email} saved`)
@@ -123,6 +126,33 @@ export default function Layout() {
     }
 
   }
+
+
+
+
+  const getEmail = async () => {
+    try {
+      // const data = await getUserInfoAuthSession();
+      // // setValue("UserInfoAuthSession", data);
+      // console.log("UserInfoAuthSession", data);
+
+
+      const { data: { session },
+      } = await db.auth.getSession();
+      setemail(session?.user.email || "")
+
+
+      // setForm((prev: any) => ({
+      //   ...prev,
+      //   email: email
+      // }))
+    } catch (error) {
+    }
+  }
+  useEffect(() => {
+    getEmail()
+  }, [])
+
 
   return (
     <div className="w-[360px] mx-auto mt-4">
@@ -145,6 +175,15 @@ export default function Layout() {
 
         <SignUpStage currentStage={2} />
 
+
+        <Label >
+          Email
+        </Label>
+        <Input
+          required={true}
+          type={"email"}
+          defaultValue={email}
+        />
         {details.map((f, i) => (
 
           <div key={i} className="grid gap-2">
@@ -189,6 +228,7 @@ export default function Layout() {
             ? <LoaderIcon className="animate-spin" />
             : "Finish Registration"}
         </Button>
+
 
       </div>
     </div>

@@ -15,13 +15,16 @@ import { useParams } from 'next/navigation'
 import { parse } from 'path'
 import { getProjectById } from './api'
 import { saveProject, SaveProjectPayload } from '../new/api'
+import { Modal } from '@/lib/Moda'
+import NewProjectTask from './NewProjectTask'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
   const [activeUsers, setactiveUsers] = useState<ComboboxItemType[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const { id } = useParams()
-
+  const [modalOpen, setmodalOpen] = useState(false)
   const [formValues, setFormValues] = useState<Partial<SaveProjectPayload>>({})
   const components = [
     { name: "project_name", label: "Project Name", type: "text", required: true, placeholder: "Enter project name" },
@@ -155,15 +158,28 @@ export default function Layout() {
 
         <div className='flex items-center justify-between'>
           <Breadcrumb
-            CurrentPageName='Create New Project'
+            CurrentPageName='View Project'
             FirstPreviewsPageName='Projects'
           />
-          <Button
-            type="submit"
-            disabled={isLoading}
-          >
-            Save
-          </Button>
+          <div className='flex gap-2'>
+            <Button
+              type="button"
+              variant={"secondary"}
+              onClick={() => setmodalOpen(true)}
+              disabled={isLoading}
+            >
+              New Task
+            </Button>
+
+
+            <Button
+              type="submit"
+              disabled={isLoading}
+            >
+              Save
+            </Button>
+
+          </div>
         </div>
 
         <Card className='shadow-none'>
@@ -255,7 +271,57 @@ export default function Layout() {
           </div>
         </Card>
 
-      </form>
-    </div>
+      </form >
+
+      {/* <Modal
+        open={modalOpen}
+        onOpenChange={(open) => setmodalOpen(open)}
+        title="Create New Task"
+      >
+        <div className=' bg-card m-2 pt-4 rounded-md'>
+          <NewProjectTask projectId={id as string} />   
+
+        </div>
+      </Modal> */}
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+
+          {/* backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setmodalOpen(false)}
+          />
+
+          {/* modal content */}
+          <div className="relative z-10 w-full max-w-2xl rounded-lg bg-white shadow-lg p-6">
+
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">
+                Create New Task
+              </h2>
+
+              <button
+                type="button"
+                onClick={() => setmodalOpen(false)}
+                className="text-gray-500 hover:text-black"
+              >
+                ✕
+              </button>
+            </div>
+
+            <NewProjectTask projectId={id as string} />
+
+          </div>
+        </div>
+      )}
+
+
+      {/* <NewProjectTask projectId={id as string} />  update */}
+      {/* /task list */}
+      <div>
+            // task list here
+      </div>
+    </div >
   )
 }

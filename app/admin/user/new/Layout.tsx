@@ -197,7 +197,7 @@ export default function Layout() {
         getUserInfoById(userId),
         get_vwdmf_super_users(),
       ])
-
+      console.log({ userInfo, superUsersList })
       setSuperUsers(superUsersList)
       setDefaultFarms(userInfo?.[0]?.users_farms ?? [])
     } catch {
