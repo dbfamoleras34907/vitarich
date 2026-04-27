@@ -30,6 +30,7 @@ export type Placement = {
   placement_date: string;
   dr_no: string;
   file_attached: string | null;
+  farm_id: number | null;
   farm_name: string;
   building_no: string;
   pen_no: string;
@@ -55,8 +56,6 @@ export type PlacementInsert = Omit<
   | "created_by"
   | "updated_at"
   | "updated_by"
-  | "f_endingbalance"
-  | "m_endingbalance"
 >;
 
 export type PlacementUpdate = Partial<PlacementInsert>;

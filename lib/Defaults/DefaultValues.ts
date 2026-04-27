@@ -50,7 +50,7 @@ export const NavFolders = [
           {
             type: "Module",
             title: "Laying Production",
-            url: "/home",
+            url: "/jmb/egglaying",
           },
           {
             type: "Module",

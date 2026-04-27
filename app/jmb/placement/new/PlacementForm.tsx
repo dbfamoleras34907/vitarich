@@ -49,6 +49,7 @@ type FormState = {
   placement_date: string;
   dr_no: string;
   file_attached: string;
+  farm_id: string;
   farm_name: string;
   building_no: string;
   pen_count: string;
@@ -130,6 +131,7 @@ export default function PlacementForm() {
     placement_date: getToday(),
     dr_no: "",
     file_attached: "",
+    farm_id: "",
     farm_name: "",
     building_no: "",
     pen_count: "",
@@ -186,6 +188,40 @@ export default function PlacementForm() {
   }, []);
 
   useEffect(() => {
+    if (!form.farm_id || !locations.length) return;
+
+    const match = locations.find(
+      (location) =>
+        String(location.farm_id) === form.farm_id &&
+        (!form.building_no || location.building_no === form.building_no),
+    );
+
+    if (!match || match.farm_name === form.farm_name) return;
+
+    setForm((prev) => ({
+      ...prev,
+      farm_name: match.farm_name,
+    }));
+  }, [form.building_no, form.farm_id, form.farm_name, locations]);
+
+  useEffect(() => {
+    if (form.farm_id || !form.farm_name || !locations.length) return;
+
+    const match = locations.find(
+      (location) =>
+        location.farm_name === form.farm_name &&
+        (!form.building_no || location.building_no === form.building_no),
+    );
+
+    if (!match) return;
+
+    setForm((prev) => ({
+      ...prev,
+      farm_id: prev.farm_id || String(match.farm_id),
+    }));
+  }, [form.building_no, form.farm_id, form.farm_name, locations]);
+
+  useEffect(() => {
     let mounted = true;
 
     (async () => {
@@ -197,6 +233,7 @@ export default function PlacementForm() {
 
         setForm((prev) => ({
           ...prev,
+          farm_id: prev.farm_id || (farm?.id ? String(farm.id) : ""),
           farm_name: prev.farm_name || farm.name,
         }));
       } catch {
@@ -231,6 +268,7 @@ export default function PlacementForm() {
           placement_date: record.placement_date ?? getToday(),
           dr_no: record.dr_no ?? "",
           file_attached: record.file_attached ?? "",
+          farm_id: record.farm_id != null ? String(record.farm_id) : "",
           farm_name: record.farm_name ?? "",
           building_no: record.building_no ?? "",
           pen_count: "1",
@@ -268,24 +306,27 @@ export default function PlacementForm() {
   const totalPens = useMemo(() => rows.length, [rows]);
   const disabledAll = saving || loadingRecord;
   const farmOptions = useMemo(() => {
-    const values = new Set<string>(
-      locations.map((location) => location.farm_name).filter(Boolean),
-    );
-    if (form.farm_name.trim()) values.add(form.farm_name.trim());
-    return Array.from(values);
-  }, [form.farm_name, locations]);
+    const values = new Map<string, string>();
+    locations.forEach((location) => {
+      values.set(String(location.farm_id), location.farm_name);
+    });
+    if (form.farm_id && form.farm_name.trim()) {
+      values.set(form.farm_id, form.farm_name.trim());
+    }
+    return Array.from(values, ([id, name]) => ({ id, name }));
+  }, [form.farm_id, form.farm_name, locations]);
   const buildingOptions = useMemo(() => {
     const values = new Set<string>();
-    if (form.farm_name) {
+    if (form.farm_id) {
       locations
-        .filter((location) => location.farm_name === form.farm_name)
+        .filter((location) => String(location.farm_id) === form.farm_id)
         .map((location) => location.building_no)
         .filter(Boolean)
         .forEach((buildingNo) => values.add(buildingNo));
     }
     if (form.building_no.trim()) values.add(form.building_no.trim());
     return Array.from(values);
-  }, [form.building_no, form.farm_name, locations]);
+  }, [form.building_no, form.farm_id, locations]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
     rows.forEach((row) => {
@@ -302,10 +343,15 @@ export default function PlacementForm() {
     }));
   }
 
-  function handleFarmChange(farmName: string) {
+  function handleFarmChange(farmId: string) {
+    const farm = locations.find(
+      (location) => String(location.farm_id) === farmId,
+    );
+
     setForm((prev) => ({
       ...prev,
-      farm_name: farmName,
+      farm_id: farmId,
+      farm_name: farm?.farm_name ?? "",
       building_no: "",
       pen_count: "",
     }));
@@ -316,7 +362,7 @@ export default function PlacementForm() {
     const nextRows = buildRowsFromPens(
       locations.filter(
         (location) =>
-          location.farm_name === form.farm_name &&
+          String(location.farm_id) === form.farm_id &&
           location.building_no === buildingNo,
       ),
     );
@@ -398,6 +444,10 @@ export default function PlacementForm() {
       alert("Farm name is required.");
       return;
     }
+    if (!form.farm_id.trim()) {
+      alert("Farm is required.");
+      return;
+    }
     if (!form.building_no.trim()) {
       alert("Building number is required.");
       return;
@@ -415,6 +465,7 @@ export default function PlacementForm() {
       placement_date: form.placement_date,
       dr_no: form.dr_no.trim(),
       file_attached: form.file_attached.trim() || null,
+      farm_id: Number(form.farm_id),
       farm_name: form.farm_name.trim(),
       building_no: form.building_no.trim(),
       pen_no: row.pen_no.trim(),
@@ -423,11 +474,23 @@ export default function PlacementForm() {
       f_doa: asNumber(row.f_doa),
       f_reject: asNumber(row.f_reject),
       f_shortcount: asNumber(row.f_shortcount),
+      f_endingbalance: getEndingBalance(
+        row.f_beg,
+        row.f_doa,
+        row.f_reject,
+        row.f_shortcount,
+      ),
       m_source: row.m_source.trim() || null,
       m_beg: asNumber(row.m_beg),
       m_doa: asNumber(row.m_doa),
       m_reject: asNumber(row.m_reject),
       m_shortcount: asNumber(row.m_shortcount),
+      m_endingbalance: getEndingBalance(
+        row.m_beg,
+        row.m_doa,
+        row.m_reject,
+        row.m_shortcount,
+      ),
       remarks: form.remarks.trim() || null,
     }));
 
@@ -519,22 +582,25 @@ export default function PlacementForm() {
               <div className="space-y-2">
                 <RequiredLabel>Farm Name</RequiredLabel>
                 <Select
-                  value={form.farm_name}
+                  value={form.farm_id}
                   onValueChange={handleFarmChange}
                   disabled={disabledAll || loadingLocations || isEdit}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue
-                      placeholder={
-                        loadingLocations ? "Loading..." : "Select farm"
+                    <span
+                      className={
+                        form.farm_name ? "truncate" : "text-muted-foreground"
                       }
-                    />
+                    >
+                      {form.farm_name ||
+                        (loadingLocations ? "Loading..." : "Select farm")}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     {farmOptions.length ? (
-                      farmOptions.map((farmName) => (
-                        <SelectItem key={farmName} value={farmName}>
-                          {farmName}
+                      farmOptions.map((farm) => (
+                        <SelectItem key={farm.id} value={farm.id}>
+                          {farm.name}
                         </SelectItem>
                       ))
                     ) : (
@@ -552,13 +618,13 @@ export default function PlacementForm() {
                   value={form.building_no}
                   onValueChange={handleBuildingChange}
                   disabled={
-                    disabledAll || loadingLocations || !form.farm_name || isEdit
+                    disabledAll || loadingLocations || !form.farm_id || isEdit
                   }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue
                       placeholder={
-                        form.farm_name ? "Select building" : "Select farm first"
+                        form.farm_id ? "Select building" : "Select farm first"
                       }
                     />
                   </SelectTrigger>
@@ -927,8 +993,8 @@ export default function PlacementForm() {
                           colSpan={13}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
-                          Select a farm and building above to generate
-                          placement rows.
+                          Select a farm and building above to generate placement
+                          rows.
                         </td>
                       </tr>
                     )}
