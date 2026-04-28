@@ -5,10 +5,13 @@ import { ColumnConfig } from '@/components/ui/DataTable'
 import DynamicTable from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { RowDataKey } from '@/lib/Defaults/DefaultTypes'
-import { NotepadText, Paperclip, Plus } from 'lucide-react'
+import { NotepadText, Paperclip, Plus, Printer, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { getTimesheets } from './api'
+import { Card } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import SearchableCombobox from '@/components/SearchableCombobox'
 
 export default function Layout() {
   const route = useRouter()
@@ -46,9 +49,8 @@ export default function Layout() {
   }, [])
 
   useEffect(() => {
-    route.prefetch(`/wks/timelines/a`)
     initialRows.forEach((row) => {
-      route.prefetch(`/wks/timelines/${row.id}`)
+      route.prefetch(`/wks/tasks/${row.id}`)
     })
   }, [initialRows])
 
@@ -60,18 +62,29 @@ export default function Layout() {
           FirstPreviewsPageName='Workspace'
         />
         <div className='flex gap-2'>
-          <Button size="sm" className='bg-white text-black border-2 border-gray-300 hover:bg-gray-100'
-            onClick={() => route.push("/wks/timelines/a")}>
-            <NotepadText />  Timesheet Report
-          </Button>
 
           <Button size="sm" className='bg-black text-white hover:bg-gray-600'
-            onClick={() => route.push("/wks/timelines/new")}>
-            <Plus /> New Timesheet
+            onClick={() => alert("This report printing is coming soon!")}>
+            <Printer /> Print
           </Button>
         </div>
       </div>
-      <p className='text-gray-600 mx-4'>Manage your timesheets and related timesheets here.</p>
+      <p className='text-gray-600 mx-4'>Timesheet reports provide a summary of recorded hours and status information.</p>
+      <Card className='p-2 mx-4'>
+        {/* date parameter */}
+        <div>
+          <Label htmlFor="date" className='text-sm'>Filter by Date</Label>
+          <SearchableCombobox
+            items={[{
+              code:"jan",
+              name:"January"
+            }]}
+            value={"jan"}
+            onValueChange={val =>
+              console.log(val)
+            }/>
+          </div>
+      </Card>
       <DynamicTable
         loading={loading}
 

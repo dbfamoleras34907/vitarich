@@ -159,6 +159,7 @@ export default function NewTask() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+   
 
     if (
       !formValues.assigned_to ||
@@ -202,7 +203,8 @@ export default function NewTask() {
           ...prev,
           subject: '',
           parent_task: null,
-          issue: ''
+          issue: '',
+          color: getRandomColor()
         }))
         setTimeout(() => {
           subjectRef.current?.focus()

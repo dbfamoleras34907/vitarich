@@ -265,6 +265,8 @@ export default function Layout() {
 
         <Button onClick={handleAddFarm}>
           <Plus /> Add Farm
+          {/* <EggHenLoaderIcon color='#fff' size={32} /> */}
+{/* add add loading state and add that EggHenLoaderIcon as a lodaing state for ui  */}
         </Button>
 
       </div>
@@ -576,7 +578,8 @@ export default function Layout() {
         </div>
 
       </div>
-
+      {/* asd */}
+      {/* <EggHenLoaderIcon2 /> */}
     </div>
   )
 }

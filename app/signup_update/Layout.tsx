@@ -155,7 +155,7 @@ export default function Layout() {
 
 
   return (
-    <div className="w-[360px] mx-auto mt-4">
+    <div className="w-90 mx-auto mt-4">
 
       <div className="flex flex-col items-center gap-2 text-center">
         <Image

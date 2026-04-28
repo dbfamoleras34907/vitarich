@@ -264,17 +264,17 @@ export default function SearchableCombobox(props: Props) {
           </ComboboxValue>
         </ComboboxChips>
 
-        {/* <ComboboxContent anchor={anchor}> */}
-
+        <ComboboxContent anchor={anchor}>
+{/* 
         <ComboboxContent
           anchor={anchor}
           onMouseDownCapture={(e) => e.stopPropagation()}
           onPointerDownCapture={(e) => e.stopPropagation()}
-        >
+        > */}
           <div className="">
             <Input
               ref={searchRef}
-              className="w-full"
+              className="w-full border-2 border-gray-500"
               placeholder="Search..."
               value={search}
               onChange={(e) =>

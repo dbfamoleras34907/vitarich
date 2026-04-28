@@ -446,7 +446,7 @@ export default function Layout() {
 
                             </div>
 
-                            <div className='p-3 space-y-3'>
+                            {/* <div className='p-3 space-y-3'>
 
                                 <div className='grid grid-cols-4 gap-3'>
 
@@ -470,7 +470,7 @@ export default function Layout() {
 
                                 </div>
 
-                            </div>
+                            </div> */}
                             <div className='p-3 space-y-3'>
 
                                 <div className='grid grid-cols-4 gap-3'>

@@ -9,16 +9,18 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { format } from 'date-fns'
-import { CalendarIcon } from 'lucide-react'
+import { CalendarIcon, Plus } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { saveProject, SaveProjectPayload } from './api'
+import EggHenLoaderIcon from '@/app/components/EggHenLoaderIcon'
+import { useRouter } from 'next/navigation'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
   const [activeUsers, setactiveUsers] = useState<ComboboxItemType[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
-
+  const router = useRouter()
   const [formValues, setFormValues] = useState<Partial<SaveProjectPayload>>({})
   const components = [
     { name: "project_name", label: "Project Name", type: "text", required: true, placeholder: "Enter project name" },
@@ -105,6 +107,7 @@ export default function Layout() {
     try {
       const id = await saveProject(payload)
       console.log("Saved project:", id)
+      router.push(`/wks/projects/${id}`)
     } catch (err) {
       console.error(err)
     }
@@ -136,6 +139,12 @@ export default function Layout() {
             type="submit"
             disabled={isLoading}
           >
+            {!isLoading ?
+              <Plus className='mr-2 h-4 w-4' /> :
+              <EggHenLoaderIcon className='mr-2 h-4 w-4' />
+            }
+
+
             Save
           </Button>
         </div>
