@@ -83,7 +83,9 @@ export default function NewProjectTask({
         formValues.parent_task?.code
           ? Number(formValues.parent_task.code)
           : null,
-      color: formValues.color
+      color: formValues.color,
+      assigned_to: 0
+
     }
 
     try {
@@ -124,124 +126,124 @@ export default function NewProjectTask({
       className="space-y-4"
       onSubmit={handleSubmit}
     >
-        <div className="grid grid-cols-2 gap-4 px-4">
+      <div className="grid grid-cols-2 gap-4 px-4">
 
-          {/* SUBJECT */}
-          <div>
-            <Label required>
-              Subject
-            </Label>
-            <Input
-              value={formValues.subject}
-              onChange={e =>
-                handleChange(
-                  'subject',
-                  e.target.value
-                )
-              }
-            />
-          </div>
-
-          {/* PRIORITY */}
-          <div>
-            <SearchableCombobox
-              label="Priority"
-              required
-              items={[
-                {
-                  code: 'low',
-                  name: 'Low'
-                },
-                {
-                  code: 'mid',
-                  name: 'Medium'
-                },
-                {
-                  code: 'high',
-                  name: 'High'
-                }
-              ]}
-              value={formValues.priority?.code || ''}
-              onValueChange={val =>
-                handleChange(
-                  'priority',
-                  val
-                )
-              }
-            />
-          </div>
-
-          {/* TASK TYPE */}
-          <div>
-            <SearchableCombobox
-              label="Task Type"
-              required
-              items={taskTypes}
-              value={formValues.task_type?.code || ''}
-              onValueChange={val =>
-                handleChange(
-                  'task_type',
-                  val
-                )
-              }
-            />
-          </div>
-
-          {/* PARENT TASK */}
-          <div>
-            <SearchableCombobox
-              label="Parent Task"
-              items={tasksList}
-              value={formValues.parent_task?.code || ''}
-              onValueChange={val =>
-                handleChange(
-                  'parent_task',
-                  val
-                )
-              }
-            />
-          </div>
-
-          {/* COLOR */}
-          <div>
-            <Label>Color</Label>
-            <Input
-              type="color"
-              value={formValues.color}
-              onChange={e =>
-                handleChange(
-                  'color',
-                  e.target.value
-                )
-              }
-            />
-          </div>
-
-          {/* ISSUE */}
-          <div className="col-span-2">
-            <Label>Issue</Label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm"
-              value={formValues.issue}
-              onChange={e =>
-                handleChange(
-                  'issue',
-                  e.target.value
-                )
-              }
-            />
-          </div>
-
+        {/* SUBJECT */}
+        <div>
+          <Label required>
+            Subject
+          </Label>
+          <Input
+            value={formValues.subject}
+            onChange={e =>
+              handleChange(
+                'subject',
+                e.target.value
+              )
+            }
+          />
         </div>
 
-        <div className="flex justify-end p-4">
-          <Button
-            type="submit"
-            disabled={isLoading}
-          >
-            Save Task
-          </Button>
+        {/* PRIORITY */}
+        <div>
+          <SearchableCombobox
+            label="Priority"
+            required
+            items={[
+              {
+                code: 'low',
+                name: 'Low'
+              },
+              {
+                code: 'mid',
+                name: 'Medium'
+              },
+              {
+                code: 'high',
+                name: 'High'
+              }
+            ]}
+            value={formValues.priority?.code || ''}
+            onValueChange={val =>
+              handleChange(
+                'priority',
+                val
+              )
+            }
+          />
         </div>
+
+        {/* TASK TYPE */}
+        <div>
+          <SearchableCombobox
+            label="Task Type"
+            required
+            items={taskTypes}
+            value={formValues.task_type?.code || ''}
+            onValueChange={val =>
+              handleChange(
+                'task_type',
+                val
+              )
+            }
+          />
+        </div>
+
+        {/* PARENT TASK */}
+        <div>
+          <SearchableCombobox
+            label="Parent Task"
+            items={tasksList}
+            value={formValues.parent_task?.code || ''}
+            onValueChange={val =>
+              handleChange(
+                'parent_task',
+                val
+              )
+            }
+          />
+        </div>
+
+        {/* COLOR */}
+        <div>
+          <Label>Color</Label>
+          <Input
+            type="color"
+            value={formValues.color}
+            onChange={e =>
+              handleChange(
+                'color',
+                e.target.value
+              )
+            }
+          />
+        </div>
+
+        {/* ISSUE */}
+        <div className="col-span-2">
+          <Label>Issue</Label>
+          <textarea
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            value={formValues.issue}
+            onChange={e =>
+              handleChange(
+                'issue',
+                e.target.value
+              )
+            }
+          />
+        </div>
+
+      </div>
+
+      <div className="flex justify-end p-4">
+        <Button
+          type="submit"
+          disabled={isLoading}
+        >
+          Save Task
+        </Button>
+      </div>
     </form>
   )
 }
