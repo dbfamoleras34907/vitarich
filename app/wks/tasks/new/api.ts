@@ -9,7 +9,7 @@ export interface SavetaskPayload {
   task_type: number
   parent_task?: number | null
   color?: string | null
-  assigned_to: number
+  assigned_to: number | null
 }
 
 export const savetask = async (

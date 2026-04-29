@@ -83,7 +83,9 @@ export default function NewProjectTask({
         formValues.parent_task?.code
           ? Number(formValues.parent_task.code)
           : null,
-      color: formValues.color
+      color: formValues.color,
+      assigned_to: 0
+
     }
 
     try {
