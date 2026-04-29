@@ -68,7 +68,7 @@ export default function ApprovalDecisionForm() {
   const [isAutoReceiving, setisAutoReceiving] = useState(false)
   const [loading, setloading] = useState(false)
   const [farms, setfarms] = useState<Farms[]>([])
-  const [header, setHeader] = useState<DataRecordApproval | null>(null)
+  const [header, setHeader] = useState<DataRecordApproval>(emptyApprovalRecord)
   const [items, setItems] = useState<DraftItem[]>([])
   const [ItemMaster, setItemMaster] = useState<ItemMasterType[]>([])
   const [selectedRows, setSelectedRows] = useState<number[]>([])
@@ -108,12 +108,41 @@ export default function ApprovalDecisionForm() {
     return format(parsedDate, "dd/MM/yyyy")
   }
 
+  // const getDefaultFarm = async () => {
+  //   const defaultFarmId = getValue("DefaultFarmId")
+
+  //   if (defaultFarmId) {
+  //     setHeader(h =>
+  //       h && !h.delivered_to
+  //         ? { ...h, delivered_to: defaultFarmId }
+  //         : h
+  //     )
+  //     return
+  //   }
+
+  //   const data = await getUserInfo()
+
+  //   if (data?.length) {
+  //     setdefaultFarm(data[0])
+
+  //     setHeader(h =>
+  //       h && !h.delivered_to
+  //         ? { ...h, delivered_to: data[0].id }
+  //         : h
+  //     )
+  //   }
+  // }
+
+  // useEffect(() => {
+  //   if (!header) return
+  //   getDefaultFarm()
+  // }, [header, getValue])
   const getDefaultFarm = async () => {
     const defaultFarmId = getValue("DefaultFarmId")
 
     if (defaultFarmId) {
       setHeader(h =>
-        h && !h.delivered_to
+        h && h.delivered_to == null
           ? { ...h, delivered_to: defaultFarmId }
           : h
       )
@@ -126,18 +155,15 @@ export default function ApprovalDecisionForm() {
       setdefaultFarm(data[0])
 
       setHeader(h =>
-        h && !h.delivered_to
+        h && h.delivered_to == null
           ? { ...h, delivered_to: data[0].id }
           : h
       )
     }
   }
-
   useEffect(() => {
-    if (!header) return
     getDefaultFarm()
-  }, [header, getValue])
-
+  }, [])
   useEffect(() => {
     refreshSessionx(router)
   }, [])
@@ -477,16 +503,13 @@ export default function ApprovalDecisionForm() {
                 onValueChange={(val) => {
                   const selectedFarm = farms.find((f: any) => f.code === val)
 
-                  setHeader(h =>
-                    h ? {
-                      ...h,
-                      soldTo: val,
-                      tin: selectedFarm?.tin || '',
-                      address: selectedFarm?.address || '',
-                    } : h
-                  )
-                }
-                }
+                  setHeader(h => ({
+                    ...(h ?? emptyApprovalRecord),
+                    soldTo: val,
+                    tin: selectedFarm?.tin || '',
+                    address: selectedFarm?.address || '',
+                  }))
+                }}
 
               />
             </div>
@@ -510,11 +533,12 @@ export default function ApprovalDecisionForm() {
             <div className='mt-1'>
               <DefaultFarmComboBox
                 label="Shipped To"
-                value={header?.delivered_to || ''}
+                value={header?.delivered_to ?? undefined}
                 setValue={(val) => {
-                  setHeader(h =>
-                    h ? { ...h, delivered_to: val } : h
-                  )
+                  setHeader(h => ({
+                    ...(h ?? emptyApprovalRecord),
+                    delivered_to: val
+                  }))
                 }
                 }
               />

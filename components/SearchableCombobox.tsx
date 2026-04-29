@@ -259,13 +259,15 @@ export default function SearchableCombobox(props: Props) {
                   value={formatLabel(item)}
                   readOnly
                 />
+                // <ComboboxChipsInput />
+                
               )
             }}
           </ComboboxValue>
         </ComboboxChips>
 
         <ComboboxContent anchor={anchor}>
-{/* 
+          {/* 
         <ComboboxContent
           anchor={anchor}
           onMouseDownCapture={(e) => e.stopPropagation()}
