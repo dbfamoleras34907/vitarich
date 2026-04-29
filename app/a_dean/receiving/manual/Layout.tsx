@@ -62,7 +62,7 @@ const emptyApprovalRecord: DataRecordApproval = {
 export default function ApprovalDecisionForm() {
   const confirm = useConfirm();
   const router = useRouter()
-
+ 
   const { getValue, setValue } = useGlobalContext()
 
   const [isAutoReceiving, setisAutoReceiving] = useState(false)
