@@ -10,6 +10,7 @@ export async function toggleUserPermission(
   title: string,
   checked: boolean,
   url?: string,
+  type?: string,
 
 ) {
   try {
@@ -24,6 +25,7 @@ export async function toggleUserPermission(
           updated_by: userId,
           ilink: url || "",
           updated_at: new Date().toISOString(),
+          type: type
         },
         { onConflict: "user_id,group_name,title" }
       )
@@ -34,7 +36,7 @@ export async function toggleUserPermission(
     console.log("Permission updated:", data);
     return data;
   } catch (err) {
-    // console.log("Error updating permission:", err);
+    console.log("Error updating permission:", err);
     toast.success(`Only [Super user] can update user permissions`);
 
     // throw err;

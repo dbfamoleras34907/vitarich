@@ -35,6 +35,8 @@ import {
   getvwdmf_get_farmlist_code_name_farmtype,
 } from './api'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import Permesions from './Permesions'
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -310,7 +312,7 @@ export default function Layout() {
 
       <Separator />
 
-      {/* TAB SWITCH */}
+      {/* TAB SWITCH
       <div className="px-4 flex gap-2 my-2">
         <Button
           variant={tab === 1 ? 'secondary' : 'ghost'}
@@ -325,96 +327,97 @@ export default function Layout() {
         >
           Roles & Permissions
         </Button>
-      </div>
+      </div> */}
 
-      <Separator />
+      <Tabs defaultValue="account"  >
+        <TabsList className='bg-white mt-4'>
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="Permesions">Permesions</TabsTrigger>
+        </TabsList>
+        <TabsContent value="account">
+          <form className="space-y-4">
+            {/* <SuperUser /> */}
 
-      {/* DETAILS TAB */}
-      {tab === 1 && (
-        <form className="space-y-4">
-          <SuperUser />
+            <div className="bg-white p-4 rounded-md">
+              <div className="grid grid-cols-2 gap-4">
+                {fields.map((field) => (
+                  <div
+                    key={field.key}
+                    className={`grid gap-2 ${field.component === 'textarea'
+                      ? 'col-span-2'
+                      : ''
+                      }`}
+                  >
+                    {field.key !== 'assigned_farms' && (
+                      <Label required={field.required}>
+                        {field.label}
+                      </Label>
+                    )}
 
-          <div className="bg-white p-4 rounded-md">
-            <div className="grid grid-cols-2 gap-4">
-              {fields.map((field) => (
-                <div
-                  key={field.key}
-                  className={`grid gap-2 ${field.component === 'textarea'
-                    ? 'col-span-2'
-                    : ''
-                    }`}
-                >
-                  {field.key !== 'assigned_farms' && (
-                    <Label required={field.required}>
-                      {field.label}
-                    </Label>
-                  )}
-
-                  {field.component === 'textarea' ? (
-                    <Textarea
-                      className="border-2 border-black/30"
-                      value={(form as any)[field.key] || ''}
-                      onChange={(e) =>
-                        handleChange(
-                          field.key as any,
-                          e.target.value
-                        )
-                      }
-                    />
-                  ) : field.type === 'list' ? (
-                    <SearchableDropdown
-                      list={field.list || []}
-                      codeLabel={field.code || ''}
-                      nameLabel={field.name || ''}
-                      value={(form as any)[field.key] || ''}
-                      onChange={(v) =>
-                        handleChange(field.key as any, v)
-                      }
-                    />
-                  ) : field.type === 'multi-select' ? (
-                    <SearchableCombobox
-                      required
-                      label={field.label}
-                      multiple
-                      showCode
-                      items={field.list || []}
-                      value={defaultFarms}
-                      onValueChange={setDefaultFarms}
-                      className="w-full"
-                    />
-                  ) : (
-                    <Input
-                      type={field.type || 'text'}
-                      value={(form as any)[field.key] || ''}
-                      onChange={(e) =>
-                        handleChange(
-                          field.key as any,
-                          e.target.value
-                        )
-                      }
-                    />
-                  )}
-                </div>
-              ))}
+                    {field.component === 'textarea' ? (
+                      <Textarea
+                        className="border-2 border-black/30"
+                        value={(form as any)[field.key] || ''}
+                        onChange={(e) =>
+                          handleChange(
+                            field.key as any,
+                            e.target.value
+                          )
+                        }
+                      />
+                    ) : field.type === 'list' ? (
+                      <SearchableDropdown
+                        list={field.list || []}
+                        codeLabel={field.code || ''}
+                        nameLabel={field.name || ''}
+                        value={(form as any)[field.key] || ''}
+                        onChange={(v) =>
+                          handleChange(field.key as any, v)
+                        }
+                      />
+                    ) : field.type === 'multi-select' ? (
+                      <SearchableCombobox
+                        required
+                        label={field.label}
+                        multiple
+                        showCode
+                        items={field.list || []}
+                        value={defaultFarms}
+                        onValueChange={setDefaultFarms}
+                        className="w-full"
+                      />
+                    ) : (
+                      <Input
+                        type={field.type || 'text'}
+                        value={(form as any)[field.key] || ''}
+                        onChange={(e) =>
+                          handleChange(
+                            field.key as any,
+                            e.target.value
+                          )
+                        }
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
+          </form>
+
+        </TabsContent>
+        <TabsContent value="Permesions">
+          <div className="px-4">
+            {/* <RuleAndPerm
+              userId={authSelected?.auth_id || '0'}
+            /> */}
+            <Permesions
+              userId={authSelected?.auth_id || '0'}
+            />
           </div>
-        </form>
-      )}
 
-      {/* PERMISSIONS TAB */}
-      {tab === 2 && !initialLoading && (
-        <div className="px-4">
-          <RuleAndPerm
-            userId={authSelected?.auth_id || '0'}
-          />
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
 
-      {/* <DefaultFarmComboBox
-        label='Default farm'
-        setValue={setFarm}
-        value={farm}
-      /> */}
     </div>
   )
 }

@@ -451,7 +451,7 @@ export default function Eggsetterform() {
             previous_egg_set: 0,
             qty_set_egg:
               row.qty_set_egg != null &&
-              Number.isFinite(Number(row.qty_set_egg))
+                Number.isFinite(Number(row.qty_set_egg))
                 ? Number(row.qty_set_egg)
                 : 0,
           },
@@ -675,6 +675,7 @@ export default function Eggsetterform() {
       router.push("/jmb/eggsetter");
       router.refresh();
     } catch (error: unknown) {
+      console.log({ error })
       alert(getErrorMessage(error, "Failed to save."));
     } finally {
       setSaving(false);

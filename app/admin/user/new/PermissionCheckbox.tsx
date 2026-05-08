@@ -28,7 +28,7 @@ export const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
   }, [defaultValue]);
 
   const handleChange = async (newChecked: boolean) => {
-    
+
     setChecked(newChecked);
 
     await toggleUserPermission(userId, groupName, title, newChecked, url);
@@ -46,7 +46,7 @@ export const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
 
       <BracketCheckbox checked={checked} onChange={handleChange} />
 
-        < label htmlFor={`${groupName}-${title}`}>
+      < label htmlFor={`${groupName}-${title}`}>
         {title} ({type})
       </label>
     </div>

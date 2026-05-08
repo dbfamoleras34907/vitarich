@@ -9,10 +9,11 @@ import { toast } from 'sonner'
 import ScannerModal from '@/components/ScannerModal'
 import Breadcrumb from '@/lib/Breadcrumb'
 import DynamicTable from '@/components/ui/DataTableV2'
-import { HandCoins, Map, Plus, RefreshCcw } from 'lucide-react'
+import { HandCoins, Map, Plus, RefreshCcw, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import { getDefaultFarm } from './manual/api'
 import { Farms } from '@/lib/types'
+import { PermissionCheck } from '@/lib/PermissionCheck'
 
 
 
@@ -71,6 +72,7 @@ export default function Layout() {
 
     const receivedColumns: ColumnConfig[] = [
         { key: 'action', label: 'Trace', type: 'button', disabled: true },
+        { key: 'view', label: 'View', type: 'button', disabled: true },
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
         { key: 'sku', label: 'Item', type: 'text', disabled: true },
@@ -82,173 +84,6 @@ export default function Layout() {
     ]
 
 
-    // For Receiving Items api 
-    // const getData = async () => {
-    //     setLoading(true)
-
-    //     try {
-    //         const res = await fetch('/api/dispatch')
-
-    //         if (!res.ok) {
-    //             throw new Error('Failed to fetch dispatch data')
-    //         }
-
-    //         const json = await res.json()
-
-    //         const rows = Array.isArray(json)
-    //             ? json
-    //             : Array.isArray(json.data)
-    //                 ? json.data
-    //                 : []
-
-    //         // collect valid destination refs from farms
-    //         const validRefs = farms
-    //             .map(f => f.ref)
-    //             .filter(ref => ref !== null && ref !== undefined)
-    //             .map(ref => String(ref))
-
-    //         const filtered = rows.map((item: any) => {
-    //             let parsedDispatchBody: any[] = []
-    //             let parsedModifiedDispatchBody: any[] = []
-
-    //             try {
-    //                 if (typeof item.dispatchbody === "string") {
-    //                     parsedDispatchBody = JSON.parse(item.dispatchbody)
-    //                 } else if (Array.isArray(item.dispatchbody)) {
-    //                     parsedDispatchBody = item.dispatchbody
-    //                 }
-    //             } catch {
-    //                 parsedDispatchBody = []
-    //             }
-
-    //             try {
-    //                 if (typeof item.modified_dispatchbody === "string") {
-    //                     parsedModifiedDispatchBody = JSON.parse(item.modified_dispatchbody)
-    //                 } else if (Array.isArray(item.modified_dispatchbody)) {
-    //                     parsedModifiedDispatchBody = item.modified_dispatchbody
-    //                 }
-    //             } catch {
-    //                 parsedModifiedDispatchBody = []
-    //             }
-
-    //             return {
-    //                 ...item,
-    //                 dispatchbody: parsedDispatchBody,
-    //                 modified_dispatchbody: parsedModifiedDispatchBody
-    //             }
-    //         })
-    //             .filter((item: any) => {
-    //                 if (item.dispatchbody.length === 0) return false
-
-    //                 // if farms has refs, filter by destinationid
-    //                 if (validRefs.length > 0) {
-    //                     return validRefs.includes(String(item.destinationid))
-    //                 }
-
-    //                 return true
-    //             })
-    //         // console.loglog({ filtered })
-    //         setinitialRows(filtered)
-    //     } catch (err) {
-    //         // toast("Unable to load Receiving Items. Please check your internet connection and try again.")
-    //         setinitialRows([])
-    //     }
-    //     setLoading(false)
-    // }
-
-    // const getData = async () => {
-    //     setLoading(true)
-    //     try {
-    //         const res = await fetch('/api/dispatch')
-
-    //         if (!res.ok) {
-    //             throw new Error('Failed to fetch dispatch data')
-    //         }
-    //         const unresolvedJson = await vwdmf_get_farmdr_unres()
-    //         console.log({ unresolvedJson })
-    //         // if (!unresolvedRes.ok) {
-    //         //     throw new Error('Failed to fetch unresolved DR list')
-    //         // }
-
-    //         const dispatchJson = await res.json()
-    //         console.log({ dispatchJson })
-    //         // const unresolvedDRSet = new Set(
-    //         //     (unresolvedJson?.unresolvedJson || []).map((x: any) =>
-    //         //         String(x.dr_num).trim()
-    //         //     )
-    //         // )
-    //         const unresolvedDRSet = new Set(
-    //             (unresolvedJson || []).map((x) =>
-    //                 String(x.dr_num).trim()
-    //             )
-    //         )
-
-    //         const rows = Array.isArray(dispatchJson)
-    //             ? dispatchJson
-    //             : Array.isArray(dispatchJson.data)
-    //                 ? dispatchJson.data
-    //                 : []
-
-    //         // collect valid destination refs from farms
-    //         const validRefs = farms
-    //             .map(f => f.ref)
-    //             .filter(ref => ref !== null && ref !== undefined)
-    //             .map(ref => String(ref))
-
-    //         const filtered = rows
-    //             .map((item: any) => {
-    //                 let parsedDispatchBody: any[] = []
-    //                 let parsedModifiedDispatchBody: any[] = []
-
-    //                 try {
-    //                     if (typeof item.dispatchbody === "string") {
-    //                         parsedDispatchBody = JSON.parse(item.dispatchbody)
-    //                     } else if (Array.isArray(item.dispatchbody)) {
-    //                         parsedDispatchBody = item.dispatchbody
-    //                     }
-    //                 } catch {
-    //                     parsedDispatchBody = []
-    //                 }
-
-    //                 try {
-    //                     if (typeof item.modified_dispatchbody === "string") {
-    //                         parsedModifiedDispatchBody = JSON.parse(item.modified_dispatchbody)
-    //                     } else if (Array.isArray(item.modified_dispatchbody)) {
-    //                         parsedModifiedDispatchBody = item.modified_dispatchbody
-    //                     }
-    //                 } catch {
-    //                     parsedModifiedDispatchBody = []
-    //                 }
-
-    //                 return {
-    //                     ...item,
-    //                     dispatchbody: parsedDispatchBody,
-    //                     modified_dispatchbody: parsedModifiedDispatchBody
-    //                 }
-    //             })
-    //             .filter((item: any) => {
-    //                 if (item.dispatchbody.length === 0) return false
-
-    //                 // exclude DRs already in unresolved list
-    //                 if (unresolvedDRSet.has(String(item.dr_num).trim())) {
-    //                     return false
-    //                 }
-
-    //                 // // filter by farm destination refs
-    //                 if (validRefs.length > 0) {
-    //                     return validRefs.includes(String(item.destinationid))
-    //                 }
-
-    //                 return true
-    //             })
-
-    //         setinitialRows(filtered)
-    //     } catch (err) {
-    //         setinitialRows([])
-    //     }
-
-    //     setLoading(false)
-    // }
     const getData = async () => {
         setLoading(true)
 
@@ -434,7 +269,7 @@ export default function Layout() {
 
                         }
                         }
-                    ><Plus /> Receive Manually</Button>'
+                    ><Plus /> Receive Manually</Button>
 
                 </div>
             </div>
@@ -500,7 +335,7 @@ export default function Layout() {
                 )
             }
 
-
+            <Button onClick={() => PermissionCheck("")}>asd</Button>
             <div className="mt-10">
 
                 <div className="flex items-center justify-between mb-4">
@@ -524,11 +359,9 @@ export default function Layout() {
 
                                 if (col.key === 'action') {
                                     return (
-                                        <div className="flex justify-end gap-2">
+                                        <div className=" gap-2">
                                             <Button
                                                 size={'sm'}
-                                                className='my-1 border hover:bg-foreground/10 bg-white border-green-400 text-green-400 p-1 rounded-xs   '
-
                                                 onClick={() => {
                                                     if (row.status === "Approved") {
                                                         toast.warning(
@@ -547,7 +380,31 @@ export default function Layout() {
                                             </Button>
                                         </div>
                                     )
-                                } else {
+                                }
+                                if (col.key === 'view') {
+                                    return (
+                                        <div className=" gap-2">
+                                            <Button
+                                                size={'sm'}
+                                                onClick={() => {
+                                                    // if (row.status === "Approved") {
+                                                    //     toast.warning(
+                                                    //         "Only pending documents are allowed to be edited on this module"
+                                                    //     )
+                                                    //     return
+                                                    // }
+                                                    // setValue("traceBreederRef", row.brdr_ref_no)
+                                                    // route.push("/a_dean/trace/")
+                                                    route.push(`/a_dean/receiving/view/${row.id}`)
+                                                }}
+                                            >
+                                                <View />
+                                                View
+                                            </Button>
+                                        </div>
+                                    )
+                                }
+                                else {
 
                                     const value = row[col.key]
 

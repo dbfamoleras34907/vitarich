@@ -486,11 +486,11 @@ export default function Chickgradingform() {
 
         chick_room_temperature:
           form.chick_room_temperature === null ||
-          form.chick_room_temperature === undefined
+            form.chick_room_temperature === undefined
             ? null
             : Number(form.chick_room_temperature),
       };
-
+      console.log({ payload })
       if (isEdit && editId) {
         await updateChickGradingProcess(editId, payload);
         alert("Updated successfully.");

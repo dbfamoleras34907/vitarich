@@ -9,7 +9,9 @@ export default function page() {
     return (
         <div>
             <NavigationBar currentLabel='User' fatherLabel='Administrator' fatherLink='./' >
-                <Layout />
+               <div className='max-w-6xl mx-auto'>
+                 <Layout />
+               </div>
             </NavigationBar>
         </div>
     )

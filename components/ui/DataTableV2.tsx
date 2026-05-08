@@ -5,14 +5,6 @@ import { MoveDown, MoveUp, Search } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Skeleton } from './skeleton'
 
-// export type Column<T> = {
-//   key: keyof T | string
-//   label: string
-//   align?: 'left' | 'right' | 'center'
-//   type?: 'text' | 'date' | 'button' | string  
-//   render?: (row: T) => React.ReactNode
-// }
-
 export type Column<T> = {
   key: keyof T | string
   label: string
@@ -60,17 +52,14 @@ export default function DynamicTable<T extends Record<string, any>>({
   const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>(initialFilters ?? [])
   const [showFilter, setShowFilter] = useState(false)
 
-  // 🔥 RESET PAGE WHEN FILTERS CHANGE
   useEffect(() => {
     setPage(1)
   }, [appliedFilters])
 
-  // 🔢 COUNT ACTIVE FILTERS
   const activeFilterCount = useMemo(() => {
     return appliedFilters.filter(f => f.columnKey && f.value).length
   }, [appliedFilters])
 
-  // 🔥 SORT CLICK
   const handleSort = (key: string) => {
     setSort(prev =>
       prev.key === key
@@ -79,7 +68,6 @@ export default function DynamicTable<T extends Record<string, any>>({
     )
   }
 
-  // 🟢 APPLY FILTERS WITH AND / OR
   const rowMatchesFilters = (row: T) => {
     if (appliedFilters.length === 0) return true
 
@@ -98,13 +86,14 @@ export default function DynamicTable<T extends Record<string, any>>({
       if (f.operator === 'like') condition = cell.includes(value)
 
       if (result === null) result = condition
-      else result = f.joiner === 'and' ? result && condition : result || condition
+      else result = f.joiner === 'and'
+        ? result && condition
+        : result || condition
     }
 
     return result ?? true
   }
 
-  // 🔍 FILTER + SEARCH
   const filteredData = useMemo(() => {
 
     let result = data.filter(rowMatchesFilters)
@@ -125,7 +114,6 @@ export default function DynamicTable<T extends Record<string, any>>({
 
   }, [data, appliedFilters, search, columns])
 
-  // 🔥 SORT
   const sortedData = useMemo(() => {
     if (!sort.key) return filteredData
 
@@ -139,7 +127,6 @@ export default function DynamicTable<T extends Record<string, any>>({
     })
   }, [filteredData, sort])
 
-  // 🔥 PAGINATION
   const paginatedData = useMemo(() => {
     const start = (page - 1) * pageSize
     return sortedData.slice(start, start + pageSize)
@@ -148,95 +135,89 @@ export default function DynamicTable<T extends Record<string, any>>({
   const totalPages = Math.ceil(sortedData.length / pageSize)
 
   return (
-    <div className="space-y-3 bg-white rounded-2xl m-4">
+    <div className="rounded-xl border bg-white shadow-sm space-y-2">
 
-      {/* CONTROLS */}
-      <div className="flex justify-between items-center">
+      {/* HEADER */}
+      <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
 
-        <div className="flex items-center gap-3 m-4">
-
-          {/* SHOW ENTRIES */}
-          <div className="text-sm font-semibold">
-            Show{' '}
-            <select
-              value={pageSize}
-              onChange={e => {
-                setPageSize(Number(e.target.value))
-                setPage(1)
-              }}
-              className="border rounded px-2 py-0.5 text-sm mx-1"
-            >
-              {[10, 25, 50, 100].map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>{' '}
-            entries
-          </div>
-
+        {/* ENTRIES */}
+        <div className="text-xs text-muted-foreground">
+          Show
+          <select
+            value={pageSize}
+            onChange={e => {
+              setPageSize(Number(e.target.value))
+              setPage(1)
+            }}
+            className="mx-1 rounded border px-1 py-0.5 text-xs"
+          >
+            {[10, 25, 50, 100].map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          entries
         </div>
 
-        <div className='flex gap-4'>
+        {/* FILTER + SEARCH */}
+        <div className="flex items-center gap-2">
 
-          {/* FILTER BUTTON WITH BADGE */}
+          {/* FILTER */}
           <button
-            type='button'
             onClick={() => setShowFilter(v => !v)}
-            className=" relative border px-3 py-1 rounded text-sm bg-muted"
+            className="relative rounded border px-2 py-1 text-xs hover:bg-muted"
           >
             Filter
-
             {activeFilterCount > 0 && (
-              <span className="
-                absolute -top-2 -right-2
-                bg-blue-600 text-white text-xs
-                rounded-full px-1.5 py-0.5
-                min-w-4.5 text-center
-              ">
+              <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] px-1.5 rounded-full">
                 {activeFilterCount}
               </span>
             )}
           </button>
 
           {/* SEARCH */}
-          <div className="border rounded flex items-center mr-4">
-            <Search className="text-foreground/80 size-4 ml-2" />
+          <div className="flex items-center gap-1 border rounded px-2 py-0.5">
+            <Search size={13} />
             <input
               type="search"
-              placeholder="Search"
+              placeholder="Search..."
               value={search}
               onChange={e => {
                 setSearch(e.target.value)
                 setPage(1)
               }}
-              className="rounded px-3 py-1 text-sm"
+              className="outline-none text-xs w-32"
             />
           </div>
+
         </div>
       </div>
 
-      {/* 🔥 FILTER MODAL */}
+      {/* FILTER MODAL */}
       {showFilter && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => setShowFilter(false)}
         >
           <div
-            className="w-[min(520px,90vw)] max-h-[70vh] overflow-auto bg-white rounded-xl shadow-xl p-4 space-y-3"
+            className="w-120 max-w-[90vw] bg-white rounded-lg shadow-lg p-3 space-y-2"
             onClick={e => e.stopPropagation()}
           >
+
             {draftFilters.map(f => (
-              <div key={f.id} className="flex flex-wrap gap-2 items-center">
+              <div key={f.id} className="flex flex-wrap gap-1">
 
                 <select
                   value={f.columnKey}
                   onChange={e =>
                     setDraftFilters(prev =>
                       prev.map(x =>
-                        x.id === f.id ? { ...x, columnKey: e.target.value } : x
+                        x.id === f.id
+                          ? { ...x, columnKey: e.target.value }
+                          : x
                       )
                     )
                   }
-                  className="border rounded px-2 py-1 text-sm"
+                  className="border rounded px-1 py-0.5 text-xs"
                 >
                   <option value="">Column</option>
                   {columns.map(c => (
@@ -257,9 +238,9 @@ export default function DynamicTable<T extends Record<string, any>>({
                       )
                     )
                   }
-                  className="border rounded px-2 py-1 text-sm"
+                  className="border rounded px-1 py-0.5 text-xs"
                 >
-                  <option value="like">Like (%)</option>
+                  <option value="like">Like</option>
                   <option value="equals">Equals</option>
                 </select>
 
@@ -268,11 +249,13 @@ export default function DynamicTable<T extends Record<string, any>>({
                   onChange={e =>
                     setDraftFilters(prev =>
                       prev.map(x =>
-                        x.id === f.id ? { ...x, value: e.target.value } : x
+                        x.id === f.id
+                          ? { ...x, value: e.target.value }
+                          : x
                       )
                     )
                   }
-                  className="border rounded px-2 py-1 text-sm flex-1 min-w-30"
+                  className="border rounded px-1 py-0.5 text-xs flex-1"
                 />
 
                 <select
@@ -286,7 +269,7 @@ export default function DynamicTable<T extends Record<string, any>>({
                       )
                     )
                   }
-                  className="border rounded px-2 py-1 text-sm"
+                  className="border rounded px-1 py-0.5 text-xs"
                 >
                   <option value="and">AND</option>
                   <option value="or">OR</option>
@@ -294,16 +277,19 @@ export default function DynamicTable<T extends Record<string, any>>({
 
                 <button
                   onClick={() =>
-                    setDraftFilters(prev => prev.filter(x => x.id !== f.id))
+                    setDraftFilters(prev =>
+                      prev.filter(x => x.id !== f.id)
+                    )
                   }
-                  className="text-red-500"
+                  className="text-red-500 text-xs"
                 >
                   ✕
                 </button>
+
               </div>
             ))}
 
-            <div className="flex justify-between pt-2 border-t">
+            <div className="flex justify-between pt-1 border-t">
 
               <button
                 onClick={() =>
@@ -318,21 +304,21 @@ export default function DynamicTable<T extends Record<string, any>>({
                     },
                   ])
                 }
-                className="text-sm"
+                className="text-xs text-blue-600"
               >
-                + Add a Filter
+                + Add Filter
               </button>
 
-              <div className="flex gap-2">
+              <div className="flex gap-1">
 
                 <button
                   onClick={() => {
                     setDraftFilters([])
                     setAppliedFilters([])
                   }}
-                  className="text-sm border px-2 py-1 rounded"
+                  className="border rounded px-2 py-0.5 text-xs"
                 >
-                  Clear Filters
+                  Clear
                 </button>
 
                 <button
@@ -340,21 +326,24 @@ export default function DynamicTable<T extends Record<string, any>>({
                     setAppliedFilters(draftFilters)
                     setShowFilter(false)
                   }}
-                  className="text-sm border px-2 py-1 rounded bg-muted"
+                  className="rounded px-2 py-0.5 text-xs bg-muted"
                 >
-                  Apply Filters
+                  Apply
                 </button>
 
               </div>
+
             </div>
+
           </div>
         </div>
       )}
 
       {/* TABLE */}
-      <div className="overflow-auto border rounded">
-        <table className="w-full border-collapse">
-          <thead>
+      <div className="overflow-auto border rounded mx-3">
+        <table className="w-full text-xs">
+
+          <thead className="bg-muted sticky top-0">
             <tr>
               {columns.map(col => {
                 const isSorted = sort.key === col.key
@@ -362,27 +351,18 @@ export default function DynamicTable<T extends Record<string, any>>({
                   <th
                     key={String(col.key)}
                     onClick={() => handleSort(String(col.key))}
-                    className={`whitespace-nowrap p-3 text-sm font-semibold cursor-pointer bg-muted ${col.align === 'right'
-                      ? 'text-right'
-                      : col.align === 'center'
-                        ? 'text-center'
-                        : 'text-left'
-                      }`}
+                    className="px-2 py-1 font-semibold cursor-pointer whitespace-nowrap"
                   >
                     <div className="flex items-center gap-1">
                       {col.label}
                       {isSorted
                         ? sort.direction === 'asc'
-                          ? <div className="flex">
-                            <MoveUp className="size-4 text-" />
-                            <MoveDown className="size-4 -ml-2 text-foreground/30" />  </div>
-                          : <div className="flex">
-                            <MoveUp className="size-4 text-foreground/30" />
-                            <MoveDown className="size-4 -ml-2 text-" />   </div>
+                          ? <MoveUp size={12} />
+                          : <MoveDown size={12} />
                         : (
-                          <div className="flex">
-                            <MoveUp className="size-4 text-foreground/30" />
-                            <MoveDown className="size-4 -ml-2 text-foreground/30" />
+                          <div className="opacity-30 flex">
+                            <MoveUp size={12} />
+                            <MoveDown size={12} className="-ml-1" />
                           </div>
                         )}
                     </div>
@@ -392,62 +372,31 @@ export default function DynamicTable<T extends Record<string, any>>({
             </tr>
           </thead>
 
-
-
-
-          {/* <tbody>
-            {paginatedData.map((row, i) => (
-              <tr key={i} className="border-t hover:bg-background">
-                {columns.map((col, i) => (
-                  <td key={i} className="p-3 whitespace-nowrap">
-                    {(() => {
-                      const value = row[col.key as keyof T]
-                      if (col.type === 'date' && value) {
-                        return formatDateTime(String(value))
-                      }
-
-                      if (col.render) {
-                        return col.render(row)
-                      }
-                      return String(value ?? '')
-                    })()}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody> */}
-
           <tbody>
 
-            {/* LOADING STATE */}
             {loading &&
               Array.from({ length: 4 }).map((_, rowIndex) => (
-                <tr key={rowIndex} className="border-t">
+                <tr key={rowIndex}>
                   {columns.map((_, colIndex) => (
-                    <td key={colIndex} className="p-3">
-                      <Skeleton className="h-4 w-full" />
+                    <td key={colIndex} className="p-2">
+                      <Skeleton className="h-3 w-full" />
                     </td>
                   ))}
                 </tr>
-              ))
-            }
-
-            {/* DATA ROWS */}
+              ))}
             {!loading &&
               paginatedData.map((row, i) => (
-                <tr key={i} className="border-t hover:bg-background">
+                <tr key={i} className="border-t hover:bg-muted/40">
                   {columns.map((col, i) => (
-                    <td key={i} className="px-2 whitespace-nowrap">
+                    <td key={i} className="px-2 py-1  whitespace-nowrap">
                       {(() => {
                         const value = row[col.key as keyof T]
 
-                        if (col.type === "date" && value) {
+                        if (col.type === "date" && value)
                           return formatDateTime(String(value))
-                        }
 
-                        if (col.render) {
+                        if (col.render)
                           return col.render(row)
-                        }
 
                         return String(value ?? "")
                       })()}
@@ -455,42 +404,51 @@ export default function DynamicTable<T extends Record<string, any>>({
                   ))}
                 </tr>
               ))}
+
           </tbody>
+
         </table>
-      
       </div>
 
       {/* FOOTER */}
       {data.length > 0 &&
-        <div className="flex justify-between items-center text-sm">
-          <div className='mx-4'>
-            Showing {(page - 1) * pageSize + 1} to{' '}
-            {Math.min(page * pageSize, sortedData.length)} of{' '}
-            {sortedData.length} entries
+        <div className="flex justify-between items-center px-4 pb-2 text-xs text-muted-foreground">
+
+          <div>
+            {(page - 1) * pageSize + 1}–
+            {Math.min(page * pageSize, sortedData.length)}
+            of {sortedData.length}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1">
+
             <button
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
-              className="border px-3 py-1 rounded disabled:opacity-50"
+              className="border px-2 py-0.5 rounded disabled:opacity-40"
             >
-              Previous
+              Prev
             </button>
-
-            <span>Page {page} / {totalPages || 1}</span>
 
             <button
               disabled={page >= totalPages}
               onClick={() => setPage(p => p + 1)}
-              className="border px-3 py-1 rounded disabled:opacity-50"
+              className="border px-2 py-0.5 rounded disabled:opacity-40"
             >
               Next
             </button>
-          </div>
-        </div>}
 
-      <div className='mx-auto w-fit py-2'> {data.length === 0 && " No data available"}</div>
+          </div>
+
+        </div>
+      }
+
+      {data.length === 0 && (
+        <div className="text-center text-muted-foreground py-4 text-xs">
+          No data available
+        </div>
+      )}
+
     </div>
   )
 }

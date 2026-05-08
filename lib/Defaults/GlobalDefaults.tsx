@@ -16,10 +16,18 @@ import { getUserInfoAuthSession } from "@/app/admin/user/api";
 
 import { Button } from "@/components/ui/button";
 import { CloudDownload, RefreshCcw } from "lucide-react";
+import { getWarehouses } from "@/app/a_dean/warehouse/api";
 
 /* =======================================================
    HOOK
 ======================================================= */
+ export const getSessionUser = async () => {
+    const {
+      data: { session },
+    } = await db.auth.getSession();
+
+    return session?.user ?? null;
+  };
 
 export function useGlobalDefaults() {
   const { setValue } = useGlobalContext();
@@ -29,14 +37,7 @@ export function useGlobalDefaults() {
      helper: get session user once
   ------------------------------------------------------- */
 
-  const getSessionUser = async () => {
-    const {
-      data: { session },
-    } = await db.auth.getSession();
-
-    return session?.user ?? null;
-  };
-
+ 
   /* -------------------------------------------------------
      loaders
   ------------------------------------------------------- */
@@ -65,6 +66,16 @@ export function useGlobalDefaults() {
     try {
       const data = await getFarmDB();
       setValue("getFarmDB", data);
+      return data;
+    } catch (error) {
+      console.error("getFarmDB error:", error);
+    }
+  };
+
+  const setWhse = async () => {
+    try {
+      const data = await getWarehouses();
+      setValue("warehouses", data);
       return data;
     } catch (error) {
       console.error("getFarmDB error:", error);
@@ -122,6 +133,7 @@ export function useGlobalDefaults() {
 
       await Promise.all([
         setUserPermissions(),
+        setWhse(),
         setItems(),
         setActiveUsers(),
         setFarms(),
@@ -140,6 +152,7 @@ export function useGlobalDefaults() {
     loading,
     setGlobals,
     setUserPermissions,
+    setWhse,
     setItems,
     setActiveUsers,
     setFarms,

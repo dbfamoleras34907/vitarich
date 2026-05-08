@@ -22,7 +22,8 @@ import {
 import { Search } from 'lucide-react'
 
 type Props<T> = {
-  list: T[]
+  list: T[] | ((row: any) => T[])
+  row?: any
   codeLabel: keyof T
   nameLabel?: keyof T
   value?: string
@@ -38,6 +39,7 @@ export default function SearchableDropdown<
   T extends Record<string, any>
 >({
   list,
+  row,
   codeLabel,
   nameLabel,
   value,
@@ -51,8 +53,17 @@ export default function SearchableDropdown<
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
 
+  // resolve list
+  const resolvedList = useMemo<T[]>(() => {
+    if (typeof list === 'function') {
+      return list(row) || []
+    }
+
+    return list || []
+  }, [list, row])
+
   const displayText = (() => {
-    const found = list.find(
+    const found = resolvedList.find(
       i => String(i[codeLabel]) === value
     )
 
@@ -66,11 +77,11 @@ export default function SearchableDropdown<
   })()
 
   const filtered = useMemo(() => {
-    if (!search) return list
+    if (!search) return resolvedList
 
     const q = search.toLowerCase()
 
-    return list.filter(item => {
+    return resolvedList.filter(item => {
       const code = String(item[codeLabel]).toLowerCase()
 
       const name = nameLabel
@@ -79,7 +90,7 @@ export default function SearchableDropdown<
 
       return code.includes(q) || name.includes(q)
     })
-  }, [list, search, codeLabel, nameLabel])
+  }, [resolvedList, search, codeLabel, nameLabel])
 
   const selectItem = (item: T) => {
     onChange(String(item[codeLabel]), item)
@@ -125,7 +136,7 @@ export default function SearchableDropdown<
               <span className="truncate flex items-center gap-2">
                 {!displayText ? (
                   <>
-                    <Search /> Search...
+                    <Search size={16} /> Search...
                   </>
                 ) : (
                   displayText
@@ -176,13 +187,11 @@ export default function SearchableDropdown<
               </CommandItem>
             ))}
 
-            {allowFreeText  &&
-              // filtered.length === 0 && (
-                <CommandItem onSelect={selectFreeText}>
-                  Use: "{search}"
-                </CommandItem>
-              // )
-              }
+            {allowFreeText && (
+              <CommandItem onSelect={selectFreeText}>
+                Use: "{search}"
+              </CommandItem>
+            )}
           </CommandGroup>
         </Command>
       </PopoverContent>
