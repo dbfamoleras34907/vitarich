@@ -49,7 +49,7 @@ export async function getUserPermissions(userId: string) {
   try {
     const { data, error } = await db
       .from("user_permissions")
-      .select("group_name, title, is_visible")
+      .select("group_name, title, is_visible,ilink")
       .eq("user_id", userId)
       .eq("is_visible", true);
 
@@ -60,6 +60,10 @@ export async function getUserPermissions(userId: string) {
     throw err;
   }
 }
+
+
+
+
 
 export async function getvwdmf_get_farmlist_code_name_farmtype() {
   try {

@@ -13,11 +13,14 @@ import { HandCoins, Map, Plus, RefreshCcw, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import { getDefaultFarm } from './manual/api'
 import { Farms } from '@/lib/types'
-import { PermissionCheck } from '@/lib/PermissionCheck'
+import { usePermission } from '@/hooks/usePermission'
 
 
 
 export default function Layout() {
+    const canView = usePermission('/a_dean/receiving/view')
+    const canInsert = usePermission('/a_dean/receiving/insert')
+
     const get = async () => {
         await new Promise(resolve => setTimeout(resolve, 3000))
 
@@ -259,6 +262,7 @@ export default function Layout() {
                     <Button
                         // onClick={() => setIsScanning(true)}
                         // size={"sm"}
+                        disabled={canInsert}
                         onClick={async () => {
                             const isHasSuperVisor = await getReceivingListByUser()
                             if (isHasSuperVisor == '') {
@@ -335,7 +339,6 @@ export default function Layout() {
                 )
             }
 
-            <Button onClick={() => PermissionCheck("")}>asd</Button>
             <div className="mt-10">
 
                 <div className="flex items-center justify-between mb-4">
@@ -386,6 +389,7 @@ export default function Layout() {
                                         <div className=" gap-2">
                                             <Button
                                                 size={'sm'}
+                                                disabled={canView}
                                                 onClick={() => {
                                                     // if (row.status === "Approved") {
                                                     //     toast.warning(
