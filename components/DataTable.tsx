@@ -99,8 +99,25 @@ export default function DataTable({
       !col.disabled
     ) {
       return (
+        // <div
+        //   className="min-h-8 flex items-center px-2 cursor-text hover:bg-gray-100 "
+        //   onClick={() =>
+        //     setEditingCell({ row: rowIndex, col: col.code })
+        //   }
+        // >
+        //   {value || "-"}
+        // </div>
         <div
-          className="min-h-8 flex items-center px-2 cursor-text hover:bg-gray-100 rounded"
+          className="
+                    h-8
+                    flex
+                    items-center
+                    px-2
+                    cursor-text
+                    
+                    border
+                    hover:bg-muted/50
+                  "
           onClick={() =>
             setEditingCell({ row: rowIndex, col: col.code })
           }
@@ -115,19 +132,42 @@ export default function DataTable({
       case "number":
       case "date":
         return (
+          // <Input
+          //   autoFocus
+          //   type={col.type === "input" ? "text" : col.type}
+          //   value={value ?? ""}
+          //   disabled={col.disabled}
+          //   onChange={(e) =>
+          //     handleChange(rowIndex, col.code, e.target.value)
+          //   }
+          //   onBlur={exitEdit}
+          //   onKeyDown={(e) => {
+          //     if (e.key === "Enter") exitEdit()
+          //     if (e.key === "Escape") exitEdit()
+          //   }}
+          // />
           <Input
             autoFocus
             type={col.type === "input" ? "text" : col.type}
             value={value ?? ""}
             disabled={col.disabled}
+            className="
+              h-8
+              min-h-8
+              shadow-none
+              px-2
+              border
+              focus-visible:ring-0
+              focus-visible:ring-offset-0
+            "
             onChange={(e) =>
               handleChange(rowIndex, col.code, e.target.value)
             }
-            onBlur={exitEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") exitEdit()
-              if (e.key === "Escape") exitEdit()
-            }}
+          // onBlur={exitEdit}
+          // onKeyDown={(e) => {
+          //   if (e.key === "Enter") exitEdit()
+          //   if (e.key === "Escape") exitEdit()
+          // }}
           />
         )
 
@@ -140,7 +180,7 @@ export default function DataTable({
             <Checkbox
               checked={!!value}
               disabled={col.disabled}
-              className="border-2  border-black/50 rounded w-4 h-4 "
+              className="border-2  border-black/50  w-4 h-4 "
               onCheckedChange={(checked) =>
                 handleChange(rowIndex, col.code, checked)
               }
@@ -188,7 +228,7 @@ export default function DataTable({
 
 
 
-  //     <div className="border rounded overflow-auto">
+  //     <div className="border  overflow-auto">
 
   //       <table className={`${isfit ? "w-fit" : "w-full"} text-xs`}>
 
@@ -239,7 +279,7 @@ export default function DataTable({
   return (
     <div className="space-y-2">
 
-      <div className="overflow-auto rounded-lg border ">
+      <div className="overflow-auto -lg border ">
 
         <table
           className={`
@@ -284,18 +324,18 @@ export default function DataTable({
                   <td
                     key={col.code}
                     className="
-                    px-4 py-2
+                  
                     whitespace-nowrap
                     align-middle
                   "
                   >
                     {col.type === "text" ? (
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center ">
 
-                        <div
+                        {/* <div
                           className="
                           h-8 w-8
-                          rounded-md
+                          -md
                           bg-muted
                           flex
                           items-center
@@ -309,7 +349,7 @@ export default function DataTable({
                           {String(row[col.code] || "-")
                             ?.charAt(0)
                             ?.toUpperCase()}
-                        </div>
+                        </div> */}
 
                         <div className="min-w-0">
                           <p className="text-sm font-medium leading-none truncate">
@@ -353,9 +393,9 @@ export default function DataTable({
         {allowAddRow && (
           <div className="border-t p-3">
             <Button
+              size="sm"
               type="button"
-              variant="outline"
-              className="rounded-md"
+              className="-md"
               onClick={addRow}
             >
               Add Row

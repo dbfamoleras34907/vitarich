@@ -364,7 +364,7 @@ export default function Layout() {
                                     return (
                                         <div className=" gap-2">
                                             <Button
-                                                size={'sm'}
+                                                size={'xs'}
                                                 onClick={() => {
                                                     if (row.status === "Approved") {
                                                         toast.warning(
@@ -388,7 +388,7 @@ export default function Layout() {
                                     return (
                                         <div className=" gap-2">
                                             <Button
-                                                size={'sm'}
+                                                size={'xs'}
                                                 disabled={canView}
                                                 onClick={() => {
                                                     // if (row.status === "Approved") {

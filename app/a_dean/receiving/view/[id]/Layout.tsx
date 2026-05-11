@@ -22,10 +22,17 @@ import {
 import { Label } from '@/components/ui/label'
 import { RefreshCcw } from 'lucide-react'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
     const params = useParams()
     const router = useRouter()
+
+    const canInsert = usePermission('/a_dean/receiving/view')
+    useEffect(() => {
+        if (canInsert)
+            router.push("/a_dean/receiving/")
+    }, [])
 
     const [loading, setLoading] = useState(true)
     const [header, setHeader] = useState<any>(null)
@@ -80,7 +87,7 @@ export default function Layout() {
 
                         <div className='mt-3 flex items-center gap-3'>
                             <h1 className='text-2xl font-semibold tracking-tight text-gray-800'>
-                              Breeder Ref No. {header.brdr_ref_no || ''}
+                                Breeder Ref No. {header.brdr_ref_no || ''}
                             </h1>
 
                             {/* <div

@@ -638,7 +638,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: false,
-            insert: false,
+            insert: true,
             edit: false,
           },
         ],
@@ -974,7 +974,7 @@ export function getInventoriableModules(navFolders: NavFolder[]) {
             parent: folder.title,
             group: group.group,
             section: (child as any)?.section || "",
-            
+
           });
         }
       });

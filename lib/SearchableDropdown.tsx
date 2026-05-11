@@ -19,7 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 
 type Props<T> = {
   list: T[] | ((row: any) => T[])
@@ -131,7 +131,7 @@ export default function SearchableDropdown<
           <TooltipTrigger asChild>
             <Button
               disabled={disabled}
-              className="bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-input border text-foreground hover:bg-input/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="truncate flex items-center gap-2">
                 {!displayText ? (
@@ -142,6 +142,7 @@ export default function SearchableDropdown<
                   displayText
                 )}
               </span>
+              <ChevronDown className='ml-auto'/>
             </Button>
           </TooltipTrigger>
         </PopoverTrigger>

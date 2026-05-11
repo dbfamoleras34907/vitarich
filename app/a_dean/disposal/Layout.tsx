@@ -8,8 +8,14 @@ import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
+
+
+  const canInsert = usePermission('/a_dean/disposal/insert')
+
+
   const route = useRouter()
   const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,12 +77,14 @@ export default function Layout() {
           CurrentPageName='Disposal'
         />
         <div>
-          <Button onClick={() => {
-            setLoading(true)
-            route.push("/a_dean/disposal/new")
+          <Button
+            disabled={canInsert}
+            onClick={() => {
+              setLoading(true)
+              route.push("/a_dean/disposal/new")
 
-          }
-          }>
+            }
+            }>
             <Edit />
             New Disposal
           </Button>

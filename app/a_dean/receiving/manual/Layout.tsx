@@ -30,6 +30,7 @@ import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { VerticalRuler2 } from '@/components/VerticalRuler2'
+import { usePermission } from '@/hooks/usePermission'
 
 type ItemMasterType = {
   id: number
@@ -62,7 +63,13 @@ const emptyApprovalRecord: DataRecordApproval = {
 export default function ApprovalDecisionForm() {
   const confirm = useConfirm();
   const router = useRouter()
- 
+
+  const canInsert = usePermission('/a_dean/receiving/insert')
+  useEffect(() => {
+    if (canInsert)
+      router.push("/a_dean/receiving/")
+  }, [])
+
   const { getValue, setValue } = useGlobalContext()
 
   const [isAutoReceiving, setisAutoReceiving] = useState(false)

@@ -15,6 +15,7 @@ import React, { useEffect, useState } from 'react'
 import { upsertInventoryMapping } from './api'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 
 
 export default function Layout() {
@@ -34,38 +35,33 @@ export default function Layout() {
   const inventoriableList = getInventoriableModules(NavFolders)
 
   const headerComponents: DataTableColumn[] = [
-    {
-      code: "section",
-      name: "Section",
-      type: "search",
-      list: [
-        { code: "BR", name: "Breeder" },
-        { code: "HA", name: "Hatchery" },
-        { code: "BL", name: "Broiler" },
-        { code: "IV", name: "Inventory" },
-      ]
-    },
-    {
-      code: "module",
-      name: "Module",
-      type: "search",
-      list: () =>
-        inventoriableList
-          .filter((ee) => ee.section === header.section)
-          .map((e) => ({
-            code: e.code,
-            name: e.name,
-          }))
-    },
+    { code: "vendor", name: "Vendor", type: "text", },
+    { code: "id", name: "Document No.", type: "text", },
+    { code: "vendor_ref", name: "Venrod Ref. No.", type: "text", },
+    { code: "Due Date", name: "Due Date", type: "text", },
+    { code: "doc_date", name: "Document Date", type: "text", },// created date no need to create in the table
+    { code: "remarks", name: "Remarks", type: "text", },// created date no need to create in the table
+    // {
+    //   code: "module",
+    //   name: "Module",
+    //   type: "search",
+    //   list: () =>
+    //     inventoriableList
+    //       .filter((ee) => ee.section === header.section)
+    //       .map((e) => ({
+    //         code: e.code,
+    //         name: e.name,
+    //       }))
+    // },
   ]
 
   const components: DataTableColumn[] = [
     {
       code: "action",
-      name: "",
+      name: "Option",
       type: "button",
       render: () => (
-        <Button size="sm" variant="secondary">
+        <Button size="sm" variant="secondary" type='button'>
           ...
         </Button>
       ),
@@ -93,25 +89,7 @@ export default function Layout() {
             name: e.item_code + " - " + e.item_name,
           }))
     },
-    {
-      code: "warehouse", name: "Warehouse", type: "search",
-      list: () =>
-        whs
-          .map((e) => ({
-            code: e.id,
-            name: e.whse_code + " - " + e.whse_code,
-          }))
-
-    },
-    {
-      code: "transtype",
-      name: "Transaction type",
-      type: "search",
-      list: [
-        { code: "1", name: "IN" },
-        { code: "0", name: "OUT" },
-      ]
-    },
+    { code: "UoM", name: "UoM", type: "input" }
   ]
 
   // ✅ SUBMIT (RPC STYLE)
@@ -215,7 +193,7 @@ export default function Layout() {
         <div className='px-4 mt-2 flex justify-between items-center'>
           <Breadcrumb
             SecondPreviewPageName='Inventory'
-            CurrentPageName='Inventory Map'
+            CurrentPageName='Goods Receipt'
           />
 
           <div className='flex gap-2'>
@@ -228,9 +206,12 @@ export default function Layout() {
             </Button>
           </div>
         </div>
+        {/* status */}
+
+        <Badge className='mx-4 mt-4'>Status</Badge>
 
         {/* HEADER FIELDS */}
-        <Card className='my-4 grid lg:grid-cols-2'>
+        <Card className='m-4 grid lg:grid-cols-2'>
           {headerComponents.map((e, i) => (
             <div className='mx-4' key={i}>
               <Label className='mb-1'>{e.name}</Label>
@@ -256,7 +237,7 @@ export default function Layout() {
         </Card>
 
         {/* TABLE */}
-        <Card className='bg-white p-4 rounded-2xl'>
+        <Card className='bg-white p-4 m-4 rounded-2xl'>
           <DataTable
             columns={components}
             rows={pickedRows}
