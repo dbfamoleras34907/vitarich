@@ -23,11 +23,11 @@ export default function Layout() {
       <div className='mt-4'>
         <div className="font-bold text-lg">Masters and Reports</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {NavFolders[1].items.map((item, i) => (
+          {NavFolders?.[1]?.items?.map((item, i) => (
             <div key={i} className="w-full">
               <div className="mt-4 font-bold border-b pb-1 mb-2">{item.group}</div>
               <div className="grid gap-2">
-                {item.children.map((itemx: any, ii: number) => (
+                {item.children?.map((itemx: any, ii: number) => (
                   <div className="flex gap-2 items-center group" key={ii}>
                     <Link 
                       href={itemx.url} 
