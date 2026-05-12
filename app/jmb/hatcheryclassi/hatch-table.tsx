@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ColumnDef,
   flexRender,
@@ -23,7 +23,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search, Pencil } from "lucide-react";
+import { Plus, RefreshCw, Search, Pencil, Map, Copy, View, ClipboardCopy, MoreHorizontal } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import {
@@ -38,9 +38,25 @@ import { formatNumber } from "@/lib/utils/numberFormat";
 import loading from "@/loading";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { db } from "@/lib/Supabase/supabaseClient";
+import { RowDataKey } from "@/lib/Defaults/DefaultTypes";
+import DynamicTable from "@/components/ui/DataTableV2";
+import { usePermission } from "@/hooks/usePermission";
+import { RowAction } from "@/lib/types";
+import { toast } from "sonner";
+import { copyRow, copyTable } from "@/lib/tableActions";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function HatchTable() {
-  const router = useRouter();
+  const params = useParams()
+  const router = useRouter()
+
+  const canInsert = usePermission('/jmb/hatcheryclassi/insert')
+  const canView = usePermission('/jmb/hatcheryclassi/view')
+  // useEffect(() => {
+  //   if (canInsert)
+  //     router.push("/jmb/hatcheryclassi/")
+  // }, [])
+
 
   const [items, setItems] = useState<HatchClassificationRow[]>([]);
   const [sorting, setSorting] = useState<any>([]);
@@ -147,6 +163,38 @@ export default function HatchTable() {
     [router],
   );
 
+  const getRowActions = (row: RowDataKey): RowAction[] => {
+    return [
+
+      {
+        label: "View",
+        icon: <View className="w-4 h-4" />,
+        disabled: canView,
+        onClick: () => {
+          router.push(`/a_dean/receiving/view/${row.id}`)
+        },
+      },
+      {
+        label: "Copy Row",
+        icon: <Copy className="w-4 h-4" />,
+        onClick: () => {
+          copyRow(row)
+        },
+      },
+
+      {
+        label: "Copy Table",
+        icon: <ClipboardCopy className="w-4 h-4" />,
+        onClick: () => {
+          copyTable(itemsForClass as RowDataKey[])
+        },
+      },
+
+
+    ]
+  }
+
+
   const tableForClass = useReactTable({
     data: itemsForClass,
     columns: columnsForClass,
@@ -173,23 +221,18 @@ export default function HatchTable() {
         header: "#",
         cell: ({ row }) => row.index + 1,
       },
-      // {
-      //   id: "action",
-      //   header: "Action",
-      //   cell: ({ row }) => (
-      //     <div className="flex items-center gap-2">
-      //       <EditActionButton
-      //         id={row.original?.id}
-      //         href={(id) => `/jmb/hatcheryclassi/new?id=${id}`}
-      //       />
-      //     </div>
-      //   ),
-      // },
+
+      {
+        id: "view",
+        header: "View",
+        // cell: ({ row }) => row.original.date_classify ?? "",
+      },
       {
         accessorKey: "date_classify",
         header: "Date Classified",
         cell: ({ row }) => row.original.date_classify ?? "",
       },
+
       {
         accessorKey: "br_no",
         header: "Breeder Ref. No.",
@@ -248,61 +291,49 @@ export default function HatchTable() {
   return (
     <div className="rounded-md p-4">
       <br />
-      <Breadcrumb
-        FirstPreviewsPageName="Hatchery"
-        CurrentPageName="Egg Classification"
-      />
+      
+      <div className="flex  justify-between pb-4">
+        <Breadcrumb
+          FirstPreviewsPageName="Hatchery"
+          CurrentPageName="Egg Classification"
+        />
 
-      {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-3">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter Breeder Ref. No."
-              className="pl-10"
-              value={
-                (table.getColumn("br_no")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("br_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
 
+        <div className="flex items-center gap-2">
           <Button
             type="button"
-            variant="outline"
+            size="sm"
+            variant="secondary"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
           >
             <RefreshCw
               className={`size-4 ${isLoading ? "animate-spin" : ""}`}
             />
             {isLoading ? "Refreshing..." : "Refresh"}
           </Button>
+          <Button
+            disabled={canInsert}
+            type="button"
+            size="sm"
+            onClick={() => router.push("/jmb/hatcheryclassi/new")}
+          >
+            <Plus className="size-4" />
+            New Classification
+          </Button>
         </div>
-
-        <Button
-          type="button"
-          onClick={() => router.push("/jmb/hatcheryclassi/new")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
-        >
-          <Plus className="size-4" />
-          New Classification
-        </Button>
       </div>
+      {/* Top Controls */}
 
       {/* Table 1  Pending for Classification */}
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold mx-4  bg-blue-400 text-white px-2 py-1 rounded">
+        <h1 className="text-lg font-semibold   bg-blue-400 text-white px-2 py-1 rounded">
           Pending Classification
-        </h2>
+        </h1>
       </div>
 
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
+      <div className="">
+        {/* <Table>
           <TableHeader>
             {tableForClass.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
@@ -348,47 +379,55 @@ export default function HatchTable() {
               </TableRow>
             )}
           </TableBody>
-        </Table>
+        </Table> */}
+        <DynamicTable
+          loading={isLoadingforClass}
+          initialFilters={[]}
+          columns={columnsForClass.map((col: any) => ({
+            key: col.accessorKey || col.id,
+            label:
+              typeof col.header === "string"
+                ? col.header
+                : String(col.id ?? ""),
+            align: "left",
+
+            render: (row: RowDataKey) => {
+              // row number
+              if ((col.id || col.accessorKey) === "row_no") {
+                return String(
+                  itemsForClass.findIndex((x) => x.id === row.id) + 1
+                );
+              }
+
+              const key = col.accessorKey || col.id;
+              const value = row[key];
+
+              if (
+                key === "actual_count" &&
+                value !== null &&
+                value !== undefined
+              ) {
+                return formatNumber(Number(value));
+              }
+
+              if (value === null || value === undefined || value === "") {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={itemsForClass as RowDataKey[]}
+        />
+
       </div>
-
-      {/* Pagination 1 Pending for Classification  */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {tableForClass.getState().pagination.pageIndex + 1} of{" "}
-          {tableForClass.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => tableForClass.previousPage()}
-            disabled={!tableForClass.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => tableForClass.nextPage()}
-            disabled={!tableForClass.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
-
-      {/* Table 2  Classified Eggs */}
-
-      <div className="flex items-center justify-between mb-2 mt-2">
-        <h2 className="text-lg font-semibold mx-4 bg-green-400 text-white px-2 py-1 rounded">
+      <div className="flex items-center justify-between mb-2 mt-8">
+        <h1 className="text-lg font-semibold  bg-green-400 text-white px-2 py-1 rounded">
           Classified Eggs
-        </h2>
+        </h1>
       </div>
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
+      <div className="">
+        {/* <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
@@ -400,9 +439,9 @@ export default function HatchTable() {
                     {header.isPlaceholder
                       ? null
                       : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -434,16 +473,77 @@ export default function HatchTable() {
               </TableRow>
             )}
           </TableBody>
-        </Table>
+        </Table> */}
+
+        <DynamicTable
+          loading={isLoading}
+          initialFilters={[]}
+          columns={columns.map((col: any) => ({
+            key: col.accessorKey || col.id,
+            label:
+              typeof col.header === "string"
+                ? col.header
+                : String(col.id ?? ""),
+            align: "left",
+
+            render: (row: RowDataKey) => {
+              const key = col.accessorKey || col.id;
+
+              // row number
+              if (key === "row_no") {
+                return String(items.findIndex((x) => x.id === row.id) + 1);
+              }
+
+              // actions dropdown
+              if (key === "view") {
+                const actions = getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map((action, index) => (
+                        <DropdownMenuItem
+                          key={index}
+                          disabled={action.disabled}
+                          onClick={() => action.onClick(row)}
+                          className="cursor-pointer flex items-center gap-2"
+                        >
+                          {action.icon}
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              const value = row[key];
+
+              if (value === null || value === undefined || value === "") {
+                return "-";
+              }
+
+              return String(value);
+            }
+          }))}
+          data={items as RowDataKey[]}
+        />
+
       </div>
 
       {/* Pagination 2  Classified Eggs */}
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
+        {/* <div className="text-sm text-muted-foreground">
           Page {table.getState().pagination.pageIndex + 1} of{" "}
           {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
+        </div> */}
+        {/* <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
@@ -463,7 +563,7 @@ export default function HatchTable() {
           >
             Next
           </Button>
-        </div>
+        </div> */}
       </div>
     </div>
   );

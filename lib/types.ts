@@ -545,6 +545,7 @@ export interface Items {
 
 
 import { LucideIcon } from "lucide-react";
+import { RowDataKey } from './Defaults/DefaultTypes';
 
 export type NavItemType = "Module" | "Report";
 
@@ -575,4 +576,13 @@ export interface NavFolder extends NavPermission {
   url: string;
   icon: LucideIcon;
   items?: NavGroup[];
+}
+
+
+
+export type RowAction = {
+  label: string
+  icon?: React.ReactNode
+  disabled?: boolean
+  onClick: (row: RowDataKey) => void
 }

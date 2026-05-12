@@ -20,9 +20,11 @@ import {
 } from '@/components/ui/table'
 
 import { Label } from '@/components/ui/label'
-import { RefreshCcw } from 'lucide-react'
+import { ArrowLeft, RefreshCcw } from 'lucide-react'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Layout() {
     const params = useParams()
@@ -57,8 +59,76 @@ export default function Layout() {
 
     if (loading) {
         return (
-            <div className='p-10 flex justify-center'>
-                <RefreshCcw className='animate-spin' />
+            <div className='p-6 mt-8'>
+                <div className='max-w-[1240px] mx-auto space-y-4'>
+
+                    {/* Top */}
+                    <div className='flex items-center justify-between'>
+                        <div className='space-y-2'>
+                            <Skeleton className='h-4 w-[220px]' />
+                            <Skeleton className='h-8 w-[320px]' />
+                        </div>
+
+                        <Skeleton className='h-10 w-[100px]' />
+                    </div>
+
+                    {/* Document Info */}
+                    <div className='bg-white border rounded-xl overflow-hidden'>
+                        <div className='px-5 py-4 border-b'>
+                            <Skeleton className='h-4 w-[180px]' />
+                        </div>
+
+                        <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4'>
+                            {Array.from({ length: 8 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className='px-5 py-4 border-b xl:border-b-0 xl:border-r last:border-r-0 space-y-2'
+                                >
+                                    <Skeleton className='h-3 w-[90px]' />
+                                    <Skeleton className='h-5 w-[140px]' />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    <div className='bg-white border rounded-xl overflow-hidden'>
+                        <div className='px-5 py-4 border-b flex items-center justify-between'>
+                            <div className='space-y-2'>
+                                <Skeleton className='h-4 w-[140px]' />
+                                <Skeleton className='h-3 w-[180px]' />
+                            </div>
+
+                            <Skeleton className='h-4 w-[70px]' />
+                        </div>
+
+                        <div className='overflow-auto'>
+                            <table className='w-full'>
+                                <thead className='border-b'>
+                                    <tr>
+                                        {Array.from({ length: 9 }).map((_, i) => (
+                                            <th key={i} className='px-4 py-3'>
+                                                <Skeleton className='h-4 w-full' />
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    {Array.from({ length: 5 }).map((_, row) => (
+                                        <tr key={row} className='border-b'>
+                                            {Array.from({ length: 9 }).map((_, col) => (
+                                                <td key={col} className='px-4 py-3'>
+                                                    <Skeleton className='h-4 w-full' />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         )
     }
@@ -78,19 +148,31 @@ export default function Layout() {
 
                 {/* TOP */}
                 <div className='flex items-start justify-between'>
-                    <div>
+                    <div className='flex w-full  items-center justify-between'>
                         <Breadcrumb
                             FirstPreviewsPageName='Receiving'
                             SecondPreviewPageName='Received Items'
                             CurrentPageName={`View #${header.id}`}
                         />
 
-                        <div className='mt-3 flex items-center gap-3'>
-                            <h1 className='text-2xl font-semibold tracking-tight text-gray-800'>
-                                Breeder Ref No. {header.brdr_ref_no || ''}
-                            </h1>
 
-                            {/* <div
+                        <Button
+                            variant="outline"
+                            onClick={() => router.back()}
+                        >
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Back
+                        </Button>
+                    </div>
+
+
+                </div>
+                <div className='mt-3 flex items-center gap-3'>
+                    <h1 className='text-2xl font-semibold tracking-tight text-gray-800'>
+                        Breeder Ref No. {header.brdr_ref_no || ''}
+                    </h1>
+
+                    {/* <div
                             className={`
                                 px-2.5 py-1 rounded-md text-xs font-medium border
                                 ${header.status === 'Open'
@@ -102,8 +184,6 @@ export default function Layout() {
                         >
                             {header.status}
                         </div> */}
-                        </div>
-                    </div>
                 </div>
 
                 {/* DOCUMENT DETAILS */}

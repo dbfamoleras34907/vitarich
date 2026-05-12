@@ -10,6 +10,7 @@ import {
   ComboboxEmpty,
   ComboboxItem,
   ComboboxList,
+  ComboboxTrigger,
   ComboboxValue,
   useComboboxAnchor,
 } from "@/components/ui/combobox"
@@ -23,6 +24,7 @@ import {
 
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
+import { ChevronDown } from "lucide-react"
 
 
 export type ComboboxItemType = {
@@ -217,7 +219,7 @@ export default function SearchableCombobox(props: Props) {
           }
         }}
       >
-        <ComboboxChips ref={anchor} className={className}>
+        {/* <ComboboxChips ref={anchor} className={`${className} border border-black/10 `} >
           <ComboboxValue>
             {(values) => {
               const normalized = Array.isArray(values)
@@ -260,13 +262,66 @@ export default function SearchableCombobox(props: Props) {
                   readOnly
                 />
                 // <ComboboxChipsInput />
-                
+
               )
             }}
           </ComboboxValue>
-        </ComboboxChips>
+          <button
+            type="button"
+            onClick={() => anchor.current?.click()} // trigger combobox
+            className="ml-auto flex items-center"
+          >
+            <ChevronDown size={16} />
+          </button>
+        </ComboboxChips> */}
 
-        <ComboboxContent anchor={anchor}>
+        <ComboboxChips ref={anchor} className={`${className} border border-black/10`}>
+          <ComboboxValue>
+            {(values) => {
+              const normalized = Array.isArray(values)
+                ? values
+                : values
+                  ? [values]
+                  : []
+
+              if (props.multiple) {
+                const selected = normalizedValue as string[]
+                const first = selected[0]
+
+                const firstItem = items.find((f) => f.code === first)
+
+                return (
+                  <div className="flex flex-col w-full min-w-0 gap-1">
+                    <div className="flex items-center gap-1 overflow-hidden flex-nowrap">
+                      {first && (
+                        <ComboboxChip className="bg-secondary rounded-2xl text-secondary-foreground shrink-0">
+                          <span className="truncate">
+                            {formatLabel(firstItem)}
+                          </span>
+                        </ComboboxChip>
+                      )}
+
+                      <ComboboxChipsInput className="min-w-15" />
+                    </div>
+                  </div>
+                )
+              }
+
+              const val = normalized[0]
+              const item = items.find((f) => f.code === val)
+
+              return (
+                <ComboboxChipsInput
+                  value={formatLabel(item)}
+                  readOnly
+                />
+              )
+            }}
+          </ComboboxValue>
+
+          <ComboboxTrigger />  
+        </ComboboxChips>
+        <ComboboxContent anchor={anchor} onClick={() => anchor.current?.click()} >
           {/* 
         <ComboboxContent
           anchor={anchor}

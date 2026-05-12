@@ -51,8 +51,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   createHatchClassification,
   updateHatchClassification,
-  getHatchClassificationById,
-  type HatchClassificationInsert,
+  getHatchClassificationById, 
   type HatchClassificationUpdate,
 } from "./api";
 import FormActionButtons from "@/components/FormActionButtons";
@@ -62,6 +61,7 @@ import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { HatchClassificationInsert } from "../updatefd/api";
 
 type ViewForHatcheryClassi = {
   id: string | null;
@@ -489,6 +489,7 @@ export default function Hatchform() {
         ttl_count: form.ttl_count,
         is_active: true,
         farm_id: form.farm_id ? Number(form.farm_id) : null,
+        farm_code: form.farm_id ? String(form.farm_id) : null,
         hairline: form.hairline ?? null,
       };
 

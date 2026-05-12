@@ -417,6 +417,10 @@ export default function Hatchform() {
         misshapen: form.misshapen,
         leakers: form.leakers,
         ttl_count: form.ttl_count,
+        dirties: null,
+        hairline: null,
+        farm_id: null,
+        farm_code: null,
         is_active: true,
       };
 

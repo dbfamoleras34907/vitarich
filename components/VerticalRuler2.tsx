@@ -45,12 +45,12 @@ export function VerticalRuler2({
         <div>
 
             <span className="text-sm font-medium">{label}</span>
-            <SearchableCombobox
-                items={numbers}
-                value={selected}
-                onValueChange={handleChange}
-                className="w-full border shadow bg-white"
-            />
+                <SearchableCombobox
+                    items={numbers}
+                    value={selected}
+                    onValueChange={handleChange}
+                    className="  w-30"
+                />
         </div>
     );
 }
