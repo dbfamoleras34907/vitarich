@@ -31,6 +31,7 @@ import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import TemperatureConverter from "@/components/TemperatureConverter";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
+import { usePermission } from "@/hooks/usePermission";
 
 type HatchClassiRefOption = {
   classi_ref_no: string;
@@ -130,6 +131,13 @@ export default function Eggstorageform() {
   const editId = idParam ? Number(idParam) : null;
   const isEdit = Number.isFinite(editId) && (editId as number) > 0;
 
+  const canInsert = usePermission('/jmb/eggstorage/insert')
+  // const canView = usePermission('/jmb/eggstorage/view')
+  useEffect(() => {
+    if (canInsert)
+      router.push("/jmb/eggstorage/")
+  }, [])
+  
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 

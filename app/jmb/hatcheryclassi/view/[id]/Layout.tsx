@@ -11,11 +11,19 @@ import { Separator } from '@/components/ui/separator'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import { getHatchClassificationById } from '../../updatefd/api'
 import { HatchClassificationRow } from '../../new/api'
+import { usePermission } from '@/hooks/usePermission'
 
  
 export default function Layout() {
   const params = useParams()
   const router = useRouter()
+
+  // const canInsert = usePermission('/jmb/hatcheryclassi/insert')
+  const canView = usePermission('/jmb/hatcheryclassi/view')
+  useEffect(() => {
+    if (canView)
+      router.push("/jmb/hatcheryclassi/")
+  }, [])
 
   const id = Number(params.id)
 

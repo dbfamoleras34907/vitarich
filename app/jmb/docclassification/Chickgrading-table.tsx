@@ -1,68 +1,150 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
+import { useRouter } from "next/navigation";
+
+import Breadcrumb from "@/lib/Breadcrumb";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search } from "lucide-react";
+
+import {
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 
 import {
   ChickGradingProcess,
-  deleteChickGradingProcess,
   listChickGradingProcess,
 } from "./newv2/api";
 
-import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 
-function fmtDateTime(v: string | null | undefined) {
-  if (!v) return "";
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
+
+import { RowAction } from "@/lib/types";
+
+import { copyRow, copyTable } from "@/lib/tableActions";
+
+import { usePermission } from "@/hooks/usePermission";
+
+import { useGlobalContext } from "@/lib/context/GlobalContext";
+
+function fmtDateTime(
+  v: string | null | undefined,
+) {
+  if (!v) return "-";
+
   const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate(),
-  )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  if (Number.isNaN(d.getTime())) return "-";
+
+  const pad = (n: number) =>
+    String(n).padStart(2, "0");
+
+  return `${d.getFullYear()}-${pad(
+    d.getMonth() + 1,
+  )}-${pad(d.getDate())} ${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
 }
 
 export default function ChickgradingTable() {
   const router = useRouter();
 
-  const [items, setItems] = useState<ChickGradingProcess[]>([]);
-  const [columnFilters, setColumnFilters] = useState<any>([]);
-  const [sorting, setSorting] = useState<any>([]);
-  const [columnVisibility, setColumnVisibility] = useState<any>({});
-  const [rowSelection, setRowSelection] = useState<any>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [items, setItems] = useState<RowDataKey[]>(
+    [],
+  );
+
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const { setValue } = useGlobalContext();
+
+  const canView = usePermission(
+    "/jmb/docclassification/view",
+  );
+
+  const canInsert = usePermission(
+    "/jmb/docclassification/insert",
+  );
+
+  const canEdit = usePermission(
+    "/jmb/docclassification/edit",
+  );
 
   const load = useCallback(async () => {
     setIsLoading(true);
+
     try {
-      const data = await listChickGradingProcess();
-      setItems(Array.isArray(data) ? data : []);
-      setLastUpdated(new Date().toLocaleString());
+      const data =
+        await listChickGradingProcess();
+
+      const mapped =
+        Array.isArray(data)
+          ? data.map(
+              (
+                item: ChickGradingProcess,
+                index: number,
+              ) => ({
+                id: item.id,
+
+                "#": index + 1,
+
+                egg_ref_no:
+                  item.egg_ref_no || "-",
+
+                batch_code:
+                  item.batch_code || "-",
+
+                grading_datetime:
+                  fmtDateTime(
+                    item.grading_datetime,
+                  ),
+
+                total_chicks:
+                  Number(
+                    item.total_chicks || 0,
+                  ).toLocaleString(),
+
+                good_quality_chicks:
+                  Number(
+                    item.good_quality_chicks ||
+                      0,
+                  ).toLocaleString(),
+
+                quality_grade_rate:
+                  item.quality_grade_rate ||
+                  "-",
+
+                cull_rate:
+                  item.cull_rate || "-",
+
+                grading_personnel:
+                  item.grading_personnel ||
+                  "-",
+              }),
+            )
+          : [];
+
+      setItems(mapped);
     } catch (e) {
       console.error(e);
+
       setItems([]);
     } finally {
       setIsLoading(false);
@@ -74,83 +156,147 @@ export default function ChickgradingTable() {
   }, []);
 
   useEffect(() => {
-    router.prefetch("/jmb/docclassification/newv2");
+    router.prefetch(
+      "/jmb/docclassification/newv2",
+    );
+
     load();
   }, [router, load]);
 
-  async function onDelete(id: number) {
-    if (!confirm("Delete this record?")) return;
-    await deleteChickGradingProcess(id);
-    await load();
-    router.refresh();
-  }
+  useEffect(() => {
+    setValue("loading_g", isLoading);
+  }, [isLoading]);
 
-  const columns = useMemo<ColumnDef<ChickGradingProcess>[]>(
+  const tableColumns: ColumnConfig[] = useMemo(
     () => [
       {
-        id: "row_no",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
+        key: "#",
+        label: "#",
+        type: "text",
+        disabled: true,
       },
+
       {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <EditActionButton
-              id={row.original?.id}
-              href={(id) => `/jmb/docclassification/newv2?id=${id}`}
-            />
-          </div>
-        ),
+        key: "action",
+        label: "Action",
+        type: "button",
+        disabled: false,
       },
-      { accessorKey: "egg_ref_no", header: "Egg Reference No." },
-      { accessorKey: "batch_code", header: "Batch code" },
+
       {
-        accessorKey: "grading_datetime",
-        header: "Grading date & time",
-        cell: ({ row }) => fmtDateTime(row.original.grading_datetime),
+        key: "egg_ref_no",
+        label: "Egg Reference No.",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "total_chicks",
-        header: "Total Egg Set",
-        cell: ({ row }) => {
-          const value = row.original.total_chicks ?? 0;
-          return Number(value).toLocaleString();
-        },
+        key: "batch_code",
+        label: "Batch Code",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "good_quality_chicks",
-        header: "Good quality chicks",
-        cell: ({ row }) => {
-          const value = row.original.good_quality_chicks ?? 0;
-          return Number(value).toLocaleString();
-        },
+        key: "grading_datetime",
+        label: "Grading Date & Time",
+        type: "text",
+        disabled: true,
       },
-      { accessorKey: "quality_grade_rate", header: "Quality grade rate %" },
-      { accessorKey: "cull_rate", header: "Cull rate %" },
-      { accessorKey: "grading_personnel", header: "Grading personnel" },
+
+      {
+        key: "total_chicks",
+        label: "Total Egg Set",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "good_quality_chicks",
+        label: "Good Quality Chicks",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "quality_grade_rate",
+        label: "Quality Grade Rate %",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "cull_rate",
+        label: "Cull Rate %",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "grading_personnel",
+        label: "Grading Personnel",
+        type: "text",
+        disabled: true,
+      },
     ],
     [],
   );
 
-  const table = useReactTable({
-    data: items,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    onColumnFiltersChange: setColumnFilters,
-    onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      columnFilters,
-      sorting,
-      columnVisibility,
-      rowSelection,
-    },
-  });
+  const getRowActions = (
+    row: RowDataKey,
+  ): RowAction[] => {
+    return [
+      {
+        label: "View",
+
+        icon: <FileSearch className="w-4 h-4" />,
+
+        disabled: canView,
+
+        onClick: () => {
+          router.push(
+            `/jmb/docclassification/view/${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Edit",
+
+        disabled: canEdit,
+
+        icon: <Pencil className="w-4 h-4" />,
+
+        onClick: () => {
+          router.push(
+            `/jmb/docclassification/newv2?id=${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Copy Row",
+
+        icon: <Copy className="w-4 h-4" />,
+
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+
+        icon: (
+          <ClipboardCopy className="w-4 h-4" />
+        ),
+
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
 
   return (
     <div className="rounded-md p-4 mt-4">
@@ -161,111 +307,111 @@ export default function ChickgradingTable() {
 
       <div className="flex items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-3">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter Egg Reference No."
-              className="pl-10"
-              value={
-                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ??
-                ""
-              }
-              onChange={(e) =>
-                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
-
           <Button
             type="button"
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+            className="flex items-center gap-2"
           >
             <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
+              className={`size-4 ${
+                isLoading
+                  ? "animate-spin"
+                  : ""
+              }`}
             />
-            {isLoading ? "Refreshing..." : "Refresh"}
+
+            {isLoading
+              ? "Refreshing..."
+              : "Refresh"}
           </Button>
         </div>
 
         <Button
           type="button"
-          onClick={() => router.push("/jmb/docclassification/newv2")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+          onClick={() =>
+            router.push(
+              "/jmb/docclassification/newv2",
+            )
+          }
+          disabled={canInsert}
+          className="flex items-center gap-2"
         >
           <Plus className="size-4" />
+
           New DOC Classification
         </Button>
       </div>
 
-      <div className="rounded-md border bg-white">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((h) => (
-                  <TableHead key={h.id} className="whitespace-nowrap">
-                    {h.isPlaceholder
-                      ? null
-                      : flexRender(h.column.columnDef.header, h.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+      <div className="mt-4">
+        <DynamicTable
+          loading={isLoading}
+          initialFilters={[]}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
 
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((r) => (
-                <TableRow key={r.id}>
-                  {r.getVisibleCells().map((c) => (
-                    <TableCell key={c.id}>
-                      {c.column.columnDef.cell
-                        ? flexRender(c.column.columnDef.cell, c.getContext())
-                        : String(c.getValue() ?? "")}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            label: col.label,
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Prev
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
+            align:
+              col.key === "action"
+                ? "right"
+                : "left",
+
+            render: (row: RowDataKey) => {
+              const key = col.key;
+
+              if (key === "action") {
+                const actions =
+                  getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map(
+                        (action, index) => (
+                          <DropdownMenuItem
+                            key={index}
+                            disabled={
+                              action.disabled
+                            }
+                            onClick={() =>
+                              action.onClick(row)
+                            }
+                            className="cursor-pointer flex items-center gap-2"
+                          >
+                            {action.icon}
+
+                            {action.label}
+                          </DropdownMenuItem>
+                        ),
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              const value = row[key];
+
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={items}
+        />
       </div>
     </div>
   );

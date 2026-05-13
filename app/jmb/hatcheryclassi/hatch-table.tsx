@@ -171,7 +171,7 @@ export default function HatchTable() {
         icon: <View className="w-4 h-4" />,
         disabled: canView,
         onClick: () => {
-          router.push(`/a_dean/receiving/view/${row.id}`)
+          router.push(`/jmb/hatcheryclassi/view/${row.id}`)
         },
       },
       {

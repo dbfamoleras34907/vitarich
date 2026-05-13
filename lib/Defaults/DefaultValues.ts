@@ -553,7 +553,7 @@ export const NavFolders: NavFolder[] = [
             section: "HA",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -563,7 +563,7 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/prewarmingv2",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -573,7 +573,7 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/eggsetter",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -583,7 +583,7 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/eggtransferv2",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -593,7 +593,7 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/egghatcherv2",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -603,7 +603,7 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/chickpulloutv2",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -615,7 +615,7 @@ export const NavFolders: NavFolder[] = [
             section: "HA",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {
@@ -627,7 +627,7 @@ export const NavFolders: NavFolder[] = [
             section: "HA",
             view: true,
             insert: true,
-            edit: false,
+            edit: true,
           },
 
           {

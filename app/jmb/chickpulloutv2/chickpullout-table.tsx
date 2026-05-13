@@ -1,151 +1,268 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
+
+import { Button } from "@/components/ui/button";
+
+import {
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
+
 import {
   ChickPulloutProcess,
   listChickPulloutProcess,
-  deleteChickPulloutProcess,
 } from "./newv2/api";
+
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
+
+import { RowAction } from "@/lib/types";
+
+import { copyRow, copyTable } from "@/lib/tableActions";
+
+import { usePermission } from "@/hooks/usePermission";
+
+import { useGlobalContext } from "@/lib/context/GlobalContext";
 
 export default function ChickPulloutTable() {
   const router = useRouter();
 
-  const [items, setItems] = useState<ChickPulloutProcess[]>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [items, setItems] = useState<RowDataKey[]>([]);
+
   const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  const { setValue } = useGlobalContext();
+
+  const canView = usePermission(
+    "/jmb/chickpulloutv2/view",
+  );
+
+  const canInsert = usePermission(
+    "/jmb/chickpulloutv2/insert",
+  );
+
+  const canEdit = usePermission(
+    "/jmb/chickpulloutv2/edit",
+  );
 
   const load = useCallback(async () => {
     setIsLoading(true);
+
     try {
       const data = await listChickPulloutProcess();
-      setItems(Array.isArray(data) ? data : []);
-      setLastUpdated(new Date().toLocaleString());
+
+      const mapped =
+        Array.isArray(data)
+          ? data.map(
+              (
+                item: ChickPulloutProcess,
+                index: number,
+              ) => ({
+                id: item.id,
+
+                "#": index + 1,
+
+                egg_ref_no:
+                  item.egg_ref_no || "-",
+
+                machine_no:
+                  item.machine_no || "-",
+
+                hatch_date:
+                  item.hatch_date || "-",
+
+                chicks_hatched:
+                  item.chicks_hatched || "-",
+
+                dead_in_shell:
+                  item.dead_in_shell || "-",
+
+                hatch_fertile:
+                  item.hatch_fertile || "-",
+
+                mortality_rate:
+                  item.mortality_rate || "-",
+
+                hatch_window:
+                  item.hatch_window || "-",
+              }),
+            )
+          : [];
+
+      setItems(mapped);
     } catch (e) {
       console.error(e);
+
       setItems([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
+
   useEffect(() => {
     refreshSessionx(router);
   }, []);
+
   useEffect(() => {
     router.prefetch("/jmb/chickpulloutv2/newv2");
+
     load();
   }, [router, load]);
 
-  const columns = useMemo<ColumnDef<ChickPulloutProcess>[]>(
+  useEffect(() => {
+    setValue("loading_g", isLoading);
+  }, [isLoading]);
+
+  const tableColumns: ColumnConfig[] = useMemo(
     () => [
       {
-        id: "row_no",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
+        key: "#",
+        label: "#",
+        type: "text",
+        disabled: true,
       },
+
       {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <EditActionButton
-            id={row.original?.id}
-            href={(id) => `/jmb/chickpulloutv2/newv2?id=${id}`}
-          />
-        ),
+        key: "action",
+        label: "Action",
+        type: "button",
+        disabled: false,
       },
+
       {
-        accessorKey: "egg_ref_no",
-        header: "Egg Reference No.",
+        key: "egg_ref_no",
+        label: "Egg Reference No.",
+        type: "text",
+        disabled: true,
       },
-      // {
-      //   accessorKey: "chick_hatch_ref_no",
-      //   header: "Chick Hatch Ref. No.",
-      // },
-      // {
-      //   accessorKey: "farm_source",
-      //   header: "Farm Source",
-      // },
+
       {
-        accessorKey: "machine_no",
-        header: "Machine",
+        key: "machine_no",
+        label: "Machine",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "hatch_date",
-        header: "Hatch Date",
+        key: "hatch_date",
+        label: "Hatch Date",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "chicks_hatched",
-        header: "Chicks Hatched",
-        cell: ({ row }) => row.original.chicks_hatched ?? "",
+        key: "chicks_hatched",
+        label: "Chicks Hatched",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "dead_in_shell",
-        header: "Dead-in-shell",
+        key: "dead_in_shell",
+        label: "Dead-in-shell",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "hatch_fertile",
-        header: "Hatch of Fertile (%)",
+        key: "hatch_fertile",
+        label: "Hatch of Fertile (%)",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "mortality_rate",
-        header: "Mortality Rate (%)",
+        key: "mortality_rate",
+        label: "Mortality Rate (%)",
+        type: "text",
+        disabled: true,
       },
+
       {
-        accessorKey: "hatch_window",
-        header: "Hatch Window",
+        key: "hatch_window",
+        label: "Hatch Window",
+        type: "text",
+        disabled: true,
       },
     ],
     [],
   );
 
-  const table = useReactTable({
-    data: items,
-    columns,
-    state: { globalFilter },
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _colId, filterValue) => {
-      const v = String(filterValue ?? "").toLowerCase();
-      const hay = [
-        row.original.egg_ref_no,
-        row.original.chick_hatch_ref_no,
-        row.original.farm_source,
-        row.original.machine_no,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(v);
-    },
-  });
+  const getRowActions = (
+    row: RowDataKey,
+  ): RowAction[] => {
+    return [
+      {
+        label: "View",
+
+        icon: <FileSearch className="w-4 h-4" />,
+
+        disabled: canView,
+
+        onClick: () => {
+          router.push(
+            `/jmb/chickpulloutv2/view/${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Edit",
+
+        disabled: canEdit,
+
+        icon: <Pencil className="w-4 h-4" />,
+
+        onClick: () => {
+          router.push(
+            `/jmb/chickpulloutv2/newv2?id=${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Copy Row",
+
+        icon: <Copy className="w-4 h-4" />,
+
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+
+        icon: (
+          <ClipboardCopy className="w-4 h-4" />
+        ),
+
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
 
   return (
     <div className="rounded-md p-4 mt-4">
@@ -153,111 +270,114 @@ export default function ChickPulloutTable() {
         SecondPreviewPageName="Hatchery"
         CurrentPageName="Chick Pullout"
       />
+
       <div className="flex items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-3">
-          <div className="relative w-72">
-            <Input
-              placeholder="Search Egg Reference No."
-              className="pl-10"
-              value={globalFilter ?? ""}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
-
           <Button
             type="button"
             variant="outline"
             onClick={load}
             disabled={isLoading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+            className="flex items-center gap-2"
           >
             <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
+              className={`size-4 ${
+                isLoading
+                  ? "animate-spin"
+                  : ""
+              }`}
             />
-            {isLoading ? "Refreshing..." : "Refresh"}
+
+            {isLoading
+              ? "Refreshing..."
+              : "Refresh"}
           </Button>
         </div>
 
         <Button
           type="button"
-          onClick={() => router.push("/jmb/chickpulloutv2/newv2")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+          onClick={() =>
+            router.push(
+              "/jmb/chickpulloutv2/newv2",
+            )
+          }
+          disabled={canInsert}
+          className="flex items-center gap-2"
         >
           <Plus className="size-4" />
+
           New Chick Pullout
         </Button>
       </div>
 
-      <div className="rounded-2xl p-4 bg-white shadow">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((h) => (
-                  <TableHead
-                    key={h.id}
-                    className="whitespace-normal wrap-break-word text-left align-middle"
-                  >
-                    {h.isPlaceholder
-                      ? null
-                      : flexRender(h.column.columnDef.header, h.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+      <div className="mt-4">
+        <DynamicTable
+          loading={isLoading}
+          initialFilters={[]}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
 
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((r) => (
-                <TableRow key={r.id}>
-                  {r.getVisibleCells().map((c) => (
-                    <TableCell key={c.id}>
-                      {c.column.columnDef.cell
-                        ? flexRender(c.column.columnDef.cell, c.getContext())
-                        : String(c.getValue() ?? "")}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            label: col.label,
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Prev
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
+            align:
+              col.key === "action"
+                ? "right"
+                : "left",
+
+            render: (row: RowDataKey) => {
+              const key = col.key;
+
+              if (key === "action") {
+                const actions =
+                  getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map(
+                        (action, index) => (
+                          <DropdownMenuItem
+                            key={index}
+                            disabled={
+                              action.disabled
+                            }
+                            onClick={() =>
+                              action.onClick(row)
+                            }
+                            className="cursor-pointer flex items-center gap-2"
+                          >
+                            {action.icon}
+
+                            {action.label}
+                          </DropdownMenuItem>
+                        ),
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              const value = row[key];
+
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={items}
+        />
       </div>
     </div>
   );

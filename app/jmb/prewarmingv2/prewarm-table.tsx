@@ -2,68 +2,143 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search } from "lucide-react";
+import {
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
-import { listEggPreWarming, type EggPreWarming } from "./new2/api";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
+import { RowAction } from "@/lib/types";
+
+import { copyRow, copyTable } from "@/lib/tableActions";
+
+import {
+  listEggPreWarming,
+  type EggPreWarming,
+} from "./new2/api";
+
+import { usePermission } from "@/hooks/usePermission";
+
 function fmtDuration(mins: number | null) {
   if (mins == null) return "";
+
   const h = Math.floor(mins / 60);
   const m = mins % 60;
+
   if (h <= 0) return `${m} min`;
+
   return `${h} hr ${m} min`;
 }
 
 export default function PrewarmTable() {
   const router = useRouter();
 
-  const [items, setItems] = useState<EggPreWarming[]>([]);
-  const [sorting, setSorting] = useState<any>([]);
-  const [columnFilters, setColumnFilters] = useState<any>([]);
-  const [columnVisibility, setColumnVisibility] = useState<any>({});
-  const [rowSelection, setRowSelection] = useState<any>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [items, setItems] = useState<RowDataKey[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const { setValue } = useGlobalContext();
+
+  const canView = usePermission("/jmb/prewarmingv2/view");
+  const canEdit = usePermission("/jmb/prewarmingv2/edit");
+  const canInsert = usePermission("/jmb/prewarmingv2/insert");
+
+  const tableColumns: ColumnConfig[] = useMemo(
+    () => [
+      {
+        key: "#",
+        label: "#",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "action",
+        label: "Action",
+        type: "button",
+        disabled: false,
+      },
+      {
+        key: "egg_ref_no",
+        label: "Egg Reference No.",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "pre_temp",
+        label: "Pre-Warming Temp ℃",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "egg_temp",
+        label: "Egg Shell Temp ℃",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "duration",
+        label: "Duration",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "remarks",
+        label: "Remarks",
+        type: "text",
+        disabled: true,
+      },
+    ],
+    [],
+  );
 
   const load = useCallback(async () => {
-    setIsLoading(true);
     try {
+      setLoading(true);
+
       const rows = await listEggPreWarming();
-      setItems(Array.isArray(rows) ? rows : []);
-      setLastUpdated(new Date().toLocaleString());
+
+      const mapped =
+        Array.isArray(rows)
+          ? rows.map((item: EggPreWarming, index: number) => ({
+              id: item.id,
+              "#": index + 1,
+              egg_ref_no: item.egg_ref_no || "-",
+              pre_temp: item.pre_temp || "-",
+              egg_temp: item.egg_temp || "-",
+              duration: fmtDuration(
+                (item.duration as number | null) ?? null,
+              ),
+              remarks: item.remarks || "-",
+            }))
+          : [];   
+      setItems(mapped);
     } catch (e) {
       console.error(e);
       setItems([]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, []);
-  const { setValue, getValue } = useGlobalContext();
+
   useEffect(() => {
     refreshSessionx(router);
   }, []);
@@ -73,201 +148,134 @@ export default function PrewarmTable() {
     load();
   }, [router, load]);
 
-  const columns = useMemo<ColumnDef<EggPreWarming>[]>(
-    () => [
-      {
-        id: "row_no",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
-      },
-      {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <EditActionButton
-            id={row.original?.id}
-            href={(id) => `/jmb/prewarmingv2/new2?id=${id}`}
-          />
-        ),
-      },
-      {
-        accessorKey: "egg_ref_no",
-        header: "Egg Reference No.",
-        cell: ({ row }) => row.original.egg_ref_no ?? "",
-      },
-      {
-        accessorKey: "pre_temp",
-        header: "Pre-Warming Temp ℃",
-        cell: ({ row }) => row.original.pre_temp ?? "",
-      },
-      {
-        accessorKey: "egg_temp",
-        header: "Egg Shell Temp ℃",
-        cell: ({ row }) => row.original.egg_temp ?? "",
-      },
-      {
-        accessorKey: "duration",
-        header: "Duration",
-        cell: ({ row }) =>
-          fmtDuration((row.original.duration as number | null) ?? null),
-      },
-      {
-        accessorKey: "remarks",
-        header: "Remarks",
-        cell: ({ row }) => row.original.remarks ?? "",
-      },
-    ],
-    [],
-  );
-
-  const table = useReactTable({
-    data: items,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  });
   useEffect(() => {
-    setValue("loading_g", isLoading);
-  }, [isLoading]);
+    setValue("loading_g", loading);
+  }, [loading]);
+
+  const getRowActions = (row: RowDataKey): RowAction[] => {
+    return [
+      {
+        label: "View",
+        icon: <FileSearch className="w-4 h-4" />,
+        disabled: canView,
+        onClick: () => {
+          router.push(`/jmb/prewarmingv2/view/${row.id}`);
+        },
+      },
+
+      {
+        label: "Edit",
+        disabled: canEdit,
+
+        icon: <Pencil className="w-4 h-4" />,
+        onClick: () => {
+          router.push(`/jmb/prewarmingv2/new2?id=${row.id}`);
+        },
+      },
+
+      {
+        label: "Copy Row",
+        icon: <Copy className="w-4 h-4" />,
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+        icon: <ClipboardCopy className="w-4 h-4" />,
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
 
   return (
     <div className="rounded-md p-4">
-      <div className="mt-4">
+      <div className="flex justify-between items-center">
         <Breadcrumb
           FirstPreviewsPageName="Hatchery"
           CurrentPageName="Pre-Warming"
         />
-      </div>
-      {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-3">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter Egg Reference No."
-              className="pl-10"
-              value={
-                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ??
-                ""
-              }
-              onChange={(e) =>
-                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
 
+        <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={load}
-            disabled={isLoading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+            disabled={loading}
           >
-            <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-
-        <Button
-          type="button"
-          onClick={() => router.push("/jmb/prewarmingv2/new2")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
-        >
-          <Plus className="size-4" />
-          New Pre-Warming
-        </Button>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
+            <RefreshCw className="h-4 w-4" />
+            {loading ? "Loading..." : "Refresh"}
           </Button>
 
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            type="button"
+            onClick={() => router.push("/jmb/prewarmingv2/new2")}
+            disabled={canInsert}
           >
-            Next
+            <Plus className="size-4" />
+            New Pre-Warming
           </Button>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <DynamicTable
+          loading={loading}
+          initialFilters={[]}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
+            label: col.label,
+            align: col.key === "action" ? "right" : "left",
+
+            render: (row: RowDataKey) => {
+              const key = col.key;
+
+              if (key === "action") {
+                const actions = getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map((action, index) => (
+                        <DropdownMenuItem
+                          key={index}
+                          disabled={action.disabled}
+                          onClick={() => action.onClick(row)}
+                          className="cursor-pointer flex items-center gap-2"
+                        >
+                          {action.icon}
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              const value = row[key];
+
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={items}
+        />
       </div>
     </div>
   );

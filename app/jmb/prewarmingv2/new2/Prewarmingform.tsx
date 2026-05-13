@@ -31,6 +31,7 @@ import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
 import TemperatureConverter from "@/components/TemperatureConverter";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
+import { usePermission } from "@/hooks/usePermission";
 
 type FormState = {
   egg_ref_no: string[];
@@ -110,6 +111,9 @@ function TemperatureInput({
   onOpenConverter: () => void;
   disabled?: boolean;
 }) {
+
+
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -149,9 +153,35 @@ function TemperatureInput({
 export default function Prewarmingform() {
   const router = useRouter();
   const sp = useSearchParams();
+
   const idParam = sp.get("id");
+
   const editId = idParam ? Number(idParam) : null;
-  const isEdit = Number.isFinite(editId) && (editId as number) > 0;
+
+  const isEdit =
+    typeof editId === "number" &&
+    Number.isFinite(editId) &&
+    editId > 0;
+  const canView = usePermission("/jmb/prewarmingv2/insert");
+  const canEdit = usePermission("/jmb/prewarmingv2/edit");
+
+  useEffect(() => {
+
+    // wait for permissions
+    if (canView === null || canEdit === null) {
+      return;
+    }
+
+    if (isEdit && canEdit) {
+      router.replace("/jmb/prewarmingv2");
+      return;
+    }
+
+    if (!isEdit && canView) {
+      router.replace("/jmb/prewarmingv2");
+    }
+
+  }, [isEdit, canEdit, canView, router]);
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState<boolean>(!!isEdit);
