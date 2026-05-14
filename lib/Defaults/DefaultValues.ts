@@ -886,12 +886,22 @@ export const NavFolders: NavFolder[] = [
             edit: false,
           },
 
+          // {
+          //   id: 42,
+          //   type: "Module",
+          //   title: "Document Settings",
+          //   url: "#",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },
+
           {
-            id: 42,
+            id: 43,
             type: "Module",
-            title: "Document Settings",
-            url: "#",
-            view: false,
+            title: "Permission Template",
+            url: "/admin/permissions",
+            view: true,
             insert: false,
             edit: false,
           },
