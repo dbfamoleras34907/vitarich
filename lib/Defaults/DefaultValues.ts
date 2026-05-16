@@ -536,8 +536,8 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Classification",
             url: "/jmb/hatcheryclassi",
-            view: false,
-            insert: false,
+            view: true,
+            insert: true,
             edit: false,
           },
 
@@ -548,9 +548,9 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/eggstorage",
             inventoriable: true,
             section: "HA",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -558,9 +558,9 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Pre-Warming Process",
             url: "/jmb/prewarmingv2",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -568,9 +568,9 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Setter",
             url: "/jmb/eggsetter",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -578,9 +578,9 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Transfer Process",
             url: "/jmb/eggtransferv2",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -588,9 +588,9 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Hatcher Process",
             url: "/jmb/egghatcherv2",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -598,9 +598,9 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Chick Pullout Process",
             url: "/jmb/chickpulloutv2",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -610,9 +610,9 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/docclassification",
             inventoriable: true,
             section: "HA",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -622,9 +622,9 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/docdispatchv2",
             inventoriable: true,
             section: "HA",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
 
           {
@@ -634,8 +634,8 @@ export const NavFolders: NavFolder[] = [
             url: "/a_dean/disposal",
             inventoriable: true,
             section: "HA",
-            view: false,
-            insert: false,
+            view: true,
+            insert: true,
             edit: false,
           },
         ],
@@ -895,12 +895,22 @@ export const NavFolders: NavFolder[] = [
             edit: false,
           },
 
+          // {
+          //   id: 42,
+          //   type: "Module",
+          //   title: "Document Settings",
+          //   url: "#",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },
+
           {
-            id: 42,
+            id: 43,
             type: "Module",
-            title: "Document Settings",
-            url: "#",
-            view: false,
+            title: "Permission Template",
+            url: "/admin/permissions",
+            view: true,
             insert: false,
             edit: false,
           },

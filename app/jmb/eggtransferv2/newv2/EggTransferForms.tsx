@@ -23,6 +23,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
+import { usePermission } from "@/hooks/usePermission";
 
 type FormState = {
   ref_no: string[];
@@ -159,11 +160,48 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function EggTransferForm() {
+  // const router = useRouter();
+  // const sp = useSearchParams();
+  // const idParam = sp.get("id");
+  // const editId = idParam ? Number(idParam) : null;
+  // const isEdit = Number.isFinite(editId) && !!editId;
+
+
+
+
+
   const router = useRouter();
   const sp = useSearchParams();
+
   const idParam = sp.get("id");
+
   const editId = idParam ? Number(idParam) : null;
-  const isEdit = Number.isFinite(editId) && !!editId;
+
+  const isEdit =
+    typeof editId === "number" &&
+    Number.isFinite(editId) &&
+    editId > 0;
+  const canView = usePermission("/jmb/eggtransferv2/insert");
+  const canEdit = usePermission("/jmb/eggtransferv2/edit");
+
+  useEffect(() => {
+
+    // wait for permissions
+    if (canView === null || canEdit === null) {
+      return;
+    }
+
+    if (isEdit && canEdit) {
+      router.replace("/jmb/eggtransferv2");
+      return;
+    }
+
+    if (!isEdit && canView) {
+      router.replace("/jmb/eggtransferv2");
+    }
+
+  }, [isEdit, canEdit, canView, router]);
+
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState<boolean>(!!isEdit);
@@ -236,15 +274,15 @@ export default function EggTransferForm() {
         setReferenceRows(
           row.ref_no
             ? [
-                {
-                  ref_no: row.ref_no,
-                  farm_source: row.farm_source ?? "",
-                  total_hatching_egg: 0,
-                  previous_total_egg_transfer: 0,
-                  num_bangers: Number(row.num_bangers ?? 0),
-                  total_egg_transfer: Number(row.total_egg_transfer ?? 0),
-                },
-              ]
+              {
+                ref_no: row.ref_no,
+                farm_source: row.farm_source ?? "",
+                total_hatching_egg: 0,
+                previous_total_egg_transfer: 0,
+                num_bangers: Number(row.num_bangers ?? 0),
+                total_egg_transfer: Number(row.total_egg_transfer ?? 0),
+              },
+            ]
             : [],
         );
       } catch (error: unknown) {
@@ -276,7 +314,7 @@ export default function EggTransferForm() {
       nextMap[loadedRecord.ref_no] = Math.max(
         0,
         (nextMap[loadedRecord.ref_no] ?? 0) -
-          Number(loadedRecord.total_egg_transfer ?? 0),
+        Number(loadedRecord.total_egg_transfer ?? 0),
       );
     }
 
@@ -301,9 +339,9 @@ export default function EggTransferForm() {
       setForm((prev) =>
         prev.farm_source
           ? {
-              ...prev,
-              farm_source: "",
-            }
+            ...prev,
+            farm_source: "",
+          }
           : prev,
       );
       return;
@@ -338,9 +376,9 @@ export default function EggTransferForm() {
       prev.farm_source === nextFarmSource
         ? prev
         : {
-            ...prev,
-            farm_source: nextFarmSource,
-          },
+          ...prev,
+          farm_source: nextFarmSource,
+        },
     );
   }, [
     form.ref_no,
@@ -422,8 +460,8 @@ export default function EggTransferForm() {
     const invalidRow = referenceRows.find(
       (row) =>
         row.previous_total_egg_transfer +
-          row.num_bangers +
-          row.total_egg_transfer >
+        row.num_bangers +
+        row.total_egg_transfer >
         row.total_hatching_egg,
     );
 
@@ -633,8 +671,8 @@ export default function EggTransferForm() {
                   disabled={disabledAll}
                 />
                 {form.trans_date_start &&
-                form.trans_date_end &&
-                !isValidDates ? (
+                  form.trans_date_end &&
+                  !isValidDates ? (
                   <p className="text-xs text-destructive">
                     End must be after Start.
                   </p>

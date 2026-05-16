@@ -60,6 +60,7 @@ import {
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { usePermission } from "@/hooks/usePermission";
 
 function num(v: any) {
   const n = Number(v);
@@ -74,15 +75,53 @@ function clampNonNegative(value: string) {
 }
 
 export default function CheckPulloutForm() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const idParam = sp.get("id");
+  // const router = useRouter();
+  // const sp = useSearchParams();
+  // const idParam = sp.get("id");
 
-  const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
-  const isEdit = !!editId;
+  // const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
+  // const isEdit = !!editId;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+
+
+
+  
+   const router = useRouter();
+    const sp = useSearchParams();
+  
+    const idParam = sp.get("id");
+  
+    const editId = idParam ? Number(idParam) : null;
+  
+    const isEdit =
+      typeof editId === "number" &&
+      Number.isFinite(editId) &&
+      editId > 0;
+    const canView = usePermission("/jmb/chickpulloutv2/insert");
+    const canEdit = usePermission("/jmb/chickpulloutv2/edit");
+  
+    useEffect(() => {
+  
+      // wait for permissions
+      if (canView === null || canEdit === null) {
+        return;
+      }
+  
+      if (isEdit && canEdit) {
+        router.replace("/jmb/chickpulloutv2");
+        return;
+      }
+  
+      if (!isEdit && canView) {
+        router.replace("/jmb/chickpulloutv2");
+      }
+  
+    }, [isEdit, canEdit, canView, router]);
+  
+
 
   const [eggRefs, setEggRefs] = useState<string[]>([]);
   const [eggRefsLoading, setEggRefsLoading] = useState(false);

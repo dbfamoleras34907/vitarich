@@ -1,77 +1,151 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  ColumnFiltersState,
-  SortingState,
-  VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { useRouter } from "next/navigation";
+
+import Breadcrumb from "@/lib/Breadcrumb";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+
 import {
-  Edit,
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCwIcon,
-  Search,
-  Trash2,
+  Printer,
+  RefreshCw,
 } from "lucide-react";
 
-import { listDispatchDocs, softDeleteDispatchDoc } from "./newv2/api";
-import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
+import {
+  listDispatchDocs,
+  softDeleteDispatchDoc,
+} from "./newv2/api";
+
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import {
+  ColumnConfig,
+  RowDataKey,
+} from "@/lib/Defaults/DefaultTypes";
+
+import { RowAction } from "@/lib/types";
+
+import {
+  copyRow,
+  copyTable,
+} from "@/lib/tableActions";
+
+import { usePermission } from "@/hooks/usePermission";
+
+import { useGlobalContext } from "@/lib/context/GlobalContext";
 
 type Row = {
   id: number;
+
   doc_date: string;
+
   dr_no: string;
+
   farm_name: string;
+
   hauler_name: string | null;
+
   hauler_plate_no: string | null;
+
   truck_seal_no: string | null;
+
   chick_van_temp_c: number | null;
+
   number_of_fans: number | null;
+
   remarks: string | null;
 };
 
 export default function DocdispatchTable() {
   const router = useRouter();
 
-  const [data, setData] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<
+    RowDataKey[]
+  >([]);
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [loading, setLoading] =
+    useState(false);
+
+  const { setValue } = useGlobalContext();
+
+  const canView = usePermission(
+    "/jmb/docdispatchv2/view",
+  );
+
+  const canInsert = usePermission(
+    "/jmb/docdispatchv2/insert",
+  );
+
+  const canEdit = usePermission(
+    "/jmb/docdispatchv2/edit",
+  );
 
   async function load() {
     setLoading(true);
+
     try {
       const rows = await listDispatchDocs();
-      setData(rows as Row[]);
+
+      const mapped =
+        Array.isArray(rows)
+          ? rows.map(
+            (
+              item: Partial<Row>,
+              index: number,
+            ) => ({
+              id: item.id ?? 0,
+
+              "#": index + 1,
+
+              doc_date: item.doc_date || "-",
+
+              dr_no: item.dr_no || "-",
+
+              farm_name: item.farm_name || "-",
+
+              hauler_name:
+                item.hauler_name || "-",
+
+              hauler_plate_no:
+                item.hauler_plate_no || "-",
+
+              truck_seal_no:
+                item.truck_seal_no || "-",
+
+              chick_van_temp_c:
+                item.chick_van_temp_c == null
+                  ? "-"
+                  : `${item.chick_van_temp_c} °C`,
+
+              number_of_fans:
+                item.number_of_fans || "-",
+
+              remarks: item.remarks || "-",
+            }),
+          )
+          : [];
+      setItems(mapped);
     } catch (e) {
       console.error(e);
-      alert("Failed to load records.");
+
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -82,233 +156,302 @@ export default function DocdispatchTable() {
   }, []);
 
   useEffect(() => {
+    router.prefetch(
+      "/jmb/docdispatchv2/newv2",
+    );
+
     load();
   }, []);
 
+  useEffect(() => {
+    setValue("loading_g", loading);
+  }, [loading]);
+
   async function onDelete(id: number) {
-    const ok = confirm("Set this record as inactive?");
+    const ok = confirm(
+      "Set this record as inactive?",
+    );
+
     if (!ok) return;
+
     try {
       await softDeleteDispatchDoc(id);
+
       await load();
     } catch (e) {
       console.error(e);
+
       alert("Failed to delete.");
     }
   }
 
-  const columns = useMemo<ColumnDef<Row>[]>(
-    () => [
-      {
-        accessorKey: "id",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
-      },
-      // {
-      //   id: "action",
-      //   header: "Action",
-      //   cell: ({ row }) => (
-      //     <EditActionButton
-      //       id={row.original?.id}
-      //       href={(id) => `/jmb/docdispatchv2/new?id=${id}`}
-      //     />
-      //   ),
-      // },
+  const tableColumns: ColumnConfig[] =
+    useMemo(
+      () => [
+        {
+          key: "#",
+          label: "#",
+          type: "text",
+          disabled: true,
+        },
 
+        {
+          key: "action",
+          label: "Action",
+          type: "button",
+          disabled: false,
+        },
+
+        {
+          key: "doc_date",
+          label: "Date",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "dr_no",
+          label: "Delivery Receipt No.",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "farm_name",
+          label: "Farm Name",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "hauler_name",
+          label: "Hauler Name",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "hauler_plate_no",
+          label: "Plate Number",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "truck_seal_no",
+          label: "Truck Seal Number",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "chick_van_temp_c",
+          label: "Chick Van Temp",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "number_of_fans",
+          label: "Number of Fans",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "remarks",
+          label: "Remarks",
+          type: "text",
+          disabled: true,
+        },
+      ],
+      [],
+    );
+
+  const getRowActions = (
+    row: RowDataKey,
+  ): RowAction[] => {
+    return [
       {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <Button
-            onMouseEnter={() =>
-              router.prefetch(`/jmb/docdispatchv2/${row.original.id}/print`)
-            }
-            onFocus={() =>
-              router.prefetch(`/jmb/docdispatchv2/${row.original.id}/print`)
-            }
-            onClick={() =>
-              window.open(
-                `/jmb/docdispatchv2/${row.original.id}/print`,
-                "_blank",
-              )
-            }
-            className="border border-green-500 bg-white text-black"
-            size="sm"
-          >
-            <Edit />
-            Print
-          </Button>
+        label: "View",
+
+        icon: (
+          <FileSearch className="w-4 h-4" />
         ),
+
+        disabled: canView,
+
+        onClick: () => {
+          router.push(
+            `/jmb/docdispatchv2/view/${row.id}`,
+          );
+        },
       },
 
-      { accessorKey: "doc_date", header: "Date" },
-      { accessorKey: "dr_no", header: "Delivery Receipt No." },
-      { accessorKey: "farm_name", header: "Farm Name" },
-      { accessorKey: "hauler_name", header: "Hauler Name" },
-      { accessorKey: "hauler_plate_no", header: "Plate Number" },
-      { accessorKey: "truck_seal_no", header: "Truck Seal Number" },
       {
-        accessorKey: "chick_van_temp_c",
-        header: "Chick Van Temp",
-        cell: ({ row }) =>
-          row.original.chick_van_temp_c == null
-            ? ""
-            : `${row.original.chick_van_temp_c} °C`,
-      },
-      { accessorKey: "number_of_fans", header: "Number of Fans" },
-      { accessorKey: "remarks", header: "Remarks" },
-    ],
-    [router],
-  );
+        label: "Edit",
 
-  const table = useReactTable({
-    data,
-    columns,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      globalFilter,
-    },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      const q = String(filterValue ?? "").toLowerCase();
-      if (!q) return true;
-      const v = [
-        row.original.dr_no,
-        row.original.farm_name,
-        row.original.hauler_name ?? "",
-        row.original.hauler_plate_no ?? "",
-        row.original.truck_seal_no ?? "",
-        row.original.remarks ?? "",
-        row.original.doc_date ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return v.includes(q);
-    },
-  });
+        disabled: canEdit,
+
+        icon: <Pencil className="w-4 h-4" />,
+
+        onClick: () => {
+          router.push(
+            `/jmb/docdispatchv2/newv2?id=${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Print",
+
+        icon: <Printer className="w-4 h-4" />,
+
+        onClick: () => {
+          window.open(
+            `/jmb/docdispatchv2/${row.id}/print`,
+            "_blank",
+          );
+        },
+      },
+
+      {
+        label: "Copy Row",
+
+        icon: <Copy className="w-4 h-4" />,
+
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+
+        icon: (
+          <ClipboardCopy className="w-4 h-4" />
+        ),
+
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
 
   return (
     <div className="rounded-md p-4">
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
-        // FirstPreviewsPageName="Egg Transfer"
-        CurrentPageName="DOC Dispatch "
+        CurrentPageName="DOC Dispatch"
       />
 
       <div className="flex items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8 w-[320px]"
-              placeholder="Search..."
-              value={globalFilter}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-            />
-          </div>
-
           <Button
             type="button"
             variant="outline"
             onClick={load}
             disabled={loading}
-            className="w-full md:w-auto h-full md:h-auto"
+            className="flex items-center gap-2"
           >
-            <RefreshCwIcon className="h-4 w-4 mr-2" />
-            Refresh
+            <RefreshCw
+              className={`h-4 w-4 ${loading
+                  ? "animate-spin"
+                  : ""
+                }`}
+            />
+
+            {loading
+              ? "Refreshing..."
+              : "Refresh"}
           </Button>
         </div>
 
         <Button
           type="button"
-          className="w-full md:w-auto h-full md:h-auto"
-          onClick={() => router.push("/jmb/docdispatchv2/newv2")}
+          className="flex items-center gap-2"
+          disabled={canInsert}
+          onClick={() =>
+            router.push(
+              "/jmb/docdispatchv2/newv2",
+            )
+          }
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4" />
+
           New Dispatch Doc
         </Button>
       </div>
 
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead key={header.id} className="text-left">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+      <div className="mt-4">
+        <DynamicTable
+          loading={loading}
+          initialFilters={[]}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
 
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="align-top">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
+            label: col.label,
+
+            align:
+              col.key === "action"
+                ? "right"
+                : "left",
+
+            render: (row: RowDataKey) => {
+              const key = col.key;
+
+              if (key === "action") {
+                const actions =
+                  getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map(
+                        (action, index) => (
+                          <DropdownMenuItem
+                            key={index}
+                            disabled={
+                              action.disabled
+                            }
+                            onClick={() =>
+                              action.onClick(row)
+                            }
+                            className="cursor-pointer flex items-center gap-2"
+                          >
+                            {action.icon}
+
+                            {action.label}
+                          </DropdownMenuItem>
+                        ),
                       )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {loading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
+              const value = row[key];
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Prev
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={items}
+        />
       </div>
     </div>
   );

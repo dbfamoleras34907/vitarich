@@ -1,52 +1,223 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-} from "@tanstack/react-table";
-
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, Plus, RefreshCw, Pencil } from "lucide-react";
 
-import { SetterIncubation, listSetterIncubations } from "./new/api";
+import {
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
+
+import {
+  SetterIncubation,
+  listSetterIncubations,
+} from "./new/api";
+
 import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
+
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
+import { RowAction } from "@/lib/types";
+
+import { copyRow, copyTable } from "@/lib/tableActions";
+
+import { usePermission } from "@/hooks/usePermission";
+
 export default function EggsetterTable() {
-  const [items, setItems] = useState<SetterIncubation[]>([]);
-  const [sorting, setSorting] = useState<any>([]);
-  const [columnFilters, setColumnFilters] = useState<any>([]);
-  const [columnVisibility, setColumnVisibility] = useState<any>({});
-  const [rowSelection, setRowSelection] = useState<any>({});
+  const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
-  const { setValue, getValue } = useGlobalContext();
+
+  const { setValue } = useGlobalContext();
+
+  const canView = usePermission("/jmb/eggsetter/view");
+  const canInsert = usePermission("/jmb/eggsetter/insert");
+  const canEdit = usePermission("/jmb/eggsetter/edit");
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return "-";
+
+    const d = new Date(value);
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate(),
+    )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const tableColumns: ColumnConfig[] = useMemo(
+    () => [
+      {
+        key: "#",
+        label: "#",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "action",
+        label: "Action",
+        type: "button",
+        disabled: false,
+      },
+
+      {
+        key: "ref_no",
+        label: "Egg Reference No.",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "setting_date",
+        label: "Setting Date",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "machine_id",
+        label: "Setter Machine ID",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "total_eggs",
+        label: "Total Eggs",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "incubation_duration",
+        label: "Incubation (days)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "setter_temp",
+        label: "Temp (°F)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "setter_humidity",
+        label: "Humidity (%)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "turning_interval",
+        label: "Turning Interval (mins)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "turning_angle",
+        label: "Turning Angle (°)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "egg_shell_temp",
+        label: "Egg Shell Temp (°F)",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "egg_shell_temp_dt",
+        label: "Egg Shell Temp Date & Time",
+        type: "text",
+        disabled: true,
+      },
+
+      {
+        key: "egg_shell_orientation",
+        label: "Egg Shell Orientation",
+        type: "text",
+        disabled: true,
+      },
+    ],
+    [],
+  );
+
   const fetchData = async () => {
     setLoading(true);
+
     try {
       const data = await listSetterIncubations();
-      setItems((Array.isArray(data) ? data : []) as SetterIncubation[]);
+
+      const mapped =
+        Array.isArray(data)
+          ? data.map((item: SetterIncubation, index: number) => ({
+            id: item.id,
+
+            "#": index + 1,
+
+            ref_no: item.ref_no || "-",
+
+            setting_date: formatDateTime(item.setting_date),
+
+            machine_id: item.machine_id || "-",
+
+            total_eggs:
+              item.total_eggs?.toLocaleString() || "-",
+
+            incubation_duration:
+              item.incubation_duration || "-",
+
+            setter_temp: item.setter_temp || "-",
+
+            setter_humidity:
+              item.setter_humidity || "-",
+
+            turning_interval:
+              item.turning_interval || "-",
+
+            turning_angle: item.turning_angle || "-",
+
+            egg_shell_temp:
+              item.egg_shell_temp || "-",
+
+            egg_shell_temp_dt: formatDateTime(
+              item.egg_shell_temp_dt,
+            ),
+
+            egg_shell_orientation:
+              item.egg_shell_orientation || "-",
+          }))
+          : [];
+
+      setItems(mapped);
     } catch (e) {
+      console.error(e);
       setItems([]);
     } finally {
       setLoading(false);
@@ -56,148 +227,82 @@ export default function EggsetterTable() {
   useEffect(() => {
     refreshSessionx(router);
   }, []);
+
   useEffect(() => {
     (async () => {
       router.prefetch("/jmb/eggsetter/new");
+
       await fetchData();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const formatDateTime = (value?: string | null) => {
-    if (!value) return "";
-    const d = new Date(value);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  const columns: ColumnDef<SetterIncubation>[] = [
-    {
-      accessorKey: "id",
-      header: "#",
-      cell: ({ row }) => row.index + 1,
-    },
-    {
-      id: "action",
-      header: "Action",
-      cell: ({ row }) => (
-        <EditActionButton
-          id={row.original?.id}
-          href={(id) => `/jmb/eggsetter/new?id=${id}`}
-        />
-      ),
-    },
-    {
-      accessorKey: "ref_no",
-      header: "Egg Reference No.",
-      cell: ({ row }) => row.original.ref_no ?? "",
-    },
-    {
-      accessorKey: "setting_date",
-      header: "Setting Date",
-      cell: ({ row }) => formatDateTime(row.original.setting_date),
-    },
-    // {
-    //   accessorKey: "farm_source",
-    //   header: "Farm Source",
-    // },
-    {
-      accessorKey: "machine_id",
-      header: "Setter Machine ID",
-    },
-    {
-      accessorKey: "total_eggs",
-      header: "Total Eggs",
-      cell: ({ getValue }) => getValue<number>()?.toLocaleString() ?? "",
-    },
-    {
-      accessorKey: "incubation_duration",
-      header: "Incubation (days)",
-    },
-    {
-      accessorKey: "setter_temp",
-      header: "Temp (°F)",
-    },
-    {
-      accessorKey: "setter_humidity",
-      header: "Humidity (%)",
-    },
-    {
-      accessorKey: "turning_interval",
-      header: "Turning Interval (mins)",
-    },
-    {
-      accessorKey: "turning_angle",
-      header: "Turning Angle (°)",
-    },
-    {
-      accessorKey: "egg_shell_temp",
-      header: "Egg Shell Temp (°F)",
-    },
-    {
-      accessorKey: "egg_shell_temp_dt",
-      header: "Egg Shell Temp Date & Time",
-      cell: ({ row }) => formatDateTime(row.original.egg_shell_temp_dt),
-    },
-    {
-      accessorKey: "egg_shell_orientation",
-      header: "Egg Shell Orientation",
-    },
-  ];
-
-  const table = useReactTable({
-    data: items,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  });
   useEffect(() => {
     setValue("loading_g", loading);
   }, [loading]);
+
+  const getRowActions = (row: RowDataKey): RowAction[] => {
+    return [
+      {
+        label: "View",
+        icon: <FileSearch className="w-4 h-4" />,
+        disabled: canView ,
+
+        onClick: () => {
+          router.push(`/jmb/eggsetter/view/${row.id}`);
+        },
+      },
+
+      {
+        label: "Edit",
+        disabled: canEdit ,
+
+        icon: <Pencil className="w-4 h-4" />,
+
+        onClick: () => {
+          router.push(`/jmb/eggsetter/new?id=${row.id}`);
+        },
+      },
+
+      {
+        label: "Copy Row",
+        icon: <Copy className="w-4 h-4" />,
+
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+        icon: <ClipboardCopy className="w-4 h-4" />,
+
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
+
   return (
     <div className="rounded-md p-4 mt-4">
-      {/* Top Controls */}
       <Breadcrumb
         SecondPreviewPageName="Hatchery"
         CurrentPageName="Egg Setter List"
       />
+
       <br />
+
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter Egg Reference Number"
-              className="pl-10"
-              value={
-                (table.getColumn("ref_no")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("ref_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
-
           <Button
             type="button"
             variant="outline"
             onClick={fetchData}
             disabled={loading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+            className="flex items-center gap-2"
           >
             <RefreshCw className="size-4" />
+
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
@@ -205,89 +310,69 @@ export default function EggsetterTable() {
         <Button
           type="button"
           onClick={() => router.push("/jmb/eggsetter/new")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+          disabled={canInsert }
+          className="flex items-center gap-2"
         >
           <Plus className="size-4" />
           New Record
         </Button>
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl p-4 bg-white">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-normal wrap-break-word text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+      <div className="mt-4">
+        <DynamicTable
+          loading={loading}
+          initialFilters={[]}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
+            label: col.label,
+            align: col.key === "action" ? "right" : "left",
 
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            render: (row: RowDataKey) => {
+              const key = col.key;
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
+              if (key === "action") {
+                const actions = getRowActions(row);
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map((action, index) => (
+                        <DropdownMenuItem
+                          key={index}
+                          disabled={action.disabled}
+                          onClick={() => action.onClick(row)}
+                          className="cursor-pointer flex items-center gap-2"
+                        >
+                          {action.icon}
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              const value = row[key];
+
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+          data={items}
+        />
       </div>
     </div>
   );

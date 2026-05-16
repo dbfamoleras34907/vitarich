@@ -105,3 +105,74 @@ export async function getUserFarms(users_id: number) {
 
   return data;
 }
+
+
+export async function getPermissionTemplates() {
+  const { data, error } = await db
+    .from("permission_templates")
+    .select(`
+      id,
+      template_name,
+      remarks,
+      created_at
+    `)
+    .eq("void", 0)
+    .order("template_name", { ascending: true });
+
+  console.log({ data, error });
+
+  if (error) {
+    console.error("Select error:", error);
+    return null;
+  }
+
+  return data;
+}
+
+export async function createPermissionTemplate(
+  template_name: string,
+  permissions: Record<string, any>[]
+) {
+
+  const { data, error } = await db.rpc(
+    "create_permission_template",
+    {
+      p_template_name: template_name,
+      p_remarks: "",
+      p_permissions: permissions,
+    }
+  )
+
+  if (error) {
+
+    if (
+      error.message.includes("permission_templates_template_name_unique")
+    ) {
+      throw new Error("Template name already exists")
+    }
+
+    throw error
+  }
+
+  return data
+}
+
+
+export async function getPermissionTemplateItems(
+  template_id: number
+) {
+
+  const { data, error } = await db
+    .from("permission_template_items")
+    .select("*")
+    .eq("template_id", template_id)
+
+  console.log({ data, error })
+
+  if (error) {
+    console.error(error)
+    return []
+  }
+
+  return data
+}

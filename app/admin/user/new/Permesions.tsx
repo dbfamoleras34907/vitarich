@@ -4,17 +4,89 @@ import { Button } from '@/components/ui/button'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { DataTableColumn } from '@/lib/types'
 import React, { useEffect, useState } from 'react'
-import { getUserPermissions, toggleUserPermission } from './api'
+import { createPermissionTemplate, getPermissionTemplateItems, getPermissionTemplates, getUserPermissions, toggleUserPermission } from './api'
 import { Badge } from '@/components/ui/badge'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Checkbox } from '@/components/ui/checkbox'
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 interface RuleAndPermProps {
     userId: string;
 }
-export default function Permesions({ userId }: RuleAndPermProps) {
+export default function Permissions({ userId }: RuleAndPermProps) {
     const [pickedRows, setPickedRows] = useState<Record<string, any>[]>([])
     const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+    const [permissionTemplate, setpermissionTemplate] = useState([] as Record<string, any>[])
 
+    const [openSaveTemplate, setOpenSaveTemplate] = useState(false)
+
+    const [templateName, setTemplateName] = useState("")
+    const [savingTemplate, setSavingTemplate] = useState(false)
+
+
+
+    const getuser = async () => {
+        const data = await getPermissionTemplates()
+        console.log({ data })
+
+        setpermissionTemplate(data as Record<string, any>[])
+    }
+    const saveTemplate = async () => {
+        try {
+
+            if (!templateName) {
+                toast.error("Template name is required")
+                return
+            }
+
+            setSavingTemplate(true)
+
+            const payload: Record<string, any>[] = []
+
+            Object.entries(permissions).forEach(([key, value]) => {
+
+                const [group_name, title] = key.split("|")
+
+                const row = pickedRows.find((x) => {
+                    if (title.includes("/")) {
+                        return `${x.group}|${title.split("/")[0]}` === `${x.group}|${x.title}`
+                    }
+
+                    return `${x.group}|${x.title}` === key
+                })
+
+                payload.push({
+                    group: group_name,
+                    title,
+                    url: row?.url ?? "",
+                    type: title.includes("/")
+                        ? title.split("/")[1]
+                        : "list",
+                    is_visible: value,
+                })
+            })
+
+            console.log({ payload })
+
+            const data = await createPermissionTemplate(
+                templateName,
+                payload
+            )
+
+            console.log({ data })
+
+            toast.success("Template saved successfully")
+
+            setTemplateName("")
+
+        } catch (error) {
+            console.log(error)
+            toast.error("Failed to save template")
+        } finally {
+            setSavingTemplate(false)
+        }
+    }
 
     const loadpermissions = async () => {
         try {
@@ -128,6 +200,42 @@ export default function Permesions({ userId }: RuleAndPermProps) {
         },
     ]
 
+    const applyTemplate = async (
+        templateId: number
+    ) => {
+
+        try {
+
+            const data = await getPermissionTemplateItems(
+                templateId
+            )
+
+            console.log({ templateItems: data })
+
+            const mapped: Record<string, boolean> = {}
+
+            data.forEach((item: any) => {
+
+                const key =
+                    `${item.group_name}|${item.title}`
+
+                mapped[key] = item.is_visible
+            })
+
+            console.log({ mapped })
+
+            setPermissions(mapped)
+
+            toast.success("Template applied")
+
+        } catch (error) {
+
+            console.log(error)
+
+            toast.error("Failed to apply template")
+        }
+    }
+
 
 
 
@@ -161,67 +269,10 @@ export default function Permesions({ userId }: RuleAndPermProps) {
         loadpermissions()
     }, [])
 
-    // return (
-    //     <>
 
-    //         <div className="rounded-2xl bg-white p-4 mb-4">
-    //             <p className='font-semibold'>Template</p>
-    //             <SearchableDropdown
-    //                 codeLabel='code'
-    //                 nameLabel='code'
-    //                 list={[
-    //                     { code: "", name: "" }
-    //                 ]}
-    //                 onChange={() => { }}
-
-    //             />
-    //             <Button onClick={() => console.log({ permissions })}>Check</Button>
-    //         </div>
-    //         <div className="rounded-2xl bg-white">
-    //             {NavFolders.filter((folder) => folder.items).map((folder, index) => {
-    //                 const folderRows = pickedRows.filter(
-    //                     (row) => row.folder === folder.title
-    //                 )
-
-    //                 if (folderRows.length === 0) return null
-
-    //                 return (
-    //                     <div key={index} className=" p-4  shadow-sm">
-    //                         <div className="mb-4 flex items-center gap-2">
-    //                             <h2 className="text-2xl font-bold">
-    //                                 {folder.title}
-    //                             </h2>
-    //                             <Badge variant={"secondary"} className='mt-1'> {folderRows.length} modules </Badge>
-    //                         </div>
-
-    //                         <DataTable
-    //                             columns={components}
-    //                             rows={folderRows}
-    //                             setRowsAction={(updatedRows) => {
-    //                                 setPickedRows((prev) => {
-    //                                     const otherRows = prev.filter(
-    //                                         (r) => r.folder !== folder.title
-    //                                     )
-    //                                     const resolvedRows =
-    //                                         typeof updatedRows === "function"
-    //                                             ? updatedRows(
-    //                                                 prev.filter(
-    //                                                     (r) => r.folder === folder.title
-    //                                                 )
-    //                                             )
-    //                                             : updatedRows
-
-    //                                     return [...otherRows, ...resolvedRows]
-    //                                 })
-    //                             }}
-    //                             isfit
-    //                         />
-    //                     </div>
-    //                 )
-    //             })}
-    //         </div>
-    //     </>
-    // )
+    useEffect(() => {
+        getuser()
+    }, [])
 
 
     return (
@@ -249,27 +300,104 @@ export default function Permesions({ userId }: RuleAndPermProps) {
 
                             <SearchableDropdown
                                 codeLabel='code'
-                                nameLabel='code'
-                                list={[
-                                    { code: "", name: "" }
-                                ]}
-                                onChange={() => { }}
+                                nameLabel='name'
+                                list={permissionTemplate.map((t) => ({
+                                    code: t.id,
+                                    name: t.template_name
+                                }))}
+                                onChange={(e) => {
+                                    applyTemplate(parseInt(e))
+                                }}
                             />
                         </div>
-                    </div>
-
+                    </div> 
                     <div className="flex items-center gap-2">
-                        <Button
+                        {/* <Button
                             variant="outline"
                             className="rounded-md"
-                            onClick={() => console.log({ permissions })}
+                            onClick={() => {
+                               
+                                getuser()
+                            }}
                         >
                             Debug
-                        </Button>
+                        </Button> */}
 
-                        <Button className="rounded-md">
-                            Save Permissions
-                        </Button>
+                        <AlertDialog
+                            open={openSaveTemplate}
+                            onOpenChange={setOpenSaveTemplate}
+                        >
+                            <AlertDialogTrigger asChild>
+                                <Button
+                                    className="rounded-md"
+                                    disabled={savingTemplate}
+                                >
+                                    {savingTemplate
+                                        ? "Saving..."
+                                        : "Save Template"}
+                                </Button>
+                            </AlertDialogTrigger>
+
+                            <AlertDialogContent>
+
+                                <AlertDialogHeader>
+
+                                    <AlertDialogTitle>
+                                        Save Permission Template
+                                    </AlertDialogTitle>
+
+                                    <AlertDialogDescription asChild>
+
+                                        <div className='space-y-4 pt-2'>
+
+                                            <div>
+                                                Are you sure you want to add this as a permission template?
+                                            </div>
+
+                                            <div className='space-y-2'>
+
+                                                <label className='text-sm font-medium text-black'>
+                                                    Template Name
+                                                </label>
+
+                                                <Input
+                                                    placeholder="Enter template name"
+                                                    value={templateName}
+                                                    onChange={(e) =>
+                                                        setTemplateName(e.target.value)
+                                                    }
+                                                />
+
+                                            </div>
+
+                                        </div>
+
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+
+                                <AlertDialogFooter>
+
+                                    <AlertDialogCancel>
+                                        Cancel
+                                    </AlertDialogCancel>
+
+                                    <AlertDialogAction
+                                        disabled={!templateName.trim()}
+                                        onClick={async (e) => {
+
+                                            e.preventDefault()
+
+                                            await saveTemplate()
+                                        }}
+                                    >
+                                        Continue
+                                    </AlertDialogAction>
+
+                                </AlertDialogFooter>
+
+                            </AlertDialogContent>
+
+                        </AlertDialog>
                     </div>
                 </div>
             </div>

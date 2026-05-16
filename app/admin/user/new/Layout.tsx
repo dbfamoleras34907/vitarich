@@ -36,7 +36,7 @@ import {
 } from './api'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import Permesions from './Permesions'
+import Permissions from './Permesions'
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -332,7 +332,7 @@ export default function Layout() {
       <Tabs defaultValue="account"  >
         <TabsList className='bg-white mt-4'>
           <TabsTrigger value="account">Account</TabsTrigger>
-          <TabsTrigger value="Permesions">Permesions</TabsTrigger>
+          <TabsTrigger value="Permissions">Permissions</TabsTrigger>
         </TabsList>
         <TabsContent value="account">
           <form className="space-y-4">
@@ -405,12 +405,12 @@ export default function Layout() {
           </form>
 
         </TabsContent>
-        <TabsContent value="Permesions">
+        <TabsContent value="Permissions">
           <div className="px-4">
             {/* <RuleAndPerm
               userId={authSelected?.auth_id || '0'}
             /> */}
-            <Permesions
+            <Permissions
               userId={authSelected?.auth_id || '0'}
             />
           </div>

@@ -1,298 +1,373 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Pencil, Plus, RefreshCw, Search } from "lucide-react";
+import {
+  ClipboardCopy,
+  Copy,
+  FileSearch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 
-import { listEggHatcheryProcess, type EggHatcheryProcess } from "./newv2/api";
 import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+
+import DynamicTable from "@/components/ui/DataTableV2";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
+import { RowAction } from "@/lib/types";
+
+import { copyRow, copyTable } from "@/lib/tableActions";
+
+import {
+  listEggHatcheryProcess,
+  type EggHatcheryProcess,
+} from "./newv2/api";
+
+import { usePermission } from "@/hooks/usePermission";
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return "";
+
   const d = new Date(v);
+
   if (Number.isNaN(d.getTime())) return "";
+
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+
+  return `${d.getFullYear()}-${pad(
+    d.getMonth() + 1,
+  )}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
     d.getMinutes(),
   )}`;
 }
 
 function fmtNumber(v: number | null | undefined) {
   if (v == null) return "";
+
   return new Intl.NumberFormat("en-PH").format(v);
+}
+
+function fmtDurationHHMM(
+  mins: number | string | null | undefined,
+) {
+  if (mins == null || mins === "") return "";
+
+  const n = typeof mins === "string"
+    ? Number(mins)
+    : mins;
+
+  if (!Number.isFinite(n) || n < 0) return "";
+
+  const totalMins = Math.round(n);
+
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+
+  if (h <= 0) return `${m}m`;
+
+  return `${h}h ${m}m`;
 }
 
 export default function EggHatchTable() {
   const router = useRouter();
-  const [items, setItems] = useState<EggHatcheryProcess[]>([]);
+
+  const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [sorting, setSorting] = useState<any>([]);
-  const [columnFilters, setColumnFilters] = useState<any>([]);
-  const [columnVisibility, setColumnVisibility] = useState<any>({});
-  const [rowSelection, setRowSelection] = useState({});
+  const canView = usePermission("/jmb/egghatcherv2/view");
+  const canEdit = usePermission("/jmb/egghatcherv2/edit");
+  const canInsert = usePermission("/jmb/egghatcherv2/insert");
 
-  function fmtDurationHHMM(mins: number | string | null | undefined) {
-    if (mins == null || mins === "") return "";
+  const tableColumns: ColumnConfig[] = useMemo(
+    () => [
+      {
+        key: "#",
+        label: "#",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "action",
+        label: "Action",
+        type: "button",
+        disabled: false,
+      },
+      {
+        key: "egg_ref",
+        label: "Egg Reference No.",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "daterec",
+        label: "Date Rec",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "machine_no",
+        label: "Machine No",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "hatch_time_start",
+        label: "Start",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "hatch_time_end",
+        label: "End",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "duration",
+        label: "Hatch Window",
+        type: "text",
+        disabled: true,
+      },
+      {
+        key: "total_egg",
+        label: "Total Egg",
+        type: "text",
+        disabled: true,
+      },
+    ],
+    [],
+  );
 
-    const n = typeof mins === "string" ? Number(mins) : mins;
-    if (!Number.isFinite(n) || n < 0) return "";
-
-    const totalMins = Math.round(n);
-    const h = Math.floor(totalMins / 60);
-    const m = totalMins % 60;
-
-    // HH:MM (pads minutes to 2 digits; hours can be 1+ digits)
-    // return `${h}:${String(m).padStart(2, "0")}`
-    if (h <= 0) return `${m}m`;
-    return `${h}h ${m}m`;
-  }
-
-  async function load() {
-    setLoading(true);
+  const load = useCallback(async () => {
     try {
-      const data = await listEggHatcheryProcess();
-      setItems(data);
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to load records.");
+      setLoading(true);
+
+      const rows = await listEggHatcheryProcess();
+
+      const mapped =
+        Array.isArray(rows)
+          ? rows.map(
+              (
+                item: EggHatcheryProcess,
+                index: number,
+              ) => ({
+                id: item.id,
+
+                "#": index + 1,
+
+                egg_ref: item.egg_ref || "-",
+
+                daterec: item.daterec || "-",
+
+                machine_no:
+                  item.machine_no || "-",
+
+                hatch_time_start: fmtDateTime(
+                  item.hatch_time_start,
+                ),
+
+                hatch_time_end: fmtDateTime(
+                  item.hatch_time_end,
+                ),
+
+                duration: fmtDurationHHMM(
+                  item.duration,
+                ),
+
+                total_egg: fmtNumber(
+                  item.total_egg,
+                ),
+              }),
+            )
+          : [];
+
+      setItems(mapped);
+    } catch (e) {
+      console.error(e);
+
+      setItems([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     refreshSessionx(router);
   }, []);
 
   useEffect(() => {
+    router.prefetch("/jmb/egghatcherv2/newv2");
+
     load();
-  }, []);
+  }, [router, load]);
 
-  const columns = useMemo<ColumnDef<EggHatcheryProcess>[]>(
-    () => [
+  const getRowActions = (
+    row: RowDataKey,
+  ): RowAction[] => {
+    return [
       {
-        accessorKey: "id",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
-      },
-      {
-        id: "action",
-        header: "Action",
-        cell: ({ row }) => (
-          <EditActionButton
-            id={row.original?.id}
-            href={(id) => `/jmb/egghatcherv2/newv2?id=${id}`}
-          />
+        label: "View",
+        icon: (
+          <FileSearch className="w-4 h-4" />
         ),
+        disabled: canView,
+        onClick: () => {
+          router.push(
+            `/jmb/egghatcherv2/view/${row.id}`,
+          );
+        },
       },
-      {
-        accessorKey: "egg_ref",
-        header: "Egg Reference No.",
-        cell: ({ row }) => row.original.egg_ref ?? "",
-      },
-      // {
-      //   accessorKey: "farm_source",
-      //   header: "Farm Source",
-      //   cell: ({ row }) => row.original.farm_source ?? "",
-      // },
-      {
-        accessorKey: "daterec",
-        header: "Date Rec",
-        cell: ({ row }) => row.original.daterec ?? "",
-      },
-      {
-        accessorKey: "machine_no",
-        header: "Machine No",
-        cell: ({ row }) => row.original.machine_no ?? "",
-      },
-      {
-        accessorKey: "hatch_time_start",
-        header: "Start",
-        cell: ({ row }) => fmtDateTime(row.original.hatch_time_start),
-      },
-      {
-        accessorKey: "hatch_time_end",
-        header: "End",
-        cell: ({ row }) => fmtDateTime(row.original.hatch_time_end),
-      },
-      {
-        accessorKey: "duration",
-        header: "Hatch Window",
-        cell: ({ row }) => fmtDurationHHMM(row.original.duration),
-      },
-      // {
-      //   accessorKey: "hatch_window",
-      //   header: "Hatch Window",
-      //   cell: ({ row }) => fmtNumber(row.original.hatch_window),
-      // },
-      {
-        accessorKey: "total_egg",
-        header: "Total Egg",
-        cell: ({ row }) => fmtNumber(row.original.total_egg),
-      },
-    ],
-    [router],
-  );
 
-  const table = useReactTable({
-    data: items,
-    columns,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-  });
+      {
+        label: "Edit",
+        disabled: canEdit,
+
+        icon: <Pencil className="w-4 h-4" />,
+
+        onClick: () => {
+          router.push(
+            `/jmb/egghatcherv2/newv2?id=${row.id}`,
+          );
+        },
+      },
+
+      {
+        label: "Copy Row",
+        icon: <Copy className="w-4 h-4" />,
+        onClick: () => {
+          copyRow(row);
+        },
+      },
+
+      {
+        label: "Copy Table",
+        icon: (
+          <ClipboardCopy className="w-4 h-4" />
+        ),
+        onClick: () => {
+          copyTable(items);
+        },
+      },
+    ];
+  };
 
   return (
-    <div className="rounded-md p-4 mt-4">
-      <Breadcrumb
-        SecondPreviewPageName="Hatchery"
-        // FirstPreviewsPageName="Egg Transfer"
-        CurrentPageName="Egg Hatchery"
-      />
-      <div className="flex flex-col md:flex-row md:items-center gap-2 justify-between">
-        <div className="flex items-center gap-4 py-4">
-          <div className="relative">
-            <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8 w-70"
-              placeholder="Search Egg Reference No."
-              value={
-                (table.getColumn("egg_ref")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("egg_ref")?.setFilterValue(e.target.value)
-              }
-            />
-          </div>
+    <div className="rounded-md p-4">
+      <div className="flex justify-between items-center">
+        <Breadcrumb
+          SecondPreviewPageName="Hatchery"
+          CurrentPageName="Egg Hatchery"
+        />
 
+        <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={load}
             disabled={loading}
-            className="w-full md:w-auto h-full md:h-auto"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {loading ? "Refreshing..." : "Refresh"}
+            <RefreshCw className="h-4 w-4" />
+
+            {loading
+              ? "Refreshing..."
+              : "Refresh"}
+          </Button>
+
+          <Button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/jmb/egghatcherv2/newv2",
+              )
+            }
+            disabled={canInsert}
+          >
+            <Plus className="size-4" />
+            New Egg Hatch
           </Button>
         </div>
-
-        <Button
-          type="button"
-          className="w-full md:w-auto h-full md:h-auto"
-          onClick={() => router.push("/jmb/egghatcherv2/newv2")}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Egg Hatch
-        </Button>
       </div>
 
-      <div className="  border bg-white p-4 rounded-2xl">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-normal">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+      <div className="mt-4">
+        <DynamicTable
+          loading={loading}
+          initialFilters={[]}
+          data={items}
+          columns={tableColumns.map((col) => ({
+            key: col.key,
+            label: col.label,
+            align:
+              col.key === "action"
+                ? "right"
+                : "left",
 
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
+            render: (row: RowDataKey) => {
+              const key = col.key;
+
+              if (key === "action") {
+                const actions =
+                  getRowActions(row);
+
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="xs">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {actions.map(
+                        (action, index) => (
+                          <DropdownMenuItem
+                            key={index}
+                            disabled={
+                              action.disabled
+                            }
+                            onClick={() =>
+                              action.onClick(
+                                row,
+                              )
+                            }
+                            className="cursor-pointer flex items-center gap-2"
+                          >
+                            {action.icon}
+                            {action.label}
+                          </DropdownMenuItem>
+                        ),
                       )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
+              const value = row[key];
+
+              if (
+                value === null ||
+                value === undefined ||
+                value === ""
+              ) {
+                return "-";
+              }
+
+              return String(value);
+            },
+          }))}
+        />
       </div>
     </div>
   );

@@ -138,9 +138,9 @@ export default function DynamicTable<T extends Record<string, any>>({
     <div className="rounded-xl border bg-white shadow-sm space-y-2">
 
       {/* HEADER */}
-      <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
+      {/* <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
 
-        {/* ENTRIES */}
+        {/* ENTRIES--
         <div className="text-xs text-muted-foreground">
           Show
           <select
@@ -158,10 +158,9 @@ export default function DynamicTable<T extends Record<string, any>>({
           entries
         </div>
 
-        {/* FILTER + SEARCH */}
         <div className="flex items-center gap-2">
 
-          {/* FILTER */}
+          {/* FILTER
           <button
             onClick={() => setShowFilter(v => !v)}
             className="relative rounded border px-2 py-1 text-xs hover:bg-muted"
@@ -174,7 +173,7 @@ export default function DynamicTable<T extends Record<string, any>>({
             )}
           </button>
 
-          {/* SEARCH */}
+          {/* SEARCH 
           <div className="flex items-center gap-1 border rounded px-2 py-0.5">
             <Search size={13} />
             <input
@@ -190,8 +189,74 @@ export default function DynamicTable<T extends Record<string, any>>({
           </div>
 
         </div>
-      </div>
+      </div> */}
+      {/* HEADER */}
+      <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
 
+        {loading ? (
+          <>
+            <Skeleton className="h-6 w-32" />
+
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-7 w-16" />
+              <Skeleton className="h-7 w-40" />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ENTRIES */}
+            <div className="text-xs text-muted-foreground">
+              Show
+              <select
+                value={pageSize}
+                onChange={e => {
+                  setPageSize(Number(e.target.value))
+                  setPage(1)
+                }}
+                className="mx-1 rounded border px-1 py-0.5 text-xs"
+              >
+                {[10, 25, 50, 100].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              entries
+            </div>
+
+            {/* FILTER + SEARCH */}
+            <div className="flex items-center gap-2">
+
+              {/* FILTER */}
+              <button
+                onClick={() => setShowFilter(v => !v)}
+                className="relative rounded border px-2 py-1 text-xs hover:bg-muted"
+              >
+                Filter
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] px-1.5 rounded-full">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {/* SEARCH */}
+              <div className="flex items-center gap-1 border rounded px-2 py-0.5">
+                <Search size={13} />
+                <input
+                  type="search"
+                  placeholder="Search..."
+                  value={search}
+                  onChange={e => {
+                    setSearch(e.target.value)
+                    setPage(1)
+                  }}
+                  className="outline-none text-xs w-32"
+                />
+              </div>
+
+            </div>
+          </>
+        )}
+      </div>
       {/* FILTER MODAL */}
       {showFilter && (
         <div
@@ -316,7 +381,7 @@ export default function DynamicTable<T extends Record<string, any>>({
                     setDraftFilters([])
                     setAppliedFilters([])
                   }}
-                  className="border rounded px-2 py-0.5 text-xs"
+                  className="border-2 rounded px-2 py-0.5 text-xs"
                 >
                   Clear
                 </button>
@@ -414,10 +479,10 @@ export default function DynamicTable<T extends Record<string, any>>({
       {data.length > 0 &&
         <div className="flex justify-between items-center px-4 pb-2 text-xs text-muted-foreground">
 
-          <div>
-            {(page - 1) * pageSize + 1}–
+          <div className='flex gap-1'>
+            <span> {(page - 1) * pageSize + 1} </span> <span>–</span>
             {Math.min(page * pageSize, sortedData.length)}
-            of {sortedData.length}
+            <span>of</span><span>{sortedData.length}</span>
           </div>
 
           <div className="flex gap-1">
@@ -425,7 +490,7 @@ export default function DynamicTable<T extends Record<string, any>>({
             <button
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
-              className="border px-2 py-0.5 rounded disabled:opacity-40"
+              className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
             >
               Prev
             </button>
@@ -433,7 +498,7 @@ export default function DynamicTable<T extends Record<string, any>>({
             <button
               disabled={page >= totalPages}
               onClick={() => setPage(p => p + 1)}
-              className="border px-2 py-0.5 rounded disabled:opacity-40"
+              className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
             >
               Next
             </button>

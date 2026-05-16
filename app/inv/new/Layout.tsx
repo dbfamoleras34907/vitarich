@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import React, { useEffect, useState } from 'react'
 import { upsertInventoryMapping } from './api'
 import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
 
 
 export default function Layout() {
@@ -92,7 +93,16 @@ export default function Layout() {
             name: e.item_code + " - " + e.item_name,
           }))
     },
-    { code: "warehouse", name: "Warehouse", type: "search" },
+    {
+      code: "warehouse", name: "Warehouse", type: "search",
+      list: () =>
+        whs
+          .map((e) => ({
+            code: e.id,
+            name: e.whse_code + " - " + e.whse_code,
+          }))
+
+    },
     {
       code: "transtype",
       name: "Transaction type",
@@ -105,10 +115,62 @@ export default function Layout() {
   ]
 
   // ✅ SUBMIT (RPC STYLE)
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault()
+
+  //   try {
+  //     setLoading(true)
+
+  //     const payload = {
+  //       header,
+  //       rows: pickedRows,
+  //     }
+
+  //     const res = await upsertInventoryMapping(payload)
+
+  //     console.log('Saved:', res)
+
+  //     toast('Saved successfully!')
+
+  //   } catch (err: any) {
+  //     console.error(err)
+  //     toast(err.message)
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
+  // ✅ SUBMIT (RPC STYLE)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     try {
+      // HEADER VALIDATION
+      if (!header.section || !header.module) {
+        toast("Please complete all header fields.")
+        return
+      }
+
+      // ROW VALIDATION
+      if (pickedRows.length === 0) {
+        toast("Please add at least one row.")
+        return
+      }
+
+      const hasInvalidRow = pickedRows.some(
+        (row) =>
+          !row.itemType ||
+          !row.item ||
+          !row.warehouse ||
+          row.transtype === undefined ||
+          row.transtype === null ||
+          row.transtype === ''
+      )
+
+      if (hasInvalidRow) {
+        toast("Please complete all required row fields.")
+        return
+      }
+
       setLoading(true)
 
       const payload = {
@@ -120,11 +182,11 @@ export default function Layout() {
 
       console.log('Saved:', res)
 
-      alert('Saved successfully!')
+      toast('Saved successfully!')
 
     } catch (err: any) {
       console.error(err)
-      alert(err.message)
+      toast(err.message)
     } finally {
       setLoading(false)
     }
@@ -139,7 +201,7 @@ export default function Layout() {
       const c = getValue("itemmaster") || []
       const w = getValue("warehouses") || []
       setitems(c)
-      setwhs(w)
+      setwhs(w.data)
     }
 
     getData()

@@ -93,6 +93,7 @@ import {
 } from "@/components/ui/dialog";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 import { Separator } from "@/components/ui/separator";
+import { usePermission } from "@/hooks/usePermission";
 type FormState = {
   ref_no: string[];
   setting_date: string; // datetime-local
@@ -301,10 +302,46 @@ function TemperatureInput({
 }
 
 export default function Eggsetterform() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const idParam = sp.get("id");
-  const isEdit = !!idParam;
+  // const router = useRouter();
+  // const sp = useSearchParams();
+  // const idParam = sp.get("id");
+  // const isEdit = !!idParam;
+
+
+   const router = useRouter();
+    const sp = useSearchParams();
+  
+    const idParam = sp.get("id");
+  
+    const editId = idParam ? Number(idParam) : null;
+  
+    const isEdit =
+      typeof editId === "number" &&
+      Number.isFinite(editId) &&
+      editId > 0;
+    const canView = usePermission("/jmb/eggsetter/insert");
+    const canEdit = usePermission("/jmb/eggsetter/edit");
+  
+    useEffect(() => {
+  
+      // wait for permissions
+      if (canView === null || canEdit === null) {
+        return;
+      }
+  
+      if (isEdit && canEdit) {
+        router.replace("/jmb/eggsetter");
+        return;
+      }
+  
+      if (!isEdit && canView) {
+        router.replace("/jmb/eggsetter");
+      }
+  
+    }, [isEdit, canEdit, canView, router]);
+  
+
+
 
   const [saving, setSaving] = useState(false);
   const [loadingRefs, setLoadingRefs] = useState(false);
