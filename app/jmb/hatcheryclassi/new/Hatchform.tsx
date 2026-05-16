@@ -192,6 +192,8 @@ export default function Hatchform() {
       0,
     );
     draft.ttl_count = total;
+    draft.ttlclassify = total;
+    draft.ttlremaining = Number(draft.total_count_view || 0) - total;
     draft.discrepancy = Number(draft.total_count_view || 0) - total;
 
     // Calculate Percentage Egg Recovery
