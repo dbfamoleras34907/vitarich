@@ -66,6 +66,7 @@ import Breadcrumb from "@/lib/Breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import FormActionButtons from "@/components/FormActionButtons";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { usePermission } from "@/hooks/usePermission";
 
 function toDatetimeLocalValue(v: string | null | undefined) {
   if (!v) return "";
@@ -96,11 +97,13 @@ function fmtDuration(mins: number | null) {
 }
 
 export default function EggHatchform() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const idParam = sp.get("id");
-  const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
-  const isEdit = !!editId;
+
+
+  // const router = useRouter();
+  // const sp = useSearchParams();
+  // const idParam = sp.get("id");
+  // const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
+  // const isEdit = !!editId;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -108,6 +111,43 @@ export default function EggHatchform() {
   // ✅ dropdown state
   const [eggRefs, setEggRefs] = useState<string[]>([]);
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
+
+
+
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  const idParam = sp.get("id");
+
+  const editId = idParam ? Number(idParam) : null;
+
+  const isEdit =
+    typeof editId === "number" &&
+    Number.isFinite(editId) &&
+    editId > 0;
+  const canView = usePermission("/jmb/egghatcherv2/insert");
+  const canEdit = usePermission("/jmb/egghatcherv2/edit");
+
+  useEffect(() => {
+
+    // wait for permissions
+    if (canView === null || canEdit === null) {
+      return;
+    }
+
+    if (isEdit && canEdit) {
+      router.replace("/jmb/egghatcherv2");
+      return;
+    }
+
+    if (!isEdit && canView) {
+      router.replace("/jmb/egghatcherv2");
+    }
+
+  }, [isEdit, canEdit, canView, router]);
+
+
+
 
   const [form, setForm] = useState({
     egg_ref: "",

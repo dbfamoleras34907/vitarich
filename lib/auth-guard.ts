@@ -21,7 +21,7 @@ export async function checkAuth() {
 
     let activeModuleTitle: string | null = null;
     for (const folder of NavFolders) {
-        for (const item of folder.items) {
+        for (const item of folder.items || []) {
             const match = item.children.find((child) => child.url === pathname);
             if (match) {
                 activeModuleTitle = match.title;

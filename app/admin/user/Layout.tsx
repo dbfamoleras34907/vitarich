@@ -118,15 +118,11 @@ export default function Layout() {
 
   return (
     <div>
-      {/* Header */}
       <div className='px-4 mt-2 flex justify-between items-center'>
-        {/* <p className='font-semibold text-xl'>Users</p> */}
         <Breadcrumb
           SecondPreviewPageName='Admin'
-          // SecondPreviewPageLink='./'
           CurrentPageName='Users'
         />
-
         <div className='flex gap-2'>
           <Button variant='secondary' onClick={handleReset}>
             <RefreshCw className='h-4 w-4' />
@@ -134,27 +130,7 @@ export default function Layout() {
           <NewUser />
         </div>
       </div>
-
-      {/* <Separator className='my-2' /> */}
-
-      <div className='flex flex-wrap gap-4 mt-4 items-end'>
-
-      </div>
-
-      {/* Table */}
-      {/* <div className='px-4'>
-        <DataTable
-          columns={tableColumnsx}
-          rows={data}
-          DisableAddLine
-          rowOnClick={(e) => {
-            console.log({ e })
-            setValue("selectedUser", e.row)
-            route.push(`/admin/user/new`)
-          }}
-        />
-      </div> */}
-      <div className="px-4">
+      <div className="px-4 mt-2">
         <DynamicTable
           loading={loading}
           initialFilters={[]} // show all records
@@ -169,7 +145,7 @@ export default function Layout() {
                   <Button
                     size="xs"
                     variant="outline"
-                    className='border-2  my-2'
+                    className='border-2  '
                     onClick={() => {
                       setValue("selectedUser", row)
                       route.push(`/admin/user/new`)

@@ -268,9 +268,9 @@ export function AppSidebar() {
                   {folder.items?.map((group: any, gi: number) => (
                     <div key={gi}>
 
-                      {/* <div className="text-xs text-muted-foreground  px-2">
+                      <div className="text-xs text-muted-foreground  ">
                         {group.group}
-                      </div> */}
+                      </div>
 
                       {group.children
                         .filter((c: any) => c.url && c.url !== "#")

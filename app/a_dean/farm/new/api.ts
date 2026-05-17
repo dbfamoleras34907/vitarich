@@ -40,5 +40,6 @@ export async function generateNextCode(
   pad: number = 6
 ) {
   const last = await getLastCode(viewName)
+  console.log({ last })
   return formatCode(prefix, last + 1, pad)
 }

@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { ReceivingListRow } from "@/lib/types";
+import { HatchClassificationInsert } from "../updatefd/api";
 
 export type HatchClassification = {
   created_at: string;
@@ -26,31 +27,7 @@ export type HatchClassification = {
   hairline: number | null;
   farm_name: string | null;
 };
-
-export type HatchClassificationInsert = {
-  created_at?: string;
-  br_no: string | null;
-  good_egg: number | null;
-  trans_crack: number | null;
-  hatc_crack: number | null;
-  trans_condemn: number | null;
-  hatc_condemn: number | null;
-  thin_shell: number | null;
-  pee_wee: number | null;
-  small: number | null;
-  jumbo: number | null;
-  d_yolk: number | null;
-  ttl_count: number | null;
-  is_active: boolean | null;
-  classi_ref_no: string | null;
-  date_classify: string | null;
-  misshapen: number | null;
-  leakers: number | null;
-  dirties: number | null;
-  farm_id: number | null;
-  hairline: number | null; 
-};
-
+ 
 export type HatchClassificationRow = HatchClassificationInsert & {
   id: number;
   created_at: string;

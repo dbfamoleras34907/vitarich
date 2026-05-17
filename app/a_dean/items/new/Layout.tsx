@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { addItem } from '../api'
+import SearchableDropdown from '@/lib/SearchableDropdown'
 
 export default function AddItemPage() {
   const [loading, setLoading] = useState(false)
@@ -33,6 +34,7 @@ export default function AddItemPage() {
     barcode: '',
     unit_measure: 'pcs',
     item_group: '',
+    group: ""
   })
 
   function handleChange(
@@ -42,13 +44,57 @@ export default function AddItemPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  // async function handleSubmit(e: React.FormEvent) {
+  //   e.preventDefault()
+
+  //   setLoading(true)
+  //   setMessage(null)
+
+
+  //   try {
+  //     await addItem(form)
+
+  //     setMessage('✅ Item added successfully')
+
+  //     setForm({
+  //       item_code: '',
+  //       item_name: '',
+  //       description: '',
+  //       barcode: '',
+  //       unit_measure: 'pcs',
+  //       item_group: '',
+  //     })
+  //   } catch (err: any) {
+  //     setMessage('❌ ' + err.message)
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+
     setMessage(null)
 
+    // ✅ validation
+    if (
+      !form.item_code.trim() ||
+      !form.item_name.trim() ||
+      !form.barcode.trim() ||
+      !form.unit_measure.trim() ||
+      !form.item_group.trim()
+    ) {
+      setMessage('❌ Please fill in all required fields')
+      return
+    }
+
+    setLoading(true)
+
     try {
-      await addItem(form)
+      await addItem({
+        ...form,
+        group: form.item_group, // ✅ added group
+      })
 
       setMessage('✅ Item added successfully')
 
@@ -59,6 +105,7 @@ export default function AddItemPage() {
         barcode: '',
         unit_measure: 'pcs',
         item_group: '',
+        group: '',
       })
     } catch (err: any) {
       setMessage('❌ ' + err.message)
@@ -66,7 +113,6 @@ export default function AddItemPage() {
       setLoading(false)
     }
   }
-
   return (
     <div className=" mx-auto p-6">
       <Card>
@@ -114,10 +160,26 @@ export default function AddItemPage() {
               {/* Item Group */}
               <div className="space-y-2">
                 <Label>Item Group</Label>
-                <Input
+                {/* <Input
                   name="item_group"
                   value={form.item_group}
                   onChange={handleChange}
+                /> */}
+                <SearchableDropdown
+                  codeLabel='code'
+                  value={form.item_group}
+                  nameLabel='name'
+
+                  list={[
+                    { code: "E", name: "Eggs" }, // needs to be a master data
+                    { code: "F", name: "Feeds" },
+                    { code: "C", name: "Consumables" },
+                    { code: "T", name: "Tools" }
+                  ]}
+                  onChange={(e) => {
+                    console.log({ e })
+                    setForm((prev) => ({ ...prev, item_group: e }))
+                  }}
                 />
               </div>
 

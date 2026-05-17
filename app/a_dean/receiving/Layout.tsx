@@ -9,14 +9,26 @@ import { toast } from 'sonner'
 import ScannerModal from '@/components/ScannerModal'
 import Breadcrumb from '@/lib/Breadcrumb'
 import DynamicTable from '@/components/ui/DataTableV2'
-import { HandCoins, Map, Plus, RefreshCcw } from 'lucide-react'
+import { ClipboardCopy, Copy, Expand, HandCoins, Map, Plus, RefreshCcw, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import { getDefaultFarm } from './manual/api'
 import { Farms } from '@/lib/types'
+import { usePermission } from '@/hooks/usePermission'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
+import { MoreHorizontal } from "lucide-react"
+import { copyRow, copyTable, toggleFullscreen } from '@/lib/tableActions'
 
 
 export default function Layout() {
+    const canView = usePermission('/a_dean/receiving/view')
+    const canInsert = usePermission('/a_dean/receiving/insert')
+
     const get = async () => {
         await new Promise(resolve => setTimeout(resolve, 3000))
 
@@ -68,9 +80,9 @@ export default function Layout() {
         ],
         [initialRows]
     )
-
     const receivedColumns: ColumnConfig[] = [
-        { key: 'action', label: 'Trace', type: 'button', disabled: true },
+        { key: 'actions', label: 'Actions', type: 'button', disabled: true },
+
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
         { key: 'sku', label: 'Item', type: 'text', disabled: true },
@@ -78,177 +90,62 @@ export default function Layout() {
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
         { key: 'plate_no', label: 'Plate No.', type: 'text', disabled: true },
         { key: 'driver', label: 'Driver', type: 'text', disabled: true },
-
     ]
 
 
-    // For Receiving Items api 
-    // const getData = async () => {
-    //     setLoading(true)
 
-    //     try {
-    //         const res = await fetch('/api/dispatch')
 
-    //         if (!res.ok) {
-    //             throw new Error('Failed to fetch dispatch data')
-    //         }
+    type RowAction = {
+        label: string
+        icon?: React.ReactNode
+        disabled?: boolean
+        onClick: (row: RowDataKey) => void
+    }
+    const getRowActions = (row: RowDataKey): RowAction[] => {
+        return [
+            {
+                label: "Trace",
+                icon: <Map className="w-4 h-4" />,
+                onClick: () => {
+                    if (row.status === "Approved") {
+                        toast.warning(
+                            "Only pending documents are allowed to be edited on this module"
+                        )
+                        return
+                    }
 
-    //         const json = await res.json()
+                    setValue("traceBreederRef", row.brdr_ref_no)
+                    route.push("/a_dean/trace/")
+                },
+            },
 
-    //         const rows = Array.isArray(json)
-    //             ? json
-    //             : Array.isArray(json.data)
-    //                 ? json.data
-    //                 : []
+            {
+                label: "View",
+                icon: <View className="w-4 h-4" />,
+                disabled: canView,
+                onClick: () => {
+                    route.push(`/a_dean/receiving/view/${row.id}`)
+                },
+            },
+            {
+                label: "Copy Row",
+                icon: <Copy className="w-4 h-4" />,
+                onClick: () => {
+                    copyRow(row)
+                },
+            },
 
-    //         // collect valid destination refs from farms
-    //         const validRefs = farms
-    //             .map(f => f.ref)
-    //             .filter(ref => ref !== null && ref !== undefined)
-    //             .map(ref => String(ref))
+            {
+                label: "Copy Table",
+                icon: <ClipboardCopy className="w-4 h-4" />,
+                onClick: () => {
+                    copyTable(receivedRows)
+                },
+            },
+ 
 
-    //         const filtered = rows.map((item: any) => {
-    //             let parsedDispatchBody: any[] = []
-    //             let parsedModifiedDispatchBody: any[] = []
-
-    //             try {
-    //                 if (typeof item.dispatchbody === "string") {
-    //                     parsedDispatchBody = JSON.parse(item.dispatchbody)
-    //                 } else if (Array.isArray(item.dispatchbody)) {
-    //                     parsedDispatchBody = item.dispatchbody
-    //                 }
-    //             } catch {
-    //                 parsedDispatchBody = []
-    //             }
-
-    //             try {
-    //                 if (typeof item.modified_dispatchbody === "string") {
-    //                     parsedModifiedDispatchBody = JSON.parse(item.modified_dispatchbody)
-    //                 } else if (Array.isArray(item.modified_dispatchbody)) {
-    //                     parsedModifiedDispatchBody = item.modified_dispatchbody
-    //                 }
-    //             } catch {
-    //                 parsedModifiedDispatchBody = []
-    //             }
-
-    //             return {
-    //                 ...item,
-    //                 dispatchbody: parsedDispatchBody,
-    //                 modified_dispatchbody: parsedModifiedDispatchBody
-    //             }
-    //         })
-    //             .filter((item: any) => {
-    //                 if (item.dispatchbody.length === 0) return false
-
-    //                 // if farms has refs, filter by destinationid
-    //                 if (validRefs.length > 0) {
-    //                     return validRefs.includes(String(item.destinationid))
-    //                 }
-
-    //                 return true
-    //             })
-    //         // console.loglog({ filtered })
-    //         setinitialRows(filtered)
-    //     } catch (err) {
-    //         // toast("Unable to load Receiving Items. Please check your internet connection and try again.")
-    //         setinitialRows([])
-    //     }
-    //     setLoading(false)
-    // }
-
-    // const getData = async () => {
-    //     setLoading(true)
-    //     try {
-    //         const res = await fetch('/api/dispatch')
-
-    //         if (!res.ok) {
-    //             throw new Error('Failed to fetch dispatch data')
-    //         }
-    //         const unresolvedJson = await vwdmf_get_farmdr_unres()
-    //         console.log({ unresolvedJson })
-    //         // if (!unresolvedRes.ok) {
-    //         //     throw new Error('Failed to fetch unresolved DR list')
-    //         // }
-
-    //         const dispatchJson = await res.json()
-    //         console.log({ dispatchJson })
-    //         // const unresolvedDRSet = new Set(
-    //         //     (unresolvedJson?.unresolvedJson || []).map((x: any) =>
-    //         //         String(x.dr_num).trim()
-    //         //     )
-    //         // )
-    //         const unresolvedDRSet = new Set(
-    //             (unresolvedJson || []).map((x) =>
-    //                 String(x.dr_num).trim()
-    //             )
-    //         )
-
-    //         const rows = Array.isArray(dispatchJson)
-    //             ? dispatchJson
-    //             : Array.isArray(dispatchJson.data)
-    //                 ? dispatchJson.data
-    //                 : []
-
-    //         // collect valid destination refs from farms
-    //         const validRefs = farms
-    //             .map(f => f.ref)
-    //             .filter(ref => ref !== null && ref !== undefined)
-    //             .map(ref => String(ref))
-
-    //         const filtered = rows
-    //             .map((item: any) => {
-    //                 let parsedDispatchBody: any[] = []
-    //                 let parsedModifiedDispatchBody: any[] = []
-
-    //                 try {
-    //                     if (typeof item.dispatchbody === "string") {
-    //                         parsedDispatchBody = JSON.parse(item.dispatchbody)
-    //                     } else if (Array.isArray(item.dispatchbody)) {
-    //                         parsedDispatchBody = item.dispatchbody
-    //                     }
-    //                 } catch {
-    //                     parsedDispatchBody = []
-    //                 }
-
-    //                 try {
-    //                     if (typeof item.modified_dispatchbody === "string") {
-    //                         parsedModifiedDispatchBody = JSON.parse(item.modified_dispatchbody)
-    //                     } else if (Array.isArray(item.modified_dispatchbody)) {
-    //                         parsedModifiedDispatchBody = item.modified_dispatchbody
-    //                     }
-    //                 } catch {
-    //                     parsedModifiedDispatchBody = []
-    //                 }
-
-    //                 return {
-    //                     ...item,
-    //                     dispatchbody: parsedDispatchBody,
-    //                     modified_dispatchbody: parsedModifiedDispatchBody
-    //                 }
-    //             })
-    //             .filter((item: any) => {
-    //                 if (item.dispatchbody.length === 0) return false
-
-    //                 // exclude DRs already in unresolved list
-    //                 if (unresolvedDRSet.has(String(item.dr_num).trim())) {
-    //                     return false
-    //                 }
-
-    //                 // // filter by farm destination refs
-    //                 if (validRefs.length > 0) {
-    //                     return validRefs.includes(String(item.destinationid))
-    //                 }
-
-    //                 return true
-    //             })
-
-    //         setinitialRows(filtered)
-    //     } catch (err) {
-    //         setinitialRows([])
-    //     }
-
-    //     setLoading(false)
-    // }
+        ]
+    }
     const getData = async () => {
         setLoading(true)
 
@@ -424,6 +321,7 @@ export default function Layout() {
                     <Button
                         // onClick={() => setIsScanning(true)}
                         // size={"sm"}
+                        disabled={canInsert}
                         onClick={async () => {
                             const isHasSuperVisor = await getReceivingListByUser()
                             if (isHasSuperVisor == '') {
@@ -434,72 +332,64 @@ export default function Layout() {
 
                         }
                         }
-                    ><Plus /> Receive Manually</Button>'
+                    ><Plus /> Receive Manually</Button>
 
                 </div>
             </div>
             <div className='my-4'></div>
 
-            {
-                loading && (
-                    <RefreshCcw className='animate-spin clasm  mx-auto' />
-                )
-            }
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold mx-4">For Receiving Items</h2>
             </div>
             {
-                !loading && (
-                    <DynamicTable
-                        loading={loading}
-                        // initialFilters={[
-                        //     {
-                        //         id: "",
-                        //         columnKey: 'status',
-                        //         operator: 'equals',
-                        //         value: 'Pending',
-                        //         joiner: 'and',
-                        //     },
-                        // ]}
-                        columns={tableColumnsx.map((col) => ({
-                            key: col.key,
-                            label: col.label,
-                            align: col.key === 'action' ? 'right' : 'left',
+                <DynamicTable
+                    loading={loading}
+                    // initialFilters={[
+                    //     {
+                    //         id: "",
+                    //         columnKey: 'status',
+                    //         operator: 'equals',
+                    //         value: 'Pending',
+                    //         joiner: 'and',
+                    //     },
+                    // ]}
+                    columns={tableColumnsx.map((col) => ({
+                        key: col.key,
+                        label: col.label,
+                        align: col.key === 'action' ? 'right' : 'left',
 
-                            render: (row: RowDataKey) => {
-                                if (col.key === 'action') {
-                                    return (
-                                        <div className="flex  gap-2">
-                                            <Button
-                                                size={"sm"}
-                                                className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
-                                                onClick={() => {
-                                                    setValue("forApproval", row)
-                                                    setValue("scanning", "on")
-                                                    route.push("/a_dean/receiving/manual")
-                                                }}
-                                            >
-                                                <HandCoins />
-                                                Receive
-                                            </Button>
-                                        </div>
-                                    )
-                                }
+                        render: (row: RowDataKey) => {
+                            if (col.key === 'action') {
+                                return (
+                                    <div className="flex  gap-2">
+                                        <Button
+                                            size={"sm"}
+                                            className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
+                                            onClick={() => {
+                                                setValue("forApproval", row)
+                                                setValue("scanning", "on")
+                                                route.push("/a_dean/receiving/manual")
+                                            }}
+                                        >
+                                            <HandCoins />
+                                            Receive
+                                        </Button>
+                                    </div>
+                                )
+                            }
 
-                                const value = row[col.key]
+                            const value = row[col.key]
 
-                                if (!value) return "-"
+                            if (!value) return "-"
 
-                                return String(value)
-                            },
-                        }))}
+                            return String(value)
+                        },
+                    }))}
 
-                        data={initialRows}
+                    data={initialRows}
 
-                    />
-                )
+                />
             }
-
 
             <div className="mt-10">
 
@@ -507,60 +397,64 @@ export default function Layout() {
                     <h2 className="text-lg font-semibold mx-4">Received Items</h2>
                 </div>
 
-                {loadingReceived && (
-                    <RefreshCcw className='animate-spin mx-auto' />
-                )}
 
-                {!loadingReceived && (
-                    <DynamicTable
-                        loading={loadingReceived}
-                        initialFilters={[]} // show all records
-                        columns={receivedColumns.map((col) => ({
-                            key: col.key,
-                            label: col.label,
-                            align: 'left',
 
-                            render: (row: RowDataKey) => {
+                <DynamicTable
+                    loading={loadingReceived}
+                    initialFilters={[]} // show all records
+                    columns={receivedColumns.map((col) => ({
+                        key: col.key,
+                        label: col.label,
+                        align: 'left',
 
-                                if (col.key === 'action') {
-                                    return (
-                                        <div className="flex justify-end gap-2">
+                        render: (row: RowDataKey) => {
+
+                            if (col.key === 'actions') {
+
+                                const actions = getRowActions(row)
+
+                                return (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
                                             <Button
-                                                size={'sm'}
-                                                className='my-1 border hover:bg-foreground/10 bg-white border-green-400 text-green-400 p-1 rounded-xs   '
+                                                size="xs"
 
-                                                onClick={() => {
-                                                    if (row.status === "Approved") {
-                                                        toast.warning(
-                                                            "Only pending documents are allowed to be edited on this module"
-                                                        )
-                                                        return
-                                                    }
-                                                    // // // console.loglog({})
-                                                    // setValue("forApproval", { row })
-                                                    setValue("traceBreederRef", row.brdr_ref_no)
-                                                    route.push("/a_dean/trace/")
-                                                }}
                                             >
-                                                <Map />
-                                                Trace
+                                                <MoreHorizontal className="w-4 h-4" />
                                             </Button>
-                                        </div>
-                                    )
-                                } else {
+                                        </DropdownMenuTrigger>
 
-                                    const value = row[col.key]
+                                        <DropdownMenuContent align="end">
 
-                                    if (value === null || value === undefined || value === '') return '-'
+                                            {actions.map((action, index) => (
+                                                <DropdownMenuItem
+                                                    key={index}
+                                                    disabled={action.disabled}
+                                                    onClick={() => action.onClick(row)}
+                                                    className="cursor-pointer flex items-center gap-2"
+                                                >
+                                                    {action.icon}
+                                                    {action.label}
+                                                </DropdownMenuItem>
+                                            ))}
 
-                                    return String(value)
-                                }
-                            },
-                        }))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )
+                            }
 
-                        data={receivedRows}
-                    />
-                )}
+                            const value = row[col.key]
+
+                            if (value === null || value === undefined || value === '') {
+                                return '-'
+                            }
+
+                            return String(value)
+                        }
+                    }))}
+
+                    data={receivedRows}
+                />
             </div>
 
         </div >

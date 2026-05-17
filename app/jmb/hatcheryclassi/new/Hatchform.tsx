@@ -52,7 +52,6 @@ import {
   createHatchClassification,
   updateHatchClassification,
   getHatchClassificationById,
-  type HatchClassificationInsert,
   type HatchClassificationUpdate,
 } from "./api";
 import FormActionButtons from "@/components/FormActionButtons";
@@ -62,6 +61,8 @@ import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { HatchClassificationInsert } from "../updatefd/api";
+import { usePermission } from "@/hooks/usePermission";
 
 type ViewForHatcheryClassi = {
   id: string | null;
@@ -153,6 +154,14 @@ const emptyForm: FormState = {
 
 export default function Hatchform() {
   const router = useRouter();
+  const canInsert = usePermission('/jmb/hatcheryclassi/insert')
+  // const canView = usePermission('/jmb/hatcheryclassi/view')
+  useEffect(() => {
+    if (canInsert)
+      router.push("/jmb/hatcheryclassi/")
+  }, [])
+
+
   const sp = useSearchParams();
   const idParam = sp.get("id");
   const id = idParam ? Number(idParam) : null;
@@ -489,6 +498,7 @@ export default function Hatchform() {
         ttl_count: form.ttl_count,
         is_active: true,
         farm_id: form.farm_id ? Number(form.farm_id) : null,
+        farm_code: form.farm_id ? String(form.farm_id) : null,
         hairline: form.hairline ?? null,
       };
 
@@ -524,7 +534,7 @@ export default function Hatchform() {
               showNameOnly
               value={form.br_no}
               onChange={(val) => handleBreederChange(val)}
-              // disabled={disabledAll}
+            // disabled={disabledAll}
             />
           </div>
 
@@ -537,13 +547,13 @@ export default function Hatchform() {
             <DisabledField label="Temperature" value={form.temperature} />
             <DisabledField label="SKU" value={form.itemcodedesc} />
             <DisabledField label="UOM" value={form.uom} />
-           
+
             <DisabledField
               label="Total Received"
               value={form.total_count_view}
             />
-              <DisabledField label="Ttl Classified" value={form.ttlclassify} />
-              <DisabledField label="Ttl Remaining" value={form.ttlremaining} />
+            <DisabledField label="Ttl Classified" value={form.ttlclassify} />
+            <DisabledField label="Ttl Remaining" value={form.ttlremaining} />
           </div>
         </CardContent>
       </Card>

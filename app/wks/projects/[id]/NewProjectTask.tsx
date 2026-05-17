@@ -86,7 +86,6 @@ export default function NewProjectTask({
       color: formValues.color,
       assigned_to: 0
 // 
-// 
     }
 
     try {

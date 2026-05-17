@@ -58,6 +58,7 @@ import type { UserRow } from "@/lib/types";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
 import SearchableDropdown from "@/lib/SearchableDropdown";
+import { usePermission } from "@/hooks/usePermission";
 
 type EggRefOption = {
   egg_ref_no: string;
@@ -147,13 +148,52 @@ function formatNumber(value: number | null | undefined) {
 }
 
 export default function Chickgradingform() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const idParam = sp.get("id");
+  // const router = useRouter();
+  // const sp = useSearchParams();
+  // const idParam = sp.get("id");
 
-  const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
-  const isEdit = !!editId;
+  // const editId = useMemo(() => (idParam ? Number(idParam) : null), [idParam]);
+  // const isEdit = !!editId;
 
+
+
+  
+     const router = useRouter();
+      const sp = useSearchParams();
+    
+      const idParam = sp.get("id");
+    
+      const editId = idParam ? Number(idParam) : null;
+    
+      const isEdit =
+        typeof editId === "number" &&
+        Number.isFinite(editId) &&
+        editId > 0;
+      const canView = usePermission("/jmb/eggsetter/insert");
+      const canEdit = usePermission("/jmb/eggsetter/edit");
+    
+      useEffect(() => {
+    
+        // wait for permissions
+        if (canView === null || canEdit === null) {
+          return;
+        }
+    
+        if (isEdit && canEdit) {
+          router.replace("/jmb/eggsetter");
+          return;
+        }
+    
+        if (!isEdit && canView) {
+          router.replace("/jmb/eggsetter");
+        }
+    
+      }, [isEdit, canEdit, canView, router]);
+    
+  
+  
+
+      
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
@@ -486,11 +526,11 @@ export default function Chickgradingform() {
 
         chick_room_temperature:
           form.chick_room_temperature === null ||
-          form.chick_room_temperature === undefined
+            form.chick_room_temperature === undefined
             ? null
             : Number(form.chick_room_temperature),
       };
-
+      console.log({ payload })
       if (isEdit && editId) {
         await updateChickGradingProcess(editId, payload);
         alert("Updated successfully.");
