@@ -41,7 +41,13 @@
  */
 "use client";
 
-import React, { useEffect, useMemo, useState, ChangeEvent } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  ChangeEvent,
+} from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -59,7 +65,6 @@ import SearchableDropdown from "@/lib/SearchableDropdown";
 import Breadcrumb from "@/lib/Breadcrumb";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { HatchClassificationInsert } from "../updatefd/api";
 import { usePermission } from "@/hooks/usePermission";
@@ -113,6 +118,7 @@ type FormState = {
   farm_id?: number;
   hairline?: number;
   farm_name: string;
+  existing_ttlclassify: number;
   ttlclassify: number;
   ttlremaining: number;
 };
@@ -148,22 +154,22 @@ const emptyForm: FormState = {
   farm_id: 0,
   hairline: 0,
   farm_name: "",
+  existing_ttlclassify: 0,
   ttlclassify: 0,
   ttlremaining: 0,
 };
 
 export default function Hatchform() {
   const router = useRouter();
-  const canInsert = usePermission('/jmb/hatcheryclassi/insert')
+  const canInsert = usePermission("/jmb/hatcheryclassi/insert");
   // const canView = usePermission('/jmb/hatcheryclassi/view')
   useEffect(() => {
-    if (canInsert)
-      router.push("/jmb/hatcheryclassi/")
-  }, [])
-
+    if (canInsert) router.push("/jmb/hatcheryclassi/");
+  }, []);
 
   const sp = useSearchParams();
   const idParam = sp.get("id");
+  const brNoParam = sp.get("br_no");
   const id = idParam ? Number(idParam) : null;
   const isEdit = !!id;
 
@@ -201,8 +207,9 @@ export default function Hatchform() {
       0,
     );
     draft.ttl_count = total;
-    draft.ttlclassify = total;
-    draft.ttlremaining = Number(draft.total_count_view || 0) - total;
+    draft.ttlclassify = Number(draft.existing_ttlclassify || 0) + total;
+    draft.ttlremaining =
+      Number(draft.total_count_view || 0) - Number(draft.ttlclassify || 0);
     draft.discrepancy = Number(draft.total_count_view || 0) - total;
 
     // Calculate Percentage Egg Recovery
@@ -218,21 +225,22 @@ export default function Hatchform() {
     }
   };
 
+  const loadBreeders = useCallback(async () => {
+    const { data, error } = await db
+      .from("viewforhatcheryclassi")
+      .select(
+        "itemcodedesc,dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no,farm_id,farm_name,ttlclassify,ttlremaining",
+      )
+      .order("doc_date", { ascending: false });
+
+    if (!error && data) setBreeders(data as any);
+    if (error) console.error(error);
+  }, []);
+
   // load viewforhatcheryclassi list
   useEffect(() => {
-    const loadBreeders = async () => {
-      const { data, error } = await db
-        .from("viewforhatcheryclassi")
-        .select(
-          "itemcodedesc,dr_num,doc_date,temperature,humidity,brdr_ref_no,sku,UoM,actual_count,classfi_ref_no,farm_id,farm_name,ttlclassify,ttlremaining",
-        )
-        .order("doc_date", { ascending: false });
-
-      if (!error && data) setBreeders(data as any);
-      if (error) console.error(error);
-    };
     loadBreeders();
-  }, []);
+  }, [loadBreeders]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -283,8 +291,10 @@ export default function Hatchform() {
           base.classfi_ref_no = selected.classfi_ref_no ?? "";
           base.farm_id = Number(selected.farm_id ?? 0);
           base.farm_name = selected.farm_name ?? "";
-          base.ttlclassify = Number(selected.ttlclassify ?? 0);
-          base.ttlremaining = Number(selected.ttlremaining ?? 0);
+          base.existing_ttlclassify = Math.max(
+            Number(selected.ttlclassify ?? 0) - Number(row.ttl_count ?? 0),
+            0,
+          );
         }
 
         recalcTotals(base);
@@ -348,7 +358,7 @@ export default function Hatchform() {
   // breeder selected -> auto populate view fields
   const handleBreederChange = async (value: string) => {
     const selected = breeders.find((b) => b.brdr_ref_no === value);
-    console.log({ selected });
+    //console.log({ selected });
     if (!selected) return;
 
     const baseRef = selected.classfi_ref_no ?? "";
@@ -369,6 +379,7 @@ export default function Hatchform() {
         uom: selected.UoM ?? "",
         total_count_view: Number(selected.actual_count ?? 0),
         classfi_ref_no: baseRef,
+        existing_ttlclassify: Number(selected.ttlclassify ?? 0),
         // For NEW record we reset and generate; for EDIT we keep existing unless you want to force regenerate
         classi_ref_no: isEdit ? prev.classi_ref_no : "",
       } as FormState;
@@ -397,6 +408,15 @@ export default function Hatchform() {
       setRefLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isEdit || !brNoParam || !breeders.length || form.br_no === brNoParam) {
+      return;
+    }
+
+    handleBreederChange(brNoParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breeders, brNoParam, form.br_no, isEdit]);
 
   // inputs
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -475,7 +495,7 @@ export default function Hatchform() {
         };
 
         await updateHatchClassification(id, payload);
-        router.push("/jmb/hatcheryclassi");
+        toast.success("Classification updated successfully.");
         return;
       }
 
@@ -505,10 +525,14 @@ export default function Hatchform() {
       };
 
       await createHatchClassification(payload);
-      router.push("/jmb/hatcheryclassi");
+      toast.success("Classification saved successfully.");
+      setForm({ ...emptyForm });
+      await loadBreeders();
+      router.replace("/jmb/hatcheryclassi/new");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       console.error(err);
-      alert(err?.message ?? "Failed to save.");
+      toast.error(err?.message ?? "Failed to save.");
     } finally {
       setSaving(false);
     }
@@ -536,7 +560,7 @@ export default function Hatchform() {
               showNameOnly
               value={form.br_no}
               onChange={(val) => handleBreederChange(val)}
-            // disabled={disabledAll}
+              // disabled={disabledAll}
             />
           </div>
 

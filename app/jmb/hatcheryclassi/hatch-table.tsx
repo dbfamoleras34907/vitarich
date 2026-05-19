@@ -1,15 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   ColumnDef,
   type ColumnFiltersState,
   type RowSelectionState,
   type SortingState,
-  type Table as TanStackTable,
   type VisibilityState,
-  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
@@ -17,31 +15,15 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Plus,
-  RefreshCw,
-  Search,
-  Pencil,
-  Map,
-  Copy,
-  View,
-  ClipboardCopy,
-  MoreHorizontal,
-  MapPin,
-} from "lucide-react";
+import { MapPin, RefreshCw, Tag } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
+import {
+  ClassificationRefBadge,
+  ClassificationTableSection,
+} from "@/components/classification/ClassificationTable";
 import {
   getReceivingList,
   listHatchClassification,
@@ -51,125 +33,9 @@ import {
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { db } from "@/lib/Supabase/supabaseClient";
-import { RowDataKey } from "@/lib/Defaults/DefaultTypes";
-import DynamicTable from "@/components/ui/DataTableV2";
-import { usePermission } from "@/hooks/usePermission";
-import { RowAction } from "@/lib/types";
-import { toast } from "sonner";
-import { copyRow, copyTable } from "@/lib/tableActions";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "amber" | "emerald";
-}) {
-  const toneClass =
-    tone === "amber"
-      ? "bg-amber-100 text-amber-800 before:bg-amber-500"
-      : "bg-emerald-100 text-emerald-800 before:bg-emerald-500";
-
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${toneClass} before:size-1.5 before:rounded-full before:content-['']`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function BreederRefBadge({ value }: { value?: string | null }) {
-  if (!value) return null;
-
-  return (
-    <span className="inline-flex max-w-48 rounded bg-sky-100 px-2 py-1 font-mono text-[11px] leading-tight text-sky-800">
-      {value}
-    </span>
-  );
-}
-
-function CompactPagination<TData>({
-  table,
-  label,
-}: {
-  table: TanStackTable<TData>;
-  label: string;
-}) {
-  const pageIndex = table.getState().pagination.pageIndex;
-  const pageCount = Math.max(table.getPageCount(), 1);
-  const pageSize = table.getState().pagination.pageSize;
-  const totalRows = table.getFilteredRowModel().rows.length;
-  const startRow = totalRows ? pageIndex * pageSize + 1 : 0;
-  const endRow = Math.min((pageIndex + 1) * pageSize, totalRows);
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-700 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        {label === "classified"
-          ? `Showing rows ${startRow}-${endRow}`
-          : `Page ${pageIndex + 1} of ${pageCount} : ${totalRows} records`}
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-          className="h-9 rounded-md bg-white px-4"
-        >
-          Prev
-        </Button>
-        {Array.from({ length: Math.min(pageCount, 5) }, (_, index) => (
-          <Button
-            key={index}
-            type="button"
-            variant={pageIndex === index ? "default" : "outline"}
-            size="sm"
-            onClick={() => table.setPageIndex(index)}
-            className={`h-9 min-w-10 rounded-md px-3 ${
-              pageIndex === index
-                ? "bg-stone-900 text-white hover:bg-stone-800"
-                : "bg-white text-stone-900"
-            }`}
-          >
-            {index + 1}
-          </Button>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-          className="h-9 rounded-md bg-white px-4"
-        >
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 export default function HatchTable() {
-  const params = useParams();
   const router = useRouter();
-
-  const canInsert = usePermission("/jmb/hatcheryclassi/insert");
-  const canView = usePermission("/jmb/hatcheryclassi/view");
-  // useEffect(() => {
-  //   if (canInsert)
-  //     router.push("/jmb/hatcheryclassi/")
-  // }, [])
-
   const [items, setItems] = useState<HatchClassificationRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
   const [classifiedColumnFilters, setClassifiedColumnFilters] =
@@ -247,24 +113,41 @@ export default function HatchTable() {
       {
         id: "row_no",
         header: "#",
+        enableSorting: false,
         cell: ({ row, table }) =>
           table.getState().pagination.pageIndex *
             table.getState().pagination.pageSize +
           row.index +
           1,
       },
-      // {
-      //   id: "action",
-      //   header: "Action",
-      //   cell: ({ row }) => (
-      //     <div className="flex items-center gap-2">
-      //       <EditActionButton
-      //         id={row.original?.id}
-      //         href={(id) => `/jmb/hatcheryclassi/new?id=${id}`}
-      //       />
-      //     </div>
-      //   ),
-      // },
+      {
+        id: "action",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const breederRef = row.original.brdr_ref_no ?? "";
+
+          return (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-md bg-amber-100 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-200 hover:text-amber-950"
+              onClick={() =>
+                router.push(
+                  `/jmb/hatcheryclassi/new?br_no=${encodeURIComponent(
+                    breederRef,
+                  )}`,
+                )
+              }
+              disabled={!breederRef}
+            >
+              <Tag className="size-3.5" />
+              Classify
+            </Button>
+          );
+        },
+      },
       {
         accessorKey: "dr_num",
         header: "DR #",
@@ -279,7 +162,7 @@ export default function HatchTable() {
         header: "Breeder Ref. No.",
         cell: ({ row }) => (
           <span className="font-semibold">
-            <BreederRefBadge value={row.original.brdr_ref_no} />
+            <ClassificationRefBadge value={row.original.brdr_ref_no} />
           </span>
         ),
       },
@@ -307,37 +190,8 @@ export default function HatchTable() {
       { accessorKey: "voyage_no", header: "Voyage No" },
       { accessorKey: "shipped_via", header: "Shipped Via" },
     ],
-    [],
+    [router],
   );
-
-  const getRowActions = (row: RowDataKey): RowAction[] => {
-    return [
-      {
-        label: "View",
-        icon: <View className="w-4 h-4" />,
-        disabled: canView,
-        onClick: () => {
-          router.push(`/jmb/hatcheryclassi/view/${row.id}`);
-        },
-      },
-      {
-        label: "Copy Row",
-        icon: <Copy className="w-4 h-4" />,
-        onClick: () => {
-          copyRow(row);
-        },
-      },
-
-      {
-        label: "Copy Table",
-        icon: <ClipboardCopy className="w-4 h-4" />,
-        onClick: () => {
-          copyTable(itemsForClass as RowDataKey[]);
-        },
-      },
-    ];
-  };
-
   const tableForClass = useReactTable({
     data: itemsForClass,
     columns: columnsForClass,
@@ -362,32 +216,40 @@ export default function HatchTable() {
       {
         id: "row_no",
         header: "#",
+        enableSorting: false,
         cell: ({ row, table }) =>
           table.getState().pagination.pageIndex *
             table.getState().pagination.pageSize +
           row.index +
           1,
       },
-
-      {
-        id: "view",
-        header: "View",
-        // cell: ({ row }) => row.original.date_classify ?? "",
-      },
+      // {
+      //   id: "action",
+      //   header: "Action",
+      //   cell: ({ row }) => (
+      //     <div className="flex items-center gap-2">
+      //       <EditActionButton
+      //         id={row.original?.id}
+      //         href={(id) => `/jmb/hatcheryclassi/new?id=${id}`}
+      //       />
+      //     </div>
+      //   ),
+      // },
       {
         accessorKey: "date_classify",
         header: "Date",
         cell: ({ row }) => row.original.date_classify ?? "",
       },
-
       {
         accessorKey: "br_no",
         header: "Breeder Ref. No.",
-        cell: ({ row }) => <BreederRefBadge value={row.original.br_no} />,
+        cell: ({ row }) => (
+          <ClassificationRefBadge value={row.original.br_no} />
+        ),
       },
       {
         accessorKey: "good_egg",
-        header: "Hatching",
+        header: "Hatching Eggs",
         cell: ({ getValue }) => (
           <span className="font-semibold text-teal-700">
             {formatNumber(getValue<number>())}
@@ -456,225 +318,72 @@ export default function HatchTable() {
   }, [isLoadingforClass, isLoading, setValue]);
 
   return (
-    <div className="rounded-md p-4">
-      <br />
+    <div className="space-y-4 p-4">
       <Breadcrumb
         FirstPreviewsPageName="Hatchery"
         CurrentPageName="Egg Classification"
       />
 
       {/* Top Controls */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-3">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter Breeder Ref. No."
-              className="pl-10"
-              value={
-                (table.getColumn("br_no")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("br_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={load}
-            disabled={isLoading}
-            className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
-          >
-            <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
-          onClick={() => router.push("/jmb/hatcheryclassi/new")}
-          className="flex items-center gap-2 w-full md:w-auto h-full md:h-auto"
+          variant="outline"
+          onClick={refreshTables}
+          disabled={isLoading || isLoadingforClass}
+          className="flex items-center gap-2 rounded-md bg-white"
         >
-          <Plus className="size-4" />
-          New Classification
+          <RefreshCw
+            className={`size-4 ${
+              isLoading || isLoadingforClass ? "animate-spin" : ""
+            }`}
+          />
+          Refresh
         </Button>
       </div>
 
-      {/* Table 1  Pending for Classification */}
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold mx-4  bg-blue-400 text-white px-2 py-1 rounded">
-          Pending Classification
-        </h2>
-      </div>
+      <ClassificationTableSection
+        table={tableForClass}
+        title="Pending Classification"
+        tone="amber"
+        isLoading={isLoadingforClass}
+        colSpan={columnsForClass.length}
+        headerActions={
+          <Input
+            placeholder="Filter Breeder Ref. No."
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={
+              (tableForClass
+                .getColumn("brdr_ref_no")
+                ?.getFilterValue() as string) ?? ""
+            }
+            onChange={(e) =>
+              tableForClass
+                .getColumn("brdr_ref_no")
+                ?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
 
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
-          <TableHeader>
-            {tableForClass.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {tableForClass.getRowModel().rows.length ? (
-              tableForClass.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoadingforClass ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination 1 Pending for Classification  */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {tableForClass.getState().pagination.pageIndex + 1} of{" "}
-          {tableForClass.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => tableForClass.previousPage()}
-            disabled={!tableForClass.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => tableForClass.nextPage()}
-            disabled={!tableForClass.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
-
-      {/* Table 2  Classified Eggs */}
-
-      <div className="flex items-center justify-between mb-2 mt-2">
-        <h2 className="text-lg font-semibold mx-4 bg-green-400 text-white px-2 py-1 rounded">
-          Classified Eggs
-        </h2>
-      </div>
-      <div className="rounded-md border p-4 bg-white">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination 2  Classified Eggs */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <ClassificationTableSection
+        table={table}
+        title="Classified Eggs"
+        tone="emerald"
+        isLoading={isLoading}
+        colSpan={columns.length}
+        paginationMode="showing-rows"
+        headerActions={
+          <Input
+            placeholder="Filter Breeder Ref. No."
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
+            onChange={(e) =>
+              table.getColumn("br_no")?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
     </div>
   );
 }

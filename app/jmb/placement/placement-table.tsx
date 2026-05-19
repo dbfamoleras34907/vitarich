@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   ColumnFiltersState,
   ColumnDef,
-  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
@@ -15,18 +14,14 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table";
-import { Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
+import {
+  ClassificationRefBadge,
+  ClassificationTableSection,
+} from "@/components/classification/ClassificationTable";
 import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
@@ -43,47 +38,6 @@ function formatDate(value?: string | null) {
 function formatNumber(value?: number | null) {
   if (value == null || !Number.isFinite(Number(value))) return "";
   return Number(value).toLocaleString();
-}
-
-const femaleColumnIds = new Set([
-  "f_beg",
-  "f_doa",
-  "f_reject",
-  "f_shortcount",
-  "f_endingbalance",
-]);
-
-const maleColumnIds = new Set([
-  "m_beg",
-  "m_doa",
-  "m_reject",
-  "m_shortcount",
-  "m_endingbalance",
-]);
-
-function getPlacementColumnTone(columnId: string) {
-  if (femaleColumnIds.has(columnId)) {
-    return "bg-pink-50";
-  }
-
-  if (maleColumnIds.has(columnId)) {
-    return "bg-sky-50";
-  }
-
-  return "";
-}
-
-function getPlacementColumnClass(columnId: string) {
-  if (columnId === "placement_date" || columnId === "dr_no") {
-    return "px-4";
-  }
-  return "";
-}
-
-function getPlacementCellTone(columnId: string) {
-  const tone =
-    columnId === "dr_no" ? "bg-emerald-50" : getPlacementColumnTone(columnId);
-  return tone ? `${tone} rounded-md` : "";
 }
 
 function PlacementTableInner() {
@@ -150,11 +104,13 @@ function PlacementTableInner() {
     {
       id: "row_no",
       header: "#",
+      enableSorting: false,
       cell: ({ row }) => formatNumber(row.index + 1),
     },
     {
       id: "action",
       header: "Action",
+      enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <EditActionButton
@@ -182,6 +138,7 @@ function PlacementTableInner() {
     {
       accessorKey: "dr_no",
       header: "DR No.",
+      cell: ({ row }) => <ClassificationRefBadge value={row.original.dr_no} />,
     },
     {
       accessorKey: "building_no",
@@ -289,20 +246,6 @@ function PlacementTableInner() {
 
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="relative w-72">
-            <Input
-              placeholder="Filter DR Number"
-              className="pl-10"
-              value={
-                (table.getColumn("dr_no")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(e) =>
-                table.getColumn("dr_no")?.setFilterValue(e.target.value)
-              }
-            />
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          </div>
-
           <Button
             type="button"
             variant="outline"
@@ -325,85 +268,24 @@ function PlacementTableInner() {
         </Button>
       </div>
 
-      <div className="rounded-2xl bg-white p-4">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead
-                      key={header.id}
-                      className={`whitespace-normal text-left align-middle ${getPlacementColumnTone(header.column.id)} ${getPlacementColumnClass(header.column.id)}`}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-
-            <TableBody>
-              {table.getRowModel().rows.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className={`${getPlacementCellTone(cell.column.id)} ${getPlacementColumnClass(cell.column.id)}`}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
-                    No results.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <ClassificationTableSection
+        table={table}
+        title="Placement"
+        tone="sky"
+        isLoading={loading}
+        colSpan={columns.length}
+        paginationMode="showing-rows"
+        headerActions={
+          <Input
+            placeholder="Filter DR Number"
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={(table.getColumn("dr_no")?.getFilterValue() as string) ?? ""}
+            onChange={(e) =>
+              table.getColumn("dr_no")?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
     </div>
   );
 }
