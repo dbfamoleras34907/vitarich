@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -247,7 +247,6 @@ function GrowingTableInner() {
           onClick={() => router.push("/jmb/growing/new")}
           className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
         >
-          <Plus className="size-4" />
           New Growing
         </Button>
       </div>

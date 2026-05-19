@@ -1,19 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  CalendarDays,
-  Check,
-  ClipboardList,
-  Mars,
-  Pencil,
-  Save,
-  Sprout,
-  Venus,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CalendarDays, ClipboardList, Mars, Venus } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,7 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import Breadcrumb from "@/lib/Breadcrumb";
+import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
@@ -187,36 +179,6 @@ function MetricInput({
   );
 }
 
-function Stepper() {
-  const steps: Array<{ step: string; label: string; active: boolean }> = [
-    { step: "1", label: "Details", active: true },
-    { step: "2", label: "Review", active: false },
-    { step: "3", label: "Save", active: false },
-  ];
-
-  return (
-    <div className="hidden items-center gap-2 text-[11px] text-slate-500 md:flex">
-      {steps.map(({ step, label, active }, index) => (
-        <div key={step} className="flex items-center gap-2">
-          {index ? <span className="h-px w-8 bg-emerald-100" /> : null}
-          <span
-            className={
-              active
-                ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-700 text-[10px] font-bold text-white"
-                : "flex h-5 w-5 items-center justify-center rounded-full border border-emerald-100 bg-white text-[10px]"
-            }
-          >
-            {step}
-          </span>
-          <span className={active ? "font-semibold text-emerald-700" : ""}>
-            {label}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function GrowingForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -237,17 +199,6 @@ export default function GrowingForm() {
     ? getAgeInDays(selectedPlacement.placement_date, form.daterec)
     : 0;
   const weekNumber = getWeekNumber(ageDays);
-  const hasChanges = useMemo(
-    () =>
-      Object.entries(form).some(([key, value]) => {
-        if (key === "daterec") return value !== getToday();
-        if (key === "female_mortality" || key === "male_mortality") {
-          return value !== "0";
-        }
-        return value !== "";
-      }),
-    [form],
-  );
 
   function setField(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -324,7 +275,9 @@ export default function GrowingForm() {
               ? String(row.female_feed_consumption)
               : "",
           female_body_weight:
-            row.female_body_weight != null ? String(row.female_body_weight) : "",
+            row.female_body_weight != null
+              ? String(row.female_body_weight)
+              : "",
           male_mortality:
             row.male_mortality != null ? String(row.male_mortality) : "0",
           male_feedtype_id: row.male_feedtype_id
@@ -419,298 +372,246 @@ export default function GrowingForm() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-[#f5faf6] pb-24">
-      <div className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
-              <Sprout className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-950">
-                {isEdit ? "Edit Growing Record" : "Add Growing Record"}
-              </h1>
-              <div className="mt-1">
-                <Breadcrumb
-                  SecondPreviewPageName="Breeder"
-                  FirstPreviewsPageName="Growing List"
-                  CurrentPageName={isEdit ? "Edit Growing" : "New Growing"}
-                />
+    <div className="mt-8 space-y-4">
+      <Breadcrumb
+        SecondPreviewPageName="Breeder"
+        FirstPreviewsPageName="Growing List"
+        CurrentPageName={isEdit ? "Edit Growing" : "New Growing"}
+      />
+
+      <Card>
+        <CardContent className="space-y-5 pt-4">
+          <div className="space-y-4 rounded-md border p-4">
+            <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
+              <div className="flex items-center justify-between border-b px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                    <ClipboardList className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-bold text-slate-800">
+                    Batch Identity
+                  </h2>
+                </div>
+                {/* <span className="text-xs text-slate-500">
+                  Auto-filled from selected pen
+                </span> */}
               </div>
-            </div>
-          </div>
-          <Stepper />
-        </div>
-      </div>
 
-      <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
-        <section className="overflow-hidden rounded-lg border border-emerald-100 bg-white shadow-sm shadow-emerald-950/5">
-          <div className="flex items-center justify-between border-b px-5 py-4">
-            <div className="flex items-center gap-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
-                <ClipboardList className="h-4 w-4" />
-              </span>
-              <h2 className="text-sm font-bold text-slate-800">
-                Batch Identity
-              </h2>
-            </div>
-            <span className="text-xs text-slate-500">
-              Auto-filled from selected pen
-            </span>
-          </div>
+              <div className="space-y-4 p-5">
+                {!placementIdParam || isEdit ? (
+                  <div className="max-w-xl space-y-2">
+                    <RequiredLabel>Placement</RequiredLabel>
+                    <select
+                      value={form.placement_id}
+                      onChange={(event) =>
+                        handlePlacementChange(event.target.value)
+                      }
+                      disabled={disabledAll}
+                      className="flex h-10 w-full rounded-md border border-emerald-100 bg-white px-3 py-2 text-sm shadow-none outline-none focus:border-emerald-400"
+                    >
+                      <option value="">Select placement...</option>
+                      {placements.map((placement) => (
+                        <option key={placement.id} value={placement.id}>
+                          {getPlacementLabel(placement)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
 
-          <div className="space-y-4 p-5">
-            {!placementIdParam || isEdit ? (
-              <div className="max-w-xl space-y-2">
-                <RequiredLabel>Placement</RequiredLabel>
-                <select
-                  value={form.placement_id}
-                  onChange={(event) => handlePlacementChange(event.target.value)}
-                  disabled={disabledAll}
-                  className="flex h-10 w-full rounded-md border border-emerald-100 bg-white px-3 py-2 text-sm shadow-none outline-none focus:border-emerald-400"
-                >
-                  <option value="">Select placement...</option>
-                  {placements.map((placement) => (
-                    <option key={placement.id} value={placement.id}>
-                      {getPlacementLabel(placement)}
-                    </option>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                  <div className="rounded-md border border-emerald-200 bg-white p-3">
+                    <div className="mb-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      <CalendarDays className="h-3 w-3 text-emerald-700" />
+                      Record Date
+                    </div>
+                    <Input
+                      type="date"
+                      value={form.daterec}
+                      onChange={(event) =>
+                        setField("daterec", event.target.value)
+                      }
+                      disabled={disabledAll}
+                      className="h-7 border-0 bg-transparent p-0 font-mono text-sm font-bold text-emerald-800 shadow-none focus-visible:ring-0"
+                    />
+                  </div>
+
+                  {[
+                    ["Age (Days)", String(ageDays)],
+                    ["Farm", selectedPlacement?.farm_name ?? ""],
+                    ["Building", selectedPlacement?.building_no ?? ""],
+                    ["Pen", selectedPlacement?.pen_no ?? ""],
+                    ["Week #", String(weekNumber)],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className={
+                        label === "Farm" ||
+                        label === "Building" ||
+                        label === "Pen"
+                          ? "rounded-md border border-emerald-200 bg-emerald-50 p-3"
+                          : "rounded-md border border-slate-200 bg-slate-50 p-3"
+                      }
+                    >
+                      <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        {label}
+                      </div>
+                      <div className="min-h-5 truncate text-sm font-bold text-emerald-800">
+                        {value || "-"}
+                      </div>
+                    </div>
                   ))}
-                </select>
-              </div>
-            ) : null}
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <div className="rounded-md border border-emerald-200 bg-white p-3">
-                <div className="mb-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  <CalendarDays className="h-3 w-3 text-emerald-700" />
-                  Record Date
                 </div>
-                <Input
-                  type="date"
-                  value={form.daterec}
-                  onChange={(event) => setField("daterec", event.target.value)}
-                  disabled={disabledAll}
-                  className="h-7 border-0 bg-transparent p-0 font-mono text-sm font-bold text-emerald-800 shadow-none focus-visible:ring-0"
-                />
               </div>
+            </section>
 
-              {[
-                ["Age (Days)", String(ageDays)],
-                ["Farm", selectedPlacement?.farm_name ?? ""],
-                ["Building", selectedPlacement?.building_no ?? ""],
-                ["Pen", selectedPlacement?.pen_no ?? ""],
-                ["Week #", String(weekNumber)],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className={
-                    label === "Farm" || label === "Building" || label === "Pen"
-                      ? "rounded-md border border-emerald-200 bg-emerald-50 p-3"
-                      : "rounded-md border border-slate-200 bg-slate-50 p-3"
-                  }
-                >
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    {label}
+            <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
+              <div className="flex items-center gap-3 border-b px-5 py-4">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-pink-50 text-pink-600">
+                  <Venus className="h-4 w-4" />
+                </span>
+                <h2 className="inline-flex items-center rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600">
+                  Female Information
+                </h2>
+              </div>
+              <div className="space-y-4 p-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <MetricInput
+                    id="female_mortality"
+                    label="Female Mortality"
+                    value={form.female_mortality}
+                    inputMode="numeric"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
+                  <MetricInput
+                    id="female_feed_consumption"
+                    label="Female Feed Consumption"
+                    value={form.female_feed_consumption}
+                    placeholder="e.g. 250"
+                    suffix="kg"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-slate-600">
+                      Female Feed Type
+                    </Label>
+                    <Select
+                      value={form.female_feedtype_id || undefined}
+                      onValueChange={(value) =>
+                        setField("female_feedtype_id", value)
+                      }
+                      disabled={disabledAll}
+                    >
+                      <SelectTrigger className="h-10 w-full min-w-0 border-emerald-100 bg-slate-50">
+                        <SelectValue placeholder="Select feed type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {feedTypes.map((feedType) => (
+                          <SelectItem
+                            key={feedType.id}
+                            value={String(feedType.id)}
+                          >
+                            {feedType.description}
+                            {feedType.uom ? ` (${feedType.uom})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="min-h-5 truncate text-sm font-bold text-emerald-800">
-                    {value || "-"}
-                  </div>
+                  <MetricInput
+                    id="female_body_weight"
+                    label="Female Body Weight"
+                    value={form.female_body_weight}
+                    placeholder="e.g. 1.80"
+                    suffix="kg"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="overflow-hidden rounded-lg border border-emerald-100 bg-white shadow-sm shadow-emerald-950/5">
-          <div className="flex items-center gap-3 border-b px-5 py-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-pink-50 text-pink-600">
-              <Venus className="h-4 w-4" />
-            </span>
-            <h2 className="text-sm font-bold text-slate-800">
-              Female Information
-            </h2>
-          </div>
-          <div className="space-y-4 p-5">
-            <span className="inline-flex items-center rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600">
-              Female
-            </span>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricInput
-                id="female_mortality"
-                label="Female Mortality"
-                value={form.female_mortality}
-                inputMode="numeric"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-              <MetricInput
-                id="female_feed_consumption"
-                label="Female Feed Consumption"
-                value={form.female_feed_consumption}
-                placeholder="e.g. 250"
-                suffix="kg"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold text-slate-600">
-                  Female Feed Type
-                </Label>
-                <Select
-                  value={form.female_feedtype_id || undefined}
-                  onValueChange={(value) =>
-                    setField("female_feedtype_id", value)
-                  }
-                  disabled={disabledAll}
-                >
-                  <SelectTrigger className="h-10 border-emerald-100 bg-slate-50">
-                    <SelectValue placeholder="Select feed type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {feedTypes.map((feedType) => (
-                      <SelectItem key={feedType.id} value={String(feedType.id)}>
-                        {feedType.description}
-                        {feedType.uom ? ` (${feedType.uom})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
-              <MetricInput
-                id="female_body_weight"
-                label="Female Body Weight"
-                value={form.female_body_weight}
-                placeholder="e.g. 1.80"
-                suffix="kg"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Number of deaths today
-            </p>
-          </div>
-        </section>
+            </section>
 
-        <section className="overflow-hidden rounded-lg border border-emerald-100 bg-white shadow-sm shadow-emerald-950/5">
-          <div className="flex items-center gap-3 border-b px-5 py-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-50 text-sky-600">
-              <Mars className="h-4 w-4" />
-            </span>
-            <h2 className="text-sm font-bold text-slate-800">
-              Male Information
-            </h2>
-          </div>
-          <div className="space-y-4 p-5">
-            <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-600">
-              Male
-            </span>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricInput
-                id="male_mortality"
-                label="Male Mortality"
-                value={form.male_mortality}
-                inputMode="numeric"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-              <MetricInput
-                id="male_feed_consumption"
-                label="Male Feed Consumption"
-                value={form.male_feed_consumption}
-                placeholder="e.g. 180"
-                suffix="kg"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold text-slate-600">
-                  Male Feed Type
-                </Label>
-                <Select
-                  value={form.male_feedtype_id || undefined}
-                  onValueChange={(value) => setField("male_feedtype_id", value)}
-                  disabled={disabledAll}
-                >
-                  <SelectTrigger className="h-10 border-emerald-100 bg-slate-50">
-                    <SelectValue placeholder="Select feed type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {feedTypes.map((feedType) => (
-                      <SelectItem key={feedType.id} value={String(feedType.id)}>
-                        {feedType.description}
-                        {feedType.uom ? ` (${feedType.uom})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
+              <div className="flex items-center gap-3 border-b px-5 py-4">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-50 text-sky-600">
+                  <Mars className="h-4 w-4" />
+                </span>
+                <h2 className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-600">
+                  Male Information
+                </h2>
               </div>
-              <MetricInput
-                id="male_body_weight"
-                label="Male Body Weight"
-                value={form.male_body_weight}
-                placeholder="e.g. 2.10"
-                suffix="kg"
-                disabled={disabledAll}
-                onChange={setField}
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Number of deaths today
-            </p>
-          </div>
-        </section>
-      </div>
+              <div className="space-y-4 p-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <MetricInput
+                    id="male_mortality"
+                    label="Male Mortality"
+                    value={form.male_mortality}
+                    inputMode="numeric"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
+                  <MetricInput
+                    id="male_feed_consumption"
+                    label="Male Feed Consumption"
+                    value={form.male_feed_consumption}
+                    placeholder="e.g. 180"
+                    suffix="kg"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-slate-600">
+                      Male Feed Type
+                    </Label>
+                    <Select
+                      value={form.male_feedtype_id || undefined}
+                      onValueChange={(value) =>
+                        setField("male_feedtype_id", value)
+                      }
+                      disabled={disabledAll}
+                    >
+                      <SelectTrigger className="h-10 w-full min-w-0 border-emerald-100 bg-slate-50">
+                        <SelectValue placeholder="Select feed type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {feedTypes.map((feedType) => (
+                          <SelectItem
+                            key={feedType.id}
+                            value={String(feedType.id)}
+                          >
+                            {feedType.description}
+                            {feedType.uom ? ` (${feedType.uom})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <MetricInput
+                    id="male_body_weight"
+                    label="Male Body Weight"
+                    value={form.male_body_weight}
+                    placeholder="e.g. 2.10"
+                    suffix="kg"
+                    disabled={disabledAll}
+                    onChange={setField}
+                  />
+                </div>
+              </div>
+            </section>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="truncate text-xs text-slate-500">
-            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-amber-400" />
-            {hasChanges
-              ? `Unsaved changes - Week ${weekNumber} ${
-                  selectedPlacement?.pen_no ? `- ${selectedPlacement.pen_no}` : ""
-                }`
-              : "No changes"}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push("/jmb/growing")}
+            <Separator />
+            <FormActionButtons
+              saving={saving}
+              isEdit={isEdit}
               disabled={disabledAll}
-              className="min-w-24"
-            >
-              <X className="mr-2 h-4 w-4" />
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={onSave}
-              disabled={disabledAll}
-              className="min-w-32 bg-emerald-700 text-white hover:bg-emerald-800"
-            >
-              {saving ? (
-                "Saving..."
-              ) : isEdit ? (
-                <>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Update Record
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Record
-                </>
-              )}
-            </Button>
-            {isEdit ? (
-              <span className="hidden h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 md:flex">
-                <Check className="h-4 w-4" />
-              </span>
-            ) : null}
+              cancelPath="/jmb/growing"
+              onSave={onSave}
+            />
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

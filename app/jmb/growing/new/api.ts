@@ -53,7 +53,6 @@ export type GrowingPlacement = {
   dr_no: string | null;
   farm_id?: number | null;
   farm_name: string | null;
-  building_id?: number | null;
   building_no: string | null;
   pen_no: string | null;
   f_endingbalance?: number | null;
@@ -68,7 +67,6 @@ const growingSelect = `
     dr_no,
     farm_id,
     farm_name,
-    building_id,
     building_no,
     pen_no,
     f_endingbalance,
@@ -155,7 +153,7 @@ export async function listGrowingPlacements() {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_id, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .order("placement_date", { ascending: false })
     .order("id", { ascending: false });
@@ -168,7 +166,7 @@ export async function getGrowingPlacementById(id: number) {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_id, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .eq("id", id)
     .single();
