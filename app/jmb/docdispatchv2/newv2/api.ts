@@ -28,6 +28,8 @@ export type DispatchDoc = {
 
 export type DispatchDocItem = {
   id: number;
+  created_by: string | null;
+  updated_by: string | null;
   dispatch_doc_id: number;
   doc_batch_code: string;
   sku_name: string;
@@ -59,6 +61,42 @@ export type DispatchDocUpsertPayload = {
   remarks: string | null;
   items: DispatchDocItemInsert[];
 };
+
+async function getRequiredAccessToken() {
+  const {
+    data: { session },
+    error,
+  } = await db.auth.getSession();
+
+  if (error || !session?.access_token) {
+    throw error ?? new Error("No authenticated session.");
+  }
+
+  return session.access_token;
+}
+
+async function requestDocDispatchWrite<T>(
+  method: "POST" | "PUT" | "DELETE",
+  body: unknown,
+): Promise<T> {
+  const token = await getRequiredAccessToken();
+  const res = await fetch("/jmb/docdispatchv2/newv2/api", {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json?.error ?? "DOC Dispatch request failed.");
+  }
+
+  return json as T;
+}
 
 export async function listDispatchDocs() {
   const { data, error } = await db
@@ -98,79 +136,23 @@ export async function getDispatchDocById(id: number) {
 }
 
 export async function createDispatchDoc(payload: DispatchDocUpsertPayload) {
-  // 1) insert header
-  const { items, ...header } = payload;
+  const { id } = await requestDocDispatchWrite<{ id: number }>(
+    "POST",
+    payload,
+  );
 
-  const { data: inserted, error } = await db
-    .from("dispatch_doc")
-    .insert({
-      ...header,
-      is_active: true,
-    })
-    .select("id")
-    .single();
-
-  if (error) throw error;
-
-  // 2) insert items
-  if (items?.length) {
-    const { error: itemErr } = await db.from("dispatch_doc_item").insert(
-      items.map((it) => ({
-        dispatch_doc_id: inserted.id,
-        ...it,
-      })),
-    );
-    if (itemErr) throw itemErr;
-  }
-
-  return inserted.id as number;
+  return id;
 }
 
 export async function updateDispatchDoc(
   id: number,
   payload: DispatchDocUpsertPayload,
 ) {
-  const { items, ...header } = payload;
-
-  // 1) update header
-  const { error: uErr } = await db
-    .from("dispatch_doc")
-    .update({
-      ...header,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (uErr) throw uErr;
-
-  // 2) replace items (simple + reliable approach)
-  const { error: dErr } = await db
-    .from("dispatch_doc_item")
-    .delete()
-    .eq("dispatch_doc_id", id);
-  if (dErr) throw dErr;
-
-  if (items?.length) {
-    const { error: iErr } = await db.from("dispatch_doc_item").insert(
-      items.map((it) => ({
-        dispatch_doc_id: id,
-        ...it,
-      })),
-    );
-    if (iErr) throw iErr;
-  }
+  await requestDocDispatchWrite("PUT", { id, payload });
 }
 
 export async function softDeleteDispatchDoc(id: number) {
-  const { error } = await db
-    .from("dispatch_doc")
-    .update({
-      is_active: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (error) throw error;
+  await requestDocDispatchWrite("DELETE", { id });
 }
 
 /**
@@ -187,7 +169,7 @@ export async function listDistinctHaulers() {
 
   if (error) throw error;
   const set = new Set<string>();
-  (data ?? []).forEach((r: any) => {
+  (data ?? []).forEach((r: Pick<DispatchDoc, "hauler_name">) => {
     if (r?.hauler_name) set.add(String(r.hauler_name));
   });
   return Array.from(set).sort();
@@ -203,7 +185,7 @@ export async function listDistinctPlates() {
 
   if (error) throw error;
   const set = new Set<string>();
-  (data ?? []).forEach((r: any) => {
+  (data ?? []).forEach((r: Pick<DispatchDoc, "hauler_plate_no">) => {
     if (r?.hauler_plate_no) set.add(String(r.hauler_plate_no));
   });
   return Array.from(set).sort();
@@ -286,7 +268,7 @@ export async function listBoilerFarmOptions(): Promise<BoilerFarmOption[]> {
 
   if (error) throw error;
 
-  return (data ?? []).map((row: any) => ({
+  return ((data ?? []) as BoilerFarmOption[]).map((row) => ({
     boiler_name: row.boiler_name ?? "",
     address: row.address ?? "",
   }));

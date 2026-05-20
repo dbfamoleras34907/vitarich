@@ -131,7 +131,7 @@ export default function SearchableDropdown<
           <TooltipTrigger asChild>
             <Button
               disabled={disabled}
-              className="bg-input border text-foreground hover:bg-input/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
+              className=" bg-input border text-foreground hover:bg-input/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="truncate flex items-center gap-2">
                 {!displayText ? (

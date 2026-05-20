@@ -57,8 +57,8 @@ export default function RootLayout({
                   <div className="flex h-screen">
                     <AppSideBarControler />
                     <main className="flex-1 overflow-y-auto w-full ">
-                      {children}
-                      </main>
+                        {children}
+                    </main>
                   </div>
                 </SidebarProvider>
               </FloatingDialogProvider>

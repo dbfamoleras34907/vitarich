@@ -85,9 +85,12 @@ export default function Layout() {
 
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
-        { key: 'sku', label: 'Item', type: 'text', disabled: true },
+        { key: 'soldto', label: 'Delivered From', type: 'text', disabled: true },
+        { key: 'delivered_to', label: 'Delivered To', type: 'text', disabled: true },
+        // { key: 'sku', label: 'Item', type: 'text', disabled: true },
         { key: 'actual_count', label: 'Total', type: 'text', disabled: true },
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
+        { key: 'name', label: 'Received By', type: 'text', disabled: true },
         { key: 'plate_no', label: 'Plate No.', type: 'text', disabled: true },
         { key: 'driver', label: 'Driver', type: 'text', disabled: true },
     ]
