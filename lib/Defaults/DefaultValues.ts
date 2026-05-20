@@ -18,8 +18,6 @@ import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
 import { NavFolder } from "../types";
 
-
-
 // export const NavFolders = [
 //   {
 //     id: 0,
@@ -261,7 +259,6 @@ import { NavFolder } from "../types";
 //   },
 // ];
 
-
 // export const NavFolders = [
 //   {
 //     id: 0,
@@ -445,7 +442,7 @@ export const NavFolders: NavFolder[] = [
             id: 3,
             type: "Module",
             title: "Growing Period",
-            url: "/home",
+            url: "/jmb/growing",
           },
 
           {
@@ -722,12 +719,24 @@ export const NavFolders: NavFolder[] = [
           //   url: "/a_dean/inventory/inv",
           // },
           {
-            id: 51, type: "Module", title: "Goods Reciept", url: "/inv/gr", inventoriable: true, section: "IV", view: false,
+            id: 51,
+            type: "Module",
+            title: "Goods Reciept",
+            url: "/inv/gr",
+            inventoriable: true,
+            section: "IV",
+            view: false,
             insert: false,
             edit: false,
           },
           {
-            id: 52, type: "Module", title: "Goods Issue", url: "/inv/gi", inventoriable: true, section: "IV", view: false,
+            id: 52,
+            type: "Module",
+            title: "Goods Issue",
+            url: "/inv/gi",
+            inventoriable: true,
+            section: "IV",
+            view: false,
             insert: false,
             edit: false,
           },
@@ -940,13 +949,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-    { code: "todo", name: "To Do", color: "gray" },
-    { code: "in_progress", name: "In Progress", color: "blue" },
-    { code: "in_review", name: "In Review", color: "purple" },
-    { code: "blocked", name: "Blocked", color: "red" },
-    { code: "done", name: "Done", color: "green" },
-    { code: "reopened", name: "Reopened", color: "orange" },
-  ];
+  { code: "todo", name: "To Do", color: "gray" },
+  { code: "in_progress", name: "In Progress", color: "blue" },
+  { code: "in_review", name: "In Review", color: "purple" },
+  { code: "blocked", name: "Blocked", color: "red" },
+  { code: "done", name: "Done", color: "green" },
+  { code: "reopened", name: "Reopened", color: "orange" },
+];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -955,12 +964,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-    // { code: "highest", name: "Highest", color: "red" },
-    { code: "high", name: "High", color: "orange" },
-    { code: "medium", name: "Medium", color: "yellow" },
-    { code: "low", name: "Low", color: "blue" },
-    // { code: "lowest", name: "Lowest", color: "gray" },
-  ];
+  // { code: "highest", name: "Highest", color: "red" },
+  { code: "high", name: "High", color: "orange" },
+  { code: "medium", name: "Medium", color: "yellow" },
+  { code: "low", name: "Low", color: "blue" },
+  // { code: "lowest", name: "Lowest", color: "gray" },
+];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
@@ -984,7 +993,6 @@ export function getInventoriableModules(navFolders: NavFolder[]) {
             parent: folder.title,
             group: group.group,
             section: (child as any)?.section || "",
-
           });
         }
       });

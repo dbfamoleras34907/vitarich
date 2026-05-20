@@ -3,10 +3,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
+import {
+  type ColumnDef,
+  type ColumnFiltersState,
+  type RowSelectionState,
+  type SortingState,
+  type VisibilityState,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import {
   ClipboardCopy,
@@ -25,7 +38,10 @@ import {
 
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 
-import DynamicTable from "@/components/ui/DataTableV2";
+import {
+  ClassificationRefBadge,
+  ClassificationTableSection,
+} from "@/components/classification/ClassificationTable";
 
 import {
   DropdownMenu,
@@ -34,8 +50,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { ColumnConfig, RowDataKey } from "@/lib/Defaults/DefaultTypes";
-
+import { RowDataKey } from "@/lib/Defaults/DefaultTypes";
 import { RowAction } from "@/lib/types";
 
 import { copyRow, copyTable } from "@/lib/tableActions";
@@ -63,12 +78,26 @@ function fmtDateTime(
   )}:${pad(d.getMinutes())}`;
 }
 
+type DocClassificationRow = RowDataKey & {
+  id: number;
+  egg_ref_no: string;
+  batch_code: string;
+  grading_datetime: string;
+  total_chicks: number;
+  good_quality_chicks: number;
+  quality_grade_rate: string;
+  cull_rate: string;
+  grading_personnel: string;
+};
+
 export default function ChickgradingTable() {
   const router = useRouter();
 
-  const [items, setItems] = useState<RowDataKey[]>(
-    [],
-  );
+  const [items, setItems] = useState<DocClassificationRow[]>([]);
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const [isLoading, setIsLoading] =
     useState(false);
@@ -99,11 +128,8 @@ export default function ChickgradingTable() {
           ? data.map(
               (
                 item: ChickGradingProcess,
-                index: number,
               ) => ({
-                id: item.id,
-
-                "#": index + 1,
+                id: Number(item.id),
 
                 egg_ref_no:
                   item.egg_ref_no || "-",
@@ -119,20 +145,25 @@ export default function ChickgradingTable() {
                 total_chicks:
                   Number(
                     item.total_chicks || 0,
-                  ).toLocaleString(),
+                  ),
 
                 good_quality_chicks:
                   Number(
                     item.good_quality_chicks ||
                       0,
-                  ).toLocaleString(),
+                  ),
 
                 quality_grade_rate:
-                  item.quality_grade_rate ||
-                  "-",
+                  item.quality_grade_rate === null ||
+                  item.quality_grade_rate === undefined
+                    ? "-"
+                    : String(item.quality_grade_rate),
 
                 cull_rate:
-                  item.cull_rate || "-",
+                  item.cull_rate === null ||
+                  item.cull_rate === undefined
+                    ? "-"
+                    : String(item.cull_rate),
 
                 grading_personnel:
                   item.grading_personnel ||
@@ -153,7 +184,7 @@ export default function ChickgradingTable() {
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     router.prefetch(
@@ -165,85 +196,10 @@ export default function ChickgradingTable() {
 
   useEffect(() => {
     setValue("loading_g", isLoading);
-  }, [isLoading]);
+  }, [isLoading, setValue]);
 
-  const tableColumns: ColumnConfig[] = useMemo(
-    () => [
-      {
-        key: "#",
-        label: "#",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "action",
-        label: "Action",
-        type: "button",
-        disabled: false,
-      },
-
-      {
-        key: "egg_ref_no",
-        label: "Egg Reference No.",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "batch_code",
-        label: "Batch Code",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "grading_datetime",
-        label: "Grading Date & Time",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "total_chicks",
-        label: "Total Egg Set",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "good_quality_chicks",
-        label: "Good Quality Chicks",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "quality_grade_rate",
-        label: "Quality Grade Rate %",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "cull_rate",
-        label: "Cull Rate %",
-        type: "text",
-        disabled: true,
-      },
-
-      {
-        key: "grading_personnel",
-        label: "Grading Personnel",
-        type: "text",
-        disabled: true,
-      },
-    ],
-    [],
-  );
-
-  const getRowActions = (
-    row: RowDataKey,
+  const getRowActions = useCallback((
+    row: DocClassificationRow,
   ): RowAction[] => {
     return [
       {
@@ -296,7 +252,106 @@ export default function ChickgradingTable() {
         },
       },
     ];
-  };
+  }, [canEdit, canView, items, router]);
+
+  const columns = useMemo<ColumnDef<DocClassificationRow>[]>(
+    () => [
+      {
+        id: "row_no",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row, table }) =>
+          table.getState().pagination.pageIndex *
+            table.getState().pagination.pageSize +
+          row.index +
+          1,
+      },
+      {
+        id: "action",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const actions = getRowActions(row.original);
+
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-md bg-white px-2"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end">
+                {actions.map((action, index) => (
+                  <DropdownMenuItem
+                    key={index}
+                    disabled={action.disabled}
+                    onClick={() => action.onClick(row.original)}
+                    className="flex cursor-pointer items-center gap-2"
+                  >
+                    {action.icon}
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+      {
+        accessorKey: "egg_ref_no",
+        header: "Egg Reference No.",
+        cell: ({ row }) => (
+          <ClassificationRefBadge value={row.original.egg_ref_no} />
+        ),
+      },
+      { accessorKey: "batch_code", header: "Batch Code" },
+      { accessorKey: "grading_datetime", header: "Grading Date & Time" },
+      {
+        accessorKey: "total_chicks",
+        header: "Total Egg Set",
+        cell: ({ getValue }) =>
+          Number(getValue<number>() || 0).toLocaleString(),
+      },
+      {
+        accessorKey: "good_quality_chicks",
+        header: "Good Quality Chicks",
+        cell: ({ getValue }) => (
+          <span className="font-semibold text-teal-700">
+            {Number(getValue<number>() || 0).toLocaleString()}
+          </span>
+        ),
+      },
+      { accessorKey: "quality_grade_rate", header: "Quality Grade Rate %" },
+      { accessorKey: "cull_rate", header: "Cull Rate %" },
+      { accessorKey: "grading_personnel", header: "Grading Personnel" },
+    ],
+    [getRowActions],
+  );
+
+  const table = useReactTable({
+    data: items,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    },
+  });
 
   return (
     <div className="rounded-md p-4 mt-4">
@@ -344,75 +399,26 @@ export default function ChickgradingTable() {
         </Button>
       </div>
 
-      <div className="mt-4">
-        <DynamicTable
-          loading={isLoading}
-          initialFilters={[]}
-          columns={tableColumns.map((col) => ({
-            key: col.key,
-
-            label: col.label,
-
-            align:
-              col.key === "action"
-                ? "right"
-                : "left",
-
-            render: (row: RowDataKey) => {
-              const key = col.key;
-
-              if (key === "action") {
-                const actions =
-                  getRowActions(row);
-
-                return (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="xs">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-
-                    <DropdownMenuContent align="end">
-                      {actions.map(
-                        (action, index) => (
-                          <DropdownMenuItem
-                            key={index}
-                            disabled={
-                              action.disabled
-                            }
-                            onClick={() =>
-                              action.onClick(row)
-                            }
-                            className="cursor-pointer flex items-center gap-2"
-                          >
-                            {action.icon}
-
-                            {action.label}
-                          </DropdownMenuItem>
-                        ),
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                );
-              }
-
-              const value = row[key];
-
-              if (
-                value === null ||
-                value === undefined ||
-                value === ""
-              ) {
-                return "-";
-              }
-
-              return String(value);
-            },
-          }))}
-          data={items}
-        />
-      </div>
+      <ClassificationTableSection
+        table={table}
+        title="Doc Classification"
+        tone="sky"
+        isLoading={isLoading}
+        colSpan={columns.length}
+        paginationMode="showing-rows"
+        headerActions={
+          <Input
+            placeholder="Filter Egg Reference No."
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={
+              (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
+            }
+            onChange={(e) =>
+              table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
     </div>
   );
 }

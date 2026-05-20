@@ -3,49 +3,56 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ColumnFiltersState,
   ColumnDef,
+  ColumnFiltersState,
+  RowSelectionState,
+  SortingState,
+  VisibilityState,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  RowSelectionState,
-  SortingState,
   useReactTable,
-  VisibilityState,
 } from "@tanstack/react-table";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Breadcrumb from "@/lib/Breadcrumb";
-import {
-  ClassificationRefBadge,
-  ClassificationTableSection,
-} from "@/components/classification/ClassificationTable";
+import { ClassificationTableSection } from "@/components/classification/ClassificationTable";
 import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useConfirm, withConfirmProvider } from "@/lib/ConfirmProvider";
-import { deletePlacement, listPlacements, type Placement } from "./new/api";
+import { deleteGrowing, listGrowings, type Growing } from "./new/api";
 
 function formatDate(value?: string | null) {
   if (!value) return "";
-  const date = new Date(value);
+  const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-CA");
 }
 
-function formatNumber(value?: number | null) {
+function formatNumber(value?: number | null, decimals = 0) {
   if (value == null || !Number.isFinite(Number(value))) return "";
-  return Number(value).toLocaleString();
+  return Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
-function PlacementTableInner() {
+function getLocation(row: Growing) {
+  const placement = row.placement;
+  return [placement?.farm_name, placement?.building_no, placement?.pen_no]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function GrowingTableInner() {
   const router = useRouter();
   const confirm = useConfirm();
   const { setValue } = useGlobalContext();
 
-  const [items, setItems] = useState<Placement[]>([]);
+  const [items, setItems] = useState<Growing[]>([]);
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -55,7 +62,7 @@ function PlacementTableInner() {
   async function fetchData() {
     setLoading(true);
     try {
-      const data = await listPlacements();
+      const data = await listGrowings();
       setItems(Array.isArray(data) ? data : []);
     } catch {
       setItems([]);
@@ -70,7 +77,7 @@ function PlacementTableInner() {
 
   useEffect(() => {
     (async () => {
-      router.prefetch("/jmb/placement/new");
+      router.prefetch("/jmb/growing/new");
       await fetchData();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,10 +87,12 @@ function PlacementTableInner() {
     setValue("loading_g", loading);
   }, [loading, setValue]);
 
-  async function handleDelete(row: Placement) {
+  async function handleDelete(row: Growing) {
     const approved = await confirm({
-      title: "Delete placement record?",
-      description: `This will permanently delete DR No. ${row.dr_no} / Pen ${row.pen_no}.`,
+      title: "Delete growing record?",
+      description: `This will remove the ${formatDate(row.daterec)} record for ${
+        getLocation(row) || `placement #${row.placement_id ?? row.id}`
+      }.`,
       confirmText: "Delete",
       cancelText: "Cancel",
     });
@@ -91,16 +100,16 @@ function PlacementTableInner() {
     if (!approved) return;
 
     try {
-      await deletePlacement(row.id);
+      await deleteGrowing(row.id);
       await fetchData();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Failed to delete placement.";
+        error instanceof Error ? error.message : "Failed to delete growing.";
       alert(message);
     }
   }
 
-  const columns: ColumnDef<Placement>[] = [
+  const columns: ColumnDef<Growing>[] = [
     {
       id: "row_no",
       header: "#",
@@ -115,14 +124,14 @@ function PlacementTableInner() {
         <div className="flex items-center gap-2">
           <EditActionButton
             id={row.original.id}
-            href={(id) => `/jmb/placement/new?id=${id}`}
+            href={(id) => `/jmb/growing/new?id=${id}`}
           />
           <Button
             type="button"
             size="sm"
             variant="outline"
             onClick={() => handleDelete(row.original)}
-            className="h-8 px-3 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+            className="h-8 border-red-200 bg-red-50 px-3 text-red-600 hover:bg-red-100 hover:text-red-700"
           >
             <Trash2 className="mr-1 h-4 w-4" />
             Delete
@@ -131,89 +140,64 @@ function PlacementTableInner() {
       ),
     },
     {
-      accessorKey: "placement_date",
-      header: "Date",
-      cell: ({ row }) => formatDate(row.original.placement_date),
+      accessorKey: "daterec",
+      header: "Record Date",
+      cell: ({ row }) => formatDate(row.original.daterec),
     },
     {
-      accessorKey: "dr_no",
-      header: "DR No.",
-      cell: ({ row }) => <ClassificationRefBadge value={row.original.dr_no} />,
+      id: "farm",
+      header: "Farm",
+      accessorFn: (row) => row.placement?.farm_name ?? "",
     },
     {
-      accessorKey: "building_no",
+      id: "building",
       header: "Building",
+      accessorFn: (row) => row.placement?.building_no ?? "",
     },
     {
-      accessorKey: "pen_no",
+      id: "pen",
       header: "Pen",
+      accessorFn: (row) => row.placement?.pen_no ?? "",
     },
     {
-      accessorKey: "f_beg",
-      header: "Female Placement",
-      cell: ({ row }) => formatNumber(row.original.f_beg),
+      accessorKey: "female_mortality",
+      header: "Female Mortality",
+      cell: ({ row }) => formatNumber(row.original.female_mortality),
     },
     {
-      accessorKey: "f_doa",
-      header: "Female DOA",
-      cell: ({ row }) => formatNumber(row.original.f_doa),
+      accessorKey: "female_feed_consumption",
+      header: "Female Feed",
+      cell: ({ row }) => formatNumber(row.original.female_feed_consumption, 2),
     },
     {
-      accessorKey: "f_reject",
-      header: "Female Reject",
-      cell: ({ row }) => formatNumber(row.original.f_reject),
+      id: "female_feedtype",
+      header: "Female Feed Type",
+      accessorFn: (row) => row.female_feedtype?.description ?? "",
     },
     {
-      accessorKey: "f_shortcount",
-      header: "Female Short Count",
-      cell: ({ row }) => formatNumber(row.original.f_shortcount),
+      accessorKey: "female_body_weight",
+      header: "Female Body Weight",
+      cell: ({ row }) => formatNumber(row.original.female_body_weight, 2),
     },
     {
-      accessorKey: "f_endingbalance",
-      header: "Female Ending Balance",
-      cell: ({ row }) => {
-        const beg = row.original.f_beg ?? 0;
-        const doa = row.original.f_doa ?? 0;
-        const reject = row.original.f_reject ?? 0;
-        const shortcount = row.original.f_shortcount ?? 0;
-        return formatNumber(beg - (doa + reject + shortcount));
-      },
+      accessorKey: "male_mortality",
+      header: "Male Mortality",
+      cell: ({ row }) => formatNumber(row.original.male_mortality),
     },
     {
-      accessorKey: "m_beg",
-      header: "Male Placement",
-      cell: ({ row }) => formatNumber(row.original.m_beg),
+      accessorKey: "male_feed_consumption",
+      header: "Male Feed",
+      cell: ({ row }) => formatNumber(row.original.male_feed_consumption, 2),
     },
     {
-      accessorKey: "m_doa",
-      header: "Male DOA",
-      cell: ({ row }) => formatNumber(row.original.m_doa),
+      id: "male_feedtype",
+      header: "Male Feed Type",
+      accessorFn: (row) => row.male_feedtype?.description ?? "",
     },
     {
-      accessorKey: "m_reject",
-      header: "Male Reject",
-      cell: ({ row }) => formatNumber(row.original.m_reject),
-    },
-    {
-      accessorKey: "m_shortcount",
-      header: "Male Short Count",
-      cell: ({ row }) => formatNumber(row.original.m_shortcount),
-    },
-    {
-      accessorKey: "m_endingbalance",
-      header: "Male Ending Balance",
-      cell: ({ row }) => {
-        const beg = row.original.m_beg ?? 0;
-        const doa = row.original.m_doa ?? 0;
-        const reject = row.original.m_reject ?? 0;
-        const shortcount = row.original.m_shortcount ?? 0;
-        return formatNumber(beg - (doa + reject + shortcount));
-      },
-    },
-    {
-      accessorKey: "remarks",
-      header: "remarks",
-      cell: ({ row }) => row.original.remarks ?? "",
+      accessorKey: "male_body_weight",
+      header: "Male Body Weight",
+      cell: ({ row }) => formatNumber(row.original.male_body_weight, 2),
     },
   ];
 
@@ -237,10 +221,10 @@ function PlacementTableInner() {
   });
 
   return (
-    <div className="rounded-md p-4 mt-4">
+    <div className="mt-4 rounded-md p-4">
       <Breadcrumb
         SecondPreviewPageName="Breeder"
-        CurrentPageName="Placement List"
+        CurrentPageName="Growing List"
       />
       <br />
 
@@ -260,28 +244,27 @@ function PlacementTableInner() {
 
         <Button
           type="button"
-          onClick={() => router.push("/jmb/placement/new")}
+          onClick={() => router.push("/jmb/growing/new")}
           className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
         >
-          <Plus className="size-4" />
-          New Pleasement
+          New Growing
         </Button>
       </div>
 
       <ClassificationTableSection
         table={table}
-        title="Placement"
+        title="Growing Period"
         tone="sky"
         isLoading={loading}
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={
           <Input
-            placeholder="Filter DR Number"
+            placeholder="Filter Farm Name"
             className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={(table.getColumn("dr_no")?.getFilterValue() as string) ?? ""}
-            onChange={(e) =>
-              table.getColumn("dr_no")?.setFilterValue(e.target.value)
+            value={(table.getColumn("farm")?.getFilterValue() as string) ?? ""}
+            onChange={(event) =>
+              table.getColumn("farm")?.setFilterValue(event.target.value)
             }
           />
         }
@@ -290,4 +273,4 @@ function PlacementTableInner() {
   );
 }
 
-export default withConfirmProvider(PlacementTableInner);
+export default withConfirmProvider(GrowingTableInner);

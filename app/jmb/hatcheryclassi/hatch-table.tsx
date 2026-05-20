@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   ColumnDef,
-  flexRender,
+  type ColumnFiltersState,
+  type RowSelectionState,
+  type SortingState,
+  type VisibilityState,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
@@ -12,65 +15,48 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw, Search, Pencil, Map, Copy, View, ClipboardCopy, MoreHorizontal } from "lucide-react";
+import { MapPin, RefreshCw, Tag } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import {
+  ClassificationRefBadge,
+  ClassificationTableSection,
+} from "@/components/classification/ClassificationTable";
+import {
   getReceivingList,
-  HatchForClassificationRow,
   listHatchClassification,
+  type HatchForClassificationRow,
   type HatchClassificationRow,
 } from "./new/api";
-import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { formatNumber } from "@/lib/utils/numberFormat";
-import loading from "@/loading";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { db } from "@/lib/Supabase/supabaseClient";
-import { RowDataKey } from "@/lib/Defaults/DefaultTypes";
-import DynamicTable from "@/components/ui/DataTableV2";
-import { usePermission } from "@/hooks/usePermission";
-import { RowAction } from "@/lib/types";
-import { toast } from "sonner";
-import { copyRow, copyTable } from "@/lib/tableActions";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function HatchTable() {
-  const params = useParams()
-  const router = useRouter()
-
-  const canInsert = usePermission('/jmb/hatcheryclassi/insert')
-  const canView = usePermission('/jmb/hatcheryclassi/view')
-  // useEffect(() => {
-  //   if (canInsert)
-  //     router.push("/jmb/hatcheryclassi/")
-  // }, [])
-
-
+  const router = useRouter();
   const [items, setItems] = useState<HatchClassificationRow[]>([]);
-  const [sorting, setSorting] = useState<any>([]);
-  const [columnFilters, setColumnFilters] = useState<any>([]);
-  const [columnVisibility, setColumnVisibility] = useState<any>({});
-  const [rowSelection, setRowSelection] = useState<any>({});
+  const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
+  const [classifiedColumnFilters, setClassifiedColumnFilters] =
+    useState<ColumnFiltersState>([]);
+  const [classifiedColumnVisibility, setClassifiedColumnVisibility] =
+    useState<VisibilityState>({});
+  const [classifiedRowSelection, setClassifiedRowSelection] =
+    useState<RowSelectionState>({});
+  const [pendingSorting, setPendingSorting] = useState<SortingState>([]);
+  const [pendingColumnFilters, setPendingColumnFilters] =
+    useState<ColumnFiltersState>([]);
+  const [pendingColumnVisibility, setPendingColumnVisibility] =
+    useState<VisibilityState>({});
+  const [pendingRowSelection, setPendingRowSelection] =
+    useState<RowSelectionState>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingforClass, setIsLoadingforClass] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [lastUpdatedForClass, setLastUpdatedForClass] = useState<string>("");
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
-  const { setValue, getValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -78,7 +64,6 @@ export default function HatchTable() {
       const data = await listHatchClassification(50);
       // console.log(data);
       setItems(Array.isArray(data) ? data : []);
-      setLastUpdated(new Date().toLocaleString());
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -89,7 +74,7 @@ export default function HatchTable() {
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
   useEffect(() => {
     router.prefetch("/jmb/hatcheryclassi/new");
     load();
@@ -101,7 +86,6 @@ export default function HatchTable() {
     try {
       const data = await getReceivingList(50);
       setItemsForClass(Array.isArray(data) ? data : []);
-      setLastUpdatedForClass(new Date().toLocaleString());
     } catch (e) {
       console.error(e);
       setItemsForClass([]);
@@ -112,11 +96,15 @@ export default function HatchTable() {
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
   useEffect(() => {
     router.prefetch("/jmb/hatcheryclassi/new");
     loadForClassification();
   }, [router, loadForClassification]);
+
+  const refreshTables = useCallback(async () => {
+    await Promise.all([load(), loadForClassification()]);
+  }, [load, loadForClassification]);
 
   // For Classification
 
@@ -125,7 +113,115 @@ export default function HatchTable() {
       {
         id: "row_no",
         header: "#",
-        cell: ({ row }) => row.index + 1,
+        enableSorting: false,
+        cell: ({ row, table }) =>
+          table.getState().pagination.pageIndex *
+            table.getState().pagination.pageSize +
+          row.index +
+          1,
+      },
+      {
+        id: "action",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const breederRef = row.original.brdr_ref_no ?? "";
+
+          return (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-md bg-amber-100 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-200 hover:text-amber-950"
+              onClick={() =>
+                router.push(
+                  `/jmb/hatcheryclassi/new?br_no=${encodeURIComponent(
+                    breederRef,
+                  )}`,
+                )
+              }
+              disabled={!breederRef}
+            >
+              <Tag className="size-3.5" />
+              Classify
+            </Button>
+          );
+        },
+      },
+      {
+        accessorKey: "dr_num",
+        header: "DR #",
+        cell: ({ row }) => (
+          <span className="font-semibold text-stone-900">
+            {row.original.dr_num ?? ""}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "brdr_ref_no",
+        header: "Breeder Ref. No.",
+        cell: ({ row }) => (
+          <span className="font-semibold">
+            <ClassificationRefBadge value={row.original.brdr_ref_no} />
+          </span>
+        ),
+      },
+      {
+        accessorKey: "actual_count",
+        header: "Eggs Received",
+        cell: ({ getValue }) => (
+          <span className="font-semibold text-stone-900">
+            {formatNumber(getValue<number>())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "farm_name",
+        header: "Shipped To",
+        cell: ({ row }) => (
+          <span className="inline-flex items-center gap-1.5 leading-tight">
+            <MapPin className="size-3.5 shrink-0 text-stone-500" />
+            {row.original.farm_name ?? ""}
+          </span>
+        ),
+      },
+      { accessorKey: "plate_no", header: "Plate No" },
+      { accessorKey: "driver", header: "Driver" },
+      { accessorKey: "voyage_no", header: "Voyage No" },
+      { accessorKey: "shipped_via", header: "Shipped Via" },
+    ],
+    [router],
+  );
+  const tableForClass = useReactTable({
+    data: itemsForClass,
+    columns: columnsForClass,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setPendingSorting,
+    onColumnFiltersChange: setPendingColumnFilters,
+    onColumnVisibilityChange: setPendingColumnVisibility,
+    onRowSelectionChange: setPendingRowSelection,
+    state: {
+      sorting: pendingSorting,
+      columnFilters: pendingColumnFilters,
+      columnVisibility: pendingColumnVisibility,
+      rowSelection: pendingRowSelection,
+    },
+  });
+  // For Classification
+  const columns = useMemo<ColumnDef<HatchClassificationRow>[]>(
+    () => [
+      {
+        id: "row_no",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row, table }) =>
+          table.getState().pagination.pageIndex *
+            table.getState().pagination.pageSize +
+          row.index +
+          1,
       },
       // {
       //   id: "action",
@@ -140,113 +236,46 @@ export default function HatchTable() {
       //   ),
       // },
       {
-        accessorKey: "dr_num",
-        header: "DR #",
-        cell: ({ row }) => row.original.dr_num ?? "",
-      },
-      {
-        accessorKey: "brdr_ref_no",
-        header: "Breeder Ref. No.",
-        cell: ({ row }) => row.original.brdr_ref_no ?? "",
-      },
-      {
-        accessorKey: "actual_count",
-        header: "Ttl Egg Received",
-        cell: ({ getValue }) => formatNumber(getValue<number>()),
-      },
-      { accessorKey: "farm_name", header: "Shipped To" },
-      { accessorKey: "voyage_no", header: "Voyage No" },
-      { accessorKey: "shipped_via", header: "Shipped Via" },
-      { accessorKey: "plate_no", header: "Plate No" },
-      { accessorKey: "driver", header: "Driver" },
-    ],
-    [router],
-  );
-
-  const getRowActions = (row: RowDataKey): RowAction[] => {
-    return [
-
-      {
-        label: "View",
-        icon: <View className="w-4 h-4" />,
-        disabled: canView,
-        onClick: () => {
-          router.push(`/jmb/hatcheryclassi/view/${row.id}`)
-        },
-      },
-      {
-        label: "Copy Row",
-        icon: <Copy className="w-4 h-4" />,
-        onClick: () => {
-          copyRow(row)
-        },
-      },
-
-      {
-        label: "Copy Table",
-        icon: <ClipboardCopy className="w-4 h-4" />,
-        onClick: () => {
-          copyTable(itemsForClass as RowDataKey[])
-        },
-      },
-
-
-    ]
-  }
-
-
-  const tableForClass = useReactTable({
-    data: itemsForClass,
-    columns: columnsForClass,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  });
-  // For Classification
-  const columns = useMemo<ColumnDef<HatchClassificationRow>[]>(
-    () => [
-      {
-        id: "row_no",
-        header: "#",
-        cell: ({ row }) => row.index + 1,
-      },
-
-      {
-        id: "view",
-        header: "View",
-        // cell: ({ row }) => row.original.date_classify ?? "",
-      },
-      {
         accessorKey: "date_classify",
-        header: "Date Classified",
+        header: "Date",
         cell: ({ row }) => row.original.date_classify ?? "",
       },
-
       {
         accessorKey: "br_no",
         header: "Breeder Ref. No.",
-        cell: ({ row }) => row.original.br_no ?? "",
+        cell: ({ row }) => (
+          <ClassificationRefBadge value={row.original.br_no} />
+        ),
       },
       {
         accessorKey: "good_egg",
-        header: "Hatching Egg",
+        header: "Hatching Eggs",
+        cell: ({ getValue }) => (
+          <span className="font-semibold text-teal-700">
+            {formatNumber(getValue<number>())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "trans_crack",
+        header: "Transport Crack",
         cell: ({ getValue }) => formatNumber(getValue<number>()),
       },
-      { accessorKey: "trans_crack", header: "Transport Crack" },
-      { accessorKey: "hatc_crack", header: "Hatch Crack" },
-      { accessorKey: "trans_condemn", header: "Transport Condemn" },
-      { accessorKey: "hatc_condemn", header: "Hatch Condemn" },
+      {
+        accessorKey: "hatc_crack",
+        header: "Hatch Crack",
+        cell: ({ getValue }) => formatNumber(getValue<number>()),
+      },
+      {
+        accessorKey: "trans_condemn",
+        header: "Transport Condemn",
+        cell: ({ getValue }) => formatNumber(getValue<number>()),
+      },
+      {
+        accessorKey: "hatc_condemn",
+        header: "Hatch Condemn",
+        cell: ({ getValue }) => formatNumber(getValue<number>()),
+      },
       { accessorKey: "thin_shell", header: "Thin Shell" },
       { accessorKey: "pee_wee", header: "Pee Wee" },
       { accessorKey: "small", header: "Small" },
@@ -262,7 +291,7 @@ export default function HatchTable() {
         cell: ({ getValue }) => formatNumber(getValue<number>()),
       },
     ],
-    [router],
+    [],
   );
 
   const table = useReactTable({
@@ -272,299 +301,89 @@ export default function HatchTable() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
+    onSortingChange: setClassifiedSorting,
+    onColumnFiltersChange: setClassifiedColumnFilters,
+    onColumnVisibilityChange: setClassifiedColumnVisibility,
+    onRowSelectionChange: setClassifiedRowSelection,
     state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
+      sorting: classifiedSorting,
+      columnFilters: classifiedColumnFilters,
+      columnVisibility: classifiedColumnVisibility,
+      rowSelection: classifiedRowSelection,
     },
   });
 
   useEffect(() => {
     setValue("loading_g", isLoadingforClass || isLoading);
-  }, [isLoadingforClass || isLoading]);
+  }, [isLoadingforClass, isLoading, setValue]);
 
   return (
-    <div className="rounded-md p-4">
-      <br />
-      
-      <div className="flex  justify-between pb-4">
-        <Breadcrumb
-          FirstPreviewsPageName="Hatchery"
-          CurrentPageName="Egg Classification"
-        />
+    <div className="space-y-4 p-4">
+      <Breadcrumb
+        FirstPreviewsPageName="Hatchery"
+        CurrentPageName="Egg Classification"
+      />
 
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={load}
-            disabled={isLoading}
-          >
-            <RefreshCw
-              className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
-          <Button
-            disabled={canInsert}
-            type="button"
-            size="sm"
-            onClick={() => router.push("/jmb/hatcheryclassi/new")}
-          >
-            <Plus className="size-4" />
-            New Classification
-          </Button>
-        </div>
-      </div>
       {/* Top Controls */}
-
-      {/* Table 1  Pending for Classification */}
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-semibold   bg-blue-400 text-white px-2 py-1 rounded">
-          Pending Classification
-        </h1>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={refreshTables}
+          disabled={isLoading || isLoadingforClass}
+          className="flex items-center gap-2 rounded-md bg-white"
+        >
+          <RefreshCw
+            className={`size-4 ${
+              isLoading || isLoadingforClass ? "animate-spin" : ""
+            }`}
+          />
+          Refresh
+        </Button>
       </div>
 
-      <div className="">
-        {/* <Table>
-          <TableHeader>
-            {tableForClass.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {tableForClass.getRowModel().rows.length ? (
-              tableForClass.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoadingforClass ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table> */}
-        <DynamicTable
-          loading={isLoadingforClass}
-          initialFilters={[]}
-          columns={columnsForClass.map((col: any) => ({
-            key: col.accessorKey || col.id,
-            label:
-              typeof col.header === "string"
-                ? col.header
-                : String(col.id ?? ""),
-            align: "left",
-
-            render: (row: RowDataKey) => {
-              // row number
-              if ((col.id || col.accessorKey) === "row_no") {
-                return String(
-                  itemsForClass.findIndex((x) => x.id === row.id) + 1
-                );
-              }
-
-              const key = col.accessorKey || col.id;
-              const value = row[key];
-
-              if (
-                key === "actual_count" &&
-                value !== null &&
-                value !== undefined
-              ) {
-                return formatNumber(Number(value));
-              }
-
-              if (value === null || value === undefined || value === "") {
-                return "-";
-              }
-
-              return String(value);
-            },
-          }))}
-          data={itemsForClass as RowDataKey[]}
-        />
-
-      </div>
-      <div className="flex items-center justify-between mb-2 mt-8">
-        <h1 className="text-lg font-semibold  bg-green-400 text-white px-2 py-1 rounded">
-          Classified Eggs
-        </h1>
-      </div>
-      <div className="">
-        {/* <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="whitespace-nowrap text-left align-middle"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {isLoading ? "Loading..." : "No results."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table> */}
-
-        <DynamicTable
-          loading={isLoading}
-          initialFilters={[]}
-          columns={columns.map((col: any) => ({
-            key: col.accessorKey || col.id,
-            label:
-              typeof col.header === "string"
-                ? col.header
-                : String(col.id ?? ""),
-            align: "left",
-
-            render: (row: RowDataKey) => {
-              const key = col.accessorKey || col.id;
-
-              // row number
-              if (key === "row_no") {
-                return String(items.findIndex((x) => x.id === row.id) + 1);
-              }
-
-              // actions dropdown
-              if (key === "view") {
-                const actions = getRowActions(row);
-
-                return (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="xs">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-
-                    <DropdownMenuContent align="end">
-                      {actions.map((action, index) => (
-                        <DropdownMenuItem
-                          key={index}
-                          disabled={action.disabled}
-                          onClick={() => action.onClick(row)}
-                          className="cursor-pointer flex items-center gap-2"
-                        >
-                          {action.icon}
-                          {action.label}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                );
-              }
-
-              const value = row[key];
-
-              if (value === null || value === undefined || value === "") {
-                return "-";
-              }
-
-              return String(value);
+      <ClassificationTableSection
+        table={tableForClass}
+        title="Pending Classification"
+        tone="amber"
+        isLoading={isLoadingforClass}
+        colSpan={columnsForClass.length}
+        headerActions={
+          <Input
+            placeholder="Filter Breeder Ref. No."
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={
+              (tableForClass
+                .getColumn("brdr_ref_no")
+                ?.getFilterValue() as string) ?? ""
             }
-          }))}
-          data={items as RowDataKey[]}
-        />
+            onChange={(e) =>
+              tableForClass
+                .getColumn("brdr_ref_no")
+                ?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
 
-      </div>
-
-      {/* Pagination 2  Classified Eggs */}
-      <div className="flex items-center justify-between gap-2">
-        {/* <div className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
-        </div> */}
-        {/* <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div> */}
-      </div>
+      <ClassificationTableSection
+        table={table}
+        title="Classified Eggs"
+        tone="emerald"
+        isLoading={isLoading}
+        colSpan={columns.length}
+        paginationMode="showing-rows"
+        headerActions={
+          <Input
+            placeholder="Filter Breeder Ref. No."
+            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+            value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
+            onChange={(e) =>
+              table.getColumn("br_no")?.setFilterValue(e.target.value)
+            }
+          />
+        }
+      />
     </div>
   );
 }
