@@ -27,7 +27,7 @@ import RuleAndPerm from './RuleAndPerm'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import SearchableCombobox from '@/components/SearchableCombobox'
 
-import { DefaultGenders } from '@/lib/Defaults/DefaultValues'
+import { DefaultGenders, islandGrouplist, regionList } from '@/lib/Defaults/DefaultValues'
 import { ColumnsYesOrNoCodeOnly } from '@/lib/Defaults/DefaultColumns'
 
 import {
@@ -94,6 +94,24 @@ export default function Layout() {
     { required: true, key: 'location', label: 'Address' },
     {
       required: true,
+      key: 'region',
+      label: 'Region',
+      type: 'list',
+      list: regionList,
+      code: 'code',
+      name: 'name',
+    },
+    {
+      required: true,
+      key: 'archipelago',
+      label: 'Island Group',
+      type: 'list',
+      list: islandGrouplist,
+      code: 'code',
+      name: 'name',
+    },
+    {
+      required: true,
       key: 'default_farm',
       label: 'Default Farm',
       type: 'list',
@@ -150,7 +168,7 @@ export default function Layout() {
 
     try {
       setLoading(true)
-
+      console.log({ form })
       await updateUserProfile(
         {
           ...form,

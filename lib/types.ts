@@ -96,6 +96,8 @@ export interface UserInsert {
   remarks?: string | null;
   supervisor?: string | null;
   default_farm?: string | null;
+  region?: string | null;
+  archipelago?: string | null;
 }
 
 
@@ -124,6 +126,8 @@ export interface UserRow {
   issuper: string | null;
   supervisor?: string | null;
   isactive?: string | null;
+  region?: string | null;
+  archipelago?: string | null;
 
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';

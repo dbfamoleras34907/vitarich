@@ -23,12 +23,15 @@ import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ParamsSysDrep from './ParamsSysDrep'
+import TraceabilityDashboard from './ReceivingSysDrep'
 
 export default function Layout() {
     const [region, setregion] = useState<string | undefined>()
     const [islandGroup, setIslandGroup] = useState<string | undefined>()
     const [dateRange, setDateRange] = useState<DateRange | undefined>()
     const [isMobile, setIsMobile] = useState(false)
+
+    
 
     const route = useRouter()
     const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
@@ -106,9 +109,9 @@ export default function Layout() {
             </div>
             <Card className=''>
 
-                <div className="px-4 grid gap-4 md:grid-cols-2 grid-cols-1 ">
+                <div className="px-4  gap-4 grid md:grid-cols-2 grid-cols-1 ">
                     {/* Region */}
-                    <div className="grid gap-2 w-full max-w-xs">
+                    <div className="grid gap-2 w-full md:max-w-xs">
                         <Label>Region</Label>
 
                         <SearchableDropdown
@@ -123,7 +126,7 @@ export default function Layout() {
 
                     {/* Date Range */}
                     <div className="grid gap-2 w-full items-center">
-                        <div className='w-xs ml-auto grid gap-2'>
+                        <div className='md:w-xs md:ml-auto grid gap-2'>
                             <Label className=''>Date Range</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
@@ -155,7 +158,7 @@ export default function Layout() {
                     </div>
 
                     {/* Archipelago */}
-                    <div className="grid gap-2 w-full max-w-xs">
+                    <div className="grid gap-2 w-full md:max-w-xs">
                         <Label>Archipelago</Label>
 
                         <SearchableDropdown
@@ -174,13 +177,13 @@ export default function Layout() {
 
                 <div className="px-4">
 
-                    <Tabs defaultValue="account" className="">
+                    <Tabs defaultValue="dashboard" className="">
                         <TabsList>
                             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                             <TabsTrigger value="parameters">Parameters</TabsTrigger>
                         </TabsList>
                         <TabsContent value="dashboard">
-                            <ReceivingSysDrep
+                            <TraceabilityDashboard
                                 archipelago={islandGroup}
                                 region={region}
                                 dateFrom={dateRange?.from ? dateRange.from.toISOString().split('T')[0] : undefined}
@@ -198,7 +201,7 @@ export default function Layout() {
                     </Tabs>
 
 
-
+                
                 </div>
             </Card>
         </div>

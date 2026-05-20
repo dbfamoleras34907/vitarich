@@ -172,6 +172,8 @@ export async function updateUserProfile(
     p_default_farm: userProfileData.default_farm,
     p_supervisor: userProfileData.supervisor,
     p_default_farms: defaultFarms,
+    p_archipelago: userProfileData.archipelago, // need to add on function parameter and payload
+    p_region: userProfileData.region, // need to add on function parameter and payload
   };
   // app/admin/user/api.ts
   const { error } = await db.rpc(

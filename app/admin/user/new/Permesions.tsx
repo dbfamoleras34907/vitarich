@@ -274,7 +274,50 @@ export default function Permissions({ userId }: RuleAndPermProps) {
         getuser()
     }, [])
 
+const toggleColumnPermissions = async (
+    rows: Record<string, any>[],
+    type: 'list' | 'view' | 'insert' | 'edit'
+) => {
+    const validRows = rows.filter((row) => {
+        if (type === 'view') return row.view
+        if (type === 'insert') return row.insert
+        if (type === 'edit') return row.edit
+        return true
+    })
 
+    const allSelected = validRows.every((row) => {
+        const key =
+            type === 'list'
+                ? `${row.group}|${row.title}`
+                : `${row.group}|${row.title}/${type}`
+
+        return permissions[key] ?? false
+    })
+
+    const newValue = !allSelected
+
+    await Promise.all(
+        validRows.map((row) => {
+            const title =
+                type === 'list'
+                    ? row.title
+                    : `${row.title}/${type}`
+
+            const url =
+                type === 'list'
+                    ? row.url
+                    : `${row.url}/${type}`
+
+            return EnabledonCheckChange(
+                row.group,
+                title,
+                newValue,
+                url,
+                type
+            )
+        })
+    )
+}
     return (
         <div className="space-y-4 bg-muted/20 min-h-screen p-4">
 
@@ -310,7 +353,7 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                                 }}
                             />
                         </div>
-                    </div> 
+                    </div>
                     <div className="flex items-center gap-2">
                         {/* <Button
                             variant="outline"
@@ -457,7 +500,7 @@ export default function Permissions({ userId }: RuleAndPermProps) {
 
                                 <table className="w-full text-sm">
 
-                                    <thead className="bg-muted/20 border-b">
+                                    {/* <thead className="bg-muted/20 border-b">
                                         <tr>
 
                                             <th className="text-left px-4 py-2 font-medium min-w-70">
@@ -480,8 +523,62 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                                                 Edit
                                             </th>
                                         </tr>
-                                    </thead>
+                                    </thead> */}
+                                    <thead className="bg-muted/20 border-b">
+                                        <tr>
+                                            <th className="text-left px-4 py-2 font-medium min-w-70">
+                                                Module
+                                            </th>
 
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'list')
+                                                    }
+                                                >
+                                                    List
+                                                </Button>
+                                            </th>
+
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'view')
+                                                    }
+                                                >
+                                                    View
+                                                </Button>
+                                            </th>
+
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'insert')
+                                                    }
+                                                >
+                                                    Insert
+                                                </Button>
+                                            </th>
+
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'edit')
+                                                    }
+                                                >
+                                                    Edit
+                                                </Button>
+                                            </th>
+                                        </tr>
+                                    </thead>
                                     <tbody>
                                         {folderRows.map((row, rowIndex) => (
                                             <tr

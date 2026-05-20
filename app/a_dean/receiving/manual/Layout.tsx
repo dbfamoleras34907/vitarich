@@ -534,9 +534,12 @@ export default function ApprovalDecisionForm() {
         <CardContent className='bg-white rounded-2xl p-4 space-y-6'>
           <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
             <div className='mt-2'>
-              <Label className='pb-2'>Delivered From</Label>
+              <Label className='pb-2' required>
+                Delivered From
+              </Label>
               <SearchableCombobox
                 multiple={false}
+                required
                 showCode
                 autoHighlight
                 items={farms}
