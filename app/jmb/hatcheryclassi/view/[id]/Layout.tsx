@@ -70,10 +70,6 @@ export default function Layout() {
     )
   }, [data])
 
-  const discrepancy = useMemo(() => {
-    return Number(data?.ttl_count || 0) - totalClassify
-  }, [data, totalClassify])
-
   const eggRecovery = useMemo(() => {
     const total = Number(data?.ttl_count || 0)
     const goodEgg = Number(data?.good_egg || 0)
@@ -260,15 +256,10 @@ export default function Layout() {
 
           <Separator />
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <ReadOnlyField
               label="Total Classify"
               value={totalClassify}
-            />
-
-            <ReadOnlyField
-              label="Discrepancy"
-              value={discrepancy}
             />
 
             <ReadOnlyField

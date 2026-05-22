@@ -22,10 +22,12 @@ import {
   createGrowing,
   getGrowingById,
   getGrowingPlacementById,
+  listGrowingHistoryByFarm,
   listFeedTypes,
   listGrowingPlacements,
   updateGrowing,
   type FeedType,
+  type Growing,
   type GrowingInsert,
   type GrowingPlacement,
 } from "./api";
@@ -67,6 +69,11 @@ function asNumber(value: string | number | null | undefined) {
 
 function optionalNumber(value: string) {
   return value === "" ? null : asNumber(value);
+}
+
+function formatNumber(value: string | number | null | undefined) {
+  const parsed = asNumber(value);
+  return parsed ? parsed.toLocaleString("en-US") : "";
 }
 
 function cleanDecimal(raw: string) {
@@ -191,6 +198,7 @@ export default function GrowingForm() {
   const [placements, setPlacements] = useState<GrowingPlacement[]>([]);
   const [selectedPlacement, setSelectedPlacement] =
     useState<GrowingPlacement | null>(null);
+  const [history, setHistory] = useState<Growing[]>([]);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -307,6 +315,27 @@ export default function GrowingForm() {
       }
     })();
   }, [idParam, router]);
+
+  useEffect(() => {
+    if (!selectedPlacement?.farm_id && !selectedPlacement?.farm_name) {
+      setHistory([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const rows = await listGrowingHistoryByFarm({
+          farmId: selectedPlacement.farm_id ?? null,
+          farmName: selectedPlacement.farm_name ?? null,
+        });
+        setHistory(rows);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to load history.";
+        alert(message);
+      }
+    })();
+  }, [selectedPlacement?.farm_id, selectedPlacement?.farm_name]);
 
   async function handlePlacementChange(value: string) {
     setField("placement_id", value);
@@ -609,6 +638,132 @@ export default function GrowingForm() {
               cancelPath="/jmb/growing"
               onSave={onSave}
             />
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium">Growing Farm History</h3>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPlacement?.farm_name
+                    ? `Showing recent transactions for ${selectedPlacement.farm_name}.`
+                    : "Select a placement to show farm history."}
+                </p>
+              </div>
+
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-245 text-sm">
+                  <thead className="bg-green-50">
+                    <tr className="border-b">
+                      <th className="px-3 py-2 text-left font-medium">
+                        Record Date
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">Farm</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Building
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">Pen</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Age
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Week #
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Mortality
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Feed
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Female Feed Type
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Body Weight
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Mortality
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Feed
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Male Feed Type
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Body Weight
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.length ? (
+                      history.map((row) => {
+                        const rowAge = getAgeInDays(
+                          row.placement?.placement_date,
+                          row.daterec ?? undefined,
+                        );
+
+                        return (
+                          <tr key={row.id} className="border-b last:border-0">
+                            <td className="px-3 py-2">
+                              {formatDate(row.daterec)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.placement?.farm_name ?? ""}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.placement?.building_no ?? ""}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.placement?.pen_no ?? ""}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {rowAge.toLocaleString("en-US")}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {getWeekNumber(rowAge).toLocaleString("en-US")}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.female_mortality)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.female_feed_consumption)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.female_feedtype?.description ?? ""}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.female_body_weight)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.male_mortality)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.male_feed_consumption)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.male_feedtype?.description ?? ""}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatNumber(row.male_body_weight)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={14}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          No farm history found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
