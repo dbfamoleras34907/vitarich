@@ -1,7 +1,7 @@
 'use client'
 
 import { formatDateTime } from '@/lib/formatDate'
-import { MoveDown, MoveUp, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronsUpDown, MoveDown, MoveUp, Search } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Skeleton } from './skeleton'
 
@@ -135,8 +135,8 @@ export default function DynamicTable<T extends Record<string, any>>({
   const totalPages = Math.ceil(sortedData.length / pageSize)
 
   return (
-    <div className="rounded-xl border bg-white shadow-sm space-y-2">
-
+    // <div className="rounded-xl border bg-white shadow-sm space-y-2">
+    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
       {/* HEADER */}
       {/* <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
 
@@ -191,8 +191,8 @@ export default function DynamicTable<T extends Record<string, any>>({
         </div>
       </div> */}
       {/* HEADER */}
-      <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3">
-
+      {/* <div className="flex flex-wrap justify-between items-center gap-2 px-4 pt-3"> */}
+      <div className="flex flex-col gap-3 border-b border-stone-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
         {loading ? (
           <>
             <Skeleton className="h-6 w-32" />
@@ -205,7 +205,8 @@ export default function DynamicTable<T extends Record<string, any>>({
         ) : (
           <>
             {/* ENTRIES */}
-            <div className="text-xs text-muted-foreground">
+            {/* <div className="text-xs text-muted-foreground"> */}
+            <div className="text-sm text-stone-700">
               Show
               <select
                 value={pageSize}
@@ -213,7 +214,8 @@ export default function DynamicTable<T extends Record<string, any>>({
                   setPageSize(Number(e.target.value))
                   setPage(1)
                 }}
-                className="mx-1 rounded border px-1 py-0.5 text-xs"
+                className="mx-1 h-9 rounded-md border border-stone-300 bg-white px-2 text-sm"
+              // className="mx-1 rounded border px-1 py-0.5 text-xs"
               >
                 {[10, 25, 50, 100].map(n => (
                   <option key={n} value={n}>{n}</option>
@@ -228,18 +230,22 @@ export default function DynamicTable<T extends Record<string, any>>({
               {/* FILTER */}
               <button
                 onClick={() => setShowFilter(v => !v)}
-                className="relative rounded border px-2 py-1 text-xs hover:bg-muted"
+                className="relative h-9 rounded-md border border-stone-300 bg-white px-4 text-sm text-stone-900 hover:bg-stone-50"
+              // className="relative rounded border px-2 py-1 text-xs hover:bg-muted"
               >
                 Filter
                 {activeFilterCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] px-1.5 rounded-full">
+                  <span
+                    className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] px-1.5 rounded-full">
+                    {/* // className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] px-1.5 rounded-full"> */}
                     {activeFilterCount}
                   </span>
                 )}
               </button>
 
               {/* SEARCH */}
-              <div className="flex items-center gap-1 border rounded px-2 py-0.5">
+              {/* <div className="flex items-center gap-1 border rounded px-2 py-0.5"> */}
+              <div className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3">
                 <Search size={13} />
                 <input
                   type="search"
@@ -249,7 +255,8 @@ export default function DynamicTable<T extends Record<string, any>>({
                     setSearch(e.target.value)
                     setPage(1)
                   }}
-                  className="outline-none text-xs w-32"
+                  // className="outline-none text-xs w-32"
+                  className="w-40 bg-transparent text-sm outline-none placeholder:text-stone-400"
                 />
               </div>
 
@@ -405,10 +412,12 @@ export default function DynamicTable<T extends Record<string, any>>({
       )}
 
       {/* TABLE */}
-      <div className="overflow-auto border rounded mx-3">
-        <table className="w-full text-xs">
-
-          <thead className="bg-muted sticky top-0">
+      {/* <div className="overflow-auto border rounded mx-3"> */}
+      <div className="overflow-x-auto">
+        {/* <table className="w-full text-xs"> */}
+        <table className="min-w-full text-xs">
+          {/* <thead className="bg-muted sticky top-0"> */}
+          <thead className="sticky top-0 bg-stone-100">
             <tr>
               {columns.map(col => {
                 const isSorted = sort.key === col.key
@@ -416,20 +425,32 @@ export default function DynamicTable<T extends Record<string, any>>({
                   <th
                     key={String(col.key)}
                     onClick={() => handleSort(String(col.key))}
-                    className="px-2 py-1 font-semibold cursor-pointer whitespace-nowrap"
+                    className="h-9 whitespace-nowrap px-3 text-left align-middle text-[11px] font-semibold uppercase text-stone-700 cursor-pointer"
+                  // className="px-2 py-1 font-semibold cursor-pointer whitespace-nowrap"
                   >
-                    <div className="flex items-center gap-1">
+                    {/* <div className="flex items-center gap-1"> */}
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       {col.label}
-                      {isSorted
-                        ? sort.direction === 'asc'
-                          ? <MoveUp size={12} />
-                          : <MoveDown size={12} />
-                        : (
-                          <div className="opacity-30 flex">
-                            <MoveUp size={12} />
-                            <MoveDown size={12} className="-ml-1" />
-                          </div>
-                        )}
+                      {/* {isSorted
+                      ? sort.direction === 'asc'
+                        ? <MoveUp size={12} />
+                        : <MoveDown size={12} />
+                      : (
+                        <div className="opacity-30 flex">
+                          <MoveUp size={12} />
+                          <MoveDown size={12} className="-ml-1" />
+                        </div>
+                      )} */}
+
+                      {isSorted ? (
+                        sort.direction === "asc" ? (
+                          <ArrowUp className="size-3.5" />
+                        ) : (
+                          <ArrowDown className="size-3.5" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="size-3.5 text-stone-400" />
+                      )}
                     </div>
                   </th>
                 )
@@ -451,9 +472,16 @@ export default function DynamicTable<T extends Record<string, any>>({
               ))}
             {!loading &&
               paginatedData.map((row, i) => (
-                <tr key={i} className="border-t hover:bg-muted/40">
+                // <tr key={i} className="border-t hover:bg-muted/40">
+                <tr
+                  key={i}
+                  className="border-stone-200 odd:bg-white even:bg-stone-50/70"
+                >
                   {columns.map((col, i) => (
-                    <td key={i} className="px-2 py-1  whitespace-nowrap">
+                    <td key={i}
+                      // className="px-2 py-1  whitespace-nowrap"
+                      className="px-3 py-3 align-middle whitespace-nowrap text-stone-800"
+                    >
                       {(() => {
                         const value = row[col.key as keyof T]
 
@@ -476,9 +504,10 @@ export default function DynamicTable<T extends Record<string, any>>({
       </div>
 
       {/* FOOTER */}
-      {data.length > 0 &&
-        <div className="flex justify-between items-center px-4 pb-2 text-xs text-muted-foreground">
-
+      {
+        data.length > 0 &&
+        // <div className="flex justify-between items-center px-4 pb-2 text-xs text-muted-foreground">
+        <div className="flex flex-col gap-3 border-t border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-700 sm:flex-row sm:items-center sm:justify-between">
           <div className='flex gap-1'>
             <span> {(page - 1) * pageSize + 1} </span> <span>–</span>
             {Math.min(page * pageSize, sortedData.length)}
@@ -490,7 +519,8 @@ export default function DynamicTable<T extends Record<string, any>>({
             <button
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
-              className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
+              className="h-9 rounded-md border border-stone-300 bg-white px-4 disabled:opacity-40"
+            // className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
             >
               Prev
             </button>
@@ -498,7 +528,8 @@ export default function DynamicTable<T extends Record<string, any>>({
             <button
               disabled={page >= totalPages}
               onClick={() => setPage(p => p + 1)}
-              className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
+              className="h-9 rounded-md border border-stone-300 bg-white px-4 disabled:opacity-40"
+            // className="border-2 px-2 py-0.5 rounded disabled:opacity-40"
             >
               Next
             </button>
@@ -508,12 +539,14 @@ export default function DynamicTable<T extends Record<string, any>>({
         </div>
       }
 
-      {data.length === 0 && (
-        <div className="text-center text-muted-foreground py-4 text-xs">
-          No data available
-        </div>
-      )}
+      {
+        data.length === 0 && (
+          <div className="text-center text-muted-foreground py-4 text-xs">
+            No data available
+          </div>
+        )
+      }
 
-    </div>
+    </div >
   )
 }

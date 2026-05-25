@@ -319,9 +319,8 @@ const toggleColumnPermissions = async (
     )
 }
     return (
-        <div className="space-y-4 bg-muted/20 min-h-screen p-4">
+        <div className="space-y-4 bg-muted/20 min-h-screen">
 
-            {/* Top Bar */}
             <div className="rounded-lg border  p-4 bg-white">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
 

@@ -353,7 +353,7 @@ export default function Layout() {
           <TabsTrigger value="Permissions">Permissions</TabsTrigger>
         </TabsList>
         <TabsContent value="account">
-          <form className="space-y-4">
+          <form className="">
             {/* <SuperUser /> */}
 
             <div className="bg-white p-4 rounded-md">
@@ -424,7 +424,7 @@ export default function Layout() {
 
         </TabsContent>
         <TabsContent value="Permissions">
-          <div className="px-4">
+          <div className="">
             {/* <RuleAndPerm
               userId={authSelected?.auth_id || '0'}
             /> */}
