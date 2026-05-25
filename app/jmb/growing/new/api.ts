@@ -76,6 +76,23 @@ const growingSelect = `
   female_feedtype:tbl_feedtype!fk_tbl_growing_female_feedtype(description,uom)
 `;
 
+const growingHistorySelect = `
+  *,
+  placement:tbl_placement!fk_tbl_growing_placement!inner(
+    id,
+    placement_date,
+    dr_no,
+    farm_id,
+    farm_name,
+    building_no,
+    pen_no,
+    f_endingbalance,
+    m_endingbalance
+  ),
+  male_feedtype:tbl_feedtype!fk_tbl_growing_male_feedtype(description,uom),
+  female_feedtype:tbl_feedtype!fk_tbl_growing_female_feedtype(description,uom)
+`;
+
 export async function listGrowings() {
   const { data, error } = await db
     .from(GROWING_TABLE)
@@ -84,6 +101,29 @@ export async function listGrowings() {
     .order("daterec", { ascending: false })
     .order("id", { ascending: false });
 
+  if (error) throw error;
+  return (data ?? []) as Growing[];
+}
+
+export async function listGrowingHistoryByFarm(params: {
+  farmId?: number | null;
+  farmName?: string | null;
+}) {
+  let query = db
+    .from(GROWING_TABLE)
+    .select(growingHistorySelect)
+    .eq("isactive", true)
+    .order("daterec", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(50);
+
+  if (params.farmId) {
+    query = query.eq("placement.farm_id", params.farmId);
+  } else if (params.farmName) {
+    query = query.eq("placement.farm_name", params.farmName);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as Growing[];
 }
