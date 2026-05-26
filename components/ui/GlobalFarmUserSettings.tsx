@@ -89,7 +89,8 @@ export default function GlobalFarmUserSettings() {
 
   /**
    * Handle farm selection
-   */
+   **/
+
   const handleSelectFarm = (farm: Farm) => {
     setValue("DefaultFarmId", farm.id);
     setDefaultFarm(farm);

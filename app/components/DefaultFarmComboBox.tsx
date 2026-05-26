@@ -6,17 +6,17 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { AuthUser } from '../admin/user/new/Layout'
 
 type Params = {
-    label: string
+    label?: string | null
     setValue: (value: any) => void
     value: any
 }
 
 export default function DefaultFarmComboBox({
-    label,
+    label = "",
     setValue,
     value,
 }: Params) {
-// commit to build
+    // commit to build
     const { getValue } = useGlobalContext()
 
     const [farmList, setFarmList] = useState<any[]>([])
@@ -70,7 +70,7 @@ export default function DefaultFarmComboBox({
         <>
             <SearchableCombobox
                 required
-                label={label}
+                label={label ? label : ""}
                 showCode
                 items={farmList}
                 value={value ?? ''}

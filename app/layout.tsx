@@ -12,6 +12,7 @@ import AppSideBarControler from "@/lib/sidebar/AppSideBarControler";
 import { Toaster } from "sonner";
 import RouteGuard from '@/lib/SignupUpdateGuard';
 import GlobalLoaderController from '@/lib/context/GlobalLoaderController';
+import DefaultFarm from './utils/DefaultFarm';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,12 +62,15 @@ export default function RootLayout({
                     </main>
                   </div>
                 </SidebarProvider>
+                <DefaultFarm/>
               </FloatingDialogProvider>
 
             </ConfirmProvider>
             <Toaster position='top-center' />
           </ThemeProvider>
         </GlobalProvider>
+
+
       </body>
     </html>
   );

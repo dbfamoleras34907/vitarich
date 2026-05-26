@@ -555,8 +555,8 @@ export default function Chickgradingform() {
                         />
                       </SelectTrigger>
                       <SelectContent>
-                        {eggRefs.map((r) => (
-                          <SelectItem key={r} value={r}>
+                        {eggRefs.map((r,i) => (
+                          <SelectItem key={i} value={r}>
                             {r}
                           </SelectItem>
                         ))}

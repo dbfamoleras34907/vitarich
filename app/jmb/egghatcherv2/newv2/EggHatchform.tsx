@@ -50,8 +50,8 @@ import {
   createEggHatcheryProcess,
   deleteEggHatcheryProcess,
   getEggHatcheryProcessById,
+  listClassiRefNos,
   updateEggHatcheryProcess,
-  listClassiRefNos, // ✅ NEW
 } from "./api";
 
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -90,8 +90,6 @@ function fmtDuration(mins: number | null) {
 }
 
 export default function EggHatchform() {
-
-
   // const router = useRouter();
   // const sp = useSearchParams();
   // const idParam = sp.get("id");
@@ -110,8 +108,6 @@ export default function EggHatchform() {
     [eggRefs],
   );
 
-
-
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -120,14 +116,11 @@ export default function EggHatchform() {
   const editId = idParam ? Number(idParam) : null;
 
   const isEdit =
-    typeof editId === "number" &&
-    Number.isFinite(editId) &&
-    editId > 0;
+    typeof editId === "number" && Number.isFinite(editId) && editId > 0;
   const canView = usePermission("/jmb/egghatcherv2/insert");
   const canEdit = usePermission("/jmb/egghatcherv2/edit");
 
   useEffect(() => {
-
     // wait for permissions
     if (canView === null || canEdit === null) {
       return;
@@ -141,11 +134,7 @@ export default function EggHatchform() {
     if (!isEdit && canView) {
       router.replace("/jmb/egghatcherv2");
     }
-
   }, [isEdit, canEdit, canView, router]);
-
-
-
 
   const [form, setForm] = useState({
     egg_ref: "",
@@ -346,9 +335,7 @@ export default function EggHatchform() {
                     onChange={(v) => setField("egg_ref", v)}
                     disabled={eggRefsLoading || saving}
                     placeholder={
-                      eggRefsLoading
-                        ? "Loading..."
-                        : "Select Egg Reference No."
+                      eggRefsLoading ? "Loading..." : "Select Egg Reference No."
                     }
                   />
                 </div>
