@@ -6,6 +6,10 @@ export type HatchClassiRefOption = {
   good_egg: number | null;
 };
 
+type SetterRefNoViewRow = {
+  egg_ref_no: string | null;
+};
+
 export type SetterRefHistory = {
   ref_no: string | null;
   qty_set_egg: number | null;
@@ -13,13 +17,37 @@ export type SetterRefHistory = {
 
 export async function listHatchClassiRefs(): Promise<HatchClassiRefOption[]> {
   const { data, error } = await db
-    .from("hatch_classification")
-    .select("classi_ref_no, good_egg")
-    .not("classi_ref_no", "is", null)
-    .order("created_at", { ascending: false });
+    .from("view_setter_ref_no")
+    .select("egg_ref_no")
+    .not("egg_ref_no", "is", null)
+    .order("egg_ref_no", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as HatchClassiRefOption[];
+
+  const refs = ((data ?? []) as SetterRefNoViewRow[])
+    .map((row) => String(row.egg_ref_no ?? "").trim())
+    .filter(Boolean);
+
+  if (!refs.length) return [];
+
+  const { data: hatchRows, error: hatchError } = await db
+    .from("hatch_classification")
+    .select("classi_ref_no, good_egg")
+    .in("classi_ref_no", refs);
+
+  if (hatchError) throw hatchError;
+
+  const goodEggMap = new Map(
+    ((hatchRows ?? []) as HatchClassiRefOption[]).map((row) => [
+      row.classi_ref_no,
+      row.good_egg,
+    ]),
+  );
+
+  return refs.map((ref) => ({
+    classi_ref_no: ref,
+    good_egg: goodEggMap.get(ref) ?? null,
+  }));
 }
 
 export type SetterIncubation = {
