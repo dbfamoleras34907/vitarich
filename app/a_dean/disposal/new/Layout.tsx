@@ -211,7 +211,6 @@ export default function Layout() {
                   onChange={(val) => setHeaderData(h => ({ ...h, [e.code]: val }))}
                 /> : e.type === "farm" ?
                   <DefaultFarmComboBox
-                    label="Farm"
                     value={headerData[e.code] || ""}
                     setValue={(val) => setHeaderData(h => ({ ...h, [e.code]: val }))}
                   />
