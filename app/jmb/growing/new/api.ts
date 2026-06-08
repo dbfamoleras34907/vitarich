@@ -150,6 +150,16 @@ export async function createGrowing(payload: GrowingInsert) {
   return data as Growing;
 }
 
+export async function createGrowingBatch(payloads: GrowingInsert[]) {
+  const { data, error } = await db
+    .from(GROWING_TABLE)
+    .insert(payloads)
+    .select("*");
+
+  if (error) throw error;
+  return (data ?? []) as Growing[];
+}
+
 export async function updateGrowing(id: number, payload: GrowingUpdate) {
   const { data, error } = await db
     .from(GROWING_TABLE)
@@ -182,11 +192,11 @@ export async function listFeedTypes() {
   const { data, error } = await db
     .from(FEEDTYPE_TABLE)
     .select("id, description, uom, isactive")
-    .eq("isactive", true)
+    .not("description", "is", null)
     .order("description", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as FeedType[];
+  return (data ?? []).filter((row) => row.description?.trim()) as FeedType[];
 }
 
 export async function listGrowingPlacements() {
@@ -195,6 +205,11 @@ export async function listGrowingPlacements() {
     .select(
       "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
+    .not("farm_name", "is", null)
+    .not("building_no", "is", null)
+    .order("farm_name", { ascending: true })
+    .order("building_no", { ascending: true })
+    .order("pen_no", { ascending: true })
     .order("placement_date", { ascending: false })
     .order("id", { ascending: false });
 

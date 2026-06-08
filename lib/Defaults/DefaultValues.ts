@@ -441,7 +441,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 3,
             type: "Module",
-            title: "Growing Period",
+            title: "Population Record",
             url: "/jmb/growing",
           },
 
@@ -1003,27 +1003,27 @@ export function getInventoriableModules(navFolders: NavFolder[]) {
 }
 
 export const regionList: CodeNameBase[] = [
-  { code: 'NCR', name: 'National Capital Region (NCR)' },
-  { code: 'CAR', name: 'Cordillera Administrative Region (CAR)' },
-  { code: '01', name: 'Ilocos Region' },
-  { code: '02', name: 'Cagayan Valley' },
-  { code: '03', name: 'Central Luzon' },
-  { code: '04A', name: 'CALABARZON' },
-  { code: '04B', name: 'MIMAROPA' },
-  { code: '05', name: 'Bicol Region' },
-  { code: '06', name: 'Western Visayas' },
-  { code: '07', name: 'Central Visayas' },
-  { code: '08', name: 'Eastern Visayas' },
-  { code: '09', name: 'Zamboanga Peninsula' },
-  { code: '10', name: 'Northern Mindanao' },
-  { code: '11', name: 'Davao Region' },
-  { code: '12', name: 'SOCCSKSARGEN' },
-  { code: '13', name: 'Caraga' },
-  { code: 'BARMM', name: 'Bangsamoro Autonomous Region in Muslim Mindanao' }
-]
+  { code: "NCR", name: "National Capital Region (NCR)" },
+  { code: "CAR", name: "Cordillera Administrative Region (CAR)" },
+  { code: "01", name: "Ilocos Region" },
+  { code: "02", name: "Cagayan Valley" },
+  { code: "03", name: "Central Luzon" },
+  { code: "04A", name: "CALABARZON" },
+  { code: "04B", name: "MIMAROPA" },
+  { code: "05", name: "Bicol Region" },
+  { code: "06", name: "Western Visayas" },
+  { code: "07", name: "Central Visayas" },
+  { code: "08", name: "Eastern Visayas" },
+  { code: "09", name: "Zamboanga Peninsula" },
+  { code: "10", name: "Northern Mindanao" },
+  { code: "11", name: "Davao Region" },
+  { code: "12", name: "SOCCSKSARGEN" },
+  { code: "13", name: "Caraga" },
+  { code: "BARMM", name: "Bangsamoro Autonomous Region in Muslim Mindanao" },
+];
 
 export const islandGrouplist: CodeNameBase[] = [
-  { code: 'l', name: 'Luzon' },
-  { code: 'v', name: 'Visayas' },
-  { code: 'm', name: 'Mindanao' }
-]
+  { code: "l", name: "Luzon" },
+  { code: "v", name: "Visayas" },
+  { code: "m", name: "Mindanao" },
+];

@@ -26,7 +26,12 @@ import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useConfirm, withConfirmProvider } from "@/lib/ConfirmProvider";
-import { deletePlacement, listPlacements, type Placement } from "./new/api";
+import {
+  deletePlacement,
+  listPlacementIdsWithGrowingOrLaying,
+  listPlacements,
+  type Placement,
+} from "./new/api";
 
 function formatDate(value?: string | null) {
   if (!value) return "";
@@ -46,6 +51,9 @@ function PlacementTableInner() {
   const { setValue } = useGlobalContext();
 
   const [items, setItems] = useState<Placement[]>([]);
+  const [lockedPlacementIds, setLockedPlacementIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -55,10 +63,15 @@ function PlacementTableInner() {
   async function fetchData() {
     setLoading(true);
     try {
-      const data = await listPlacements();
+      const [data, lockedIds] = await Promise.all([
+        listPlacements(),
+        listPlacementIdsWithGrowingOrLaying(),
+      ]);
       setItems(Array.isArray(data) ? data : []);
+      setLockedPlacementIds(new Set(lockedIds));
     } catch {
       setItems([]);
+      setLockedPlacementIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -81,6 +94,8 @@ function PlacementTableInner() {
   }, [loading, setValue]);
 
   async function handleDelete(row: Placement) {
+    if (lockedPlacementIds.has(row.id)) return;
+
     const approved = await confirm({
       title: "Delete placement record?",
       description: `This will permanently delete DR No. ${row.dr_no} / Pen ${row.pen_no}.`,
@@ -111,24 +126,38 @@ function PlacementTableInner() {
       id: "action",
       header: "Action",
       enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <EditActionButton
-            id={row.original.id}
-            href={(id) => `/jmb/placement/new?id=${id}`}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => handleDelete(row.original)}
-            className="h-8 px-3 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
-          >
-            <Trash2 className="mr-1 h-4 w-4" />
-            Delete
-          </Button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const isLocked = lockedPlacementIds.has(row.original.id);
+        const title = isLocked
+          ? "Placement already has population or laying production records"
+          : undefined;
+
+        return (
+          <div className="flex items-center gap-2">
+            <EditActionButton
+              id={row.original.id}
+              href={(id) => `/jmb/placement/new?id=${id}`}
+              title={
+                isLocked
+                  ? "Edit placement. Date is locked because related records exist."
+                  : "Edit"
+              }
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              title={title}
+              disabled={isLocked}
+              onClick={() => handleDelete(row.original)}
+              className="h-8 px-3 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="mr-1 h-4 w-4" />
+              Delete
+            </Button>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "placement_date",

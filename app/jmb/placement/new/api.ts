@@ -2,6 +2,8 @@ import { db } from "@/lib/Supabase/supabaseClient";
 import { DefaultFarm } from "@/lib/types";
 
 const TABLE = "tbl_placement";
+const GROWING_TABLE = "tbl_growing";
+const EGG_LAYING_TABLE = "tbl_egglaying";
 const BREEDER_SOURCE_TABLE = "tbl_breeder_source";
 const FARM_LOCATION_LOOKUP_VIEW = "view_farm_location_lookup";
 
@@ -68,6 +70,54 @@ export async function listPlacements() {
 
   if (error) throw error;
   return (data ?? []) as Placement[];
+}
+
+export async function listPlacementIdsWithGrowingOrLaying() {
+  const [growingResult, layingResult] = await Promise.all([
+    db
+      .from(GROWING_TABLE)
+      .select("placement_id")
+      .eq("isactive", true)
+      .not("placement_id", "is", null),
+    db
+      .from(EGG_LAYING_TABLE)
+      .select("placement_id")
+      .eq("is_active", true)
+      .not("placement_id", "is", null),
+  ]);
+
+  if (growingResult.error) throw growingResult.error;
+  if (layingResult.error) throw layingResult.error;
+
+  return Array.from(
+    new Set(
+      [...(growingResult.data ?? []), ...(layingResult.data ?? [])]
+        .map((row) => row.placement_id)
+        .filter((id): id is number => typeof id === "number"),
+    ),
+  );
+}
+
+export async function placementHasGrowingOrLaying(id: number) {
+  const [growingResult, layingResult] = await Promise.all([
+    db
+      .from(GROWING_TABLE)
+      .select("id")
+      .eq("placement_id", id)
+      .eq("isactive", true)
+      .limit(1),
+    db
+      .from(EGG_LAYING_TABLE)
+      .select("id")
+      .eq("placement_id", id)
+      .eq("is_active", true)
+      .limit(1),
+  ]);
+
+  if (growingResult.error) throw growingResult.error;
+  if (layingResult.error) throw layingResult.error;
+
+  return Boolean(growingResult.data?.length || layingResult.data?.length);
 }
 
 export async function getPlacementById(id: number) {

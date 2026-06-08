@@ -26,6 +26,7 @@ import {
   getUserInfo,
   listBreederSources,
   listFarmLocationLookup,
+  placementHasGrowingOrLaying,
   updatePlacement,
   type FarmLocationLookup,
   type PlacementInsert,
@@ -106,6 +107,12 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function withoutPlacementDate(payload: PlacementInsert) {
+  const { placement_date: placementDate, ...rest } = payload;
+  void placementDate;
+  return rest;
+}
+
 const TableWidths = {
   tableMin: "min-w-[344px]",
   pen: "w-8",
@@ -123,6 +130,7 @@ export default function PlacementForm() {
 
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
+  const [hasDependentRecords, setHasDependentRecords] = useState(false);
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
@@ -261,9 +269,13 @@ export default function PlacementForm() {
     (async () => {
       setLoadingRecord(true);
       try {
-        const record = await getPlacementById(id);
+        const [record, isLocked] = await Promise.all([
+          getPlacementById(id),
+          placementHasGrowingOrLaying(id),
+        ]);
         if (!mounted) return;
 
+        setHasDependentRecords(isLocked);
         setForm({
           placement_date: record.placement_date ?? getToday(),
           dr_no: record.dr_no ?? "",
@@ -305,6 +317,7 @@ export default function PlacementForm() {
 
   const totalPens = useMemo(() => rows.length, [rows]);
   const disabledAll = saving || loadingRecord;
+  const disablePlacementDate = disabledAll || (isEdit && hasDependentRecords);
   const farmOptions = useMemo(() => {
     const values = new Map<string, string>();
     locations.forEach((location) => {
@@ -499,7 +512,10 @@ export default function PlacementForm() {
       if (isEdit) {
         const id = Number(idParam);
         if (!Number.isFinite(id)) throw new Error("Invalid placement id.");
-        await updatePlacement(id, payloads[0]);
+        await updatePlacement(
+          id,
+          hasDependentRecords ? withoutPlacementDate(payloads[0]) : payloads[0],
+        );
       } else if (payloads.length === 1) {
         await createPlacement(payloads[0]);
       } else {
@@ -538,7 +554,7 @@ export default function PlacementForm() {
                       placement_date: e.target.value,
                     }))
                   }
-                  disabled={disabledAll}
+                  disabled={disablePlacementDate}
                 />
               </div>
 
