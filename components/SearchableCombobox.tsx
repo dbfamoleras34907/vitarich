@@ -187,7 +187,7 @@ export default function SearchableCombobox(props: Props) {
       </div>
 
       <Combobox
-      
+
         open={open}
         onOpenChange={(o) => {
           setOpen(o)
@@ -220,7 +220,7 @@ export default function SearchableCombobox(props: Props) {
           }
         }}
       >
-        
+
         <ComboboxChips ref={anchor} className={`${className} border  border-black/10 `}>
           <ComboboxValue >
             {(values) => {
@@ -257,7 +257,7 @@ export default function SearchableCombobox(props: Props) {
               const item = items.find((f) => f.code === val)
 
               return (
-                <ComboboxChipsInput 
+                <ComboboxChipsInput
                   value={formatLabel(item)}
                   readOnly
                 />
@@ -343,78 +343,78 @@ export default function SearchableCombobox(props: Props) {
           )}
 
           <ComboboxList>
-            {(item: ComboboxItemType) => (
+            {(item: ComboboxItemType, index: number) => (
               <ComboboxItem
-                key={item.code}
+                key={`${item.code}-${index}`}
                 value={item.code}
               >
                 {formatLabel(item)}
               </ComboboxItem>
             )}
           </ComboboxList>
-        </ComboboxContent>
+      </ComboboxContent>
 
-        <Dialog
-          open={showModal}
-          onOpenChange={setShowModal}
-        >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                Selected Items
-              </DialogTitle>
-            </DialogHeader>
+      <Dialog
+        open={showModal}
+        onOpenChange={setShowModal}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Selected Items
+            </DialogTitle>
+          </DialogHeader>
 
-            <Input
-              placeholder="Search selected..."
-              value={modalSearch}
-              onChange={(e) =>
-                setModalSearch(e.target.value)
-              }
-              className="mb-2"
-            />
+          <Input
+            placeholder="Search selected..."
+            value={modalSearch}
+            onChange={(e) =>
+              setModalSearch(e.target.value)
+            }
+            className="mb-2"
+          />
 
-            <div className="max-h-75 overflow-auto space-y-2">
-              {modalFiltered.length === 0 && (
-                <div className="text-sm text-muted-foreground">
-                  No items found.
-                </div>
-              )}
+          <div className="max-h-75 overflow-auto space-y-2">
+            {modalFiltered.length === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No items found.
+              </div>
+            )}
 
-              {modalFiltered.map((item) => (
-                <div
-                  key={item.code}
-                  className="flex items-center justify-between border rounded-md px-3 py-2"
-                >
-                  <span className="text-sm">
-                    {formatLabel(item)}
-                  </span>
+            {modalFiltered.map((item) => (
+              <div
+                key={item.code}
+                className="flex items-center justify-between border rounded-md px-3 py-2"
+              >
+                <span className="text-sm">
+                  {formatLabel(item)}
+                </span>
 
-                  <button
-                    className="text-xs text-red-500 hover:underline"
-                    onClick={() => {
-                      if (!props.multiple)
-                        return
+                <button
+                  className="text-xs text-red-500 hover:underline"
+                  onClick={() => {
+                    if (!props.multiple)
+                      return
 
-                      const current =
-                        normalizedValue as string[]
+                    const current =
+                      normalizedValue as string[]
 
-                      props.onValueChange(
-                        current.filter(
-                          (v) =>
-                            v !== item.code
-                        )
+                    props.onValueChange(
+                      current.filter(
+                        (v) =>
+                          v !== item.code
                       )
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </Combobox>
-    </div>
+                    )
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Combobox>
+    </div >
   )
 }

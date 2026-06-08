@@ -612,7 +612,7 @@ export const NavFolders: NavFolder[] = [
             section: "HA",
             view: true,
             insert: true,
-            edit: true,
+            edit: false,
           },
 
           {

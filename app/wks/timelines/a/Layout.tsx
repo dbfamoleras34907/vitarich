@@ -175,7 +175,7 @@ export default function Layout() {
     printWindow.document.write(`
     <html>
       <head>
-        <title>Timesheet Report</title>
+        <title>SYSTEM UPDATE TEST</title>
 
         <style>
           @page {
