@@ -557,6 +557,7 @@ export interface NavPermission {
   view?: boolean;
   insert?: boolean;
   edit?: boolean;
+  void?: boolean;
 }
 
 export interface NavChild extends NavPermission {

@@ -527,6 +527,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -537,6 +538,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Classification",
             url: "/jmb/hatcheryclassi",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -549,6 +551,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -559,6 +562,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Pre-Warming Process",
             url: "/jmb/prewarmingv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -569,6 +573,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Setter",
             url: "/jmb/eggsetter",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -579,6 +584,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Transfer Process",
             url: "/jmb/eggtransferv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -589,6 +595,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Hatcher Process",
             url: "/jmb/egghatcherv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -599,6 +606,7 @@ export const NavFolders: NavFolder[] = [
             title: "Chick Pullout Process",
             url: "/jmb/chickpulloutv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -611,6 +619,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -623,6 +632,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -635,6 +645,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -911,6 +922,7 @@ export const NavFolders: NavFolder[] = [
             title: "Permission Template",
             url: "/admin/permissions",
             view: true,
+            void: false,
             insert: false,
             edit: false,
           },
@@ -949,13 +961,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-  { code: "todo", name: "To Do", color: "gray" },
-  { code: "in_progress", name: "In Progress", color: "blue" },
-  { code: "in_review", name: "In Review", color: "purple" },
-  { code: "blocked", name: "Blocked", color: "red" },
-  { code: "done", name: "Done", color: "green" },
-  { code: "reopened", name: "Reopened", color: "orange" },
-];
+    { code: "todo", name: "To Do", color: "gray" },
+    { code: "in_progress", name: "In Progress", color: "blue" },
+    { code: "in_review", name: "In Review", color: "purple" },
+    { code: "blocked", name: "Blocked", color: "red" },
+    { code: "done", name: "Done", color: "green" },
+    { code: "reopened", name: "Reopened", color: "orange" },
+  ];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -964,12 +976,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-  // { code: "highest", name: "Highest", color: "red" },
-  { code: "high", name: "High", color: "orange" },
-  { code: "medium", name: "Medium", color: "yellow" },
-  { code: "low", name: "Low", color: "blue" },
-  // { code: "lowest", name: "Lowest", color: "gray" },
-];
+    // { code: "highest", name: "Highest", color: "red" },
+    { code: "high", name: "High", color: "orange" },
+    { code: "medium", name: "Medium", color: "yellow" },
+    { code: "low", name: "Low", color: "blue" },
+    // { code: "lowest", name: "Lowest", color: "gray" },
+  ];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
