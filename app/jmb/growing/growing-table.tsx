@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ColumnDef,
@@ -14,16 +14,25 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { ClassificationTableSection } from "@/components/classification/ClassificationTable";
-import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useConfirm, withConfirmProvider } from "@/lib/ConfirmProvider";
-import { deleteGrowing, listGrowings, type Growing } from "./new/api";
+import { listGrowingPlacements, type GrowingPlacement } from "./new/api";
+
+type PopulationRecord = {
+  id: number;
+  placement_date: string;
+  dr_no: string | null;
+  farm_id: number | null;
+  farm_name: string;
+  building_no: string;
+  net_placement: number;
+  age_days: number;
+};
 
 function formatDate(value?: string | null) {
   if (!value) return "";
@@ -32,37 +41,105 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString("en-CA");
 }
 
-function formatNumber(value?: number | null, decimals = 0) {
+function formatNumber(value?: number | null) {
   if (value == null || !Number.isFinite(Number(value))) return "";
-  return Number(value).toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  return Number(value).toLocaleString("en-US");
 }
 
-function getLocation(row: Growing) {
-  const placement = row.placement;
-  return [placement?.farm_name, placement?.building_no, placement?.pen_no]
-    .filter(Boolean)
-    .join(" / ");
+function getAgeInDays(placementDate?: string | null, endDate = new Date()) {
+  if (!placementDate) return 0;
+  const start = new Date(`${placementDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return 0;
+
+  const elapsedDays = Math.floor(
+    (Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()) -
+      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
+      86_400_000,
+  );
+
+  return elapsedDays < 0 ? 0 : elapsedDays + 1;
 }
 
-function GrowingTableInner() {
+function formatAgeWeeks(days: number) {
+  if (days <= 0) return "";
+  const elapsedDays = days - 1;
+  const weeks = Math.floor(elapsedDays / 7);
+  const weekDay = elapsedDays % 7;
+  return `${weeks}.7/${weekDay}`;
+}
+
+function getPlacementNet(row: GrowingPlacement) {
+  return Number(row.f_endingbalance ?? 0) + Number(row.m_endingbalance ?? 0);
+}
+
+function groupPlacementsByFarmBuilding(rows: GrowingPlacement[]) {
+  const groups = new Map<string, PopulationRecord>();
+
+  for (const row of rows) {
+    const farmName = row.farm_name ?? "";
+    const buildingNo = row.building_no ?? "";
+    const key = [row.farm_id ?? farmName, buildingNo].join("|");
+    const rowAgeDays = getAgeInDays(row.placement_date);
+    const existing = groups.get(key);
+
+    if (!existing) {
+      groups.set(key, {
+        id: row.id,
+        placement_date: row.placement_date,
+        dr_no: row.dr_no,
+        farm_id: row.farm_id ?? null,
+        farm_name: farmName,
+        building_no: buildingNo,
+        net_placement: getPlacementNet(row),
+        age_days: rowAgeDays,
+      });
+      continue;
+    }
+
+    const existingDate = new Date(`${existing.placement_date}T00:00:00`);
+    const rowDate = new Date(`${row.placement_date}T00:00:00`);
+    const useOlderPlacement =
+      !Number.isNaN(rowDate.getTime()) &&
+      (Number.isNaN(existingDate.getTime()) || rowDate < existingDate);
+
+    groups.set(key, {
+      ...existing,
+      id: useOlderPlacement ? row.id : existing.id,
+      placement_date: useOlderPlacement
+        ? row.placement_date
+        : existing.placement_date,
+      dr_no: useOlderPlacement ? row.dr_no : existing.dr_no,
+      net_placement: existing.net_placement + getPlacementNet(row),
+      age_days: Math.max(existing.age_days, rowAgeDays),
+    });
+  }
+
+  return Array.from(groups.values()).sort(
+    (a, b) =>
+      a.farm_name.localeCompare(b.farm_name) ||
+      a.building_no.localeCompare(b.building_no),
+  );
+}
+
+export default function GrowingTable() {
   const router = useRouter();
-  const confirm = useConfirm();
   const { setValue } = useGlobalContext();
 
-  const [items, setItems] = useState<Growing[]>([]);
+  const [items, setItems] = useState<GrowingPlacement[]>([]);
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const groupedItems = useMemo(
+    () => groupPlacementsByFarmBuilding(items),
+    [items],
+  );
 
   async function fetchData() {
     setLoading(true);
     try {
-      const data = await listGrowings();
+      const data = await listGrowingPlacements();
       setItems(Array.isArray(data) ? data : []);
     } catch {
       setItems([]);
@@ -78,6 +155,7 @@ function GrowingTableInner() {
   useEffect(() => {
     (async () => {
       router.prefetch("/jmb/growing/new");
+      router.prefetch("/jmb/growing/grading");
       await fetchData();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,29 +165,7 @@ function GrowingTableInner() {
     setValue("loading_g", loading);
   }, [loading, setValue]);
 
-  async function handleDelete(row: Growing) {
-    const approved = await confirm({
-      title: "Delete growing record?",
-      description: `This will remove the ${formatDate(row.daterec)} record for ${
-        getLocation(row) || `placement #${row.placement_id ?? row.id}`
-      }.`,
-      confirmText: "Delete",
-      cancelText: "Cancel",
-    });
-
-    if (!approved) return;
-
-    try {
-      await deleteGrowing(row.id);
-      await fetchData();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to delete growing.";
-      alert(message);
-    }
-  }
-
-  const columns: ColumnDef<Growing>[] = [
+  const columns: ColumnDef<PopulationRecord>[] = [
     {
       id: "row_no",
       header: "#",
@@ -122,87 +178,78 @@ function GrowingTableInner() {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          <EditActionButton
-            id={row.original.id}
-            href={(id) => `/jmb/growing/new?id=${id}`}
-          />
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            onClick={() => handleDelete(row.original)}
-            className="h-8 border-red-200 bg-red-50 px-3 text-red-600 hover:bg-red-100 hover:text-red-700"
+            onClick={() =>
+              router.push(`/jmb/growing/new?placementId=${row.original.id}`)
+            }
+            className="h-8 bg-green-600 px-3 text-white hover:bg-green-700"
           >
-            <Trash2 className="mr-1 h-4 w-4" />
-            Delete
+            Growing
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() =>
+              router.push(`/jmb/growing/grading?placementId=${row.original.id}`)
+            }
+            className="h-8 bg-sky-600 px-3 text-white hover:bg-sky-700"
+          >
+            Grading
           </Button>
         </div>
       ),
     },
     {
-      accessorKey: "daterec",
-      header: "Record Date",
-      cell: ({ row }) => formatDate(row.original.daterec),
+      accessorKey: "placement_date",
+      header: "Placement Date",
+      cell: ({ row }) => formatDate(row.original.placement_date),
     },
     {
-      id: "farm",
-      header: "Farm",
-      accessorFn: (row) => row.placement?.farm_name ?? "",
+      accessorKey: "dr_no",
+      header: "DR No.",
     },
     {
-      id: "building",
+      accessorKey: "farm_name",
+      header: "Farm Name",
+    },
+    {
+      accessorKey: "building_no",
       header: "Building",
-      accessorFn: (row) => row.placement?.building_no ?? "",
     },
     {
-      id: "pen",
-      header: "Pen",
-      accessorFn: (row) => row.placement?.pen_no ?? "",
+      id: "age",
+      header: "Age",
+      cell: ({ row }) => formatAgeWeeks(row.original.age_days),
     },
     {
-      accessorKey: "female_mortality",
-      header: "Female Mortality",
-      cell: ({ row }) => formatNumber(row.original.female_mortality),
+      id: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const isLaying = row.original.age_days >= 26 * 7;
+        return (
+          <span
+            className={
+              isLaying
+                ? "inline-flex rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700"
+                : "inline-flex rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700"
+            }
+          >
+            {isLaying ? "Laying" : "Growing"}
+          </span>
+        );
+      },
     },
     {
-      accessorKey: "female_feed_consumption",
-      header: "Female Feed",
-      cell: ({ row }) => formatNumber(row.original.female_feed_consumption, 2),
-    },
-    {
-      id: "female_feedtype",
-      header: "Female Feed Type",
-      accessorFn: (row) => row.female_feedtype?.description ?? "",
-    },
-    {
-      accessorKey: "female_body_weight",
-      header: "Female Body Weight",
-      cell: ({ row }) => formatNumber(row.original.female_body_weight, 2),
-    },
-    {
-      accessorKey: "male_mortality",
-      header: "Male Mortality",
-      cell: ({ row }) => formatNumber(row.original.male_mortality),
-    },
-    {
-      accessorKey: "male_feed_consumption",
-      header: "Male Feed",
-      cell: ({ row }) => formatNumber(row.original.male_feed_consumption, 2),
-    },
-    {
-      id: "male_feedtype",
-      header: "Male Feed Type",
-      accessorFn: (row) => row.male_feedtype?.description ?? "",
-    },
-    {
-      accessorKey: "male_body_weight",
-      header: "Male Body Weight",
-      cell: ({ row }) => formatNumber(row.original.male_body_weight, 2),
+      id: "net_placement",
+      header: "Net of Placement",
+      cell: ({ row }) => formatNumber(row.original.net_placement),
     },
   ];
 
   const table = useReactTable({
-    data: items,
+    data: groupedItems,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -224,36 +271,26 @@ function GrowingTableInner() {
     <div className="mt-4 rounded-md p-4">
       <Breadcrumb
         SecondPreviewPageName="Breeder"
-        CurrentPageName="Growing List"
+        CurrentPageName="Population Record"
       />
       <br />
 
       <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={fetchData}
-            disabled={loading}
-            className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
-          >
-            <RefreshCw className="size-4" />
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-
         <Button
           type="button"
-          onClick={() => router.push("/jmb/growing/new")}
+          variant="outline"
+          onClick={fetchData}
+          disabled={loading}
           className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
         >
-          New Growing
+          <RefreshCw className="size-4" />
+          {loading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 
       <ClassificationTableSection
         table={table}
-        title="Growing Period"
+        title="Population Record"
         tone="sky"
         isLoading={loading}
         colSpan={columns.length}
@@ -262,9 +299,11 @@ function GrowingTableInner() {
           <Input
             placeholder="Filter Farm Name"
             className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={(table.getColumn("farm")?.getFilterValue() as string) ?? ""}
+            value={
+              (table.getColumn("farm_name")?.getFilterValue() as string) ?? ""
+            }
             onChange={(event) =>
-              table.getColumn("farm")?.setFilterValue(event.target.value)
+              table.getColumn("farm_name")?.setFilterValue(event.target.value)
             }
           />
         }
@@ -272,5 +311,3 @@ function GrowingTableInner() {
     </div>
   );
 }
-
-export default withConfirmProvider(GrowingTableInner);
