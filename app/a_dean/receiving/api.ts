@@ -32,7 +32,7 @@ export async function getReceivingDraftPending() {
 
 export async function getReceivingList(): Promise<ReceivingListRow2[]> {
   const { data, error } = await db
-    .from('vwdmf_getreceived')
+    .from('vwdmf_getreceived') // to update the view 
     .select(`*
     `)
     .order('created_at', { ascending: false })

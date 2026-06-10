@@ -78,7 +78,7 @@ export default function DynamicTable<T extends Record<string, any>>({
       if (!f.columnKey || !f.value) continue
 
       const cell = String(row[f.columnKey as keyof T] ?? '').toLowerCase()
-      const value = f.value.toLowerCase()
+      const value = String(f.value ?? '').toLowerCase()
 
       let condition = false
 

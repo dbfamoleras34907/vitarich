@@ -86,7 +86,8 @@ export default function Layout() {
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
         { key: 'soldto', label: 'Delivered From', type: 'text', disabled: true },
-        { key: 'delivered_to', label: 'Delivered To', type: 'text', disabled: true },
+        { key: 'deliverted_to_id', label: 'Delivered To - Code ', type: 'text', disabled: true },
+        { key: 'delivered_to', label: 'Delivered To - Name', type: 'text', disabled: true },
         // { key: 'sku', label: 'Item', type: 'text', disabled: true },
         { key: 'actual_count', label: 'Total', type: 'text', disabled: true },
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
@@ -145,7 +146,7 @@ export default function Layout() {
                     copyTable(receivedRows)
                 },
             },
- 
+
 
         ]
     }
@@ -336,7 +337,6 @@ export default function Layout() {
                         }
                         }
                     ><Plus /> Receive Manually</Button>
-
                 </div>
             </div>
             <div className='my-4'></div>
@@ -347,15 +347,7 @@ export default function Layout() {
             {
                 <DynamicTable
                     loading={loading}
-                    // initialFilters={[
-                    //     {
-                    //         id: "",
-                    //         columnKey: 'status',
-                    //         operator: 'equals',
-                    //         value: 'Pending',
-                    //         joiner: 'and',
-                    //     },
-                    // ]}
+
                     columns={tableColumnsx.map((col) => ({
                         key: col.key,
                         label: col.label,
@@ -399,23 +391,24 @@ export default function Layout() {
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold mx-4">Received Items</h2>
                 </div>
-
-
-
                 <DynamicTable
                     loading={loadingReceived}
-                    initialFilters={[]} // show all records
+                    initialFilters={[
+                        {
+                            id: "",
+                            columnKey: 'deliverted_to_id',
+                            operator: 'equals',
+                            value: getValue("DefaultFarmId") ?? "",
+                            joiner: 'and',
+                        },
+                    ]}
                     columns={receivedColumns.map((col) => ({
                         key: col.key,
                         label: col.label,
                         align: 'left',
-
                         render: (row: RowDataKey) => {
-
                             if (col.key === 'actions') {
-
                                 const actions = getRowActions(row)
-
                                 return (
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
@@ -444,6 +437,8 @@ export default function Layout() {
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 )
+                            } else if (col.key === 'brdr_ref_no') {
+                                return <span className="bg-blue-200/80 text-blue-900  px-2 rounded-2xl font-bold  w-full">{row[col.key]}</span>
                             }
 
                             const value = row[col.key]

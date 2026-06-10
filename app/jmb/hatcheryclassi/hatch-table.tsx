@@ -33,11 +33,14 @@ import {
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import FarmDropdown from "@/components/ui/FarmDropdown";
 
 export default function HatchTable() {
   const router = useRouter();
+
   const [items, setItems] = useState<HatchClassificationRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
+  const [farmId, setfarmId] = useState(0)
   const [classifiedColumnFilters, setClassifiedColumnFilters] =
     useState<ColumnFiltersState>([]);
   const [classifiedColumnVisibility, setClassifiedColumnVisibility] =
@@ -56,7 +59,7 @@ export default function HatchTable() {
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
-  const { setValue } = useGlobalContext();
+  const { setValue, getValue } = useGlobalContext();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -116,7 +119,7 @@ export default function HatchTable() {
         enableSorting: false,
         cell: ({ row, table }) =>
           table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
+          table.getState().pagination.pageSize +
           row.index +
           1,
       },
@@ -175,16 +178,26 @@ export default function HatchTable() {
           </span>
         ),
       },
+
+      // {
+      //   accessorKey: "farm_id",
+      //   header: "Delivered To - Code",
+      //   cell: ({ row }) => (
+      //     <span>{row.original.farm_id ?? ""}</span>
+      //   ),
+      // },
+
       {
         accessorKey: "farm_name",
-        header: "Shipped To",
+        header: "Delivered To",
         cell: ({ row }) => (
           <span className="inline-flex items-center gap-1.5 leading-tight">
             <MapPin className="size-3.5 shrink-0 text-stone-500" />
-            {row.original.farm_name ?? ""}
+            {row.original.farm_id ?? ""} -  {row.original.farm_name ?? ""}
           </span>
         ),
       },
+
       { accessorKey: "plate_no", header: "Plate No" },
       { accessorKey: "driver", header: "Driver" },
       { accessorKey: "voyage_no", header: "Voyage No" },
@@ -219,7 +232,7 @@ export default function HatchTable() {
         enableSorting: false,
         cell: ({ row, table }) =>
           table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
+          table.getState().pagination.pageSize +
           row.index +
           1,
       },
@@ -334,9 +347,8 @@ export default function HatchTable() {
           className="flex items-center gap-2 rounded-md bg-white"
         >
           <RefreshCw
-            className={`size-4 ${
-              isLoading || isLoadingforClass ? "animate-spin" : ""
-            }`}
+            className={`size-4 ${isLoading || isLoadingforClass ? "animate-spin" : ""
+              }`}
           />
           Refresh
         </Button>
@@ -349,20 +361,29 @@ export default function HatchTable() {
         isLoading={isLoadingforClass}
         colSpan={columnsForClass.length}
         headerActions={
-          <Input
-            placeholder="Filter Breeder Ref. No."
-            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={
-              (tableForClass
-                .getColumn("brdr_ref_no")
-                ?.getFilterValue() as string) ?? ""
-            }
-            onChange={(e) =>
-              tableForClass
-                .getColumn("brdr_ref_no")
-                ?.setFilterValue(e.target.value)
-            }
-          />
+          <>
+            <Input
+              placeholder="Filter Breeder Ref. No."
+              className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+              value={
+                (tableForClass
+                  .getColumn("brdr_ref_no")
+                  ?.getFilterValue() as string) ?? ""
+              }
+              onChange={(e) =>
+                tableForClass
+                  .getColumn("brdr_ref_no")
+                  ?.setFilterValue(e.target.value)
+              }
+            />
+            <div className="max-w-4xl">
+              <FarmDropdown
+                returnHeader="id"
+                value={farmId}
+                defaultValue={getValue("DefaultFarmId") ?? ""}
+              />
+            </div>
+          </>
         }
       />
 

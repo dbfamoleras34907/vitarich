@@ -34,6 +34,8 @@ import "reactflow/dist/style.css";
 import { reverseChickGrading, reverseChickPullout, reverseClassification, reverseDispatch, reverseDisposal, reverseHatcher, reversePreWarming, reverseReceiving, reverseSetter, reverseStorage, reverseTransfer } from "./api";
 import { useConfirm } from "@/lib/ConfirmProvider";
 import { toast } from "sonner";
+import { usePermission } from "@/hooks/usePermission";
+// import { useRouteChecking } from "@/hooks/userRouteChecking";
 
 const icons: Record<string, any> = {
     RECEIVING: ClipboardCheck,
@@ -114,16 +116,46 @@ function TraceNode({ data, }: { data: any; }) {
 const nodeTypes = { trace: TraceNode, };
 
 export default function TraceTimeline() {
+
+
+    const canVoidReceiving = usePermission('/a_dean/receiving/void')
+    const canVoidEggClassification = usePermission('/jmb/hatcheryclassi/void')
+    const canVoidEggStorage = usePermission('/jmb/eggstorage/void')
+    const canVoidEggSetter = usePermission('/jmb/eggsetter/void')
+    const canVoidEggPreWarmingProcess = usePermission('/jmb/prewarmingv2/void')
+    const canVoidEggTransferProcess = usePermission('/jmb/eggtransferv2/void')
+    const canVoidDisposal = usePermission('/a_dean/disposal/void')
+    const canVoidChickPulloutProcess = usePermission('/jmb/chickpulloutv2/void')
+    const canVoidDOCClassification = usePermission('/jmb/docclassification/void')
+    const canVoidEggHatcherProcess = usePermission('/jmb/egghatcherv2/void')
+    const canVoidDOCDispatch = usePermission('/jmb/docdispatchv2/void')
+
+
     const [modalState, setmodalState] = useState(false)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const confirm = useConfirm()
-
+    // const { checkRoute } = useRouteChecking();
     const [cardinfo, setcardinfo] = useState({
         title: "",
         ref: "",
         id: "",
         date: ""
     })
+
+    const viewRoutes: Record<string, string> = {
+        CLASSIFICATION: "/jmb/hatcheryclassi/view/",
+        STORAGE: "/jmb/eggstorage/view/",
+        PRE_WARMING: "/jmb/prewarmingv2/view/",
+        SETTER: "/jmb/eggsetter/view/",
+        TRANSFER: "/jmb/eggtransferv2/view/",
+        HATCHER: "/jmb/egghatcherv2/view/",
+        PULLOUT: "/jmb/chickpulloutv2/view/",
+    }
+
+    const canViewDetails =
+        cardinfo.id && viewRoutes[cardinfo.title]
+
+
     const { getValue } = useGlobalContext();
 
     const [ref, setRef] = useState("");
@@ -261,38 +293,183 @@ export default function TraceTimeline() {
 
 
 
+    // async function voidTransaction(id: number, title: string) {
+
+    //     try {
+
+    //         if (!id) return;
+
+    //         // const confirmVoid = await confirmx(`Void ${title} #${id}?`);
+
+    //         const confirmVoid = await confirm({
+    //             title: `Void ${title} #${id}?`,
+    //             description: "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
+    //             confirmText: "Confirm",
+    //             cancelText: "Cancel",
+    //         });
+    //         if (!confirmVoid) return;
+
+    //         const reverseHandlers: Record<
+    //             string, {
+    //                 action: (id: number) => Promise<any>;
+    //                 error: string;
+    //             }
+    //         > = {
+    //             DISPOSAL: { action: reverseDisposal, error: "Failed to reverse disposal", },
+    //             DISPATCH: { action: reverseDispatch, error: "Failed to reverse dispatch", },
+    //             CHICK_GRADING: { action: reverseChickGrading, error: "Failed to reverse chick grading", },
+    //             PULLOUT: { action: reverseChickPullout, error: "Failed to reverse chick pullout", },
+    //             HATCHER: { action: reverseHatcher, error: "Failed to reverse hatcher", },
+    //             TRANSFER: { action: reverseTransfer, error: "Failed to reverse transfer", },
+    //             SETTER: { action: reverseSetter, error: "Failed to reverse setter", },
+    //             PRE_WARMING: { action: reversePreWarming, error: "Failed to reverse pre-warming", },
+    //             STORAGE: { action: reverseStorage, error: "Failed to reverse storage", },
+    //             CLASSIFICATION: { action: reverseClassification, error: "Failed to reverse classification", },
+    //             RECEIVING: { action: reverseReceiving, error: "Failed to reverse receiving", },
+    //         };
+
+    //         const handler = reverseHandlers[title];
+
+    //         if (handler) {
+    //             const result = await handler.action(Number(id));
+
+    //             console.log({ result });
+
+    //             if (!result?.success) {
+    //                 throw new Error(
+    //                     result?.message ?? handler.error
+    //                 );
+    //             }
+    //         }
+
+    //         toast("Transaction reversed successfully");
+    //         setmodalState(false);
+
+    //         setNodes((prev) =>
+    //             prev.map((node: any) => {
+    //                 if (
+    //                     node.data.doc_id === id &&
+    //                     node.data.stage === title
+    //                 ) {
+    //                     return {
+    //                         ...node,
+    //                         data: {
+    //                             ...node.data,
+    //                             extra: {
+    //                                 ...node.data.extra,
+    //                                 ...(title === "DISPOSAL" && { void: true, }),
+    //                                 ...(title === "DISPATCH" && { is_active: false, }),
+    //                                 ...(title === "PRE_WARMING" && { is_active: false, }),
+    //                                 ...(["CHICK_GRADING", "PULLOUT", "HATCHER", "TRANSFER", "SETTER", "STORAGE", "CLASSIFICATION", "RECEIVING",
+    //                                 ].includes(title) && {
+    //                                     void: 0,
+    //                                 }),
+    //                             },
+    //                         },
+    //                     };
+    //                 }
+
+    //                 return node;
+    //             })
+    //         );
+
+    //     } catch (error: any) {
+
+    //         alert(
+    //             error?.message ??
+    //             "Something went wrong"
+    //         );
+    //     }
+    // }\
+
     async function voidTransaction(id: number, title: string) {
         try {
 
             if (!id) return;
 
-            // const confirmVoid = await confirmx(`Void ${title} #${id}?`);
+            const voidPermissions: Record<string, boolean> = {
+                RECEIVING: canVoidReceiving ?? false,
+                CLASSIFICATION: canVoidEggClassification ?? false,
+                STORAGE: canVoidEggStorage ?? false,
+                PRE_WARMING: canVoidEggPreWarmingProcess ?? false,
+                SETTER: canVoidEggSetter ?? false,
+                TRANSFER: canVoidEggTransferProcess ?? false,
+                HATCHER: canVoidEggHatcherProcess ?? false,
+                PULLOUT: canVoidChickPulloutProcess ?? false,
+                CHICK_GRADING: canVoidDOCClassification ?? false, // no permission declared
+                DISPATCH: canVoidDOCDispatch ?? false,
+                DISPOSAL: canVoidDisposal ?? false,
+            };
+
+            // Default to false if undefined/null
+            const hasPermission = voidPermissions[title] ?? false;
+
+            if (hasPermission) {
+                toast(`You do not have permission to void ${title}`);
+                return;
+            }
 
             const confirmVoid = await confirm({
                 title: `Void ${title} #${id}?`,
-                description: "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
+                description:
+                    "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
                 confirmText: "Confirm",
                 cancelText: "Cancel",
             });
+
             if (!confirmVoid) return;
 
             const reverseHandlers: Record<
-                string, {
+                string,
+                {
                     action: (id: number) => Promise<any>;
                     error: string;
                 }
             > = {
-                DISPOSAL: { action: reverseDisposal, error: "Failed to reverse disposal", },
-                DISPATCH: { action: reverseDispatch, error: "Failed to reverse dispatch", },
-                CHICK_GRADING: { action: reverseChickGrading, error: "Failed to reverse chick grading", },
-                PULLOUT: { action: reverseChickPullout, error: "Failed to reverse chick pullout", },
-                HATCHER: { action: reverseHatcher, error: "Failed to reverse hatcher", },
-                TRANSFER: { action: reverseTransfer, error: "Failed to reverse transfer", },
-                SETTER: { action: reverseSetter, error: "Failed to reverse setter", },
-                PRE_WARMING: { action: reversePreWarming, error: "Failed to reverse pre-warming", },
-                STORAGE: { action: reverseStorage, error: "Failed to reverse storage", },
-                CLASSIFICATION: { action: reverseClassification, error: "Failed to reverse classification", },
-                RECEIVING: { action: reverseReceiving, error: "Failed to reverse receiving", },
+                DISPOSAL: {
+                    action: reverseDisposal,
+                    error: "Failed to reverse disposal",
+                },
+                DISPATCH: {
+                    action: reverseDispatch,
+                    error: "Failed to reverse dispatch",
+                },
+                CHICK_GRADING: {
+                    action: reverseChickGrading,
+                    error: "Failed to reverse chick grading",
+                },
+                PULLOUT: {
+                    action: reverseChickPullout,
+                    error: "Failed to reverse chick pullout",
+                },
+                HATCHER: {
+                    action: reverseHatcher,
+                    error: "Failed to reverse hatcher",
+                },
+                TRANSFER: {
+                    action: reverseTransfer,
+                    error: "Failed to reverse transfer",
+                },
+                SETTER: {
+                    action: reverseSetter,
+                    error: "Failed to reverse setter",
+                },
+                PRE_WARMING: {
+                    action: reversePreWarming,
+                    error: "Failed to reverse pre-warming",
+                },
+                STORAGE: {
+                    action: reverseStorage,
+                    error: "Failed to reverse storage",
+                },
+                CLASSIFICATION: {
+                    action: reverseClassification,
+                    error: "Failed to reverse classification",
+                },
+                RECEIVING: {
+                    action: reverseReceiving,
+                    error: "Failed to reverse receiving",
+                },
             };
 
             const handler = reverseHandlers[title];
@@ -324,10 +501,24 @@ export default function TraceTimeline() {
                                 ...node.data,
                                 extra: {
                                     ...node.data.extra,
-                                    ...(title === "DISPOSAL" && { void: true, }),
-                                    ...(title === "DISPATCH" && { is_active: false, }),
-                                    ...(title === "PRE_WARMING" && { is_active: false, }),
-                                    ...(["CHICK_GRADING", "PULLOUT", "HATCHER", "TRANSFER", "SETTER", "STORAGE", "CLASSIFICATION", "RECEIVING",
+                                    ...(title === "DISPOSAL" && {
+                                        void: true,
+                                    }),
+                                    ...(title === "DISPATCH" && {
+                                        is_active: false,
+                                    }),
+                                    ...(title === "PRE_WARMING" && {
+                                        is_active: false,
+                                    }),
+                                    ...([
+                                        "CHICK_GRADING",
+                                        "PULLOUT",
+                                        "HATCHER",
+                                        "TRANSFER",
+                                        "SETTER",
+                                        "STORAGE",
+                                        "CLASSIFICATION",
+                                        "RECEIVING",
                                     ].includes(title) && {
                                         void: 0,
                                     }),
@@ -341,7 +532,6 @@ export default function TraceTimeline() {
             );
 
         } catch (error: any) {
-
             alert(
                 error?.message ??
                 "Something went wrong"
@@ -584,7 +774,7 @@ export default function TraceTimeline() {
                     </div>
                 ) : (
                     <div className="h-[calc(100vh-240px)] w-full bg-slate-50 relative">
-                        <Button onClick={() => console.log({ nodes })}> check </Button >
+                        {/* <Button onClick={() => console.log({ nodes })}> check </Button > */}
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
@@ -649,7 +839,7 @@ export default function TraceTimeline() {
                     </Button>
                     <div className="float-right  mb-2 mx-3 flex gap-1">
 
-                        <Button
+                        {/* <Button
                             onClick={() => {
                                 cardinfo.title === "CLASSIFICATION" && cardinfo.id && window.open(`/jmb/hatcheryclassi/view/${cardinfo.id}`, "_blank")
                                 cardinfo.title === "STORAGE" && cardinfo.id && window.open(`/jmb/eggstorage/view/${cardinfo.id}`, "_blank")
@@ -661,8 +851,35 @@ export default function TraceTimeline() {
                             }}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
                             View details
-                        </Button>
+                        </Button> */}
+                        {canViewDetails && (
+                            // <Button
+                            //     size="xs"
+                            //     onClick={() => {
+                            //         console.log(checkRoute(cardinfo.title))
 
+                            //         // checkRoute("cardinfo.title") &&
+                            //         //     window.open(
+                            //         //         `${viewRoutes[cardinfo.title]}${cardinfo.id}`,
+                            //         //         "_blank"
+                            //         //     )
+                            //     }
+                            //     }
+                            // >
+                            //     View Details
+                            // </Button>
+                            <Button
+                                size="xs"
+                                onClick={() => {
+                                    window.open(
+                                        `trace/validate?route=${cardinfo.title}&id=${cardinfo.id}`,
+                                        "_blank"
+                                    );
+                                }}
+                            >
+                                View Details
+                            </Button>
+                        )}
                         <Button
                             onClick={() => setmodalState(false)}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
@@ -670,7 +887,7 @@ export default function TraceTimeline() {
                         </Button>
                     </div>
                 </div>
-            </Modal>
+            </Modal >
         </div >
     );
 }

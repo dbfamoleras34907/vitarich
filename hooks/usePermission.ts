@@ -8,17 +8,12 @@ interface Permission {
     is_visible: boolean
 }
 
-export const usePermission = (
-    link: string
-): boolean => {
+export const usePermission = (link: string): boolean => {
     const { getValue } = useGlobalContext()
 
     const hasPermission = useMemo(() => {
         try {
             const rawPermissions = getValue('UserPermission')
-
-            console.log({ rawPermissions })
-
             const permissions: Permission[] =
                 typeof rawPermissions === 'string'
                     ? JSON.parse(rawPermissions)
