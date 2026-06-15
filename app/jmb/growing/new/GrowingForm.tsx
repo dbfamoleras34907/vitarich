@@ -30,6 +30,7 @@ import {
   updateGrowing,
   type FeedType,
   type Growing,
+  type GrowingFarmHistory,
   type GrowingInsert,
   type GrowingPlacement,
 } from "./api";
@@ -108,6 +109,25 @@ function getFeedTypeOptions(feedTypes: FeedType[]) {
   }));
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const details = error as {
+      message?: unknown;
+      details?: unknown;
+      hint?: unknown;
+      code?: unknown;
+    };
+    return [details.message, details.details, details.hint, details.code]
+      .filter(
+        (value): value is string => typeof value === "string" && value !== "",
+      )
+      .join("\n");
+  }
+  return fallback;
+}
+
 function getFarmKey(placement: GrowingPlacement) {
   return placement.farm_id != null
     ? String(placement.farm_id)
@@ -128,8 +148,9 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
   return elapsedDays < 0 ? 0 : elapsedDays + 1;
 }
 
-function getWeekNumber(days: number) {
-  return days > 0 ? Math.ceil(days / 7) : 0;
+function formatWeeksDays(days: number) {
+  if (days <= 0) return "0.0";
+  return `${Math.floor(days / 7)}.${days % 7}`;
 }
 
 function createInitialForm(): FormState {
@@ -196,7 +217,7 @@ export default function GrowingForm() {
   const [selectedBuildingNo, setSelectedBuildingNo] = useState("");
   const [selectedPlacement, setSelectedPlacement] =
     useState<GrowingPlacement | null>(null);
-  const [history, setHistory] = useState<Growing[]>([]);
+  const [history, setHistory] = useState<GrowingFarmHistory[]>([]);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [loadingFeedTypes, setLoadingFeedTypes] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -205,7 +226,7 @@ export default function GrowingForm() {
   const ageDays = selectedPlacement
     ? getAgeInDays(selectedPlacement.placement_date, form.daterec)
     : 0;
-  const weekNumber = getWeekNumber(ageDays);
+  const weekNumber = formatWeeksDays(ageDays);
   const farmOptions = useMemo(() => {
     const values = new Map<string, string>();
     placements.forEach((placement) => {
@@ -377,7 +398,10 @@ export default function GrowingForm() {
   }, [idParam, router]);
 
   useEffect(() => {
-    if (!selectedPlacement?.farm_id && !selectedPlacement?.farm_name) {
+    if (
+      (!selectedPlacement?.farm_id && !selectedPlacement?.farm_name) ||
+      !selectedBuildingNo
+    ) {
       setHistory([]);
       return;
     }
@@ -387,6 +411,7 @@ export default function GrowingForm() {
         const rows = await listGrowingHistoryByFarm({
           farmId: selectedPlacement.farm_id ?? null,
           farmName: selectedPlacement.farm_name ?? null,
+          buildingNo: selectedBuildingNo,
         });
         setHistory(rows);
       } catch (error) {
@@ -395,7 +420,11 @@ export default function GrowingForm() {
         alert(message);
       }
     })();
-  }, [selectedPlacement?.farm_id, selectedPlacement?.farm_name]);
+  }, [
+    selectedBuildingNo,
+    selectedPlacement?.farm_id,
+    selectedPlacement?.farm_name,
+  ]);
 
   function handleGrowingRowChange(
     placementId: string,
@@ -473,9 +502,8 @@ export default function GrowingForm() {
 
       router.push("/jmb/growing");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save growing.";
-      alert(message);
+      console.error("Failed to save growing", { error, payloads });
+      alert(getErrorMessage(error, "Failed to save growing."));
     } finally {
       setSaving(false);
     }
@@ -594,15 +622,13 @@ export default function GrowingForm() {
                     ["Age (Days)", String(ageDays)],
                     ["Farm", selectedPlacement?.farm_name ?? ""],
                     ["Building", selectedPlacement?.building_no ?? ""],
-                    ["Pen", selectedPlacement?.pen_no ?? ""],
                     ["Week #", String(weekNumber)],
                   ].map(([label, value]) => (
                     <div
                       key={label}
                       className={
                         label === "Farm" ||
-                        label === "Building" ||
-                        label === "Pen"
+                        label === "Building"
                           ? "rounded-md border border-emerald-200 bg-emerald-50 p-3"
                           : "rounded-md border border-slate-200 bg-slate-50 p-3"
                       }
@@ -620,58 +646,98 @@ export default function GrowingForm() {
             </section>
 
             <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
-              <div className="flex items-center gap-3 border-b px-5 py-4">
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-pink-50 text-pink-600">
-                  <Venus className="h-4 w-4" />
-                </span>
-                <h2 className="inline-flex items-center rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600">
-                  Female Information
-                </h2>
-              </div>
               <div className="p-5">
                 {growingRows.length ? (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] border-separate border-spacing-y-2 text-sm">
+                    <table className="w-full min-w-[1330px] border-separate border-spacing-x-3 border-spacing-y-2 text-sm">
                       <thead>
                         <tr>
-                          <th className="w-24 px-2 text-left align-bottom">
+                          <th
+                            colSpan={5}
+                            className="border-b border-slate-200 px-0 pb-3 text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-pink-50 text-pink-600">
+                                <Venus className="h-4 w-4" />
+                              </span>
+                              <span className="inline-flex items-center rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600">
+                                Female Information
+                              </span>
+                            </div>
+                          </th>
+                          <th
+                            colSpan={4}
+                            className="border-b border-slate-200 px-0 pb-3 text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-50 text-sky-600">
+                                <Mars className="h-4 w-4" />
+                              </span>
+                              <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-600">
+                                Male Information
+                              </span>
+                            </div>
+                          </th>
+                        </tr>
+                        <tr>
+                          <th className="w-24 pt-5 text-left align-bottom">
                             <Label className="text-[11px] font-semibold text-slate-600">
                               Pen #
                             </Label>
                           </th>
-                          <th className="px-2 text-left align-bottom">
+                          <th className="w-32 pt-5 text-left align-bottom">
                             <Label className="text-[11px] font-semibold text-slate-600">
                               Female Mortality
                             </Label>
                           </th>
-                          <th className="px-2 text-left align-bottom">
+                          <th className="w-44 pt-5 text-left align-bottom">
                             <Label className="text-[11px] font-semibold text-slate-600">
                               Female Feed Consumption
                             </Label>
                           </th>
-                          <th className="px-2 text-left align-bottom">
+                          <th className="w-56 pt-5 text-left align-bottom">
                             <Label className="text-[11px] font-semibold text-slate-600">
                               Female Feed Type
                             </Label>
                           </th>
-                          <th className="px-2 text-left align-bottom">
+                          <th className="w-44 pt-5 text-left align-bottom">
                             <Label className="text-[11px] font-semibold text-slate-600">
                               Female Body Weight
+                            </Label>
+                          </th>
+                          <th className="w-32 pt-5 text-left align-bottom">
+                            <Label className="text-[11px] font-semibold text-slate-600">
+                              Male Mortality
+                            </Label>
+                          </th>
+                          <th className="w-44 pt-5 text-left align-bottom">
+                            <Label className="text-[11px] font-semibold text-slate-600">
+                              Male Feed Consumption
+                            </Label>
+                          </th>
+                          <th className="w-56 pt-5 text-left align-bottom">
+                            <Label className="text-[11px] font-semibold text-slate-600">
+                              Male Feed Type
+                            </Label>
+                          </th>
+                          <th className="w-44 pt-5 text-left align-bottom">
+                            <Label className="text-[11px] font-semibold text-slate-600">
+                              Male Body Weight
                             </Label>
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {growingRows.map((row) => (
-                          <tr key={`female-${row.placement_id}`}>
-                            <td className="w-24 px-2 align-top">
+                          <tr key={row.placement_id}>
+                            <td className="align-top">
                               <Input
                                 value={row.pen_no || "-"}
                                 disabled
                                 className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none"
                               />
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -687,7 +753,7 @@ export default function GrowingForm() {
                                 className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none focus-visible:ring-emerald-500"
                               />
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -709,7 +775,7 @@ export default function GrowingForm() {
                                 </span>
                               </div>
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <SearchableDropdown1
                                 list={feedTypeOptions}
                                 codeLabel="id"
@@ -737,7 +803,7 @@ export default function GrowingForm() {
                                 disabled={disabledAll || loadingFeedTypes}
                               />
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -759,72 +825,7 @@ export default function GrowingForm() {
                                 </span>
                               </div>
                             </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Select a farm and building above to generate pen rows.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
-              <div className="flex items-center gap-3 border-b px-5 py-4">
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-50 text-sky-600">
-                  <Mars className="h-4 w-4" />
-                </span>
-                <h2 className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-600">
-                  Male Information
-                </h2>
-              </div>
-              <div className="p-5">
-                {growingRows.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] border-separate border-spacing-y-2 text-sm">
-                      <thead>
-                        <tr>
-                          <th className="w-24 px-2 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Pen #
-                            </Label>
-                          </th>
-                          <th className="px-2 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Mortality
-                            </Label>
-                          </th>
-                          <th className="px-2 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Feed Consumption
-                            </Label>
-                          </th>
-                          <th className="px-2 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Feed Type
-                            </Label>
-                          </th>
-                          <th className="px-2 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Body Weight
-                            </Label>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {growingRows.map((row) => (
-                          <tr key={`male-${row.placement_id}`}>
-                            <td className="w-24 px-2 align-top">
-                              <Input
-                                value={row.pen_no || "-"}
-                                disabled
-                                className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none"
-                              />
-                            </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -840,7 +841,7 @@ export default function GrowingForm() {
                                 className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none focus-visible:ring-emerald-500"
                               />
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -862,7 +863,7 @@ export default function GrowingForm() {
                                 </span>
                               </div>
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <SearchableDropdown1
                                 list={feedTypeOptions}
                                 codeLabel="id"
@@ -890,7 +891,7 @@ export default function GrowingForm() {
                                 disabled={disabledAll || loadingFeedTypes}
                               />
                             </td>
-                            <td className="px-2 align-top">
+                            <td className="align-top">
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -940,9 +941,9 @@ export default function GrowingForm() {
               <div>
                 <h3 className="text-sm font-medium">Growing Farm History</h3>
                 <p className="text-xs text-muted-foreground">
-                  {selectedPlacement?.farm_name
-                    ? `Showing recent transactions for ${selectedPlacement.farm_name}.`
-                    : "Select a placement to show farm history."}
+                  {selectedPlacement?.farm_name && selectedBuildingNo
+                    ? `Showing recent transactions for ${selectedPlacement.farm_name} / ${selectedBuildingNo}.`
+                    : "Select a farm and building to show history."}
                 </p>
               </div>
 
@@ -992,40 +993,40 @@ export default function GrowingForm() {
                   </thead>
                   <tbody>
                     {history.length ? (
-                      history.map((row) => {
-                        const rowAge = getAgeInDays(
-                          row.placement?.placement_date,
-                          row.daterec ?? undefined,
-                        );
+                      history.map((row, index) => {
+                        const rowAge = Number(row.age ?? 0);
 
                         return (
-                          <tr key={row.id} className="border-b last:border-0">
+                          <tr
+                            key={[
+                              index,
+                              row.record_date ?? "",
+                              row.farm ?? "",
+                              row.building ?? "",
+                              row.pen ?? "",
+                            ].join("|")}
+                            className="border-b last:border-0"
+                          >
                             <td className="px-3 py-2">
-                              {formatDate(row.daterec)}
+                              {formatDate(row.record_date)}
                             </td>
-                            <td className="px-3 py-2">
-                              {row.placement?.farm_name ?? ""}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.placement?.building_no ?? ""}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.placement?.pen_no ?? ""}
-                            </td>
+                            <td className="px-3 py-2">{row.farm ?? ""}</td>
+                            <td className="px-3 py-2">{row.building ?? ""}</td>
+                            <td className="px-3 py-2">{row.pen ?? ""}</td>
                             <td className="px-3 py-2 text-right">
                               {rowAge.toLocaleString("en-US")}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {getWeekNumber(rowAge).toLocaleString("en-US")}
+                              {row.week_no ?? formatWeeksDays(rowAge)}
                             </td>
                             <td className="px-3 py-2 text-right">
                               {formatNumber(row.female_mortality)}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {formatNumber(row.female_feed_consumption)}
+                              {formatNumber(row.female_feed)}
                             </td>
                             <td className="px-3 py-2">
-                              {row.female_feedtype?.description ?? ""}
+                              {row.female_feed_type ?? ""}
                             </td>
                             <td className="px-3 py-2 text-right">
                               {formatNumber(row.female_body_weight)}
@@ -1034,10 +1035,10 @@ export default function GrowingForm() {
                               {formatNumber(row.male_mortality)}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {formatNumber(row.male_feed_consumption)}
+                              {formatNumber(row.male_feed)}
                             </td>
                             <td className="px-3 py-2">
-                              {row.male_feedtype?.description ?? ""}
+                              {row.male_feed_type ?? ""}
                             </td>
                             <td className="px-3 py-2 text-right">
                               {formatNumber(row.male_body_weight)}
