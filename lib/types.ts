@@ -517,6 +517,16 @@ export type ReceivingListRow2 = {
   recieving_items: ReceivingItemRow[]
 }
 
+export interface WeekLock {
+  id: number
+  week: number
+  year: number
+  locked_by: string | null
+  locked_at: string | null
+  status: 'Open' | 'Locked'
+  created_at?: string | null
+}
+
 
 
 

@@ -877,6 +877,16 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 44,
+            type: "Module",
+            title: "Lock",
+            url: "/admin/lock",
+            view: true,
+            insert: true,
+            edit: true,
+          },
+
+          {
             id: 39,
             type: "Module",
             title: "Farm Settings",
