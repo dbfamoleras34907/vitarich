@@ -585,9 +585,11 @@ export default function ApprovalDecisionForm() {
                             <DefaultFarmComboBox
                                 value={header?.delivered_to ?? undefined}
                                 setValue={(val) => {
+                                    const deliveredTo = val === '' ? null : Number(val)
+
                                     setHeader(h => ({
                                         ...(h ?? emptyApprovalRecord),
-                                        delivered_to: val
+                                        delivered_to: deliveredTo
                                     }))
                                 }
                                 }

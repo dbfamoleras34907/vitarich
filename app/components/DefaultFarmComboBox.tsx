@@ -68,7 +68,7 @@ export default function DefaultFarmComboBox({
                 label={label ? label : ""}
                 showCode
                 items={farmList}
-                value={value ?? ''}
+                value={value == null ? '' : String(value)}
                 onValueChange={setValue}
                 className="w-full"
             />
