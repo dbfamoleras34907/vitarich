@@ -58,6 +58,38 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
+import {
+  attachFarmFilterFromRefs,
+  FARM_FILTER_KEY,
+} from "@/lib/farmFilter";
+
+function hasValue(value: unknown) {
+  return value !== null && value !== undefined && value !== "";
+}
+
+function buildDefaultFarmColumnFilter(defaultFarmId: unknown): ColumnFiltersState {
+  if (!hasValue(defaultFarmId)) return [];
+
+  return [{ id: FARM_FILTER_KEY, value: String(defaultFarmId) }];
+}
+
+function withDefaultFarmColumnFilter(
+  filters: ColumnFiltersState,
+  defaultFarmId: unknown,
+  farmFilterTouched: boolean,
+): ColumnFiltersState {
+  if (farmFilterTouched) return filters;
+
+  if (!hasValue(defaultFarmId)) {
+    return filters.filter((filter) => filter.id !== FARM_FILTER_KEY);
+  }
+
+  return [
+    ...filters.filter((filter) => filter.id !== FARM_FILTER_KEY),
+    { id: FARM_FILTER_KEY, value: String(defaultFarmId) },
+  ];
+}
 
 function fmtDateTime(
   v: string | null | undefined,
@@ -88,6 +120,7 @@ type DocClassificationRow = RowDataKey & {
   quality_grade_rate: string;
   cull_rate: string;
   grading_personnel: string;
+  [FARM_FILTER_KEY]?: string;
 };
 
 export default function ChickgradingTable() {
@@ -95,14 +128,29 @@ export default function ChickgradingTable() {
 
   const [items, setItems] = useState<DocClassificationRow[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmId = getValue("DefaultFarmId");
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() =>
+    buildDefaultFarmColumnFilter(defaultFarmId),
+  );
+  const [farmFilterTouched, setFarmFilterTouched] = useState(false);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    [FARM_FILTER_KEY]: false,
+  });
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const [isLoading, setIsLoading] =
     useState(false);
 
-  const { setValue } = useGlobalContext();
+  const effectiveColumnFilters = useMemo(
+    () =>
+      withDefaultFarmColumnFilter(
+        columnFilters,
+        defaultFarmId,
+        farmFilterTouched,
+      ),
+    [columnFilters, defaultFarmId, farmFilterTouched],
+  );
 
   const canView = usePermission(
     "/jmb/docclassification/view",
@@ -172,7 +220,12 @@ export default function ChickgradingTable() {
             )
           : [];
 
-      setItems(mapped);
+      setItems(
+        await attachFarmFilterFromRefs(
+          mapped,
+          (row) => row.egg_ref_no,
+        ),
+      );
     } catch (e) {
       console.error(e);
 
@@ -310,6 +363,14 @@ export default function ChickgradingTable() {
           <ClassificationRefBadge value={row.original.egg_ref_no} />
         ),
       },
+      {
+        accessorKey: FARM_FILTER_KEY,
+        header: "Farm",
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue) return true;
+          return String(row.getValue(columnId) ?? "") === String(filterValue);
+        },
+      },
       { accessorKey: "batch_code", header: "Batch Code" },
       { accessorKey: "grading_datetime", header: "Grading Date & Time" },
       {
@@ -347,7 +408,7 @@ export default function ChickgradingTable() {
     onRowSelectionChange: setRowSelection,
     state: {
       sorting,
-      columnFilters,
+      columnFilters: effectiveColumnFilters,
       columnVisibility,
       rowSelection,
     },
@@ -407,16 +468,47 @@ export default function ChickgradingTable() {
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={
-          <Input
-            placeholder="Filter Egg Reference No."
-            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={
-              (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
-            }
-            onChange={(e) =>
-              table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
-            }
-          />
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
+            <Input
+              placeholder="Filter Egg Reference No."
+              className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+              value={
+                (table.getColumn("egg_ref_no")?.getFilterValue() as string) ?? ""
+              }
+              onChange={(e) =>
+                table.getColumn("egg_ref_no")?.setFilterValue(e.target.value)
+              }
+            />
+
+            <div className="w-full sm:w-72">
+              <UserFarmSearchCombobox
+                label="Farm"
+                value={
+                  (table.getColumn(FARM_FILTER_KEY)?.getFilterValue() as string) ??
+                  ""
+                }
+                onValueChange={(farmId) => {
+                  table
+                    .getColumn(FARM_FILTER_KEY)
+                    ?.setFilterValue(farmId || undefined);
+                  setFarmFilterTouched(true);
+                }}
+              />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-md bg-white"
+              onClick={() => {
+                table.getColumn(FARM_FILTER_KEY)?.setFilterValue(undefined);
+                setFarmFilterTouched(true);
+              }}
+            >
+              Clear Farm
+            </Button>
+          </div>
         }
       />
     </div>

@@ -86,8 +86,8 @@ export default function Layout() {
         { key: 'id', label: 'ID', type: 'text', disabled: true },
         { key: 'brdr_ref_no', label: 'Breeder Ref No.', type: 'text', disabled: true },
         { key: 'soldto', label: 'Delivered From', type: 'text', disabled: true },
-        { key: 'deliverted_to_id', label: 'Delivered To - Code ', type: 'text', disabled: true },
-        { key: 'delivered_to', label: 'Delivered To - Name', type: 'text', disabled: true },
+        { key: 'deliverted_to_id', label: 'Delivered To ID', type: 'text', disabled: true },
+        { key: 'delivered_to', label: 'Delivered To', type: 'text', disabled: true },
         // { key: 'sku', label: 'Item', type: 'text', disabled: true },
         { key: 'actual_count', label: 'Total', type: 'text', disabled: true },
         { key: 'dr_num', label: 'DR #', type: 'text', disabled: true },
@@ -252,7 +252,7 @@ export default function Layout() {
         setLoadingReceived(true)
 
         const data = await getReceivingList()
-        // // // console.loglog({ data })
+        console.log({ data })
         setReceivedRows(data)
         setLoadingReceived(false)
     }
@@ -337,6 +337,8 @@ export default function Layout() {
                         }
                         }
                     ><Plus /> Receive Manually</Button>
+                    
+                    {/* <Button onClick={() => console.log(getValue("DefaultFarmId"))}>Check getValue("defaultFarmId")</Button> */}
                 </div>
             </div>
             <div className='my-4'></div>
@@ -398,10 +400,10 @@ export default function Layout() {
                             id: "",
                             columnKey: 'deliverted_to_id',
                             operator: 'equals',
-                            value: getValue("DefaultFarmId") ?? "",
+                            value: getValue("DefaultFarmId") || '',
                             joiner: 'and',
                         },
-                    ]}
+                    ]} // show all records
                     columns={receivedColumns.map((col) => ({
                         key: col.key,
                         label: col.label,

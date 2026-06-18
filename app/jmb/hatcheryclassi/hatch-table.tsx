@@ -33,25 +33,64 @@ import {
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import FarmDropdown from "@/components/ui/FarmDropdown";
+import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
+
+function hasValue(value: unknown) {
+  return value !== null && value !== undefined && value !== "";
+}
+
+function buildDefaultFarmFilter(columnId: string, defaultFarmId: unknown): ColumnFiltersState {
+  if (!hasValue(defaultFarmId)) {
+    return [];
+  }
+
+  return [{ id: columnId, value: String(defaultFarmId) }];
+}
+
+function withDefaultFarmFilter(
+  filters: ColumnFiltersState,
+  columnId: string,
+  defaultFarmId: unknown,
+  farmFilterTouched: boolean,
+): ColumnFiltersState {
+  if (farmFilterTouched) return filters;
+
+  if (defaultFarmId === null || defaultFarmId === undefined || defaultFarmId === "") {
+    return filters.filter((filter) => filter.id !== columnId);
+  }
+
+  return [
+    ...filters.filter((filter) => filter.id !== columnId),
+    { id: columnId, value: String(defaultFarmId) },
+  ];
+}
 
 export default function HatchTable() {
   const router = useRouter();
-
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmId = getValue("DefaultFarmId");
   const [items, setItems] = useState<HatchClassificationRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
   const [farmId, setfarmId] = useState(0)
   const [classifiedColumnFilters, setClassifiedColumnFilters] =
-    useState<ColumnFiltersState>([]);
+    useState<ColumnFiltersState>(() =>
+      buildDefaultFarmFilter("farm_code", defaultFarmId),
+    );
+  const [classifiedFarmFilterTouched, setClassifiedFarmFilterTouched] =
+    useState(false);
   const [classifiedColumnVisibility, setClassifiedColumnVisibility] =
-    useState<VisibilityState>({});
+    useState<VisibilityState>({ farm_code: false });
   const [classifiedRowSelection, setClassifiedRowSelection] =
     useState<RowSelectionState>({});
   const [pendingSorting, setPendingSorting] = useState<SortingState>([]);
   const [pendingColumnFilters, setPendingColumnFilters] =
-    useState<ColumnFiltersState>([]);
+    useState<ColumnFiltersState>(() =>
+      buildDefaultFarmFilter("farm_id", defaultFarmId),
+    );
+  const [pendingFarmFilterTouched, setPendingFarmFilterTouched] =
+    useState(false);
   const [pendingColumnVisibility, setPendingColumnVisibility] =
-    useState<VisibilityState>({});
+    useState<VisibilityState>({ farm_id: false });
   const [pendingRowSelection, setPendingRowSelection] =
     useState<RowSelectionState>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +98,28 @@ export default function HatchTable() {
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
-  const { setValue, getValue } = useGlobalContext();
+
+  const effectivePendingColumnFilters = useMemo(
+    () =>
+      withDefaultFarmFilter(
+        pendingColumnFilters,
+        "farm_id",
+        defaultFarmId,
+        pendingFarmFilterTouched,
+      ),
+    [defaultFarmId, pendingColumnFilters, pendingFarmFilterTouched],
+  );
+
+  const effectiveClassifiedColumnFilters = useMemo(
+    () =>
+      withDefaultFarmFilter(
+        classifiedColumnFilters,
+        "farm_code",
+        defaultFarmId,
+        classifiedFarmFilterTouched,
+      ),
+    [classifiedColumnFilters, classifiedFarmFilterTouched, defaultFarmId],
+  );
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -197,7 +257,14 @@ export default function HatchTable() {
           </span>
         ),
       },
-
+      {
+        accessorKey: "farm_id",
+        header: "Farm ID",
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue) return true;
+          return String(row.getValue(columnId) ?? "") === String(filterValue);
+        },
+      },
       { accessorKey: "plate_no", header: "Plate No" },
       { accessorKey: "driver", header: "Driver" },
       { accessorKey: "voyage_no", header: "Voyage No" },
@@ -218,7 +285,7 @@ export default function HatchTable() {
     onRowSelectionChange: setPendingRowSelection,
     state: {
       sorting: pendingSorting,
-      columnFilters: pendingColumnFilters,
+      columnFilters: effectivePendingColumnFilters,
       columnVisibility: pendingColumnVisibility,
       rowSelection: pendingRowSelection,
     },
@@ -259,6 +326,14 @@ export default function HatchTable() {
         cell: ({ row }) => (
           <ClassificationRefBadge value={row.original.br_no} />
         ),
+      },
+      {
+        accessorKey: "farm_code",
+        header: "Farm Code",
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue) return true;
+          return String(row.getValue(columnId) ?? "") === String(filterValue);
+        },
       },
       {
         accessorKey: "good_egg",
@@ -320,7 +395,7 @@ export default function HatchTable() {
     onRowSelectionChange: setClassifiedRowSelection,
     state: {
       sorting: classifiedSorting,
-      columnFilters: classifiedColumnFilters,
+      columnFilters: effectiveClassifiedColumnFilters,
       columnVisibility: classifiedColumnVisibility,
       rowSelection: classifiedRowSelection,
     },
@@ -352,6 +427,7 @@ export default function HatchTable() {
           />
           Refresh
         </Button>
+        {/* <Button onClick={() => console.log({ items })}>check items</Button> */}
       </div>
 
       <ClassificationTableSection
@@ -361,7 +437,7 @@ export default function HatchTable() {
         isLoading={isLoadingforClass}
         colSpan={columnsForClass.length}
         headerActions={
-          <>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
             <Input
               placeholder="Filter Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
@@ -376,14 +452,37 @@ export default function HatchTable() {
                   ?.setFilterValue(e.target.value)
               }
             />
-            <div className="max-w-4xl">
-              <FarmDropdown
-                returnHeader="id"
-                value={farmId}
-                defaultValue={getValue("DefaultFarmId") ?? ""}
+
+            <div className="w-full sm:w-72">
+              <UserFarmSearchCombobox
+                label="Farm"
+                value={
+                  (tableForClass
+                    .getColumn("farm_id")
+                    ?.getFilterValue() as string) ?? ""
+                }
+                onValueChange={(farmId) => {
+                  tableForClass
+                    .getColumn("farm_id")
+                    ?.setFilterValue(farmId || undefined)
+                  setPendingFarmFilterTouched(true)
+                }}
               />
             </div>
-          </>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-md bg-white"
+              onClick={() => {
+                tableForClass.getColumn("farm_id")?.setFilterValue(undefined)
+                setPendingFarmFilterTouched(true)
+              }}
+            >
+              Clear Farm
+            </Button>
+          </div>
         }
       />
 
@@ -395,14 +494,45 @@ export default function HatchTable() {
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={
-          <Input
-            placeholder="Filter Breeder Ref. No."
-            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
-            onChange={(e) =>
-              table.getColumn("br_no")?.setFilterValue(e.target.value)
-            }
-          />
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
+            <Input
+              placeholder="Filter Breeder Ref. No."
+              className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
+              value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
+              onChange={(e) =>
+                table.getColumn("br_no")?.setFilterValue(e.target.value)
+              }
+            />
+
+            <div className="w-full sm:w-72">
+              <UserFarmSearchCombobox
+                label="Farm"
+                value={
+                  (table.getColumn("farm_code")?.getFilterValue() as string) ??
+                  ""
+                }
+                onValueChange={(farmCode) => {
+                  table
+                    .getColumn("farm_code")
+                    ?.setFilterValue(farmCode || undefined)
+                  setClassifiedFarmFilterTouched(true)
+                }}
+              />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-md bg-white"
+              onClick={() => {
+                table.getColumn("farm_code")?.setFilterValue(undefined)
+                setClassifiedFarmFilterTouched(true)
+              }}
+            >
+              Clear Farm
+            </Button>
+          </div>
         }
       />
     </div>

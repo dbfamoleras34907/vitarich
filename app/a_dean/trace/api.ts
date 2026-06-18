@@ -1,5 +1,28 @@
 import { db } from "@/lib/Supabase/supabaseClient"
 
+export type VoidPermission = {
+    ilink: string | null;
+    is_visible: boolean | null;
+};
+
+export async function getVoidPermissions() {
+    const {
+        data: { session },
+    } = await db.auth.getSession()
+
+    if (!session?.user.id) return []
+
+    const { data, error } = await db
+        .from("user_permissions")
+        .select("ilink,is_visible")
+        .eq("type", "void")
+        .eq("user_id", session.user.id)
+
+    if (error) throw error
+
+    return data as VoidPermission[]
+}
+
 export async function reverseDisposal(id: number) {
     try {
 

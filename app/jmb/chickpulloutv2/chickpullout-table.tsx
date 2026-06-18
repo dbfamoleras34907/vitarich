@@ -43,6 +43,10 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 export default function ChickPulloutTable() {
   const router = useRouter();
@@ -51,7 +55,11 @@ export default function ChickPulloutTable() {
 
   const [isLoading, setIsLoading] = useState(false);
 
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const canView = usePermission(
     "/jmb/chickpulloutv2/view",
@@ -109,7 +117,7 @@ export default function ChickPulloutTable() {
             )
           : [];
 
-      setItems(mapped);
+      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref_no));
     } catch (e) {
       console.error(e);
 
@@ -312,8 +320,9 @@ export default function ChickPulloutTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={isLoading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
 

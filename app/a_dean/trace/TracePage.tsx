@@ -19,7 +19,7 @@ import {
     Settings2,
     Thermometer,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactFlow, {
     Background,
     Controls,
@@ -115,6 +115,27 @@ function TraceNode({ data, }: { data: any; }) {
 
 const nodeTypes = { trace: TraceNode, };
 
+type UserPermission = {
+    ilink?: string | null;
+    title?: string | null;
+    type?: string | null;
+    is_visible?: boolean | null;
+};
+
+const voidPermissionConfig: Record<string, { title: string; ilink: string; }> = {
+    DISPOSAL: { title: "Disposal", ilink: "/a_dean/disposal/void", },
+    DISPATCH: { title: "DOC Dispatch", ilink: "/jmb/docdispatchv2/void", },
+    CHICK_GRADING: { title: "DOC Classification", ilink: "/jmb/docclassification/void", },
+    PULLOUT: { title: "Chick Pullout Process", ilink: "/jmb/chickpulloutv2/void", },
+    HATCHER: { title: "Egg Hatcher Process", ilink: "/jmb/egghatcherv2/void", },
+    TRANSFER: { title: "Egg Transfer Process", ilink: "/jmb/eggtransferv2/void", },
+    SETTER: { title: "Egg Setter", ilink: "/jmb/eggsetter/void", },
+    PRE_WARMING: { title: "Egg Pre-Warming Process", ilink: "/jmb/prewarmingv2/void", },
+    STORAGE: { title: "Egg Storage", ilink: "/jmb/eggstorage/void", },
+    CLASSIFICATION: { title: "Egg Classification", ilink: "/jmb/hatcheryclassi/void", },
+    RECEIVING: { title: "Receiving", ilink: "/a_dean/receiving/void", },
+};
+
 export default function TraceTimeline() {
 
 
@@ -134,30 +155,48 @@ export default function TraceTimeline() {
     const [modalState, setmodalState] = useState(false)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const confirm = useConfirm()
-    // const { checkRoute } = useRouteChecking();
+    const { getValue } = useGlobalContext();
+    const voidPermissionByStage = useMemo(() => {
+        try {
+            const rawPermissions = getValue("UserPermission");
+            const permissions: UserPermission[] =
+                typeof rawPermissions === "string"
+                    ? JSON.parse(rawPermissions)
+                    : rawPermissions || [];
+
+            return Object.entries(voidPermissionConfig).reduce<Record<string, boolean>>(
+                (acc, [stage, config]) => {
+                    const isAllowed = permissions.some((permission) =>
+                        permission.is_visible === true &&
+                        permission.type === "void" &&
+                        (
+                            permission.ilink === config.ilink ||
+                            permission.title === `${config.title}/void`
+                        )
+                    );
+
+                    acc[stage] = !isAllowed;
+                    return acc;
+                },
+                {}
+            );
+        } catch {
+            return Object.keys(voidPermissionConfig).reduce<Record<string, boolean>>(
+                (acc, stage) => {
+                    acc[stage] = true;
+                    return acc;
+                },
+                {}
+            );
+        }
+    }, [getValue]);
+
     const [cardinfo, setcardinfo] = useState({
         title: "",
         ref: "",
         id: "",
         date: ""
     })
-
-    const viewRoutes: Record<string, string> = {
-        CLASSIFICATION: "/jmb/hatcheryclassi/view/",
-        STORAGE: "/jmb/eggstorage/view/",
-        PRE_WARMING: "/jmb/prewarmingv2/view/",
-        SETTER: "/jmb/eggsetter/view/",
-        TRANSFER: "/jmb/eggtransferv2/view/",
-        HATCHER: "/jmb/egghatcherv2/view/",
-        PULLOUT: "/jmb/chickpulloutv2/view/",
-    }
-
-    const canViewDetails =
-        cardinfo.id && viewRoutes[cardinfo.title]
-
-
-    const { getValue } = useGlobalContext();
-
     const [ref, setRef] = useState("");
 
     const [loading, setLoading] = useState(false);
@@ -386,28 +425,12 @@ export default function TraceTimeline() {
         try {
 
             if (!id) return;
-
-            const voidPermissions: Record<string, boolean> = {
-                RECEIVING: canVoidReceiving ?? false,
-                CLASSIFICATION: canVoidEggClassification ?? false,
-                STORAGE: canVoidEggStorage ?? false,
-                PRE_WARMING: canVoidEggPreWarmingProcess ?? false,
-                SETTER: canVoidEggSetter ?? false,
-                TRANSFER: canVoidEggTransferProcess ?? false,
-                HATCHER: canVoidEggHatcherProcess ?? false,
-                PULLOUT: canVoidChickPulloutProcess ?? false,
-                CHICK_GRADING: canVoidDOCClassification ?? false, // no permission declared
-                DISPATCH: canVoidDOCDispatch ?? false,
-                DISPOSAL: canVoidDisposal ?? false,
-            };
-
-            // Default to false if undefined/null
-            const hasPermission = voidPermissions[title] ?? false;
-
-            if (hasPermission) {
-                toast(`You do not have permission to void ${title}`);
+            if (voidPermissionByStage[title]) {
+                toast.warning("You are not allowed to void this transaction");
                 return;
             }
+
+            // const confirmVoid = await confirmx(`Void ${title} #${id}?`);
 
             const confirmVoid = await confirm({
                 title: `Void ${title} #${id}?`,
@@ -834,6 +857,7 @@ export default function TraceTimeline() {
                         size={"xs"}
                         className="mx-3"
                         variant={"destructive"}
+                        disabled={voidPermissionByStage[cardinfo.title]}
                         onClick={() => voidTransaction(Number(cardinfo.id), cardinfo.title)}>
                         Void Transaction
                     </Button>

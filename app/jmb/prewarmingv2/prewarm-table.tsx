@@ -38,6 +38,10 @@ import {
 } from "./new2/api";
 
 import { usePermission } from "@/hooks/usePermission";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 function fmtDuration(mins: number | null) {
   if (mins == null) return "";
@@ -56,7 +60,11 @@ export default function PrewarmTable() {
   const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const canView = usePermission("/jmb/prewarmingv2/view");
   const canEdit = usePermission("/jmb/prewarmingv2/edit");
@@ -130,7 +138,7 @@ export default function PrewarmTable() {
               remarks: item.remarks || "-",
             }))
           : [];   
-      setItems(mapped);
+      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -223,8 +231,9 @@ export default function PrewarmTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
             label: col.label,

@@ -22,6 +22,10 @@ import { RowAction } from "@/lib/types";
 import { copyRow, copyTable } from "@/lib/tableActions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { usePermission } from "@/hooks/usePermission";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 function fmtDuration(sec: number | null) {
   if (sec == null) return "";
@@ -43,8 +47,12 @@ export default function EggTable() {
   const canInsert = usePermission('/jmb/eggstorage/insert')
   const canEdit = usePermission('/jmb/eggstorage/edit')
 
-  
-  const { setValue } = useGlobalContext();
+
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const tableColumns: ColumnConfig[] = useMemo(
     () => [
@@ -138,7 +146,7 @@ export default function EggTable() {
           }))
           : [];
 
-      setItems(mapped);
+      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.classi_ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -230,13 +238,16 @@ export default function EggTable() {
             <Plus className="size-4" />
             Egg Storage
           </Button>
+
+          {/* <Button onClick={() => console.log({ items })}>items</Button> */}
         </div>
       </div>
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
             label: col.label,
