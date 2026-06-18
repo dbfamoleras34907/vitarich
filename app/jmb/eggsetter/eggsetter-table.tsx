@@ -40,6 +40,10 @@ import { RowAction } from "@/lib/types";
 import { copyRow, copyTable } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 export default function EggsetterTable() {
   const [items, setItems] = useState<RowDataKey[]>([]);
@@ -47,7 +51,11 @@ export default function EggsetterTable() {
 
   const router = useRouter();
 
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const canView = usePermission("/jmb/eggsetter/view");
   const canInsert = usePermission("/jmb/eggsetter/insert");
@@ -215,7 +223,7 @@ export default function EggsetterTable() {
           }))
           : [];
 
-      setItems(mapped);
+      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -320,8 +328,9 @@ export default function EggsetterTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
             label: col.label,

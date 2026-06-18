@@ -1,44 +1,38 @@
 'use client'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getUserFarms } from '../admin/user/new/api'
-import SearchableCombobox from '@/components/SearchableCombobox'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { AuthUser } from '../admin/user/new/Layout'
 
 type Params = {
     label?: string | null
-    setValue: (value: any) => void
-    value: any
+    setValue: (value: string | number) => void
+    value?: string | number | null
+    autoDefault?: boolean
 }
 
 export default function DefaultFarmComboBox({
     label = "",
     setValue,
     value,
+    autoDefault = true,
 }: Params) {
     // commit to build
     const { getValue } = useGlobalContext()
+    const selectedUser = getValue('UserInfoAuthSession')?.[0] as AuthUser | undefined
 
-    const [farmList, setFarmList] = useState<any[]>([])
-    const [authSelected, setAuthSelected] = useState<AuthUser | null>(null)
-
-    useEffect(() => {
-        const selectedUser = getValue('UserInfoAuthSession')
-        if (selectedUser) {
-            setAuthSelected(selectedUser[0])
-        }
-    }, [getValue])
-
+    const [farmList, setFarmList] = useState<ComboboxItemType[]>([])
 
     useEffect(() => {
-        if (!authSelected?.id) return
+        if (!selectedUser?.id) return
         const init = async () => {
-            const farms = await getUserFarms(Number(authSelected.id))
-            setFarmList(farms || [])
+            const farms = await getUserFarms(Number(selectedUser.id))
+            setFarmList(Array.isArray(farms) ? farms as ComboboxItemType[] : [])
         }
         init()
 
-    }, [authSelected])
+    }, [selectedUser?.id])
 
 
     /**
@@ -48,6 +42,7 @@ export default function DefaultFarmComboBox({
      * 2. selectedUser.id (fallback)
      */
     useEffect(() => {
+        if (!autoDefault) return
         if (value) return
         if (!farmList.length) return
 
@@ -63,7 +58,7 @@ export default function DefaultFarmComboBox({
             setValue(selectedUser.id)
         }
 
-    }, [farmList, value, getValue, setValue])
+    }, [autoDefault, farmList, value, getValue, setValue])
 
 
     return (

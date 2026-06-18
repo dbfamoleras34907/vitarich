@@ -37,6 +37,11 @@ import {
 } from "./newv2/api";
 
 import { usePermission } from "@/hooks/usePermission";
+import { useGlobalContext } from "@/lib/context/GlobalContext";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return "";
@@ -86,6 +91,11 @@ export default function EggHatchTable() {
 
   const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
+  const { getValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const canView = usePermission("/jmb/egghatcherv2/view");
   const canEdit = usePermission("/jmb/egghatcherv2/edit");
@@ -194,7 +204,7 @@ export default function EggHatchTable() {
             )
           : [];
 
-      setItems(mapped);
+      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref));
     } catch (e) {
       console.error(e);
 
@@ -303,8 +313,9 @@ export default function EggHatchTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           data={items}
           columns={tableColumns.map((col) => ({
             key: col.key,

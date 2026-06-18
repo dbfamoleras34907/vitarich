@@ -31,9 +31,10 @@ import ReactFlow, {
     useNodesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { reverseChickGrading, reverseChickPullout, reverseClassification, reverseDispatch, reverseDisposal, reverseHatcher, reversePreWarming, reverseReceiving, reverseSetter, reverseStorage, reverseTransfer } from "./api";
+import { getVoidPermissions, reverseChickGrading, reverseChickPullout, reverseClassification, reverseDispatch, reverseDisposal, reverseHatcher, reversePreWarming, reverseReceiving, reverseSetter, reverseStorage, reverseTransfer } from "./api";
 import { useConfirm } from "@/lib/ConfirmProvider";
 import { toast } from "sonner";
+// import { useRouteChecking } from "@/hooks/userRouteChecking";
 
 const icons: Record<string, any> = {
     RECEIVING: ClipboardCheck,
@@ -113,10 +114,36 @@ function TraceNode({ data, }: { data: any; }) {
 
 const nodeTypes = { trace: TraceNode, };
 
+const voidPermissionConfig: Record<string, string> = {
+    DISPOSAL: "/a_dean/disposal/void",
+    DISPATCH: "/jmb/docdispatchv2/void",
+    CHICK_GRADING: "/jmb/docclassification/void",
+    PULLOUT: "/jmb/chickpulloutv2/void",
+    HATCHER: "/jmb/egghatcherv2/void",
+    TRANSFER: "/jmb/eggtransferv2/void",
+    SETTER: "/jmb/eggsetter/void",
+    PRE_WARMING: "/jmb/prewarmingv2/void",
+    STORAGE: "/jmb/eggstorage/void",
+    CLASSIFICATION: "/jmb/hatcheryclassi/void",
+    RECEIVING: "/a_dean/receiving/void",
+};
+
+const blockedVoidPermissions = Object.keys(voidPermissionConfig).reduce<Record<string, boolean>>(
+    (acc, stage) => {
+        acc[stage] = true;
+        return acc;
+    },
+    {}
+);
+
 export default function TraceTimeline() {
     const [modalState, setmodalState] = useState(false)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const confirm = useConfirm()
+    const { getValue } = useGlobalContext();
+    const [voidPermissionByStage, setVoidPermissionByStage] = useState<Record<string, boolean>>(
+        blockedVoidPermissions
+    );
 
     const [cardinfo, setcardinfo] = useState({
         title: "",
@@ -124,8 +151,6 @@ export default function TraceTimeline() {
         id: "",
         date: ""
     })
-    const { getValue } = useGlobalContext();
-
     const [ref, setRef] = useState("");
 
     const [loading, setLoading] = useState(false);
@@ -135,6 +160,31 @@ export default function TraceTimeline() {
     const [nodes, setNodes, onNodesChange,] = useNodesState([]);
 
     const [edges, setEdges, onEdgesChange,] = useEdgesState([]);
+
+    useEffect(() => {
+        async function loadVoidPermissions() {
+            try {
+                const permissions = await getVoidPermissions();
+
+                const nextPermissions = Object.entries(voidPermissionConfig).reduce<Record<string, boolean>>(
+                    (acc, [stage, ilink]) => {
+                        const permission = permissions.find((item) => item.ilink === ilink);
+
+                        acc[stage] = permission?.is_visible !== true;
+                        return acc;
+                    },
+                    {}
+                );
+
+                setVoidPermissionByStage(nextPermissions);
+            } catch (error) {
+                console.error(error);
+                setVoidPermissionByStage(blockedVoidPermissions);
+            }
+        }
+
+        loadVoidPermissions();
+    }, []);
 
 
     function preventOverlap(
@@ -261,38 +311,167 @@ export default function TraceTimeline() {
 
 
 
+    // async function voidTransaction(id: number, title: string) {
+
+    //     try {
+
+    //         if (!id) return;
+
+    //         // const confirmVoid = await confirmx(`Void ${title} #${id}?`);
+
+    //         const confirmVoid = await confirm({
+    //             title: `Void ${title} #${id}?`,
+    //             description: "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
+    //             confirmText: "Confirm",
+    //             cancelText: "Cancel",
+    //         });
+    //         if (!confirmVoid) return;
+
+    //         const reverseHandlers: Record<
+    //             string, {
+    //                 action: (id: number) => Promise<any>;
+    //                 error: string;
+    //             }
+    //         > = {
+    //             DISPOSAL: { action: reverseDisposal, error: "Failed to reverse disposal", },
+    //             DISPATCH: { action: reverseDispatch, error: "Failed to reverse dispatch", },
+    //             CHICK_GRADING: { action: reverseChickGrading, error: "Failed to reverse chick grading", },
+    //             PULLOUT: { action: reverseChickPullout, error: "Failed to reverse chick pullout", },
+    //             HATCHER: { action: reverseHatcher, error: "Failed to reverse hatcher", },
+    //             TRANSFER: { action: reverseTransfer, error: "Failed to reverse transfer", },
+    //             SETTER: { action: reverseSetter, error: "Failed to reverse setter", },
+    //             PRE_WARMING: { action: reversePreWarming, error: "Failed to reverse pre-warming", },
+    //             STORAGE: { action: reverseStorage, error: "Failed to reverse storage", },
+    //             CLASSIFICATION: { action: reverseClassification, error: "Failed to reverse classification", },
+    //             RECEIVING: { action: reverseReceiving, error: "Failed to reverse receiving", },
+    //         };
+
+    //         const handler = reverseHandlers[title];
+
+    //         if (handler) {
+    //             const result = await handler.action(Number(id));
+
+    //             console.log({ result });
+
+    //             if (!result?.success) {
+    //                 throw new Error(
+    //                     result?.message ?? handler.error
+    //                 );
+    //             }
+    //         }
+
+    //         toast("Transaction reversed successfully");
+    //         setmodalState(false);
+
+    //         setNodes((prev) =>
+    //             prev.map((node: any) => {
+    //                 if (
+    //                     node.data.doc_id === id &&
+    //                     node.data.stage === title
+    //                 ) {
+    //                     return {
+    //                         ...node,
+    //                         data: {
+    //                             ...node.data,
+    //                             extra: {
+    //                                 ...node.data.extra,
+    //                                 ...(title === "DISPOSAL" && { void: true, }),
+    //                                 ...(title === "DISPATCH" && { is_active: false, }),
+    //                                 ...(title === "PRE_WARMING" && { is_active: false, }),
+    //                                 ...(["CHICK_GRADING", "PULLOUT", "HATCHER", "TRANSFER", "SETTER", "STORAGE", "CLASSIFICATION", "RECEIVING",
+    //                                 ].includes(title) && {
+    //                                     void: 0,
+    //                                 }),
+    //                             },
+    //                         },
+    //                     };
+    //                 }
+
+    //                 return node;
+    //             })
+    //         );
+
+    //     } catch (error: any) {
+
+    //         alert(
+    //             error?.message ??
+    //             "Something went wrong"
+    //         );
+    //     }
+    // }\
+
     async function voidTransaction(id: number, title: string) {
         try {
 
             if (!id) return;
+            if (voidPermissionByStage[title]) {
+                toast.warning("You are not allowed to void this transaction");
+                return;
+            }
 
             // const confirmVoid = await confirmx(`Void ${title} #${id}?`);
 
             const confirmVoid = await confirm({
                 title: `Void ${title} #${id}?`,
-                description: "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
+                description:
+                    "Are you sure you want to void this transaction? This action cannot be undone. All related transactions will also be voided.",
                 confirmText: "Confirm",
                 cancelText: "Cancel",
             });
+
             if (!confirmVoid) return;
 
             const reverseHandlers: Record<
-                string, {
+                string,
+                {
                     action: (id: number) => Promise<any>;
                     error: string;
                 }
             > = {
-                DISPOSAL: { action: reverseDisposal, error: "Failed to reverse disposal", },
-                DISPATCH: { action: reverseDispatch, error: "Failed to reverse dispatch", },
-                CHICK_GRADING: { action: reverseChickGrading, error: "Failed to reverse chick grading", },
-                PULLOUT: { action: reverseChickPullout, error: "Failed to reverse chick pullout", },
-                HATCHER: { action: reverseHatcher, error: "Failed to reverse hatcher", },
-                TRANSFER: { action: reverseTransfer, error: "Failed to reverse transfer", },
-                SETTER: { action: reverseSetter, error: "Failed to reverse setter", },
-                PRE_WARMING: { action: reversePreWarming, error: "Failed to reverse pre-warming", },
-                STORAGE: { action: reverseStorage, error: "Failed to reverse storage", },
-                CLASSIFICATION: { action: reverseClassification, error: "Failed to reverse classification", },
-                RECEIVING: { action: reverseReceiving, error: "Failed to reverse receiving", },
+                DISPOSAL: {
+                    action: reverseDisposal,
+                    error: "Failed to reverse disposal",
+                },
+                DISPATCH: {
+                    action: reverseDispatch,
+                    error: "Failed to reverse dispatch",
+                },
+                CHICK_GRADING: {
+                    action: reverseChickGrading,
+                    error: "Failed to reverse chick grading",
+                },
+                PULLOUT: {
+                    action: reverseChickPullout,
+                    error: "Failed to reverse chick pullout",
+                },
+                HATCHER: {
+                    action: reverseHatcher,
+                    error: "Failed to reverse hatcher",
+                },
+                TRANSFER: {
+                    action: reverseTransfer,
+                    error: "Failed to reverse transfer",
+                },
+                SETTER: {
+                    action: reverseSetter,
+                    error: "Failed to reverse setter",
+                },
+                PRE_WARMING: {
+                    action: reversePreWarming,
+                    error: "Failed to reverse pre-warming",
+                },
+                STORAGE: {
+                    action: reverseStorage,
+                    error: "Failed to reverse storage",
+                },
+                CLASSIFICATION: {
+                    action: reverseClassification,
+                    error: "Failed to reverse classification",
+                },
+                RECEIVING: {
+                    action: reverseReceiving,
+                    error: "Failed to reverse receiving",
+                },
             };
 
             const handler = reverseHandlers[title];
@@ -324,10 +503,24 @@ export default function TraceTimeline() {
                                 ...node.data,
                                 extra: {
                                     ...node.data.extra,
-                                    ...(title === "DISPOSAL" && { void: true, }),
-                                    ...(title === "DISPATCH" && { is_active: false, }),
-                                    ...(title === "PRE_WARMING" && { is_active: false, }),
-                                    ...(["CHICK_GRADING", "PULLOUT", "HATCHER", "TRANSFER", "SETTER", "STORAGE", "CLASSIFICATION", "RECEIVING",
+                                    ...(title === "DISPOSAL" && {
+                                        void: true,
+                                    }),
+                                    ...(title === "DISPATCH" && {
+                                        is_active: false,
+                                    }),
+                                    ...(title === "PRE_WARMING" && {
+                                        is_active: false,
+                                    }),
+                                    ...([
+                                        "CHICK_GRADING",
+                                        "PULLOUT",
+                                        "HATCHER",
+                                        "TRANSFER",
+                                        "SETTER",
+                                        "STORAGE",
+                                        "CLASSIFICATION",
+                                        "RECEIVING",
                                     ].includes(title) && {
                                         void: 0,
                                     }),
@@ -341,7 +534,6 @@ export default function TraceTimeline() {
             );
 
         } catch (error: any) {
-
             alert(
                 error?.message ??
                 "Something went wrong"
@@ -584,7 +776,7 @@ export default function TraceTimeline() {
                     </div>
                 ) : (
                     <div className="h-[calc(100vh-240px)] w-full bg-slate-50 relative">
-                        <Button onClick={() => console.log({ nodes })}> check </Button >
+                        {/* <Button onClick={() => console.log({ nodes })}> check </Button > */}
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
@@ -644,12 +836,13 @@ export default function TraceTimeline() {
                         size={"xs"}
                         className="mx-3"
                         variant={"destructive"}
+                        disabled={voidPermissionByStage[cardinfo.title]}
                         onClick={() => voidTransaction(Number(cardinfo.id), cardinfo.title)}>
                         Void Transaction
                     </Button>
                     <div className="float-right  mb-2 mx-3 flex gap-1">
 
-                        <Button
+                        {/* <Button
                             onClick={() => {
                                 cardinfo.title === "CLASSIFICATION" && cardinfo.id && window.open(`/jmb/hatcheryclassi/view/${cardinfo.id}`, "_blank")
                                 cardinfo.title === "STORAGE" && cardinfo.id && window.open(`/jmb/eggstorage/view/${cardinfo.id}`, "_blank")
@@ -661,8 +854,36 @@ export default function TraceTimeline() {
                             }}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
                             View details
-                        </Button>
+                        </Button> 
+                        {canViewDetails && (
+                            // <Button
+                            //     size="xs"
+                            //     onClick={() => {
+                            //         console.log(checkRoute(cardinfo.title))
 
+                            //         // checkRoute("cardinfo.title") &&
+                            //         //     window.open(
+                            //         //         `${viewRoutes[cardinfo.title]}${cardinfo.id}`,
+                            //         //         "_blank"
+                            //         //     )
+                            //     }
+                            //     }
+                            // >
+                            //     View Details
+                            // </Button>
+                            <Button
+                                size="xs"
+                                onClick={() => {
+                                    window.open(
+                                        `trace/validate?route=${cardinfo.title}&id=${cardinfo.id}`,
+                                        "_blank"
+                                    );
+                                }}
+                            >
+                                View Details
+                            </Button>
+                        )}
+                        */}
                         <Button
                             onClick={() => setmodalState(false)}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
@@ -670,7 +891,7 @@ export default function TraceTimeline() {
                         </Button>
                     </div>
                 </div>
-            </Modal>
+            </Modal >
         </div >
     );
 }

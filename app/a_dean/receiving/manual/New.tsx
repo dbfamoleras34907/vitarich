@@ -69,7 +69,6 @@ export default function ApprovalDecisionForm() {
         if (canInsert)
             router.push("/a_dean/receiving/")
     }, [])
-
     const { getValue, setValue } = useGlobalContext()
     const [tempAges, setTempAges] = useState<{ w: number; d: number }[]>([])
     const [isAutoReceiving, setisAutoReceiving] = useState(false)

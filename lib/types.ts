@@ -21,7 +21,7 @@ export type HatchClassification = {
   jumbo: number | null;
   d_yolk: number | null;
   ttl_count: number | null;
-  is_active: boolean | null;
+  is_active: boolean | null;// void 
 };
 
 export type Customer = {

@@ -44,6 +44,10 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import {
+  attachFarmFilterFromRefs,
+  buildDefaultFarmInitialFilters,
+} from "@/lib/farmFilter";
 
 function formatDateTime(v?: string | null) {
   if (!v) return "-";
@@ -68,7 +72,11 @@ export default function EggTransferTable() {
 
   const router = useRouter();
 
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
 
   const canView = usePermission("/jmb/eggtransferv2/view");
   const canInsert = usePermission("/jmb/eggtransferv2/insert");
@@ -162,11 +170,16 @@ export default function EggTransferTable() {
     try {
       const data = await listEggTransfers();
 
+      const hasErrorRow =
+        Array.isArray(data) &&
+        data.length > 0 &&
+        typeof data[0] === "object" &&
+        data[0] !== null &&
+        "error" in data[0];
+
       if (
         (data && !Array.isArray(data)) ||
-        (Array.isArray(data) &&
-          data.length > 0 &&
-          "error" in (data as any)[0])
+        hasErrorRow
       ) {
         setItems([]);
       } else {
@@ -206,7 +219,7 @@ export default function EggTransferTable() {
               )
             : [];
 
-        setItems(mapped);
+        setItems(await attachFarmFilterFromRefs(mapped, (row) => row.ref_no));
       }
     } catch {
       setItems([]);
@@ -321,8 +334,9 @@ export default function EggTransferTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
             label: col.label,
