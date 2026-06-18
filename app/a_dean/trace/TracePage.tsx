@@ -19,7 +19,7 @@ import {
     Settings2,
     Thermometer,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import ReactFlow, {
     Background,
     Controls,
@@ -31,10 +31,9 @@ import ReactFlow, {
     useNodesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { reverseChickGrading, reverseChickPullout, reverseClassification, reverseDispatch, reverseDisposal, reverseHatcher, reversePreWarming, reverseReceiving, reverseSetter, reverseStorage, reverseTransfer } from "./api";
+import { getVoidPermissions, reverseChickGrading, reverseChickPullout, reverseClassification, reverseDispatch, reverseDisposal, reverseHatcher, reversePreWarming, reverseReceiving, reverseSetter, reverseStorage, reverseTransfer } from "./api";
 import { useConfirm } from "@/lib/ConfirmProvider";
 import { toast } from "sonner";
-import { usePermission } from "@/hooks/usePermission";
 // import { useRouteChecking } from "@/hooks/userRouteChecking";
 
 const icons: Record<string, any> = {
@@ -115,81 +114,36 @@ function TraceNode({ data, }: { data: any; }) {
 
 const nodeTypes = { trace: TraceNode, };
 
-type UserPermission = {
-    ilink?: string | null;
-    title?: string | null;
-    type?: string | null;
-    is_visible?: boolean | null;
+const voidPermissionConfig: Record<string, string> = {
+    DISPOSAL: "/a_dean/disposal/void",
+    DISPATCH: "/jmb/docdispatchv2/void",
+    CHICK_GRADING: "/jmb/docclassification/void",
+    PULLOUT: "/jmb/chickpulloutv2/void",
+    HATCHER: "/jmb/egghatcherv2/void",
+    TRANSFER: "/jmb/eggtransferv2/void",
+    SETTER: "/jmb/eggsetter/void",
+    PRE_WARMING: "/jmb/prewarmingv2/void",
+    STORAGE: "/jmb/eggstorage/void",
+    CLASSIFICATION: "/jmb/hatcheryclassi/void",
+    RECEIVING: "/a_dean/receiving/void",
 };
 
-const voidPermissionConfig: Record<string, { title: string; ilink: string; }> = {
-    DISPOSAL: { title: "Disposal", ilink: "/a_dean/disposal/void", },
-    DISPATCH: { title: "DOC Dispatch", ilink: "/jmb/docdispatchv2/void", },
-    CHICK_GRADING: { title: "DOC Classification", ilink: "/jmb/docclassification/void", },
-    PULLOUT: { title: "Chick Pullout Process", ilink: "/jmb/chickpulloutv2/void", },
-    HATCHER: { title: "Egg Hatcher Process", ilink: "/jmb/egghatcherv2/void", },
-    TRANSFER: { title: "Egg Transfer Process", ilink: "/jmb/eggtransferv2/void", },
-    SETTER: { title: "Egg Setter", ilink: "/jmb/eggsetter/void", },
-    PRE_WARMING: { title: "Egg Pre-Warming Process", ilink: "/jmb/prewarmingv2/void", },
-    STORAGE: { title: "Egg Storage", ilink: "/jmb/eggstorage/void", },
-    CLASSIFICATION: { title: "Egg Classification", ilink: "/jmb/hatcheryclassi/void", },
-    RECEIVING: { title: "Receiving", ilink: "/a_dean/receiving/void", },
-};
+const blockedVoidPermissions = Object.keys(voidPermissionConfig).reduce<Record<string, boolean>>(
+    (acc, stage) => {
+        acc[stage] = true;
+        return acc;
+    },
+    {}
+);
 
 export default function TraceTimeline() {
-
-
-    const canVoidReceiving = usePermission('/a_dean/receiving/void')
-    const canVoidEggClassification = usePermission('/jmb/hatcheryclassi/void')
-    const canVoidEggStorage = usePermission('/jmb/eggstorage/void')
-    const canVoidEggSetter = usePermission('/jmb/eggsetter/void')
-    const canVoidEggPreWarmingProcess = usePermission('/jmb/prewarmingv2/void')
-    const canVoidEggTransferProcess = usePermission('/jmb/eggtransferv2/void')
-    const canVoidDisposal = usePermission('/a_dean/disposal/void')
-    const canVoidChickPulloutProcess = usePermission('/jmb/chickpulloutv2/void')
-    const canVoidDOCClassification = usePermission('/jmb/docclassification/void')
-    const canVoidEggHatcherProcess = usePermission('/jmb/egghatcherv2/void')
-    const canVoidDOCDispatch = usePermission('/jmb/docdispatchv2/void')
-
-
     const [modalState, setmodalState] = useState(false)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const confirm = useConfirm()
     const { getValue } = useGlobalContext();
-    const voidPermissionByStage = useMemo(() => {
-        try {
-            const rawPermissions = getValue("UserPermission");
-            const permissions: UserPermission[] =
-                typeof rawPermissions === "string"
-                    ? JSON.parse(rawPermissions)
-                    : rawPermissions || [];
-
-            return Object.entries(voidPermissionConfig).reduce<Record<string, boolean>>(
-                (acc, [stage, config]) => {
-                    const isAllowed = permissions.some((permission) =>
-                        permission.is_visible === true &&
-                        permission.type === "void" &&
-                        (
-                            permission.ilink === config.ilink ||
-                            permission.title === `${config.title}/void`
-                        )
-                    );
-
-                    acc[stage] = !isAllowed;
-                    return acc;
-                },
-                {}
-            );
-        } catch {
-            return Object.keys(voidPermissionConfig).reduce<Record<string, boolean>>(
-                (acc, stage) => {
-                    acc[stage] = true;
-                    return acc;
-                },
-                {}
-            );
-        }
-    }, [getValue]);
+    const [voidPermissionByStage, setVoidPermissionByStage] = useState<Record<string, boolean>>(
+        blockedVoidPermissions
+    );
 
     const [cardinfo, setcardinfo] = useState({
         title: "",
@@ -206,6 +160,31 @@ export default function TraceTimeline() {
     const [nodes, setNodes, onNodesChange,] = useNodesState([]);
 
     const [edges, setEdges, onEdgesChange,] = useEdgesState([]);
+
+    useEffect(() => {
+        async function loadVoidPermissions() {
+            try {
+                const permissions = await getVoidPermissions();
+
+                const nextPermissions = Object.entries(voidPermissionConfig).reduce<Record<string, boolean>>(
+                    (acc, [stage, ilink]) => {
+                        const permission = permissions.find((item) => item.ilink === ilink);
+
+                        acc[stage] = permission?.is_visible !== true;
+                        return acc;
+                    },
+                    {}
+                );
+
+                setVoidPermissionByStage(nextPermissions);
+            } catch (error) {
+                console.error(error);
+                setVoidPermissionByStage(blockedVoidPermissions);
+            }
+        }
+
+        loadVoidPermissions();
+    }, []);
 
 
     function preventOverlap(
@@ -875,7 +854,7 @@ export default function TraceTimeline() {
                             }}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
                             View details
-                        </Button> */}
+                        </Button> 
                         {canViewDetails && (
                             // <Button
                             //     size="xs"
@@ -904,6 +883,7 @@ export default function TraceTimeline() {
                                 View Details
                             </Button>
                         )}
+                        */}
                         <Button
                             onClick={() => setmodalState(false)}
                             className="bg-black text-white  hover:bg-black/70" size={"xs"}>
