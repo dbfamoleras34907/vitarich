@@ -45,21 +45,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import {
   createEggHatcheryProcess,
   deleteEggHatcheryProcess,
   getEggHatcheryProcessById,
+  listClassiRefNos,
   updateEggHatcheryProcess,
-  listClassiRefNos, // ✅ NEW
 } from "./api";
 
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -67,6 +59,7 @@ import { Separator } from "@/components/ui/separator";
 import FormActionButtons from "@/components/FormActionButtons";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { usePermission } from "@/hooks/usePermission";
+import SearchableDropdown from "@/lib/SearchableDropdown";
 
 function toDatetimeLocalValue(v: string | null | undefined) {
   if (!v) return "";
@@ -97,8 +90,6 @@ function fmtDuration(mins: number | null) {
 }
 
 export default function EggHatchform() {
-
-
   // const router = useRouter();
   // const sp = useSearchParams();
   // const idParam = sp.get("id");
@@ -112,7 +103,10 @@ export default function EggHatchform() {
   const [eggRefs, setEggRefs] = useState<string[]>([]);
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
 
-
+  const eggRefOptions = useMemo(
+    () => eggRefs.map((egg_ref) => ({ egg_ref })),
+    [eggRefs],
+  );
 
   const router = useRouter();
   const sp = useSearchParams();
@@ -122,14 +116,11 @@ export default function EggHatchform() {
   const editId = idParam ? Number(idParam) : null;
 
   const isEdit =
-    typeof editId === "number" &&
-    Number.isFinite(editId) &&
-    editId > 0;
+    typeof editId === "number" && Number.isFinite(editId) && editId > 0;
   const canView = usePermission("/jmb/egghatcherv2/insert");
   const canEdit = usePermission("/jmb/egghatcherv2/edit");
 
   useEffect(() => {
-
     // wait for permissions
     if (canView === null || canEdit === null) {
       return;
@@ -143,11 +134,7 @@ export default function EggHatchform() {
     if (!isEdit && canView) {
       router.replace("/jmb/egghatcherv2");
     }
-
   }, [isEdit, canEdit, canView, router]);
-
-
-
 
   const [form, setForm] = useState({
     egg_ref: "",
@@ -339,28 +326,18 @@ export default function EggHatchform() {
               <div className="space-y-4">
                 <div className="space-y-1">
                   <Label>Egg Reference No.</Label>
-                  <Select
+                  <SearchableDropdown
+                    list={eggRefOptions}
+                    codeLabel="egg_ref"
+                    nameLabel="egg_ref"
+                    showNameOnly
                     value={form.egg_ref}
-                    onValueChange={(v) => setField("egg_ref", v)}
+                    onChange={(v) => setField("egg_ref", v)}
                     disabled={eggRefsLoading || saving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          eggRefsLoading
-                            ? "Loading..."
-                            : "Select Egg Reference No."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {eggRefs.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {r}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder={
+                      eggRefsLoading ? "Loading..." : "Select Egg Reference No."
+                    }
+                  />
                 </div>
                 <Separator />
                 {/* <div className="space-y-1">

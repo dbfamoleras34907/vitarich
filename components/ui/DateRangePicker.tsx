@@ -70,7 +70,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button className="w-50 hover:bg-primary/10 justify-start text-left border border-primary bg-gray-50 text-black">
+                <Button type="button" className="w-50 hover:bg-primary/10 justify-start text-left border border-primary bg-gray-50 text-black">
                     {date?.from ? (
                         date.to ? (
                             <>
@@ -98,6 +98,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
 
                 <div className="flex justify-between">
                     <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={clearDate}
@@ -106,6 +107,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
                     </Button>
 
                     <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => setOpen(false)}

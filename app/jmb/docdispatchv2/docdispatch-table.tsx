@@ -50,6 +50,7 @@ import {
 import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { buildDefaultFarmInitialFilters, FARM_FILTER_KEY } from "@/lib/farmFilter";
 
 type Row = {
   id: number;
@@ -83,7 +84,23 @@ export default function DocdispatchTable() {
   const [loading, setLoading] =
     useState(false);
 
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const defaultFarmFilters = useMemo(
+    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
+    [getValue],
+  );
+  const farmNameById = useMemo(() => {
+    const farms = (getValue("getFarmDB") || []) as Array<{
+      id?: string | number;
+      name?: string | null;
+    }>;
+
+    return new Map(
+      farms
+        .filter((farm) => farm.id !== undefined && farm.name)
+        .map((farm) => [String(farm.id), String(farm.name)]),
+    );
+  }, [getValue]);
 
   const canView = usePermission(
     "/jmb/docdispatchv2/view",
@@ -119,6 +136,10 @@ export default function DocdispatchTable() {
               dr_no: item.dr_no || "-",
 
               farm_name: item.farm_name || "-",
+              [FARM_FILTER_KEY]:
+                Array.from(farmNameById.entries()).find(
+                  ([, name]) => name === item.farm_name,
+                )?.[0] ?? "",
 
               hauler_name:
                 item.hauler_name || "-",
@@ -386,8 +407,9 @@ export default function DocdispatchTable() {
 
       <div className="mt-4">
         <DynamicTable
+          key={JSON.stringify(defaultFarmFilters)}
           loading={loading}
-          initialFilters={[]}
+          initialFilters={defaultFarmFilters}
           columns={tableColumns.map((col) => ({
             key: col.key,
 

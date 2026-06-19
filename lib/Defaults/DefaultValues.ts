@@ -441,7 +441,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 3,
             type: "Module",
-            title: "Growing Period",
+            title: "Population Record",
             url: "/jmb/growing",
           },
 
@@ -527,6 +527,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -537,6 +538,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Classification",
             url: "/jmb/hatcheryclassi",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -549,6 +551,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -559,6 +562,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Pre-Warming Process",
             url: "/jmb/prewarmingv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -569,6 +573,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Setter",
             url: "/jmb/eggsetter",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -579,6 +584,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Transfer Process",
             url: "/jmb/eggtransferv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -589,6 +595,7 @@ export const NavFolders: NavFolder[] = [
             title: "Egg Hatcher Process",
             url: "/jmb/egghatcherv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -599,6 +606,7 @@ export const NavFolders: NavFolder[] = [
             title: "Chick Pullout Process",
             url: "/jmb/chickpulloutv2",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -611,8 +619,9 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
-            edit: true,
+            edit: false,
           },
 
           {
@@ -623,6 +632,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: true,
           },
@@ -635,6 +645,7 @@ export const NavFolders: NavFolder[] = [
             inventoriable: true,
             section: "HA",
             view: true,
+            void: true,
             insert: true,
             edit: false,
           },
@@ -911,6 +922,7 @@ export const NavFolders: NavFolder[] = [
             title: "Permission Template",
             url: "/admin/permissions",
             view: true,
+            void: false,
             insert: false,
             edit: false,
           },
@@ -949,13 +961,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-  { code: "todo", name: "To Do", color: "gray" },
-  { code: "in_progress", name: "In Progress", color: "blue" },
-  { code: "in_review", name: "In Review", color: "purple" },
-  { code: "blocked", name: "Blocked", color: "red" },
-  { code: "done", name: "Done", color: "green" },
-  { code: "reopened", name: "Reopened", color: "orange" },
-];
+    { code: "todo", name: "To Do", color: "gray" },
+    { code: "in_progress", name: "In Progress", color: "blue" },
+    { code: "in_review", name: "In Review", color: "purple" },
+    { code: "blocked", name: "Blocked", color: "red" },
+    { code: "done", name: "Done", color: "green" },
+    { code: "reopened", name: "Reopened", color: "orange" },
+  ];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -964,12 +976,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-  // { code: "highest", name: "Highest", color: "red" },
-  { code: "high", name: "High", color: "orange" },
-  { code: "medium", name: "Medium", color: "yellow" },
-  { code: "low", name: "Low", color: "blue" },
-  // { code: "lowest", name: "Lowest", color: "gray" },
-];
+    // { code: "highest", name: "Highest", color: "red" },
+    { code: "high", name: "High", color: "orange" },
+    { code: "medium", name: "Medium", color: "yellow" },
+    { code: "low", name: "Low", color: "blue" },
+    // { code: "lowest", name: "Lowest", color: "gray" },
+  ];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
@@ -1003,27 +1015,27 @@ export function getInventoriableModules(navFolders: NavFolder[]) {
 }
 
 export const regionList: CodeNameBase[] = [
-  { code: 'NCR', name: 'National Capital Region (NCR)' },
-  { code: 'CAR', name: 'Cordillera Administrative Region (CAR)' },
-  { code: '01', name: 'Ilocos Region' },
-  { code: '02', name: 'Cagayan Valley' },
-  { code: '03', name: 'Central Luzon' },
-  { code: '04A', name: 'CALABARZON' },
-  { code: '04B', name: 'MIMAROPA' },
-  { code: '05', name: 'Bicol Region' },
-  { code: '06', name: 'Western Visayas' },
-  { code: '07', name: 'Central Visayas' },
-  { code: '08', name: 'Eastern Visayas' },
-  { code: '09', name: 'Zamboanga Peninsula' },
-  { code: '10', name: 'Northern Mindanao' },
-  { code: '11', name: 'Davao Region' },
-  { code: '12', name: 'SOCCSKSARGEN' },
-  { code: '13', name: 'Caraga' },
-  { code: 'BARMM', name: 'Bangsamoro Autonomous Region in Muslim Mindanao' }
-]
+  { code: "NCR", name: "National Capital Region (NCR)" },
+  { code: "CAR", name: "Cordillera Administrative Region (CAR)" },
+  { code: "01", name: "Ilocos Region" },
+  { code: "02", name: "Cagayan Valley" },
+  { code: "03", name: "Central Luzon" },
+  { code: "04A", name: "CALABARZON" },
+  { code: "04B", name: "MIMAROPA" },
+  { code: "05", name: "Bicol Region" },
+  { code: "06", name: "Western Visayas" },
+  { code: "07", name: "Central Visayas" },
+  { code: "08", name: "Eastern Visayas" },
+  { code: "09", name: "Zamboanga Peninsula" },
+  { code: "10", name: "Northern Mindanao" },
+  { code: "11", name: "Davao Region" },
+  { code: "12", name: "SOCCSKSARGEN" },
+  { code: "13", name: "Caraga" },
+  { code: "BARMM", name: "Bangsamoro Autonomous Region in Muslim Mindanao" },
+];
 
 export const islandGrouplist: CodeNameBase[] = [
-  { code: 'l', name: 'Luzon' },
-  { code: 'v', name: 'Visayas' },
-  { code: 'm', name: 'Mindanao' }
-]
+  { code: "l", name: "Luzon" },
+  { code: "v", name: "Visayas" },
+  { code: "m", name: "Mindanao" },
+];

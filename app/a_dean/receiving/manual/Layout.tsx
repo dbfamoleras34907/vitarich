@@ -1342,9 +1342,11 @@ export default function ApprovalDecisionForm() {
                 label="Shipped To"
                 value={header?.delivered_to ?? undefined}
                 setValue={(val) => {
+                  const deliveredTo = val === '' ? null : Number(val)
+
                   setHeader(h => ({
                     ...(h ?? emptyApprovalRecord),
-                    delivered_to: val
+                    delivered_to: deliveredTo
                   }))
                 }
                 }

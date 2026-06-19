@@ -36,6 +36,10 @@ export type TransferClassiRefOption = {
   total_hatching_egg: number;
 };
 
+type EggTransferRefNoViewRow = {
+  ref_no: string | null;
+};
+
 type SetterInventoryRow = {
   ref_no: string | null;
   farm_source: string | null;
@@ -58,6 +62,22 @@ function parseRefNumbers(value: string | null | undefined) {
 export async function listSetterInventoryRefs(): Promise<
   TransferClassiRefOption[]
 > {
+  const { data: refRows, error: refError } = await db
+    .from("view_eggtransfer_ref_no")
+    .select("ref_no")
+    .not("ref_no", "is", null)
+    .order("ref_no", { ascending: true });
+
+  if (refError) throw refError;
+
+  const refs = ((refRows ?? []) as EggTransferRefNoViewRow[])
+    .map((row) => String(row.ref_no ?? "").trim())
+    .filter(Boolean);
+
+  if (!refs.length) return [];
+
+  const allowedRefs = new Set(refs);
+
   const { data, error } = await db
     .from(SETTER_TABLE)
     .select("ref_no, farm_source, qty_set_egg")
@@ -71,6 +91,8 @@ export async function listSetterInventoryRefs(): Promise<
     const qtySetEgg = Number(row.qty_set_egg ?? 0);
 
     for (const ref of parseRefNumbers(row.ref_no)) {
+      if (!allowedRefs.has(ref)) continue;
+
       const current = inventoryMap.get(ref);
 
       inventoryMap.set(ref, {
@@ -83,8 +105,13 @@ export async function listSetterInventoryRefs(): Promise<
     }
   }
 
-  return Array.from(inventoryMap.values()).sort((a, b) =>
-    b.ref_no.localeCompare(a.ref_no),
+  return refs.map(
+    (ref) =>
+      inventoryMap.get(ref) ?? {
+        ref_no: ref,
+        farm_source: "",
+        total_hatching_egg: 0,
+      },
   );
 }
 

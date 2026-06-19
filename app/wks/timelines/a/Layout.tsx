@@ -37,7 +37,7 @@ export default function Layout() {
   const [loading, setLoading] = useState(false)
 
   const [emailOpen, setEmailOpen] = useState(false)
-  const [emailFrom, setEmailFrom] = useState('')
+  // const [emailFrom, setEmailFrom] = useState('')
   const [emailTo, setEmailTo] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
 
@@ -175,7 +175,7 @@ export default function Layout() {
     printWindow.document.write(`
     <html>
       <head>
-        <title>Timesheet Report</title>
+        <title>SYSTEM UPDATE TEST</title>
 
         <style>
           @page {
@@ -338,8 +338,8 @@ export default function Layout() {
 
   const handleSendEmail = async () => {
     try {
-      if (!emailFrom || !emailTo) {
-        toast.error('Please complete all email fields')
+      if (!emailTo) {
+        toast.error('Please enter recipient email')
         return
       }
 
@@ -477,7 +477,6 @@ export default function Layout() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: emailFrom,
           to: emailTo,
           subject: 'Timesheet Report',
           html,
@@ -492,7 +491,7 @@ export default function Layout() {
 
       setEmailOpen(false)
 
-      setEmailFrom('')
+
       setEmailTo('')
     } catch (err) {
       console.error(err)
@@ -533,8 +532,8 @@ export default function Layout() {
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
-                {/* FROM */}
+              {/* <div className="space-y-4 py-2">
+                {/* FROM 
                 <div className="space-y-2">
                   <Label>Email From</Label>
 
@@ -545,11 +544,63 @@ export default function Layout() {
                   />
                 </div>
 
-                {/* TO */}
+                {/* TO 
                 <div className="space-y-2">
                   <Label>Email To</Label>
 
                   <Input
+                    placeholder="manager@company.com"
+                    value={emailTo}
+                    onChange={(e) => setEmailTo(e.target.value)}
+                  />
+                </div>
+
+                {/* SUMMARY
+                <div className="rounded-xl border bg-muted/40 p-4 text-sm">
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">
+                      Records
+                    </span>
+
+                    <span className="font-medium">
+                      {filteredRows.length}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">
+                      Total Hours
+                    </span>
+
+                    <span className="font-medium">
+                      {filteredRows.reduce(
+                        (sum, row) => sum + Number(row.hrs || 0),
+                        0
+                      )}
+                    </span>
+                  </div>
+
+                  {(dateFrom || dateTo) && (
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">
+                        Date Filter
+                      </span>
+
+                      <span className="font-medium text-right">
+                        {dateFrom || '...'} → {dateTo || '...'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div> */}
+
+              <div className="space-y-4 py-2">
+                {/* TO */}
+                <div className="space-y-2">
+                  <Label>Email Recipient</Label>
+
+                  <Input
+                    type="email"
                     placeholder="manager@company.com"
                     value={emailTo}
                     onChange={(e) => setEmailTo(e.target.value)}
@@ -592,6 +643,10 @@ export default function Layout() {
                       </span>
                     </div>
                   )}
+
+                  <div className="mt-3 rounded-lg bg-background border p-3 text-xs text-muted-foreground">
+                    Email will be sent using the company Outlook account.
+                  </div>
                 </div>
               </div>
 
@@ -680,7 +735,7 @@ export default function Layout() {
       </Card>
 
       {/* TABLE */}
-      <div ref={printRef}>
+      <div ref={printRef} className='mx-4'>
         <DynamicTable
           loading={loading}
           data={filteredRows}

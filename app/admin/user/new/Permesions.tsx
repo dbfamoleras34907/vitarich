@@ -257,7 +257,8 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                         checked: defaultValue,
                         insert: child.insert,
                         edit: child.edit,
-                        view: child.view
+                        view: child.view,
+                        void: child.void
                     })
                 })
             })
@@ -274,54 +275,54 @@ export default function Permissions({ userId }: RuleAndPermProps) {
         getuser()
     }, [])
 
-const toggleColumnPermissions = async (
-    rows: Record<string, any>[],
-    type: 'list' | 'view' | 'insert' | 'edit'
-) => {
-    const validRows = rows.filter((row) => {
-        if (type === 'view') return row.view
-        if (type === 'insert') return row.insert
-        if (type === 'edit') return row.edit
-        return true
-    })
-
-    const allSelected = validRows.every((row) => {
-        const key =
-            type === 'list'
-                ? `${row.group}|${row.title}`
-                : `${row.group}|${row.title}/${type}`
-
-        return permissions[key] ?? false
-    })
-
-    const newValue = !allSelected
-
-    await Promise.all(
-        validRows.map((row) => {
-            const title =
-                type === 'list'
-                    ? row.title
-                    : `${row.title}/${type}`
-
-            const url =
-                type === 'list'
-                    ? row.url
-                    : `${row.url}/${type}`
-
-            return EnabledonCheckChange(
-                row.group,
-                title,
-                newValue,
-                url,
-                type
-            )
+    const toggleColumnPermissions = async (
+        rows: Record<string, any>[],
+        type: 'list' | 'view' | 'insert' | 'edit' | 'void'
+    ) => {
+        const validRows = rows.filter((row) => {
+            if (type === 'view') return row.view
+            if (type === 'insert') return row.insert
+            if (type === 'edit') return row.edit
+            if (type === 'void') return row.void
+            return true
         })
-    )
-}
-    return (
-        <div className="space-y-4 bg-muted/20 min-h-screen p-4">
 
-            {/* Top Bar */}
+        const allSelected = validRows.every((row) => {
+            const key =
+                type === 'list'
+                    ? `${row.group}|${row.title}`
+                    : `${row.group}|${row.title}/${type}`
+
+            return permissions[key] ?? false
+        })
+
+        const newValue = !allSelected
+
+        await Promise.all(
+            validRows.map((row) => {
+                const title =
+                    type === 'list'
+                        ? row.title
+                        : `${row.title}/${type}`
+
+                const url =
+                    type === 'list'
+                        ? row.url
+                        : `${row.url}/${type}`
+
+                return EnabledonCheckChange(
+                    row.group,
+                    title,
+                    newValue,
+                    url,
+                    type
+                )
+            })
+        )
+    }
+    return (
+        <div className="space-y-4 bg-muted/20 min-h-screen">
+
             <div className="rounded-lg border  p-4 bg-white">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
 
@@ -577,6 +578,18 @@ const toggleColumnPermissions = async (
                                                     Edit
                                                 </Button>
                                             </th>
+
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'void')
+                                                    }
+                                                >
+                                                    Void
+                                                </Button>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -703,7 +716,29 @@ const toggleColumnPermissions = async (
                                                         />
                                                     </div>
                                                 </td>
-
+                                                {/* void */}
+                                                <td className="px-4 py-2 text-center">
+                                                    <div className="flex justify-center">
+                                                        <Checkbox
+                                                            disabled={!row.void}
+                                                            className='h-4 w-4 rounded-lg border-2 border-black/50'
+                                                            checked={
+                                                                permissions[
+                                                                `${row.group}|${row.title}/void`
+                                                                ] ?? false
+                                                            }
+                                                            onCheckedChange={(e) =>
+                                                                EnabledonCheckChange(
+                                                                    row.group,
+                                                                    `${row.title}/void`,
+                                                                    e ? true : false,
+                                                                    `${row.url}/void`,
+                                                                    'void'
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
