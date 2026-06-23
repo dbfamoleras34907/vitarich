@@ -14,16 +14,11 @@ import {
   CommandInput,
   CommandItem,
 } from '@/components/ui/command'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { ChevronDown, Search } from 'lucide-react'
 
 type Props<T> = {
-  list: T[] | ((row: any) => T[])
-  row?: any
+  list: T[] | ((row: unknown) => T[])
+  row?: unknown
   codeLabel: keyof T
   nameLabel?: keyof T
   value?: string
@@ -36,7 +31,7 @@ type Props<T> = {
 }
 
 export default function SearchableDropdown<
-  T extends Record<string, any>
+  T extends object
 >({
   list,
   row,
@@ -126,31 +121,25 @@ export default function SearchableDropdown<
       open={open}
       onOpenChange={(o) => !disabled && setOpen(o)}
     >
-      <Tooltip>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              disabled={disabled}
-              className=" bg-input border text-foreground hover:bg-input/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span className="truncate flex items-center gap-2">
-                {!displayText ? (
-                  <>
-                    <Search size={16} /> Search...
-                  </>
-                ) : (
-                  displayText
-                )}
-              </span>
-              <ChevronDown className='ml-auto'/>
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
-
-        <TooltipContent>
-          {displayText}
-        </TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          disabled={disabled}
+          title={displayText}
+          className=" bg-input border text-foreground hover:bg-input/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="truncate flex items-center gap-2">
+            {!displayText ? (
+              <>
+                <Search size={16} /> Search...
+              </>
+            ) : (
+              displayText
+            )}
+          </span>
+          <ChevronDown className='ml-auto'/>
+        </Button>
+      </PopoverTrigger>
 
       <PopoverContent
         className="p-0 max-h-[min(50vh,calc(100vh-120px))] overflow-auto"
@@ -166,7 +155,7 @@ export default function SearchableDropdown<
           <CommandEmpty>
             {allowFreeText && search ? (
               <CommandItem onSelect={selectFreeText}>
-                Use: "{search}"
+                Use: &quot;{search}&quot;
               </CommandItem>
             ) : (
               'No results found.'
@@ -190,7 +179,7 @@ export default function SearchableDropdown<
 
             {allowFreeText && (
               <CommandItem onSelect={selectFreeText}>
-                Use: "{search}"
+                Use: &quot;{search}&quot;
               </CommandItem>
             )}
           </CommandGroup>

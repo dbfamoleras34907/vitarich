@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { DataRecordApproval, DefaultFarm, DraftItem, Farms } from '@/lib/types'
+import { DataRecordApproval, DraftItem, Farms } from '@/lib/types'
 import { today } from '@/lib/Defaults/DefaultValues'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -83,8 +83,6 @@ export default function ApprovalDecisionForm() {
     const [temperature, setTemperature] = useState('')
     const [humidity, sethumidity] = useState('')
     const [brdr_ref_no, setbrdr_ref_no] = useState('')
-    const [defaultFarm, setdefaultFarm] = useState<DefaultFarm>()
-
     const [activeWeeks, setActiveWeeks] = useState(26)
     const [activeDays, setActiveDays] = useState(0)
 
@@ -183,7 +181,7 @@ export default function ApprovalDecisionForm() {
 
         if (defaultFarmId) {
             setHeader(h =>
-                h && h.delivered_to == null
+                h && !h.delivered_to
                     ? { ...h, delivered_to: defaultFarmId }
                     : h
             )
@@ -193,10 +191,8 @@ export default function ApprovalDecisionForm() {
         const data = await getUserInfo()
 
         if (data?.length) {
-            setdefaultFarm(data[0])
-
             setHeader(h =>
-                h && h.delivered_to == null
+                h && !h.delivered_to
                     ? { ...h, delivered_to: data[0].id }
                     : h
             )
@@ -584,11 +580,19 @@ export default function ApprovalDecisionForm() {
                             </Label>
                             <DefaultFarmComboBox
                                 value={header?.delivered_to ?? undefined}
+                                valueKey="id"
                                 setValue={(val) => {
-                                    setHeader(h => ({
-                                        ...(h ?? emptyApprovalRecord),
-                                        delivered_to: val
-                                    }))
+                                    const deliveredTo = val === '' ? null : Number(val)
+
+                                    setHeader(h => {
+                                        const currentHeader = h ?? emptyApprovalRecord
+                                        if (currentHeader.delivered_to === deliveredTo) return h
+
+                                        return {
+                                            ...currentHeader,
+                                            delivered_to: deliveredTo
+                                        }
+                                    })
                                 }
                                 }
                             />
