@@ -581,13 +581,15 @@ export default function ApprovalDecisionForm() {
                 value={header?.delivered_to ?? undefined}
                 valueKey="id"
                 setValue={(val) => {
+                  const deliveredTo = val === '' ? null : Number(val)
+
                   setHeader(h => {
                     const currentHeader = h ?? emptyApprovalRecord
                     if (currentHeader.delivered_to === deliveredTo) return h
 
                     return {
                       ...currentHeader,
-                      delivered_to: val
+                      delivered_to: deliveredTo
                     }
                   })
                 }

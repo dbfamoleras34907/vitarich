@@ -239,10 +239,9 @@ export default function EggTable() {
             Egg Storage
           </Button>
 
-          {/* <Button onClick={() => console.log({ items })}>items</Button> */}
+          {/* <Button onClick={() => test console.log({ items })}>items</Button> */}
         </div>
       </div>
-
       <div className="mt-4">
         <DynamicTable
           key={JSON.stringify(defaultFarmFilters)}
