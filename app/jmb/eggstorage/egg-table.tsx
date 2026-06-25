@@ -36,7 +36,7 @@ function fmtDuration(sec: number | null) {
 
   return `${hours}h ${minutes}m`;
 }
-
+// 
 export default function EggTable() {
   const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
