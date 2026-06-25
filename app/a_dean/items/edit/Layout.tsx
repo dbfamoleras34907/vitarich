@@ -25,6 +25,17 @@ import {
 } from '@/components/ui/select'
 
 import { RefreshCcw } from 'lucide-react'
+import SearchableDropdown from '@/lib/SearchableDropdown'
+import { getItemGroups, ItemGroup } from '../../itemgroups/api'
+
+type ItemForm = {
+  item_code: string
+  item_name: string
+  description: string
+  barcode: string
+  unit_measure: string
+  item_group: string
+}
 
 export default function EditItemPage() {
   const params = useSearchParams()
@@ -35,8 +46,9 @@ export default function EditItemPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>([])
 
-  const [form, setForm] = useState<any>(null)
+  const [form, setForm] = useState<ItemForm | null>(null)
 
   // 🔹 Load item
   useEffect(() => {
@@ -66,13 +78,27 @@ export default function EditItemPage() {
     }
 
     load()
-  }, [id])
+  }, [id, router])
+
+  useEffect(() => {
+    const loadItemGroups = async () => {
+      try {
+        const data = await getItemGroups()
+        setItemGroups((data || []) as ItemGroup[])
+      } catch (error) {
+        console.error('Error loading item groups:', error)
+        setItemGroups([])
+      }
+    }
+
+    loadItemGroups()
+  }, [])
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) {
     const { name, value } = e.target
-    setForm((prev: any) => ({ ...prev, [name]: value }))
+    setForm((prev) => prev ? ({ ...prev, [name]: value }) : prev)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -86,8 +112,9 @@ export default function EditItemPage() {
     try {
       await updateItem(Number(id), form)
       setMessage('✅ Item updated successfully')
-    } catch (err: any) {
-      setMessage('❌ ' + err.message)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unable to update item'
+      setMessage('❌ ' + errorMessage)
     } finally {
       setSaving(false)
     }
@@ -148,10 +175,14 @@ export default function EditItemPage() {
               {/* Item Group */}
               <div className="space-y-2">
                 <Label>Item Group</Label>
-                <Input
-                  name="item_group"
+                <SearchableDropdown
+                  codeLabel="code"
+                  nameLabel="name"
                   value={form.item_group}
-                  onChange={handleChange}
+                  list={itemGroups}
+                  onChange={(value) =>
+                    setForm((prev) => prev ? ({ ...prev, item_group: value }) : prev)
+                  }
                 />
               </div>
 
@@ -162,10 +193,10 @@ export default function EditItemPage() {
                 <Select
                   value={form.unit_measure}
                   onValueChange={(value) =>
-                    setForm((prev: any) => ({
+                    setForm((prev) => prev ? ({
                       ...prev,
                       unit_measure: value,
-                    }))
+                    }) : prev)
                   }
                 >
                   <SelectTrigger>
