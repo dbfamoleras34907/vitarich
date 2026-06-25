@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
-import { NavFolder } from "../types";
+import { NavChild, NavFolder } from "../types";
 
 // export const NavFolders = [
 //   {
@@ -698,6 +698,16 @@ export const NavFolders: NavFolder[] = [
             edit: false,
           },
 
+          // {
+          //   id: 51,
+          //   type: "Module",
+          //   title: "Item Group Master Data",
+          //   url: "/a_dean/itemgroups",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },
+
           {
             id: 26,
             type: "Module",
@@ -716,6 +726,35 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+          },   {
+            id: 50,
+            type: "Module",
+            title: "Item Group",
+            url: "/a_dean/itemgroups",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
+          },
+          {
+            id: 53,
+            type: "Module",
+            title: "UoM Master",
+            url: "/a_dean/uom-master",
+            // view: true,
+            insert: true,
+            edit: true,
+            void: true,
+          },
+          {
+            id: 54,
+            type: "Module",
+            title: "UoM Conversions",
+            url: "/a_dean/uom-conversions",
+            // view: true,
+            insert: true,
+            edit: true,
+            void: true,
           },
         ],
       },
@@ -732,7 +771,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 51,
             type: "Module",
-            title: "Goods Reciept",
+            title: "Goods Receipt",
             url: "/inv/gr",
             inventoriable: true,
             section: "IV",
@@ -991,20 +1030,28 @@ export const ISSUE_PRIORITIES: {
 // ]
 // type NavFolder = typeof NavFolders[number];
 
+type InventoriableModule = NavChild & {
+  code: number;
+  name: string;
+  parent: string;
+  group: string;
+  section: string;
+};
+
 export function getInventoriableModules(navFolders: NavFolder[]) {
-  const result: any[] = [];
+  const result: InventoriableModule[] = [];
 
   navFolders.forEach((folder) => {
     folder.items?.forEach((group) => {
       group.children?.forEach((child) => {
-        if ((child as any).inventoriable === true) {
+        if (child.inventoriable === true) {
           result.push({
             ...child,
             code: child.id,
             name: child.title,
             parent: folder.title,
             group: group.group,
-            section: (child as any)?.section || "",
+            section: child.section || "",
           });
         }
       });

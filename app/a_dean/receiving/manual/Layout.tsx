@@ -184,7 +184,7 @@ export default function ApprovalDecisionForm() {
 
     if (defaultFarmId) {
       setHeader(h =>
-        h && h.delivered_to == null
+        h && !h.delivered_to
           ? { ...h, delivered_to: defaultFarmId }
           : h
       )
@@ -197,7 +197,7 @@ export default function ApprovalDecisionForm() {
       setdefaultFarm(data[0])
 
       setHeader(h =>
-        h && h.delivered_to == null
+        h && !h.delivered_to
           ? { ...h, delivered_to: data[0].id }
           : h
       )
@@ -579,13 +579,17 @@ export default function ApprovalDecisionForm() {
               <DefaultFarmComboBox
                 label="Shipped To"
                 value={header?.delivered_to ?? undefined}
+                valueKey="id"
                 setValue={(val) => {
-                  const deliveredTo = val === '' ? null : Number(val)
+                  setHeader(h => {
+                    const currentHeader = h ?? emptyApprovalRecord
+                    if (currentHeader.delivered_to === deliveredTo) return h
 
-                  setHeader(h => ({
-                    ...(h ?? emptyApprovalRecord),
-                    delivered_to: deliveredTo
-                  }))
+                    return {
+                      ...currentHeader,
+                      delivered_to: val
+                    }
+                  })
                 }
                 }
               />

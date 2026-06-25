@@ -64,7 +64,7 @@ export async function reverseChickGrading(
 
         const { data, error } = await db.rpc("reverse_chick_grading", { p_doc_id: id })
 
-        if (error) throw error
+        if (error) throw error  
 
         return data
 

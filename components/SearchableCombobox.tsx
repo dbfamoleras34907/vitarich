@@ -24,7 +24,6 @@ import {
 
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
-import { ChevronDown } from "lucide-react"
 
 
 export type ComboboxItemType = {
@@ -267,13 +266,7 @@ export default function SearchableCombobox(props: Props) {
 
           <ComboboxTrigger />
         </ComboboxChips>
-        <ComboboxContent anchor={anchor} onClick={() => anchor.current?.click()} >
-          {/* 
-        <ComboboxContent
-          anchor={anchor}
-          onMouseDownCapture={(e) => e.stopPropagation()}
-          onPointerDownCapture={(e) => e.stopPropagation()}
-        > */}
+        <ComboboxContent anchor={anchor} >
           <div className="">
             <Input
               ref={searchRef}

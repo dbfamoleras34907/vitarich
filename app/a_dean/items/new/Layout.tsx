@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -22,10 +22,12 @@ import {
 } from '@/components/ui/select'
 import { addItem } from '../api'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import { getItemGroups, ItemGroup } from '../../itemgroups/api'
 
 export default function AddItemPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>([])
 
   const [form, setForm] = useState({
     item_code: '',
@@ -36,6 +38,20 @@ export default function AddItemPage() {
     item_group: '',
     group: ""
   })
+
+  useEffect(() => {
+    const loadItemGroups = async () => {
+      try {
+        const data = await getItemGroups()
+        setItemGroups((data || []) as ItemGroup[])
+      } catch (error) {
+        console.error('Error loading item groups:', error)
+        setItemGroups([])
+      }
+    }
+
+    loadItemGroups()
+  }, [])
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -107,8 +123,9 @@ export default function AddItemPage() {
         item_group: '',
         group: '',
       })
-    } catch (err: any) {
-      setMessage('❌ ' + err.message)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unable to add item'
+      setMessage('❌ ' + errorMessage)
     } finally {
       setLoading(false)
     }
@@ -169,15 +186,8 @@ export default function AddItemPage() {
                   codeLabel='code'
                   value={form.item_group}
                   nameLabel='name'
-
-                  list={[
-                    { code: "E", name: "Eggs" }, // needs to be a master data
-                    { code: "F", name: "Feeds" },
-                    { code: "C", name: "Consumables" },
-                    { code: "T", name: "Tools" }
-                  ]}
+                  list={itemGroups}
                   onChange={(e) => {
-                    console.log({ e })
                     setForm((prev) => ({ ...prev, item_group: e }))
                   }}
                 />
