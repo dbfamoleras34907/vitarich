@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Check, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Props<T> = {
   list: T[];
@@ -32,9 +33,10 @@ type Props<T> = {
   placeholder?: string;
   width?: number;
   disabled?: boolean;
+  triggerClassName?: string;
 };
 
-export default function SearchableDropdown<T extends Record<string, any>>({
+export default function SearchableDropdown<T extends Record<string, unknown>>({
   list,
   codeLabel,
   nameLabel,
@@ -43,6 +45,7 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   showNameOnly = false,
   width = 400,
   disabled = false,
+  triggerClassName,
   onChange,
   multiple = false,
 }: Props<T>) {
@@ -123,7 +126,10 @@ export default function SearchableDropdown<T extends Record<string, any>>({
           <TooltipTrigger asChild>
             <Button
               disabled={disabled}
-              className="bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50"
+              className={cn(
+                "bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50",
+                triggerClassName,
+              )}
             >
               <span className="truncate flex items-center gap-2">
                 {!value || value.length === 0 ? (

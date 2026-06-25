@@ -801,6 +801,7 @@ export default function GrowingForm() {
                                       : "No feed type descriptions found"
                                 }
                                 disabled={disabledAll || loadingFeedTypes}
+                                triggerClassName="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm !font-normal shadow-none hover:bg-slate-50"
                               />
                             </td>
                             <td className="align-top">
@@ -889,6 +890,7 @@ export default function GrowingForm() {
                                       : "No feed type descriptions found"
                                 }
                                 disabled={disabledAll || loadingFeedTypes}
+                                triggerClassName="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm !font-normal shadow-none hover:bg-slate-50"
                               />
                             </td>
                             <td className="align-top">
