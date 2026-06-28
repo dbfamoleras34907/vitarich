@@ -6,7 +6,9 @@ import {
   ArrowDownUp,
   CalendarDays,
   ClipboardClock,
+  Hash,
   List,
+  PackageCheck,
   Plus,
   Save,
   Trash2,
@@ -14,18 +16,36 @@ import {
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import { Farms, Items, WarehouseData } from '@/lib/types'
+import { Items, WarehouseData } from '@/lib/types'
 import {
   createGoodsReceiptNumber,
-  getGoodsReceipts,
+  getGoodsReceiptById,
   GoodsReceipt,
   GoodsReceiptLine,
   saveGoodsReceipt,
 } from '../api'
 import {
+  AssociatedWarehouse,
+  findExistingItemBatch,
+  GoodsReceiptBatchRule,
+  GoodsReceiptBatchSeries,
+  GoodsReceiptExistingBatch,
   getGoodsReceiptReferences,
+  GoodsReceiptFarm,
   UomConversionOption,
   UomGroupOption,
 } from './api'
@@ -41,6 +61,11 @@ const newLine = (): GoodsReceiptLine => ({
   itemId: null,
   itemCode: '',
   description: '',
+  batchRuleId: null,
+  batchNumber: '',
+  supplierBatchNumber: '',
+  manufacturingDate: '',
+  expiryDate: '',
   altQty: 1,
   altUom: '',
   baseQty: 1,
@@ -51,9 +76,9 @@ const newLine = (): GoodsReceiptLine => ({
   returnedQty: 0,
 })
 
-const emptyReceipt = (): GoodsReceipt => ({
-  id: crypto.randomUUID(),
-  grNo: createGoodsReceiptNumber(),
+const emptyReceipt = (grNo: string): GoodsReceipt => ({
+  id: null,
+  grNo,
   vendor: '',
   receiveDate: today(),
   farmId: null,
@@ -70,41 +95,183 @@ const numberValue = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export default function NewGoodsReceive() {
+const formatBatchDatePart = (
+  format: GoodsReceiptBatchSeries['date_format'],
+  dateValue: string,
+) => {
+  if (format === 'NONE' || !dateValue) return ''
+
+  const [year = '', month = '', day = ''] = dateValue.split('-')
+  const yy = year.slice(-2)
+
+  return format
+    .replace('YYYY', year)
+    .replace('YY', yy)
+    .replace('MM', month)
+    .replace('DD', day)
+}
+
+const buildBatchNumber = (
+  series: GoodsReceiptBatchSeries | null,
+  manufacturingDate: string,
+  expiryDate: string,
+) => {
+  const dateFormat = series?.date_format ?? 'YYMMDD'
+  const nextNumber = Math.max(0, Number(series?.next_number ?? 1) || 0)
+  const numberLength = Math.max(1, Number(series?.number_length ?? 5) || 1)
+  const sequence = String(nextNumber).padStart(numberLength, '0')
+  const mfgPart = formatBatchDatePart(dateFormat, manufacturingDate)
+  const expPart = formatBatchDatePart(dateFormat, expiryDate)
+  const separator = series?.separator || '-'
+  const prefix = series?.prefix ?? 'FD'
+  const suffix = series?.suffix ?? ''
+
+  return [prefix, mfgPart, expPart, sequence, suffix]
+    .map(part => String(part ?? '').trim())
+    .filter(Boolean)
+    .join(separator)
+}
+
+const addMonthsToDate = (dateValue: string, months: number) => {
+  if (!dateValue || !Number.isInteger(months) || months < 0) return ''
+
+  const [year, month, day] = dateValue.split('-').map(Number)
+  if (!year || !month || !day) return ''
+
+  const date = new Date(year, month - 1, day)
+  const targetMonth = date.getMonth() + months
+  date.setMonth(targetMonth)
+
+  if (date.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    date.setDate(0)
+  }
+
+  const nextYear = String(date.getFullYear())
+  const nextMonth = String(date.getMonth() + 1).padStart(2, '0')
+  const nextDay = String(date.getDate()).padStart(2, '0')
+
+  return `${nextYear}-${nextMonth}-${nextDay}`
+}
+
+const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => {
+  if (typeof warehouse === 'string') return warehouse.trim()
+  return String(warehouse.whse_code ?? '').trim()
+}
+
+type GoodsReceiveFormMode = 'draft' | 'post'
+
+type NewGoodsReceiveProps = {
+  mode?: GoodsReceiveFormMode
+}
+
+function GoodsReceiveLoadingShell() {
+  return (
+    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
+      <header className="px-4 py-4">
+        <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
+        <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
+      </header>
+
+      <div className="px-3 pt-4">
+        <div className="inline-flex rounded-full border bg-white p-1 shadow-sm">
+          <div className="h-8 w-24 rounded-full bg-stone-950" />
+          <div className="h-8 w-36 rounded-full bg-stone-100" />
+        </div>
+      </div>
+
+      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+              <div className="h-4 w-20 rounded bg-stone-200" />
+              <div className="h-9 rounded-md bg-stone-100" />
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t p-5">
+          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+            <div className="border-b border-stone-200 bg-white px-3 py-3">
+              <div className="h-5 w-48 rounded bg-stone-200" />
+              <div className="mt-2 h-4 w-20 rounded bg-stone-100" />
+            </div>
+
+            <div className="space-y-2 p-3">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="grid grid-cols-[40px_2fr_1fr_1fr_1fr_1fr_1fr_56px] gap-3">
+                  {Array.from({ length: 8 }).map((__, cellIndex) => (
+                    <div key={cellIndex} className="h-9 rounded bg-stone-100" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const receiptId = searchParams.get('id')
+  const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
-  const [farms, setFarms] = useState<Farms[]>([])
+  const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
   const [uomGroups, setUomGroups] = useState<UomGroupOption[]>([])
   const [conversions, setConversions] = useState<UomConversionOption[]>([])
+  const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
+  const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
+  const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
+  const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const savedReceipt = receiptId
-      ? getGoodsReceipts().find(row => row.id === receiptId)
-      : null
+    let cancelled = false
 
-    setReceipt(savedReceipt ?? emptyReceipt())
+    async function loadPageData() {
+      try {
+        if (isPostMode && !receiptId) {
+          toast('Select a draft goods receipt to post.')
+          router.push('/inv/gr')
+          return
+        }
 
-    getGoodsReceiptReferences()
-      .then(data => {
-        setItems(data.items)
-        setWarehouses(data.warehouses)
-        setFarms(data.farms)
-        setUomGroups(data.uomGroups)
-        setConversions(data.conversions)
-      })
-      .catch(error => {
+        const [references, savedReceipt, grNo] = await Promise.all([
+          getGoodsReceiptReferences(),
+          receiptId ? getGoodsReceiptById(Number(receiptId)) : Promise.resolve(null),
+          receiptId ? Promise.resolve('') : createGoodsReceiptNumber(),
+        ])
+
+        if (cancelled) return
+
+        setReceipt(savedReceipt ?? emptyReceipt(grNo))
+        setItems(references.items)
+        setWarehouses(references.warehouses)
+        setFarms(references.farms)
+        setUomGroups(references.uomGroups)
+        setConversions(references.conversions)
+        setBatchRules(references.batchRules)
+        setBatchSeries(references.batchSeries)
+      } catch (error) {
         console.error(error)
         toast('Reference data could not be loaded.')
-      })
-      .finally(() => setLoadingReferences(false))
-  }, [receiptId])
+      } finally {
+        if (!cancelled) setLoadingReferences(false)
+      }
+    }
+
+    loadPageData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isPostMode, receiptId, router])
 
   const totalQuantity = useMemo(
     () => receipt?.lines.reduce(
@@ -114,9 +281,132 @@ export default function NewGoodsReceive() {
     [receipt],
   )
 
-  if (!receipt) return null
+  const selectedFarm = useMemo(
+    () => farms.find(farm => farm.id === receipt?.farmId),
+    [farms, receipt?.farmId],
+  )
 
-  const updateLine = (id: string, changes: Partial<GoodsReceiptLine>) => {
+  const farmWarehouseCodes = useMemo(() => {
+    const associations = selectedFarm?.associated_warehouses
+    if (!Array.isArray(associations)) return new Set<string>()
+
+    return new Set(
+      associations
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean)
+    )
+  }, [selectedFarm])
+
+  const farmWarehouses = useMemo(() => {
+    if (!farmWarehouseCodes.size) return []
+    return warehouses.filter(warehouse =>
+      farmWarehouseCodes.has(String(warehouse.whse_code ?? '').trim())
+    )
+  }, [farmWarehouseCodes, warehouses])
+
+  const farmOptions = useMemo(
+    () => farms.map(farm => ({
+      code: String(farm.id),
+      name: farm.code ? `${farm.code} - ${farm.name}` : farm.name || String(farm.id),
+    })),
+    [farms],
+  )
+
+  useEffect(() => {
+    if (loadingReferences || !receipt?.farmId) return
+
+    const allowedCodes = new Set(
+      farmWarehouses.map(warehouse => String(warehouse.whse_code ?? '').trim())
+    )
+    const defaultWarehouseIsAllowed = receipt.defaultWarehouseId == null ||
+      farmWarehouses.some(warehouse => warehouse.id === receipt.defaultWarehouseId)
+
+    const nextLines = receipt.lines.map(line =>
+      !line.warehouseCode || allowedCodes.has(line.warehouseCode)
+        ? line
+        : {
+          ...line,
+          warehouseId: null,
+          warehouseCode: '',
+          warehouseName: '',
+        }
+    )
+
+    const linesChanged = nextLines.some((line, index) => line !== receipt.lines[index])
+
+    if (defaultWarehouseIsAllowed && !linesChanged) return
+
+    setReceipt(current => current ? {
+      ...current,
+      defaultWarehouseId: defaultWarehouseIsAllowed ? current.defaultWarehouseId : null,
+      lines: nextLines,
+    } : current)
+  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.lines])
+
+  const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
+
+  useEffect(() => {
+    const lineId = batchLineForLookup?.id
+    const lineKey = lineId == null ? '' : String(lineId)
+
+    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate || !batchLineForLookup.expiryDate) {
+      if (lineKey) {
+        setBatchMatches(current => ({
+          ...current,
+          [lineKey]: null,
+        }))
+      }
+      return
+    }
+
+    let cancelled = false
+    findExistingItemBatch(
+      batchLineForLookup.itemCode,
+      batchLineForLookup.manufacturingDate,
+      batchLineForLookup.expiryDate,
+    )
+      .then(existingBatch => {
+        if (cancelled) return
+
+        setBatchMatches(current => ({
+          ...current,
+          [lineKey]: existingBatch,
+        }))
+
+        if (existingBatch?.batch_number) {
+          setReceipt(current => current ? {
+            ...current,
+            lines: current.lines.map(line =>
+              line.id === lineId && line.batchNumber !== existingBatch.batch_number
+                ? { ...line, batchNumber: existingBatch.batch_number }
+                : line
+            ),
+          } : current)
+        }
+      })
+      .catch(error => {
+        console.error(error)
+        if (!cancelled) {
+          setBatchMatches(current => ({
+            ...current,
+            [lineKey]: null,
+          }))
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    batchLineForLookup?.id,
+    batchLineForLookup?.itemCode,
+    batchLineForLookup?.manufacturingDate,
+    batchLineForLookup?.expiryDate,
+  ])
+
+  if (!receipt) return <GoodsReceiveLoadingShell />
+
+  const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
     setReceipt(current => current
       ? { ...current, lines: current.lines.map(line => line.id === id ? { ...line, ...changes } : line) }
       : current,
@@ -164,6 +454,200 @@ export default function NewGoodsReceive() {
         conversion.uomCode.toUpperCase() === uomCode.toUpperCase(),
     )
 
+  const getSelectedItem = (line: GoodsReceiptLine) =>
+    items.find(item => item.id === line.itemId)
+
+  const getBatchRuleForLine = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    if (!item) return null
+
+    const itemUsesBatch = Boolean(
+      item.manage_batch_numbers ||
+      (item.batch_management_method && item.batch_management_method !== 'NONE')
+    )
+    if (!itemUsesBatch) return null
+
+    const itemGroupId = Number(item.item_group)
+    const matchedRules = batchRules.filter(rule => {
+      if (rule.item_id && rule.item_id !== item.id) return false
+      if (rule.warehouse_id && rule.warehouse_id !== line.warehouseId) return false
+      if (rule.branch_id && rule.branch_id !== receipt.farmId) return false
+      if (rule.item_group_id && rule.item_group_id !== itemGroupId) return false
+      return true
+    })
+
+    return matchedRules.sort((left, right) => {
+      const leftScore = Number(Boolean(left.item_id)) + Number(Boolean(left.warehouse_id)) + Number(Boolean(left.branch_id)) + Number(Boolean(left.item_group_id))
+      const rightScore = Number(Boolean(right.item_id)) + Number(Boolean(right.warehouse_id)) + Number(Boolean(right.branch_id)) + Number(Boolean(right.item_group_id))
+      return rightScore - leftScore
+    })[0] ?? null
+  }
+
+  const getBatchRequirement = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    if (!item) return null
+
+    const itemUsesBatch = Boolean(
+      item.manage_batch_numbers ||
+      (item.batch_management_method && item.batch_management_method !== 'NONE')
+    )
+    if (!itemUsesBatch) return null
+
+    const rule = getBatchRuleForLine(line)
+
+    return {
+      rule,
+      needsBatchNumber: true,
+      needsSupplierBatch: Boolean(rule?.require_supplier_batch),
+      needsManufacturingDate: true,
+      needsExpiryDate: true,
+    }
+  }
+
+  const getBatchSeriesForRule = (rule?: GoodsReceiptBatchRule | null) =>
+    rule?.series_id ? batchSeries.find(series => series.id === rule.series_id) ?? null : null
+
+  const getBatchKey = (line: GoodsReceiptLine) =>
+    line.itemCode && line.manufacturingDate && line.expiryDate
+      ? `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate}`
+      : ''
+
+  const getExistingLineBatch = (line: GoodsReceiptLine) => {
+    const batchKey = getBatchKey(line)
+    if (!batchKey) return null
+
+    return receipt.lines.find(candidate =>
+      candidate.id !== line.id &&
+      getBatchKey(candidate) === batchKey &&
+      candidate.batchNumber.trim()
+    ) ?? null
+  }
+
+  const getBatchNumberParts = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    const series = getBatchSeriesForRule(requirement?.rule)
+    const item = getSelectedItem(line)
+    const existingLineBatch = getExistingLineBatch(line)
+
+    const lineIndex = receipt.lines.findIndex(candidate => candidate.id === line.id)
+    const usedBatchKeys = new Set<string>()
+    receipt.lines
+      .slice(0, Math.max(0, lineIndex))
+      .forEach(candidate => {
+        const candidateBatchKey = getBatchKey(candidate)
+        if (!candidateBatchKey || usedBatchKeys.has(candidateBatchKey)) return
+
+        const candidateRule = getBatchRuleForLine(candidate)
+        const candidateSeries = getBatchSeriesForRule(candidateRule)
+
+        if (series) {
+          if (candidateSeries?.id === series.id) usedBatchKeys.add(candidateBatchKey)
+          return
+        }
+
+        if (!candidateSeries && Boolean(getBatchRequirement(candidate))) {
+          usedBatchKeys.add(candidateBatchKey)
+        }
+      })
+
+    const seriesOffset = usedBatchKeys.size
+
+    const numberedSeries = series
+      ? { ...series, next_number: Number(series.next_number) + seriesOffset }
+      : {
+          id: 0,
+          code: 'GR',
+          name: 'Goods Receipt',
+          prefix: 'FD',
+          suffix: null,
+          separator: '-',
+          next_number: seriesOffset + 1,
+          number_length: 5,
+          date_format: 'YYMMDD' as GoodsReceiptBatchSeries['date_format'],
+          active: true,
+        }
+
+    const dateFormat = numberedSeries.date_format
+    const sequence = String(Math.max(0, Number(numberedSeries.next_number) || 0)).padStart(
+      Math.max(1, Number(numberedSeries.number_length) || 1),
+      '0',
+    )
+    const mfgPart = formatBatchDatePart(dateFormat, line.manufacturingDate)
+    const expPart = formatBatchDatePart(dateFormat, line.expiryDate)
+
+    return {
+      templateSource: series ? `${series.code} - ${series.name}` : 'GR fallback template',
+      prefix: numberedSeries.prefix ?? '',
+      mfgPart,
+      expPart,
+      sequence,
+      suffix: numberedSeries.suffix ?? '',
+      separator: numberedSeries.separator,
+      dateFormat,
+      defaultExpirationMonths: item?.default_expiration_months ?? null,
+      batchNumber: line.manufacturingDate && line.expiryDate
+        ? existingLineBatch?.batchNumber || buildBatchNumber(numberedSeries, line.manufacturingDate, line.expiryDate)
+        : '',
+      reusedFromLine: existingLineBatch,
+    }
+  }
+
+  const getGeneratedBatchNumber = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    if (!requirement || !line.manufacturingDate || !line.expiryDate) return ''
+
+    return getBatchNumberParts(line).batchNumber
+  }
+
+  const openBatchDialog = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    if (!requirement) return
+
+    updateLine(line.id, {
+      batchRuleId: requirement.rule?.id ?? null,
+    })
+
+    setActiveBatchLineId(line.id)
+  }
+
+  const updateBatchLine = (line: GoodsReceiptLine, changes: Partial<GoodsReceiptLine>) => {
+    const item = getSelectedItem(line)
+    const defaultExpirationMonths = item?.default_expiration_months
+    const shouldDefaultExpiry = Object.prototype.hasOwnProperty.call(changes, 'manufacturingDate') &&
+      !Object.prototype.hasOwnProperty.call(changes, 'expiryDate') &&
+      typeof defaultExpirationMonths === 'number'
+    const defaultExpiryDate = shouldDefaultExpiry
+      ? addMonthsToDate(changes.manufacturingDate ?? '', defaultExpirationMonths)
+      : ''
+    const nextChanges = {
+      ...changes,
+      ...(defaultExpiryDate ? { expiryDate: defaultExpiryDate } : {}),
+    }
+    const nextLine = { ...line, ...nextChanges }
+    const generatedBatchNumber = getGeneratedBatchNumber(nextLine)
+
+    updateLine(line.id, {
+      ...nextChanges,
+      ...(generatedBatchNumber ? { batchNumber: generatedBatchNumber } : {}),
+    })
+  }
+
+  const refreshGeneratedBatchNumber = (line: GoodsReceiptLine) => {
+    const existingBatch = batchMatches[String(line.id)]
+    if (existingBatch?.batch_number) {
+      updateLine(line.id, { batchNumber: existingBatch.batch_number })
+      return
+    }
+
+    const generatedBatchNumber = getGeneratedBatchNumber(line)
+    if (!generatedBatchNumber) {
+      toast('Enter manufacturing and expiry dates first.')
+      return
+    }
+
+    updateLine(line.id, { batchNumber: generatedBatchNumber })
+  }
+
   const selectItem = (line: GoodsReceiptLine, itemCode: string) => {
     const item = items.find(candidate => candidate.item_code === itemCode)
     if (!item) {
@@ -171,38 +655,52 @@ export default function NewGoodsReceive() {
         itemId: null,
         itemCode: '',
         description: '',
+        batchRuleId: null,
+        batchNumber: '',
+        supplierBatchNumber: '',
+        manufacturingDate: '',
+        expiryDate: '',
         altUom: '',
         baseUom: '',
       })
       return
     }
 
-    const uom = item.inventory_uom || item.unit_measure || ''
-    const selectedGroupCode = conversions.find(
-      option => option.uomCode.toUpperCase() === uom.toUpperCase(),
+    const inventoryUom = item.inventory_uom || ''
+    const unitMeasure = item.unit_measure || ''
+    const selectedGroup = uomGroups.find(group => group.code.toUpperCase() === inventoryUom.toUpperCase())
+    const selectedGroupCode = selectedGroup?.code ?? conversions.find(
+      option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
+    const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
     updateLine(line.id, {
       itemId: item.id,
       itemCode: item.item_code || '',
       description: item.item_name || item.description || '',
+      batchRuleId: null,
+      batchNumber: '',
+      supplierBatchNumber: '',
+      manufacturingDate: '',
+      expiryDate: '',
       altUom: uom,
       baseUom: selectedGroupCode,
       baseQty: calculateBaseQty(line.altQty, uom, selectedGroupCode),
     })
   }
 
-  const selectWarehouse = (lineId: string, warehouseCode: string) => {
-    const warehouse = warehouses.find(candidate => candidate.whse_code === warehouseCode)
+  const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
+    const warehouse = farmWarehouses.find(candidate => candidate.whse_code === warehouseCode)
     updateLine(lineId, {
       warehouseId: warehouse?.id ?? null,
       warehouseCode: warehouse?.whse_code ?? '',
       warehouseName: warehouse?.whse_name ?? '',
+      batchRuleId: null,
     })
   }
 
   const applyDefaultWarehouse = (warehouseId: string) => {
     const id = warehouseId ? Number(warehouseId) : null
-    const warehouse = warehouses.find(candidate => candidate.id === id)
+    const warehouse = farmWarehouses.find(candidate => candidate.id === id)
 
     setReceipt(current => current ? {
       ...current,
@@ -216,8 +714,51 @@ export default function NewGoodsReceive() {
     } : current)
   }
 
-  const handleSave = () => {
+  const selectFarm = (farmId: string) => {
+    const farm = farms.find(candidate => String(candidate.id) === farmId)
+    const allowedCodes = new Set(
+      (farm?.associated_warehouses ?? [])
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean)
+    )
+
+    setReceipt(current => current ? {
+      ...current,
+      farmId: farm?.id ?? null,
+      farmCode: farm?.code ?? '',
+      farmName: farm?.name ?? '',
+      defaultWarehouseId: null,
+      lines: current.lines.map(line =>
+        allowedCodes.has(line.warehouseCode)
+          ? line
+          : {
+            ...line,
+            warehouseId: null,
+            warehouseCode: '',
+            warehouseName: '',
+          }
+      ),
+    } : current)
+  }
+
+  const canEditDraft = receipt.status === 'Draft'
+  const canPostDocument = isPostMode && receipt.status === 'Draft'
+
+  const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
     const completedLines = receipt.lines.filter(line => line.itemId)
+    const posting = targetStatus === 'Posted'
+    const completeLines = completedLines.filter(line =>
+      line.itemCode &&
+      line.baseUom &&
+      line.altUom &&
+      line.baseQty > 0 &&
+      (!posting || line.warehouseId)
+    )
+
+    if (!canEditDraft) {
+      toast('Only draft documents can be edited or posted.')
+      return
+    }
 
     if (!receipt.vendor.trim()) {
       toast('Please enter a vendor.')
@@ -227,11 +768,11 @@ export default function NewGoodsReceive() {
       toast('Please select a farm.')
       return
     }
-    if (completedLines.length === 0) {
+    if (posting && completedLines.length === 0) {
       toast('Please select at least one item.')
       return
     }
-    if (completedLines.some(line =>
+    if (posting && completedLines.some(line =>
       !line.warehouseId ||
       !line.baseUom ||
       !line.altUom ||
@@ -240,25 +781,73 @@ export default function NewGoodsReceive() {
       toast('Each item needs a warehouse, UoM group, Alt UoM, and a valid conversion.')
       return
     }
+    const missingBatchLine = completedLines.find(line => {
+      const requirement = getBatchRequirement(line)
+      if (!requirement) return false
+
+      return (requirement.needsSupplierBatch && !line.supplierBatchNumber.trim()) ||
+        (requirement.needsManufacturingDate && !line.manufacturingDate) ||
+        (requirement.needsExpiryDate && !line.expiryDate)
+    })
+
+    if (missingBatchLine) {
+      toast(`Please enter batch details for ${missingBatchLine.itemCode}.`)
+      return
+    }
+    if (!posting && completedLines.length !== completeLines.length) {
+      toast('Incomplete item lines are ignored when saving draft.')
+    }
 
     setSaving(true)
     try {
-      saveGoodsReceipt({
+      const savedReceipt = await saveGoodsReceipt({
         ...receipt,
-        status: 'Received',
-        lines: completedLines,
+        status: targetStatus,
+        lines: (posting ? completedLines : completeLines).map(line => ({
+          ...line,
+          batchRuleId: getBatchRuleForLine(line)?.id ?? null,
+          batchNumber: line.batchNumber.trim() || getGeneratedBatchNumber(line),
+        })),
       })
-      toast('Goods receipt saved successfully.')
-      router.push('/inv/gr')
+      toast(posting ? 'Goods receipt posted successfully.' : 'Goods receipt draft saved.')
+
+      if (posting) {
+        router.push('/inv/gr')
+        return
+      }
+
+      if (!isPostMode && savedReceipt?.id) {
+        router.push(`/inv/gr/post?id=${savedReceipt.id}`)
+        return
+      }
+
+      if (savedReceipt) setReceipt(savedReceipt)
+    } catch (error) {
+      console.log({ error })
+      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save goods receipt'))
     } finally {
       setSaving(false)
     }
   }
 
+  const activeBatchLine = receipt.lines.find(line => line.id === activeBatchLineId) ?? null
+  const activeBatchRequirement = activeBatchLine ? getBatchRequirement(activeBatchLine) : null
+  const activeBatchSeries = getBatchSeriesForRule(activeBatchRequirement?.rule)
+  const activeBatchParts = activeBatchLine ? getBatchNumberParts(activeBatchLine) : null
+  const activeBatchMatch = activeBatchLine ? batchMatches[String(activeBatchLine.id)] ?? null : null
+  const activeLineBatchMatch = activeBatchParts?.reusedFromLine ?? null
+  const activeBatchStatus = activeBatchMatch
+    ? 'Existing database batch'
+    : activeLineBatchMatch
+      ? 'Reusing current GR batch'
+      : activeBatchLine?.batchNumber
+        ? 'New batch to create'
+        : 'Waiting for dates'
+
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <header className="px-4 py-4">
-        <h1 className="text-xl font-semibold ">Goods Receive</h1>
+      <header className=" px-4 py-4">
+        <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
         <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
       </header>
 
@@ -269,7 +858,7 @@ export default function NewGoodsReceive() {
             className="inline-flex h-8 items-center gap-2 rounded-full bg-stone-950 px-4 text-sm font-semibold text-white shadow-sm"
           >
             <ArrowDownUp className="size-4" />
-            New GR
+            {isPostMode ? 'Post GR' : 'New GR'}
           </button>
           <button
             type="button"
@@ -297,23 +886,17 @@ export default function NewGoodsReceive() {
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">Farm</label>
-            <select
-              value={receipt.farmId ?? ''}
-              disabled={loadingReferences}
-              onChange={event => {
-                const farm = farms.find(candidate => String(candidate.id) === event.target.value)
-                setReceipt(current => current ? {
-                  ...current,
-                  farmId: farm?.id ?? null,
-                  farmCode: farm?.code ?? '',
-                  farmName: farm?.name ?? '',
-                } : current)
-              }}
-              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
-            >
-              <option value="">{loadingReferences ? 'Loading farms...' : 'Select farm'}</option>
-              {farms.map(farm => <option key={farm.id} value={farm.id}>{farm.code} - {farm.name}</option>)}
-            </select>
+            <SearchableCombobox
+              items={farmOptions}
+              value={receipt.farmId == null ? '' : String(receipt.farmId)}
+              onValueChange={selectFarm}
+              showCode={false}
+              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
+              className="w-full"
+            />
+            {!loadingReferences && farms.length === 0 && (
+              <p className="text-xs text-stone-500">No assigned farms available.</p>
+            )}
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -351,17 +934,26 @@ export default function NewGoodsReceive() {
             <label className="text-sm font-semibold">Default WH</label>
             <select
               value={receipt.defaultWarehouseId ?? ''}
-              disabled={loadingReferences}
+              disabled={loadingReferences || !receipt.farmId}
               onChange={event => applyDefaultWarehouse(event.target.value)}
               className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
             >
-              <option value="">{loadingReferences ? 'Loading warehouses...' : 'Select default warehouse...'}</option>
-              {warehouses.map(warehouse => (
+              <option value="">
+                {loadingReferences
+                  ? 'Loading warehouses...'
+                  : receipt.farmId
+                    ? 'Select default warehouse...'
+                    : 'Select farm first'}
+              </option>
+              {farmWarehouses.map(warehouse => (
                 <option key={warehouse.id} value={warehouse.id}>
                   {warehouse.whse_code} - {warehouse.whse_name}
                 </option>
               ))}
             </select>
+            {!loadingReferences && Boolean(receipt.farmId) && farmWarehouses.length === 0 && (
+              <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
+            )}
           </div>
         </div>
 
@@ -376,157 +968,189 @@ export default function NewGoodsReceive() {
               </p>
             </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-[1250px] w-full text-sm">
-              <thead className="bg-stone-100">
-                <tr>
-                  <th className="h-10 w-12 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
-                  <th className="h-10 min-w-80 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
-                  <th className="h-10 w-44 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
-                  <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
-                  <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt UoM</th>
-                  <th className="h-10 w-52 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
-                  <th className="h-10 min-w-48 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
-                  <th className="h-10 w-20 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {receipt.lines.map((line, index) => (
-                  <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
-                    <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
-                    <td className="px-3 py-2 align-middle">
-                      <SearchableDropdown
-                        list={items}
-                        codeLabel="item_code"
-                        nameLabel="item_name"
-                        value={line.itemCode}
-                        placeholder="Select item..."
-                        width={420}
-                        onChange={(value) => selectItem(line, value)}
-                      />
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <select
-                        value={line.baseUom}
-                        onChange={event => {
-                          const groupCode = event.target.value
-                          const altUomIsAvailable = conversions.some(
-                            conversion =>
-                              conversion.groupCode === groupCode &&
-                              conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
-                          )
-                          const altUom = altUomIsAvailable ? line.altUom : ''
-
-                          updateLine(line.id, {
-                            baseUom: groupCode,
-                            altUom,
-                            baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
-                          })
-                        }}
-                        className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200"
-                      >
-                        <option value="">Select UoM group</option>
-                        {uomGroups.map(group => (
-                          <option key={group.id} value={group.code}>
-                            {group.code} - {group.name} ({group.baseUomCode})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={line.altQty}
-                        onChange={event => updateLine(line.id, {
-                          altQty: numberValue(event.target.value),
-                          baseQty: calculateBaseQty(
-                            numberValue(event.target.value),
-                            line.altUom,
-                            line.baseUom,
-                          ),
-                        })}
-                        className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
-                      />
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <select
-                        value={line.altUom}
-                        disabled={!line.baseUom}
-                        onChange={event => {
-                          const altUom = event.target.value
-                          updateLine(line.id, {
-                            altUom,
-                            baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
-                          })
-                        }}
-                        className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
-                      >
-                        <option value="">
-                          {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
-                        </option>
-                        {getGroupUoms(line.baseUom).map(conversion => (
-                          <option
-                            key={`${conversion.groupId}-${conversion.uomCode}`}
-                            value={conversion.uomCode}
-                          >
-                            {conversion.uomCode}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-3 align-middle text-stone-800">
-                      {line.baseUom && line.altUom ? (
-                        <div className="whitespace-nowrap">
-                          <span className="font-medium tabular-nums">
-                            {line.baseQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
-                          </span>{' '}
-                          <span className="text-stone-600">
-                            {getSelectedGroup(line.baseUom)?.baseUomCode}
-                          </span>
-                          <div className="text-xs text-stone-500">
-                            {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
-                            {line.altUom} ×{' '}
-                            {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
-                              'en-PH',
-                              { maximumFractionDigits: 6 },
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-stone-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <SearchableDropdown
-                        list={warehouses}
-                        codeLabel="whse_code"
-                        nameLabel="whse_name"
-                        value={line.warehouseCode}
-                        placeholder="Select warehouse..."
-                        width={360}
-                        onChange={(value) => selectWarehouse(line.id, value)}
-                      />
-                    </td>
-                    <td className="px-3 py-3 text-center align-middle">
-                      <button
-                        type="button"
-                        onClick={() => setReceipt(current => current ? {
-                          ...current,
-                          lines: current.lines.filter(candidate => candidate.id !== line.id),
-                        } : current)}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
-                        aria-label={`Delete line ${index + 1}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="min-w-[1480px] w-full text-sm">
+                <thead className="bg-stone-100">
+                  <tr>
+                    <th className="h-10 w-12 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
+                    <th className="h-10 min-w-80 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
+                    <th className="h-10 min-w-72 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
+                    <th className="h-10 w-44 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
+                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
+                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt UoM</th>
+                    <th className="h-10 w-52 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
+                    <th className="h-10 min-w-48 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
+                    <th className="h-10 w-20 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-stone-200">
+                  {receipt.lines.map((line, index) => {
+                    const batchRequirement = getBatchRequirement(line)
+
+                    return (
+                      <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
+                        <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
+                        <td className="px-3 py-2 align-middle">
+                          <SearchableDropdown
+                            list={items}
+                            codeLabel="item_code"
+                            nameLabel="item_name"
+                            value={line.itemCode}
+                            placeholder="Select item..."
+                            width={420}
+                            onChange={(value) => selectItem(line, value)}
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {batchRequirement ? (
+                            <button
+                              type="button"
+                              onClick={() => openBatchDialog(line)}
+                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-white px-3 py-2 text-left text-sm shadow-none transition hover:border-stone-500 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-200"
+                            >
+                              <span className="min-w-0">
+                                <span className="flex items-center gap-2 font-medium text-stone-900">
+                                  <PackageCheck className="size-4 shrink-0 text-stone-500" />
+                                  <span className="truncate">
+                                    {line.batchNumber || 'Batch details'}
+                                  </span>
+                                </span>
+                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
+                                  {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
+                                  {line.expiryDate && <span>EXP {line.expiryDate}</span>}
+                                  {(!line.manufacturingDate || !line.expiryDate) && <span>MFG/EXP required</span>}
+                                </span>
+                              </span>
+                              <Hash className="size-4 shrink-0 text-stone-400" />
+                            </button>
+                          ) : (
+                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
+                          )}
+                        </td>
+                      <td className="px-3 py-2 align-middle">
+                        <select
+                          value={line.baseUom}
+                          disabled
+                          onChange={event => {
+                            const groupCode = event.target.value
+                            const altUomIsAvailable = conversions.some(
+                              conversion =>
+                                conversion.groupCode === groupCode &&
+                                conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
+                            )
+                            const altUom = altUomIsAvailable ? line.altUom : ''
+
+                            updateLine(line.id, {
+                              baseUom: groupCode,
+                              altUom,
+                              baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
+                            })
+                          }}
+                          className="h-9 w-full rounded-md border border-stone-300 bg-stone-100 px-2 text-sm text-stone-600 outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
+                        >
+                          <option value="">Select UoM group</option>
+                          {uomGroups.map(group => (
+                            <option key={group.id} value={group.code}>
+                              {group.code} - {group.name} ({group.baseUomCode})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={line.altQty}
+                          onChange={event => updateLine(line.id, {
+                            altQty: numberValue(event.target.value),
+                            baseQty: calculateBaseQty(
+                              numberValue(event.target.value),
+                              line.altUom,
+                              line.baseUom,
+                            ),
+                          })}
+                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                        />
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <select
+                          value={line.altUom}
+                          disabled={!line.baseUom}
+                          onChange={event => {
+                            const altUom = event.target.value
+                            updateLine(line.id, {
+                              altUom,
+                              baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
+                            })
+                          }}
+                          className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
+                        >
+                          <option value="">
+                            {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
+                          </option>
+                          {getGroupUoms(line.baseUom).map(conversion => (
+                            <option
+                              key={`${conversion.groupId}-${conversion.uomCode}`}
+                              value={conversion.uomCode}
+                            >
+                              {conversion.uomCode}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-3 align-middle text-stone-800">
+                        {line.baseUom && line.altUom ? (
+                          <div className="whitespace-nowrap">
+                            <span className="font-medium tabular-nums">
+                              {line.baseQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                            </span>{' '}
+                            <span className="text-stone-600">
+                              {getSelectedGroup(line.baseUom)?.baseUomCode}
+                            </span>
+                            <div className="text-xs text-stone-500">
+                              {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
+                              {line.altUom} ×{' '}
+                              {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
+                                'en-PH',
+                                { maximumFractionDigits: 6 },
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-stone-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <SearchableDropdown
+                          list={farmWarehouses}
+                          codeLabel="whse_code"
+                          nameLabel="whse_name"
+                          value={line.warehouseCode}
+                          placeholder={receipt.farmId ? 'Select warehouse...' : 'Select farm first'}
+                          width={360}
+                          onChange={(value) => selectWarehouse(line.id, value)}
+                        />
+                      </td>
+                      <td className="px-3 py-3 text-center align-middle">
+                        <button
+                          type="button"
+                          onClick={() => setReceipt(current => current ? {
+                            ...current,
+                            lines: current.lines.filter(candidate => candidate.id !== line.id),
+                          } : current)}
+                          className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                          aria-label={`Delete line ${index + 1}`}
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </td>
+                    </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             {receipt.lines.length === 0 && (
               <div className="border-t border-stone-200 px-4 py-10 text-center">
@@ -559,6 +1183,234 @@ export default function NewGoodsReceive() {
             </div>
           </section>
 
+          <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Batch Details</DialogTitle>
+                <DialogDescription>
+                  {activeBatchLine?.itemCode || 'Selected item'} batch information for this receipt line.
+                </DialogDescription>
+              </DialogHeader>
+
+              {activeBatchLine && activeBatchRequirement && (
+                <div className="space-y-4">
+                  <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        {activeBatchRequirement.rule?.auto_generate || !activeBatchRequirement.rule ? 'Auto number' : 'Manual number'}
+                      </Badge>
+                      {activeBatchRequirement.rule?.manual_entry && (
+                        <Badge variant="outline">Manual edits allowed</Badge>
+                      )}
+                      {activeBatchSeries && (
+                        <Badge variant="secondary">{activeBatchSeries.code}</Badge>
+                      )}
+                      <Badge
+                        className={
+                          activeBatchMatch || activeLineBatchMatch
+                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                            : activeBatchLine?.batchNumber
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                              : 'bg-stone-100 text-stone-700 hover:bg-stone-100'
+                        }
+                      >
+                        {activeBatchStatus}
+                      </Badge>
+                      {(activeBatchMatch || activeLineBatchMatch) && (
+                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                          Reusing batch
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-stone-500">
+                      Manufacturing and expiry dates are required. The batch number is generated from those dates, unless the same item and dates already exist.
+                    </p>
+                  </div>
+
+                  {activeBatchMatch && (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                      This item already has a batch for the selected MFG and EXP dates. GR will use batch{' '}
+                      <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
+                    </div>
+                  )}
+
+                  {!activeBatchMatch && activeLineBatchMatch && (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                      Another line in this GR already uses the same item, MFG date, and EXP date. This line will use batch{' '}
+                      <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
+                    </div>
+                  )}
+
+                  {!activeBatchMatch && !activeLineBatchMatch && activeBatchLine.batchNumber && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      This batch does not exist yet. It will be created when this GR is saved.
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {activeBatchRequirement.needsManufacturingDate && (
+                      <div className="space-y-2">
+                        <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
+                        <Input
+                          id="gr-manufacturing-date"
+                          type="date"
+                          value={activeBatchLine.manufacturingDate}
+                          onChange={event => updateBatchLine(activeBatchLine, { manufacturingDate: event.target.value })}
+                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                        />
+                      </div>
+                    )}
+
+                    {activeBatchRequirement.needsExpiryDate && (
+                      <div className="space-y-2">
+                        <Label htmlFor="gr-expiry-date" required>Expiry Date</Label>
+                        <Input
+                          id="gr-expiry-date"
+                          type="date"
+                          value={activeBatchLine.expiryDate}
+                          onChange={event => updateBatchLine(activeBatchLine, { expiryDate: event.target.value })}
+                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                        />
+                      </div>
+                    )}
+
+                    {activeBatchRequirement.needsSupplierBatch && (
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="gr-supplier-batch" required>Supplier Batch Number</Label>
+                        <Input
+                          id="gr-supplier-batch"
+                          value={activeBatchLine.supplierBatchNumber}
+                          onChange={event => updateLine(activeBatchLine.id, { supplierBatchNumber: event.target.value })}
+                          placeholder="Supplier batch no."
+                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="gr-batch-number">Generated Batch Number</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="gr-batch-number"
+                          value={activeBatchLine.batchNumber}
+                          readOnly={!activeBatchRequirement.rule?.manual_entry && Boolean(activeBatchRequirement.rule)}
+                          onChange={event => updateLine(activeBatchLine.id, { batchNumber: event.target.value })}
+                          placeholder="Enter MFG and EXP dates to generate"
+                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => refreshGeneratedBatchNumber(activeBatchLine)}
+                        >
+                          <Hash className="size-4" />
+                          Generate
+                        </Button>
+                      </div>
+                    </div>
+
+                    {activeBatchParts && (
+                      <div className="space-y-3 rounded-md border border-stone-200 bg-stone-50 p-3 sm:col-span-2">
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-source">Template Source</Label>
+                            <Input
+                              id="gr-batch-source"
+                              value={activeBatchParts.templateSource}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-date-format">Date Format</Label>
+                            <Input
+                              id="gr-batch-date-format"
+                              value={activeBatchParts.dateFormat}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-exp-months">Exp. Months</Label>
+                            <Input
+                              id="gr-batch-exp-months"
+                              value={activeBatchParts.defaultExpirationMonths == null ? '-' : String(activeBatchParts.defaultExpirationMonths)}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-separator">Separator</Label>
+                            <Input
+                              id="gr-batch-separator"
+                              value={activeBatchParts.separator}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-5">
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-prefix">Prefix</Label>
+                            <Input
+                              id="gr-batch-prefix"
+                              value={activeBatchParts.prefix || '-'}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-mfg-part">MFG Part</Label>
+                            <Input
+                              id="gr-batch-mfg-part"
+                              value={activeBatchParts.mfgPart || '-'}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-exp-part">EXP Part</Label>
+                            <Input
+                              id="gr-batch-exp-part"
+                              value={activeBatchParts.expPart || '-'}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-sequence">Sequence</Label>
+                            <Input
+                              id="gr-batch-sequence"
+                              value={activeBatchParts.sequence}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="gr-batch-suffix">Suffix</Label>
+                            <Input
+                              id="gr-batch-suffix"
+                              value={activeBatchParts.suffix || '-'}
+                              disabled
+                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button">Done</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div className="mt-6 flex flex-col items-end gap-4">
             <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
               <h3 className="text-sm font-semibold">Receiving Summary</h3>
@@ -570,10 +1422,27 @@ export default function NewGoodsReceive() {
               </div>
             </div>
 
-            <Button type="button" onClick={handleSave} disabled={saving}>
-              <Save className="size-4" />
-              {saving ? 'Saving...' : 'Receive Goods'}
-            </Button>
+            {canEditDraft ? (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSave('Draft')}
+                  disabled={saving}
+                >
+                  <Save className="size-4" />
+                  {saving ? 'Saving...' : 'Save as Draft'}
+                </Button>
+                {canPostDocument && (
+                  <Button type="button" onClick={() => handleSave('Posted')} disabled={saving}>
+                    <Save className="size-4" />
+                    {saving ? 'Posting...' : 'Post Document'}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+            )}
           </div>
         </div>
       </section>

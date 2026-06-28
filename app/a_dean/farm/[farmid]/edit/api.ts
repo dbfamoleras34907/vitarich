@@ -1,6 +1,31 @@
 import { db } from "@/lib/Supabase/supabaseClient"
 
+export type FarmFormData = Record<string, string>
 
+export type FarmChildRow = {
+  id?: number | string
+  data: FarmFormData
+}
+
+export type FarmBuildingPayload = FarmChildRow & {
+  pens: FarmChildRow[]
+}
+
+export type AssociatedWarehousePayload = {
+  id: number | null
+  whse_code: string
+  whse_name: string | null
+}
+
+export type FarmFullPayload = {
+  farm: FarmFormData & {
+    associated_warehouses?: AssociatedWarehousePayload[] | string[] | null
+  }
+  address: FarmFormData
+  buildings: FarmBuildingPayload[]
+  machines: FarmChildRow[]
+  associated_warehouses?: AssociatedWarehousePayload[]
+}
 
 export async function getFarmFull(id: number) {
 
@@ -16,23 +41,26 @@ export async function getFarmFull(id: number) {
 
 
 
-export async function updateFarmFull(id: number, payload: any) {
-  try {
-
-    const { data, error } = await db.rpc(
-      "update_farm_full",
-      {
-        p_farm_id: id,
-        payload
-      }
-    )
-
-    if (error) throw error
-
-    return data
-  } catch (error) {
-
+export async function updateFarmFull(id: number, payload: FarmFullPayload) {
+  const rpcPayload = {
+    ...payload,
+    associated_warehouses: payload.associated_warehouses ?? [],
   }
+
+  const { data, error } = await db.rpc(
+    "update_farm_full",
+    {
+      p_farm_id: id,
+      payload: rpcPayload
+    }
+  )
+
+  if (error) {
+    console.error("update_farm_full error:", error)
+    throw new Error(error.message)
+  }
+
+  return data
 }
 
 

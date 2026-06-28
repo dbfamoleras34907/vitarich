@@ -25,7 +25,7 @@ import SuperUser from './SuperUser'
 import RuleAndPerm from './RuleAndPerm'
 
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import SearchableCombobox from '@/components/SearchableCombobox'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 
 import { DefaultGenders, islandGrouplist, regionList } from '@/lib/Defaults/DefaultValues'
 import { ColumnsYesOrNoCodeOnly } from '@/lib/Defaults/DefaultColumns'
@@ -37,6 +37,44 @@ import {
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Permissions from './Permesions'
+
+type FarmOption = {
+  code: string
+  name: string
+  [key: string]: unknown
+}
+
+const normalizeFarmCode = (value: unknown) => String(value ?? '').trim()
+
+const uniqueFarmCodes = (values: unknown[]) => {
+  const seen = new Set<string>()
+
+  return values.reduce<string[]>((result, value) => {
+    const code = normalizeFarmCode(value)
+    if (!code || seen.has(code)) return result
+
+    seen.add(code)
+    result.push(code)
+    return result
+  }, [])
+}
+
+const uniqueFarmOptions = (farms: FarmOption[]) => {
+  const seen = new Set<string>()
+
+  return farms.reduce<FarmOption[]>((result, farm) => {
+    const code = normalizeFarmCode(farm.code)
+    if (!code || seen.has(code)) return result
+
+    seen.add(code)
+    result.push({
+      ...farm,
+      code,
+      name: String(farm.name ?? code),
+    })
+    return result
+  }, [])
+}
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -61,8 +99,8 @@ export default function Layout() {
   const [form, setForm] = useState<Partial<UserRow>>({})
   const [authSelected, setAuthSelected] = useState<AuthUser>()
 
-  const [farmList, setFarmList] = useState<any[]>([])
-  const [defaultFarms, setDefaultFarms] = useState<any[]>([])
+  const [farmList, setFarmList] = useState<FarmOption[]>([])
+  const [defaultFarms, setDefaultFarms] = useState<string[]>([])
 
   const [superUsers, setSuperUsers] = useState<SuperUsers[]>([])
 
@@ -175,7 +213,7 @@ export default function Layout() {
           auth_id: authSelected.auth_id,
           created_by: loggedInUser.id,
         } as UserInsert,
-        defaultFarms
+        uniqueFarmCodes(defaultFarms)
       )
 
       toast.success(
@@ -219,7 +257,7 @@ export default function Layout() {
       ])
       console.log({ userInfo, superUsersList })
       setSuperUsers(superUsersList)
-      setDefaultFarms(userInfo?.[0]?.users_farms ?? [])
+      setDefaultFarms(uniqueFarmCodes(userInfo?.[0]?.users_farms ?? []))
     } catch {
       toast.error('Failed loading supervisor data')
     }
@@ -263,7 +301,7 @@ export default function Layout() {
       const farms =
         await getvwdmf_get_farmlist_code_name_farmtype()
 
-      setFarmList(farms)
+      setFarmList(uniqueFarmOptions(farms))
     }
 
     init()
@@ -385,9 +423,9 @@ export default function Layout() {
                       />
                     ) : field.type === 'list' ? (
                       <SearchableDropdown
-                        list={field.list || []}
-                        codeLabel={field.code || ''}
-                        nameLabel={field.name || ''}
+                        list={(field.list || []) as Record<string, unknown>[]}
+                        codeLabel={(field.code || '') as keyof Record<string, unknown>}
+                        nameLabel={(field.name || '') as keyof Record<string, unknown>}
                         value={(form as any)[field.key] || ''}
                         onChange={(v) =>
                           handleChange(field.key as any, v)
@@ -399,9 +437,9 @@ export default function Layout() {
                         label={field.label}
                         multiple
                         showCode
-                        items={field.list || []}
+                        items={(field.list || []) as ComboboxItemType[]}
                         value={defaultFarms}
-                        onValueChange={setDefaultFarms}
+                        onValueChange={(values) => setDefaultFarms(uniqueFarmCodes(values))}
                         className="w-full"
                       />
                     ) : (

@@ -6,11 +6,33 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { ArrowDown, ArrowUp, Plus } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
-import { addFarmFull, formatCode, generateNextCode, getLastCode } from './api'
+import React, { useCallback, useEffect, useState } from 'react'
+import { addFarmFull, formatCode, generateNextCode, getLastCode, type FarmFullPayload } from './api'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
+import { getWarehouses } from '../../warehouse/api'
+import type { WarehouseData } from '@/lib/types'
+
+type FormDataMap = Record<string, string>
+
+type PenRow = {
+  id: number
+  data: FormDataMap
+}
+
+type BuildingRow = {
+  id: number
+  data: FormDataMap
+  pens: PenRow[]
+  expanded: boolean
+}
+
+type MachineRow = {
+  id: number
+  data: FormDataMap
+}
 
 export default function Layout() {
 
@@ -69,17 +91,27 @@ export default function Layout() {
     { code: "remarks", name: "Remarks", type: "text", isLong: true },
   ]
 
-  const [farmData, setFarmData] = useState<any>({})
-  const [addressData, setAddressData] = useState<any>({})
-  const [buildings, setBuildings] = useState<any[]>([])
-  const [machines, setMachines] = useState<any[]>([])
+  const [farmData, setFarmData] = useState<FormDataMap>({})
+  const [addressData, setAddressData] = useState<FormDataMap>({})
+  const [buildings, setBuildings] = useState<BuildingRow[]>([])
+  const [machines, setMachines] = useState<MachineRow[]>([])
+  const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
+  const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false)
 
-  const updateFarm = (code: string, value: any) => {
-    setFarmData((prev: any) => ({ ...prev, [code]: value }))
+  const warehouseOptions: ComboboxItemType[] = warehouses
+    .filter(warehouse => warehouse.whse_code)
+    .map(warehouse => ({
+      code: String(warehouse.whse_code),
+      name: warehouse.whse_name || warehouse.full_location_code || 'Unnamed warehouse',
+    }))
+
+  const updateFarm = (code: string, value: string) => {
+    setFarmData(prev => ({ ...prev, [code]: value }))
   }
 
-  const updateAddress = (code: string, value: any) => {
-    setAddressData((prev: any) => ({ ...prev, [code]: value }))
+  const updateAddress = (code: string, value: string) => {
+    setAddressData(prev => ({ ...prev, [code]: value }))
   }
 
   // ================= BUILDING =================
@@ -104,7 +136,7 @@ export default function Layout() {
     ])
   }
 
-  const updateBuilding = (id: number, code: string, value: any) => {
+  const updateBuilding = (id: number, code: string, value: string) => {
     setBuildings(prev =>
       prev.map(b =>
         b.id === id ? { ...b, data: { ...b.data, [code]: value } } : b
@@ -143,7 +175,7 @@ export default function Layout() {
     )
   }
 
-  const updatePen = (buildingId: number, penId: number, code: string, value: any) => {
+  const updatePen = (buildingId: number, penId: number, code: string, value: string) => {
 
     setBuildings(prev =>
       prev.map(b => {
@@ -152,7 +184,7 @@ export default function Layout() {
 
         return {
           ...b,
-          pens: b.pens.map((p: any) =>
+          pens: b.pens.map(p =>
             p.id === penId ? { ...p, data: { ...p.data, [code]: value } } : p
           )
         }
@@ -181,7 +213,7 @@ export default function Layout() {
     ])
   }
 
-  const updateMachine = (id: number, code: string, value: any) => {
+  const updateMachine = (id: number, code: string, value: string) => {
 
     setMachines(prev =>
       prev.map(m =>
@@ -197,11 +229,22 @@ export default function Layout() {
   const handleAddFarm = async () => {
 
     try {
-      const output = {
+      const associatedWarehouses = selectedWarehouses.map(code => {
+        const warehouse = warehouses.find(item => item.whse_code === code)
+
+        return {
+          id: warehouse?.id ?? null,
+          whse_code: code,
+          whse_name: warehouse?.whse_name ?? null,
+        }
+      })
+
+      const output: FarmFullPayload = {
         farm: farmData,
         address: addressData,
         buildings,
-        machines
+        machines,
+        associated_warehouses: associatedWarehouses,
       }
       const id = await addFarmFull(output)
 
@@ -209,18 +252,18 @@ export default function Layout() {
 
       router.push("/a_dean/farm")
     } catch (error) {
-      // toast.error("Farm Code already exists")
+      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to add farm'))
     }
   }
 
   // ================= LOAD FARM CODE =================
 
-  async function loadFarmCode() {
+  const loadFarmCode = useCallback(async () => {
 
     const code = await generateNextCode("v_last_farm_code", "FRM", 6)
     console.log({ code })
-    setFarmData((prev: any) => ({ ...prev, code }))
-  }
+    setFarmData(prev => ({ ...prev, code }))
+  }, [])
 
   useEffect(() => {
 
@@ -228,6 +271,29 @@ export default function Layout() {
 
     loadFarmCode()
 
+  }, [loadFarmCode, router])
+
+  useEffect(() => {
+    async function loadWarehouses() {
+      setLoadingWarehouses(true)
+
+      try {
+        const result = await getWarehouses()
+
+        if (result.success && Array.isArray(result.data)) {
+          setWarehouses(result.data)
+          return
+        }
+
+        toast('Unable to load warehouses')
+      } catch (error) {
+        toast('Error: ' + (error instanceof Error ? error.message : 'Unable to load warehouses'))
+      } finally {
+        setLoadingWarehouses(false)
+      }
+    }
+
+    loadWarehouses()
   }, [])
 
   // ================= LOAD COUNTERS =================
@@ -318,6 +384,21 @@ export default function Layout() {
 
           ))}
 
+        </div>
+
+        <div className='grid grid-cols-1 gap-4 m-4'>
+          <SearchableCombobox
+            multiple
+            label='Associated Warehouse'
+            items={warehouseOptions}
+            value={selectedWarehouses}
+            onValueChange={setSelectedWarehouses}
+            showCode
+            className='w-full border shadow bg-white'
+          />
+          {loadingWarehouses && (
+            <p className='text-xs text-muted-foreground'>Loading warehouses...</p>
+          )}
         </div>
 
         <Separator />
@@ -447,7 +528,7 @@ export default function Layout() {
                         <div>Status</div>
                       </div>
 
-                      {b.pens.map((p: any, pIdx: number) => (
+                      {b.pens.map((p, pIdx: number) => (
 
                         <div
                           key={p.id}

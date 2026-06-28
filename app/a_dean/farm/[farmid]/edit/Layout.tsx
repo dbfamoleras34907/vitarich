@@ -7,10 +7,13 @@ import { Separator } from '@/components/ui/separator'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { Plus } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
-import { getFarmFull, updateFarmFull, generateNextCode, getLastCode } from './api'
+import { getFarmFull, updateFarmFull, getLastCode, type AssociatedWarehousePayload, type FarmBuildingPayload, type FarmChildRow, type FarmFormData, type FarmFullPayload } from './api'
 import { toast } from 'sonner'
 import { useRouter, useParams } from 'next/navigation'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
+import { getWarehouses } from '../../../warehouse/api'
+import type { WarehouseData } from '@/lib/types'
 
 export default function Layout() {
 
@@ -18,11 +21,14 @@ export default function Layout() {
     const params = useParams()
     const farmId = Number(params.farmid)
 
-    const [buildings, setBuildings] = useState<any[]>([])
-    const [machines, setMachines] = useState<any[]>([])
+    const [buildings, setBuildings] = useState<FarmBuildingPayload[]>([])
+    const [machines, setMachines] = useState<FarmChildRow[]>([])
 
-    const [farmData, setFarmData] = useState<any>({})
-    const [addressData, setAddressData] = useState<any>({})
+    const [farmData, setFarmData] = useState<FarmFormData>({})
+    const [addressData, setAddressData] = useState<FarmFormData>({})
+    const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
+    const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
+    const [loadingWarehouses, setLoadingWarehouses] = useState(false)
 
     const [buildingCounter, setBuildingCounter] = useState<number | null>(null)
     const [penCounter, setPenCounter] = useState<number | null>(null)
@@ -89,6 +95,27 @@ export default function Layout() {
         { code: "remarks", name: "Remarks", type: "text", isLong: true },
     ]
 
+    const warehouseOptions: ComboboxItemType[] = warehouses
+        .filter(warehouse => warehouse.whse_code)
+        .map(warehouse => ({
+            code: String(warehouse.whse_code),
+            name: warehouse.whse_name || warehouse.full_location_code || 'Unnamed warehouse',
+        }))
+
+    const normalizeAssociatedWarehouseCodes = (value: unknown) => {
+        if (!Array.isArray(value)) return []
+
+        return value
+            .map(item => {
+                if (typeof item === 'string') return item
+                if (item && typeof item === 'object' && 'whse_code' in item) {
+                    return String((item as AssociatedWarehousePayload).whse_code || '')
+                }
+                return ''
+            })
+            .filter(Boolean)
+    }
+
     // const updateFarm = (code: string, value: any) => {
 
     //     setFarmData((prev: any) => {
@@ -101,9 +128,9 @@ export default function Layout() {
     //     })
     // }
 
-    const updateFarm = (code: string, value: any) => {
+    const updateFarm = (code: string, value: string) => {
 
-        setFarmData((prev: any) => {
+        setFarmData(prev => {
 
             // clear both if ref removed
             if (code === "ref" && !value) {
@@ -120,11 +147,11 @@ export default function Layout() {
     }
 
 
-    const updateAddress = (code: string, value: any) => {
-        setAddressData((prev: any) => ({ ...prev, [code]: value }))
+    const updateAddress = (code: string, value: string) => {
+        setAddressData(prev => ({ ...prev, [code]: value }))
     }
 
-    const updateBuilding = (id: number, code: string, value: any) => {
+    const updateBuilding = (id: number | string | undefined, code: string, value: string) => {
 
         setBuildings(prev =>
             prev.map(b =>
@@ -136,7 +163,7 @@ export default function Layout() {
 
     }
 
-    const updatePen = (buildingId: number, penId: number, code: string, value: any) => {
+    const updatePen = (buildingId: number | string | undefined, penId: number | string | undefined, code: string, value: string) => {
 
         setBuildings(prev =>
             prev.map(b => {
@@ -145,7 +172,7 @@ export default function Layout() {
 
                 return {
                     ...b,
-                    pens: b.pens.map((p: any) =>
+                    pens: b.pens.map(p =>
                         p.id === penId
                             ? { ...p, data: { ...p.data, [code]: value } }
                             : p
@@ -157,7 +184,7 @@ export default function Layout() {
 
     }
 
-    const updateMachine = (id: number, code: string, value: any) => {
+    const updateMachine = (id: number | string | undefined, code: string, value: string) => {
 
         setMachines(prev =>
             prev.map(m =>
@@ -192,7 +219,7 @@ export default function Layout() {
 
     // ================= PEN =================
 
-    const addPen = (buildingId: number) => {
+    const addPen = (buildingId: number | string | undefined) => {
 
         if (penCounter === null) return
 
@@ -250,19 +277,33 @@ export default function Layout() {
         //     })
         //     return
         // }
-        const payload = {
+        const associatedWarehouses = selectedWarehouses.map(code => {
+            const warehouse = warehouses.find(item => item.whse_code === code)
+
+            return {
+                id: warehouse?.id ?? null,
+                whse_code: code,
+                whse_name: warehouse?.whse_name ?? null,
+            }
+        })
+
+        const payload: FarmFullPayload = {
             farm: farmData,
             address: addressData,
             buildings,
-            machines
+            machines,
+            associated_warehouses: associatedWarehouses,
         }
         console.log({ farmId, payload })
-        // return
-        await updateFarmFull(farmId, payload)
+        try {
+            await updateFarmFull(farmId, payload)
 
-        toast("Farm updated successfully", { position: 'top-center' })
+            toast("Farm updated successfully", { position: 'top-center' })
 
-        router.push("/a_dean/farm")
+            router.push("/a_dean/farm")
+        } catch (error) {
+            toast('Error: ' + (error instanceof Error ? error.message : 'Unable to update farm'))
+        }
 
     }
 
@@ -280,12 +321,40 @@ export default function Layout() {
             setAddressData(data.address || {})
             setBuildings(data.buildings || [])
             setMachines(data.machines || [])
+            setSelectedWarehouses(
+                normalizeAssociatedWarehouseCodes(
+                    data.associated_warehouses ?? data.farm?.associated_warehouses
+                )
+            )
 
         }
 
         loadFarm()
 
-    }, [farmId])
+    }, [farmId, router])
+
+    useEffect(() => {
+        async function loadWarehouses() {
+            setLoadingWarehouses(true)
+
+            try {
+                const result = await getWarehouses()
+
+                if (result.success && Array.isArray(result.data)) {
+                    setWarehouses(result.data)
+                    return
+                }
+
+                toast('Unable to load warehouses')
+            } catch (error) {
+                toast('Error: ' + (error instanceof Error ? error.message : 'Unable to load warehouses'))
+            } finally {
+                setLoadingWarehouses(false)
+            }
+        }
+
+        loadWarehouses()
+    }, [])
 
     // ================= LOAD COUNTERS =================
 
@@ -375,6 +444,21 @@ export default function Layout() {
 
                     ))}
 
+                </div>
+
+                <div className='grid grid-cols-1 gap-4 m-4'>
+                    <SearchableCombobox
+                        multiple
+                        label='Associated Warehouse'
+                        items={warehouseOptions}
+                        value={selectedWarehouses}
+                        onValueChange={setSelectedWarehouses}
+                        showCode
+                        className='w-full border shadow bg-white'
+                    />
+                    {loadingWarehouses && (
+                        <p className='text-xs text-muted-foreground'>Loading warehouses...</p>
+                    )}
                 </div>
 
                 <Separator />
@@ -497,7 +581,7 @@ export default function Layout() {
 
                                 {/* PENS */}
 
-                                {b.pens?.map((p: any, pIdx: number) => (
+                                {b.pens?.map((p, pIdx: number) => (
 
                                     <div key={p.id} className="border rounded p-3 bg-gray-50">
 

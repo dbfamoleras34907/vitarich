@@ -1,259 +1,496 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Boxes, PackageCheck, Save, Settings2 } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { addItem } from '../api'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import { usePermission } from '@/hooks/usePermission'
+import { addItem, getItemUomGroups, getNextItemCode, ItemInsert, ItemUomGroup } from '../api'
 import { getItemGroups, ItemGroup } from '../../itemgroups/api'
 
+type ItemForm = {
+  item_name: string
+  description: string
+  barcode: string
+  uom_group_code: string
+  item_group: string
+  is_inventory_item: boolean
+  is_sales_item: boolean
+  is_purchase_item: boolean
+  is_delivery_item: boolean
+  manage_batch_numbers: boolean
+  manage_serial_numbers: boolean
+  batch_management_method: string
+  default_shelf_life_days: string
+  default_expiration_months: string
+  default_expiry_required: boolean
+  allow_negative_batch_stock: boolean
+  batch_number_series: string
+  min_on_hand: string
+  max_on_hand: string
+}
+
+const emptyForm: ItemForm = {
+  item_name: '',
+  description: '',
+  barcode: '',
+  uom_group_code: '',
+  item_group: '',
+  is_inventory_item: true,
+  is_sales_item: true,
+  is_purchase_item: true,
+  is_delivery_item: true,
+  manage_batch_numbers: false,
+  manage_serial_numbers: false,
+  batch_management_method: 'NONE',
+  default_shelf_life_days: '',
+  default_expiration_months: '',
+  default_expiry_required: false,
+  allow_negative_batch_stock: false,
+  batch_number_series: '',
+  min_on_hand: '',
+  max_on_hand: '',
+}
+
+const shelfLifeValue = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
+const expirationMonthsValue = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
+const optionalQuantityValue = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert => ({
+  item_name: form.item_name,
+  description: form.description,
+  barcode: form.barcode,
+  unit_measure: selectedUomGroup?.baseUomCode || form.uom_group_code,
+  inventory_uom: form.uom_group_code,
+  item_group: form.item_group,
+  group: form.item_group,
+  is_inventory_item: form.is_inventory_item,
+  is_sales_item: form.is_sales_item,
+  is_purchase_item: form.is_purchase_item,
+  is_delivery_item: form.is_delivery_item,
+  manage_batch_numbers: form.manage_batch_numbers,
+  manage_serial_numbers: form.manage_serial_numbers,
+  batch_management_method: form.manage_batch_numbers ? form.batch_management_method : 'NONE',
+  default_shelf_life_days: shelfLifeValue(form.default_shelf_life_days),
+  default_expiration_months: expirationMonthsValue(form.default_expiration_months),
+  default_expiry_required: form.default_expiry_required,
+  allow_negative_batch_stock: form.allow_negative_batch_stock,
+  batch_number_series: form.batch_number_series,
+  min_on_hand: optionalQuantityValue(form.min_on_hand),
+  max_on_hand: optionalQuantityValue(form.max_on_hand),
+})
+
 export default function AddItemPage() {
+  const router = useRouter()
+  const canInsert = !usePermission('/a_dean/items/insert')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([])
+  const [uomGroups, setUomGroups] = useState<ItemUomGroup[]>([])
+  const [form, setForm] = useState<ItemForm>(emptyForm)
+  const [nextItemCode, setNextItemCode] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [pendingPayload, setPendingPayload] = useState<ItemInsert | null>(null)
 
-  const [form, setForm] = useState({
-    item_code: '',
-    item_name: '',
-    description: '',
-    barcode: '',
-    unit_measure: 'pcs',
-    item_group: '',
-    group: ""
-  })
+  const selectedGroup = useMemo(
+    () => itemGroups.find(group => group.code === form.item_group),
+    [form.item_group, itemGroups],
+  )
+  const selectedUomGroup = useMemo(
+    () => uomGroups.find(group => group.code === form.uom_group_code),
+    [form.uom_group_code, uomGroups],
+  )
+  const itemCodePreview = form.item_group ? nextItemCode || 'Generating...' : 'Select item group'
+  const messageIsSuccess = message?.startsWith('Item saved successfully')
 
   useEffect(() => {
+    router.prefetch('/a_dean/items')
+
+    if (!canInsert) {
+      router.replace('/a_dean/items')
+      return
+    }
+
     const loadItemGroups = async () => {
       try {
-        const data = await getItemGroups()
-        setItemGroups((data || []) as ItemGroup[])
+        const [groups, uomGroupData] = await Promise.all([
+          getItemGroups(),
+          getItemUomGroups(),
+        ])
+        setItemGroups((groups || []) as ItemGroup[])
+        setUomGroups(uomGroupData)
       } catch (error) {
-        console.error('Error loading item groups:', error)
+        console.error('Error loading item references:', error)
         setItemGroups([])
+        setUomGroups([])
       }
     }
 
     loadItemGroups()
-  }, [])
+  }, [canInsert, router])
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-  }
+  useEffect(() => {
+    let cancelled = false
 
-  // async function handleSubmit(e: React.FormEvent) {
-  //   e.preventDefault()
-
-  //   setLoading(true)
-  //   setMessage(null)
-
-
-  //   try {
-  //     await addItem(form)
-
-  //     setMessage('✅ Item added successfully')
-
-  //     setForm({
-  //       item_code: '',
-  //       item_name: '',
-  //       description: '',
-  //       barcode: '',
-  //       unit_measure: 'pcs',
-  //       item_group: '',
-  //     })
-  //   } catch (err: any) {
-  //     setMessage('❌ ' + err.message)
-  //   } finally {
-  //     setLoading(false)
-  //   }
-  // }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-
-    setMessage(null)
-
-    // ✅ validation
-    if (
-      !form.item_code.trim() ||
-      !form.item_name.trim() ||
-      !form.barcode.trim() ||
-      !form.unit_measure.trim() ||
-      !form.item_group.trim()
-    ) {
-      setMessage('❌ Please fill in all required fields')
+    if (!form.item_group) {
+      setNextItemCode('')
       return
     }
 
+    const timer = window.setTimeout(() => {
+      getNextItemCode(form.item_group)
+        .then(code => {
+          if (!cancelled) setNextItemCode(code)
+        })
+        .catch(error => {
+          console.error('Error generating next item code:', error)
+          if (!cancelled) setNextItemCode('')
+        })
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [form.item_group])
+
+  const updateForm = <K extends keyof ItemForm>(key: K, value: ItemForm[K]) => {
+    setForm(current => ({ ...current, [key]: value }))
+  }
+
+  function handleChange(
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target
+    setForm(current => ({ ...current, [name]: value }))
+  }
+
+  function validateForm() {
+    setMessage(null)
+
+    if (!form.item_name.trim() || !form.uom_group_code.trim() || !form.item_group.trim()) {
+      setMessage('Please complete the required item fields.')
+      return false
+    }
+
+    if (form.manage_batch_numbers && form.batch_management_method === 'NONE') {
+      setMessage('Choose a batch management method.')
+      return false
+    }
+
+    if (form.default_shelf_life_days.trim() && shelfLifeValue(form.default_shelf_life_days) === null) {
+      setMessage('Shelf life must be a whole number greater than or equal to 0.')
+      return false
+    }
+
+    if (form.default_expiration_months.trim() && expirationMonthsValue(form.default_expiration_months) === null) {
+      setMessage('Default expiration must be a whole number of months greater than or equal to 0.')
+      return false
+    }
+
+    if (
+      (form.min_on_hand.trim() && optionalQuantityValue(form.min_on_hand) === null) ||
+      (form.max_on_hand.trim() && optionalQuantityValue(form.max_on_hand) === null)
+    ) {
+      setMessage('Min and max on-hand must be numbers greater than or equal to 0.')
+      return false
+    }
+
+    return true
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!validateForm()) return
+
+    setPendingPayload(toPayload(form, selectedUomGroup))
+    setConfirmOpen(true)
+  }
+
+  async function confirmSave() {
+    if (!pendingPayload) return
+
+    setConfirmOpen(false)
     setLoading(true)
 
     try {
-      await addItem({
-        ...form,
-        group: form.item_group, // ✅ added group
-      })
-
-      setMessage('✅ Item added successfully')
-
-      setForm({
-        item_code: '',
-        item_name: '',
-        description: '',
-        barcode: '',
-        unit_measure: 'pcs',
-        item_group: '',
-        group: '',
-      })
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unable to add item'
-      setMessage('❌ ' + errorMessage)
+      const savedItem = await addItem(pendingPayload)
+      const savedCode = typeof savedItem?.item_code === 'string' ? savedItem.item_code : ''
+      setMessage(`Item saved successfully${savedCode ? `: ${savedCode}` : ''}.`)
+      setForm(emptyForm)
+      setNextItemCode('')
+      setPendingPayload(null)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to add item.')
     } finally {
       setLoading(false)
     }
   }
+
   return (
-    <div className=" mx-auto p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Item</CardTitle>
-        </CardHeader>
+    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 p-4 text-stone-950">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">New Item</h1>
+            <p className="mt-1 text-sm text-stone-500">Create item master data and inventory controls.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => router.push('/a_dean/items')}>
+              <ArrowLeft className="size-4" />
+              Back
+            </Button>
+            <Button type="submit" disabled={loading || !canInsert}>
+              <Save className="size-4" />
+              {loading ? 'Saving...' : 'Save Item'}
+            </Button>
+          </div>
+        </div>
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
+        {message && (
+          <Alert
+            className={
+              messageIsSuccess
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-amber-200 bg-amber-50 text-amber-900'
+            }
+          >
+            <AlertTitle>{messageIsSuccess ? 'Item Saved' : 'Item Needs Attention'}</AlertTitle>
+            <AlertDescription className={messageIsSuccess ? 'text-emerald-800' : 'text-amber-800'}>
+              {message}
+            </AlertDescription>
+          </Alert>
+        )}
 
-            {/* 🔹 GRID 2 COLUMNS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-stone-200 pb-3">
+            <Boxes className="size-4 text-stone-500" />
+            <h2 className="text-sm font-semibold">Item Details</h2>
+          </div>
 
-              {/* Item Code */}
-              <div className="space-y-2">
-                <Label>Item Code *</Label>
-                <Input
-                  name="item_code"
-                  value={form.item_code}
-                  onChange={handleChange}
-                  required
-                />
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <Field label="Item Code">
+              <div className="flex h-9 items-center rounded-md border border-stone-200 bg-stone-50 px-3 text-sm font-medium text-stone-700">
+                {itemCodePreview}
               </div>
-
-              {/* Item Name */}
-              <div className="space-y-2">
-                <Label>Item Name</Label>
-                <Input
-                  name="item_name"
-                  value={form.item_name}
-                  onChange={handleChange}
-                />
-              </div>
-
-              {/* Barcode */}
-              <div className="space-y-2">
-                <Label>Barcode</Label>
-                <Input
-                  name="barcode"
-                  value={form.barcode}
-                  onChange={handleChange}
-                />
-              </div>
-
-              {/* Item Group */}
-              <div className="space-y-2">
-                <Label>Item Group</Label>
-                {/* <Input
-                  name="item_group"
-                  value={form.item_group}
-                  onChange={handleChange}
-                /> */}
-                <SearchableDropdown
-                  codeLabel='code'
-                  value={form.item_group}
-                  nameLabel='name'
-                  list={itemGroups}
-                  onChange={(e) => {
-                    setForm((prev) => ({ ...prev, item_group: e }))
-                  }}
-                />
-              </div>
-
-              {/* 🔥 Unit of Measure Dropdown */}
-              <div className="space-y-2">
-                <Label>Unit of Measure</Label>
-
-                <Select
-                  value={form.unit_measure}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      unit_measure: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select UoM" />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <SelectItem value="pcs">pcs (Pieces)</SelectItem>
-                    <SelectItem value="box">box</SelectItem>
-                    <SelectItem value="pack">pack</SelectItem>
-                    <SelectItem value="set">set</SelectItem>
-                    <SelectItem value="kg">kg</SelectItem>
-                    <SelectItem value="g">g</SelectItem>
-                    <SelectItem value="liter">liter</SelectItem>
-                    <SelectItem value="ml">ml</SelectItem>
-                    <SelectItem value="meter">meter</SelectItem>
-                    <SelectItem value="cm">cm</SelectItem>
-                    <SelectItem value="roll">roll</SelectItem>
-                    <SelectItem value="pair">pair</SelectItem>
-                    <SelectItem value="dozen">dozen</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-            </div>
-
-            {/* 🔹 FULL WIDTH DESCRIPTION */}
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                name="description"
-                value={form.description}
-                onChange={handleChange}
+            </Field>
+            <Field label="Item Name" required>
+              <Input name="item_name" value={form.item_name} onChange={handleChange} placeholder="Feeds" />
+            </Field>
+            <Field label="Barcode">
+              <Input name="barcode" value={form.barcode} onChange={handleChange} placeholder="Optional" />
+            </Field>
+            <Field label="Item Group" required hint={selectedGroup?.name}>
+              <SearchableDropdown
+                codeLabel="code"
+                nameLabel="name"
+                list={itemGroups}
+                value={form.item_group}
+                onChange={value => updateForm('item_group', value)}
               />
+            </Field>
+            <Field label="UoM Group" required hint={selectedUomGroup ? `Base: ${selectedUomGroup.baseUomCode}` : undefined}>
+              <SelectNative value={form.uom_group_code} onChange={value => updateForm('uom_group_code', value)}>
+                <option value="">Select UoM group</option>
+                {uomGroups.map(group => (
+                  <option key={group.id} value={group.code}>
+                    {group.code} - {group.name}
+                  </option>
+                ))}
+              </SelectNative>
+            </Field>
+          </div>
+
+          <div className="mt-4">
+            <Field label="Description">
+              <Textarea name="description" value={form.description} onChange={handleChange} placeholder="Optional item description" />
+            </Field>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-stone-200 pb-3">
+              <Settings2 className="size-4 text-stone-500" />
+              <h2 className="text-sm font-semibold">Item Usage</h2>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <ToggleRow label="Inventory" checked={form.is_inventory_item} onChange={value => updateForm('is_inventory_item', value)} />
+              <ToggleRow label="Sales" checked={form.is_sales_item} onChange={value => updateForm('is_sales_item', value)} />
+              <ToggleRow label="Purchase" checked={form.is_purchase_item} onChange={value => updateForm('is_purchase_item', value)} />
+              <ToggleRow label="Delivery" checked={form.is_delivery_item} onChange={value => updateForm('is_delivery_item', value)} />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-stone-200 pb-3">
+              <PackageCheck className="size-4 text-stone-500" />
+              <h2 className="text-sm font-semibold">Batch Control</h2>
             </div>
 
-            {/* 🔹 ACTIONS */}
-            <div className="flex items-center gap-4">
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Saving...' : 'Add Item'}
-              </Button>
+            <div className="mt-4 space-y-3">
+              <ToggleRow
+                label="Manage by Batch"
+                checked={form.manage_batch_numbers}
+                onChange={value => {
+                  updateForm('manage_batch_numbers', value)
+                  if (value && form.batch_management_method === 'NONE') updateForm('batch_management_method', 'MANUAL')
+                  if (!value) updateForm('batch_management_method', 'NONE')
+                }}
+              />
 
-              {message && (
-                <span className="text-sm">{message}</span>
-              )}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Min On Hand">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={form.min_on_hand}
+                    onChange={event => updateForm('min_on_hand', event.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+                <Field label="Max On Hand">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={form.max_on_hand}
+                    onChange={event => updateForm('max_on_hand', event.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+              </div>
+
+              <Field label="Default Expiration in Months">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.default_expiration_months}
+                  onChange={event => updateForm('default_expiration_months', event.target.value)}
+                  placeholder="0"
+                />
+              </Field>
             </div>
+          </div>
+        </section>
+      </form>
 
-          </form>
-        </CardContent>
-      </Card>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create {form.item_name || 'the item'} with item code {itemCodePreview}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSave} disabled={loading}>
+              {loading ? 'Saving...' : 'Confirm Save'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
+  )
+}
+
+function Field({
+  label,
+  required,
+  hint,
+  children,
+}: {
+  label: string
+  required?: boolean
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className="space-y-2">
+      <span className="flex items-center justify-between gap-3 text-sm font-medium text-stone-900">
+        <span>{label}{required && <span className="text-red-600"> *</span>}</span>
+        {hint && <span className="truncate text-xs font-normal text-stone-500">{hint}</span>}
+      </span>
+      {children}
+    </label>
+  )
+}
+
+function SelectNative({
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  value: string
+  disabled?: boolean
+  onChange: (value: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+      className="h-9 w-full rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500"
+    >
+      {children}
+    </select>
+  )
+}
+
+function ToggleRow({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-3">
+      <Label className="text-sm font-medium text-stone-800">{label}</Label>
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </div>
   )
 }

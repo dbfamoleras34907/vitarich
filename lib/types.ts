@@ -536,6 +536,7 @@ export interface Items {
   is_inventory_item: boolean | null
   is_sales_item: boolean | null
   is_purchase_item: boolean | null
+  is_delivery_item: boolean | null
   on_hand: number | null
   is_committed: number | null
   on_order: number | null
@@ -543,6 +544,14 @@ export interface Items {
   item_group: string | null
   manage_batch_numbers: boolean | null
   manage_serial_numbers: boolean | null
+  batch_management_method: string | null
+  default_shelf_life_days: number | null
+  default_expiration_months: number | null
+  default_expiry_required: boolean | null
+  allow_negative_batch_stock: boolean | null
+  batch_number_series: string | null
+  min_on_hand: number | null
+  max_on_hand: number | null
   updated_at: string | null
   group: string | null
 }

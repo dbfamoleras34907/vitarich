@@ -3,7 +3,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { RefreshCcw, Plus, Edit } from 'lucide-react'
 
@@ -11,9 +11,12 @@ import { getRecentItems } from './api'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import DynamicTable from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
   const router = useRouter()
+  const canInsert = !usePermission('/a_dean/items/insert')
+  const canEdit = !usePermission('/a_dean/items/edit')
 
   const [rows, setRows] = useState<RowDataKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,23 +28,30 @@ export default function Layout() {
       { key: 'barcode', label: 'Barcode', type: 'text', disabled: true },
       { key: 'unit_measure', label: 'UoM', type: 'text', disabled: true },
       { key: 'item_group', label: 'Group', type: 'text', disabled: true },
+      { key: 'manage_batch_numbers', label: 'Batch', type: 'text', disabled: true },
+      { key: 'batch_management_method', label: 'Batch Method', type: 'text', disabled: true },
+      { key: 'default_expiration_months', label: 'Exp. Months', type: 'number', disabled: true },
       { key: 'created_at', label: 'Created At', type: 'text', disabled: true },
       { key: 'action', label: 'Action', type: 'button', disabled: false },
     ],
     []
   )
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     const data = await getRecentItems()
     setRows(data as RowDataKey[])
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
-    fetchData()
     router.prefetch('/a_dean/items/new')
-  }, [])
+    const timer = window.setTimeout(() => {
+      fetchData()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [fetchData, router])
 
   return (
     <div>
@@ -53,6 +63,7 @@ export default function Layout() {
         />
 
         <Button
+          disabled={!canInsert}
           onClick={() =>
             router.push('/a_dean/items/new')
           }
@@ -82,6 +93,7 @@ export default function Layout() {
                   <div className="flex  gap-2">
                     <Button
                       variant="outline"
+                      disabled={!canEdit}
                       onClick={() => {
                         router.push(
                           `/a_dean/items/edit?id=${row.id}`
@@ -95,6 +107,10 @@ export default function Layout() {
               }
 
               const value = row[col.key]
+
+              if (col.key === 'manage_batch_numbers') {
+                return value ? 'Managed' : 'Not managed'
+              }
 
               if (!value) return '-'
 

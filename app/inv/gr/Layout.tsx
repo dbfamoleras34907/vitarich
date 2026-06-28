@@ -24,14 +24,23 @@ export default function GoodsReceiveHistory() {
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState('10')
+  const [loading, setLoading] = useState(true)
 
-  const refresh = useCallback(() => {
-    setReceipts(getGoodsReceipts())
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      setReceipts(await getGoodsReceipts())
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
     router.prefetch('/inv/gr/new')
-    const timer = window.setTimeout(refresh, 0)
+    router.prefetch('/inv/gr/post')
+    const timer = window.setTimeout(() => {
+      refresh()
+    }, 0)
     return () => window.clearTimeout(timer)
   }, [refresh, router])
 
@@ -52,7 +61,7 @@ export default function GoodsReceiveHistory() {
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <header className="border-b bg-white px-4 py-4">
+      <header className=" px-4 py-4">
         <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
         <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
       </header>
@@ -108,9 +117,9 @@ export default function GoodsReceiveHistory() {
               <option value="50">50</option>
             </select>
 
-            <Button variant="outline" className="gap-2 md:ml-auto" onClick={refresh}>
-              <RefreshCw className="size-4" />
-              Refresh
+            <Button variant="outline" className="gap-2 md:ml-auto" onClick={refresh} disabled={loading}>
+              <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Loading...' : 'Refresh'}
             </Button>
           </div>
 
@@ -162,7 +171,7 @@ export default function GoodsReceiveHistory() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => router.push(`/inv/gr/new?id=${receipt.id}`)}
+                          onClick={() => router.push(`/inv/gr/post?id=${receipt.id}`)}
                         >
                           <Eye className="size-4" />
                           View
@@ -175,10 +184,16 @@ export default function GoodsReceiveHistory() {
             </table>
           </div>
 
-          {filteredReceipts.length === 0 && (
+          {!loading && filteredReceipts.length === 0 && (
             <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-stone-400">
               <FileX2 className="size-10 text-stone-300" />
-              <p className="text-sm">No direct receive records found.</p>
+              <p className="text-sm">No records found.</p>
+            </div>
+          )}
+
+          {loading && (
+            <div className="flex min-h-40 items-center justify-center text-sm text-stone-500">
+              Loading goods receipts...
             </div>
           )}
         </div>

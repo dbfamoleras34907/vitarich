@@ -694,8 +694,8 @@ export const NavFolders: NavFolder[] = [
             title: "Item Master Data",
             url: "/a_dean/items",
             view: false,
-            insert: false,
-            edit: false,
+            insert: true,
+            edit: true,
           },
 
           // {
@@ -755,6 +755,16 @@ export const NavFolders: NavFolder[] = [
             insert: true,
             edit: true,
             void: true,
+          },
+          {
+            id: 55,
+            type: "Module",
+            title: "Batch Manager",
+            url: "/inv/btch",
+            // view: true,
+            insert: true,
+            edit: true,
+            void: false,
           },
         ],
       },

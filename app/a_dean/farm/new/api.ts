@@ -1,9 +1,33 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 
-export async function addFarmFull(payload: any) {
+export type FarmFormData = Record<string, string>
+
+export type FarmChildRow = {
+  data: FarmFormData
+}
+
+export type FarmBuildingPayload = FarmChildRow & {
+  pens: FarmChildRow[]
+}
+
+export type AssociatedWarehousePayload = {
+  id: number | null
+  whse_code: string
+  whse_name: string | null
+}
+
+export type FarmFullPayload = {
+  farm: FarmFormData
+  address: FarmFormData
+  buildings: FarmBuildingPayload[]
+  machines: FarmChildRow[]
+  associated_warehouses: AssociatedWarehousePayload[]
+}
+
+export async function addFarmFull(payload: FarmFullPayload): Promise<number> {
   const { data, error } = await db.rpc(
     "insert_farm_full",
-    { payload: payload }
+    { payload }
   )
 
   if (error) {
@@ -11,7 +35,7 @@ export async function addFarmFull(payload: any) {
     throw new Error(error.message)
   }
 
-  return data // returns farm id
+  return Number(data)
 }
 
 
