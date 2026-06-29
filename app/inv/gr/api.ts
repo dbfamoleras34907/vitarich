@@ -74,6 +74,14 @@ type GoodsReceiptItemRow = {
   void: string
 }
 
+type GoodsReceiptListItemRow = {
+  goods_reciept_id: number
+  item_code: string
+  description: string | null
+  base_qty: number
+  returned_qty: number
+}
+
 type ItemBatchRow = {
   id: number
   batch_number: string
@@ -116,6 +124,43 @@ const toReceipt = (
   defaultWarehouseId: row.default_warehouse_id,
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptLine),
+  createdAt: row.created_at,
+})
+
+const toReceiptListLine = (row: GoodsReceiptListItemRow): GoodsReceiptLine => ({
+  id: `${row.goods_reciept_id}-${row.item_code}`,
+  itemId: null,
+  itemCode: row.item_code,
+  description: row.description ?? '',
+  batchRuleId: null,
+  batchNumber: '',
+  supplierBatchNumber: '',
+  manufacturingDate: '',
+  expiryDate: '',
+  altQty: 0,
+  altUom: '',
+  baseQty: Number(row.base_qty),
+  baseUom: '',
+  warehouseId: null,
+  warehouseCode: '',
+  warehouseName: '',
+  returnedQty: Number(row.returned_qty),
+})
+
+const toReceiptListItem = (
+  row: GoodsReceiptRow,
+  lines: GoodsReceiptListItemRow[],
+): GoodsReceipt => ({
+  id: row.id,
+  grNo: row.gr_no,
+  vendor: row.vendor,
+  receiveDate: row.receive_date,
+  farmId: row.farm_id,
+  farmCode: row.farm_code ?? '',
+  farmName: row.farm_name ?? '',
+  defaultWarehouseId: row.default_warehouse_id,
+  status: normalizeReceiptStatus(row.status),
+  lines: lines.map(toReceiptListLine),
   createdAt: row.created_at,
 })
 
@@ -216,11 +261,12 @@ async function getOrCreateItemBatch({
   }
 }
 
-export async function getGoodsReceipts(): Promise<GoodsReceipt[]> {
+export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
   const { data: receiptRows, error: receiptError } = await db
     .from('goods_receipt')
-    .select('*')
+    .select('id, gr_no, vendor, receive_date, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
     .order('created_at', { ascending: false })
+    .limit(limit)
 
   if (receiptError) throw receiptError
 
@@ -231,17 +277,17 @@ export async function getGoodsReceipts(): Promise<GoodsReceipt[]> {
 
   const { data: itemRows, error: itemError } = await db
     .from('goods_receipt_items')
-    .select('*')
+    .select('goods_reciept_id, item_code, description, base_qty, returned_qty')
     .in('goods_reciept_id', receiptIds)
     .eq('void', '1')
     .order('line_no', { ascending: true })
 
   if (itemError) throw itemError
 
-  const items = (itemRows ?? []) as GoodsReceiptItemRow[]
+  const items = (itemRows ?? []) as GoodsReceiptListItemRow[]
 
   return receipts.map(receipt =>
-    toReceipt(
+    toReceiptListItem(
       receipt,
       items.filter(item => item.goods_reciept_id === receipt.id),
     )

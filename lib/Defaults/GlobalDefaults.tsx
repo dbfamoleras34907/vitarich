@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 "use client";
 
 import React, { useState } from "react";
@@ -15,10 +13,9 @@ import {
 import { getUserInfoAuthSession } from "@/app/admin/user/api";
 
 import { Button } from "@/components/ui/button";
-import { CloudDownload, RefreshCcw, Tractor } from "lucide-react";
+import { RefreshCcw, Tractor } from "lucide-react";
 import { getWarehouses } from "@/app/a_dean/warehouse/api";
-import { Modal } from "../Moda";
-import GlobalFarmUserSettings from "@/components/ui/GlobalFarmUserSettings";
+import { getGoodsReceiptPrefetchReferences } from "@/app/inv/gr/new/api";
 
 /* =======================================================
    HOOK
@@ -94,6 +91,16 @@ export function useGlobalDefaults() {
     }
   };
 
+  const setGoodsReceiptReferences = async () => {
+    try {
+      const data = await getGoodsReceiptPrefetchReferences();
+      setValue("goodsReceiptReferences", data);
+      return data;
+    } catch (error) {
+      console.error("goodsReceiptReferences error:", error);
+    }
+  };
+
   const getUserInfoWithFarm = async () => {
     try {
       const data = await getUserInfoAuthSession();
@@ -141,6 +148,7 @@ export function useGlobalDefaults() {
         setFarms(),
         setFarms_breeder(),
         getUserInfoWithFarm(),
+        setGoodsReceiptReferences(),
       ]);
     } catch (error) {
       console.error("setGlobals error:", error);
@@ -160,6 +168,7 @@ export function useGlobalDefaults() {
     setFarms,
     setFarms_breeder,
     getUserInfoWithFarm,
+    setGoodsReceiptReferences,
   };
 }
 
@@ -219,12 +228,9 @@ export default function GlobalDefaults({ collapsed }: CollapsedProps) {
 }
 
 export async function getActiveUsers() {
-  const { data: { session },
-  } = await db.auth.getSession();
   const { data, error } = await db
     .from('vwdmf_get_activeusers')
     .select(`*`)
-  // .eq('auth_id', session?.user.id);
   if (error) {
     console.error('Supabase Select Error:', error);
     throw new Error(error.message);

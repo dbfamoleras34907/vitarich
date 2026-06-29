@@ -74,6 +74,7 @@ export default function SearchableCombobox(props: Props) {
   const [modalSearch, setModalSearch] = React.useState("")
   const [internalOpen, setInternalOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
+  const [highlightedIndex, setHighlightedIndex] = React.useState(0)
   const anchor = useComboboxAnchor()
   const searchRef = React.useRef<HTMLInputElement>(null)
 
@@ -144,6 +145,11 @@ export default function SearchableCombobox(props: Props) {
     )
   }, [selectedItems, modalSearch])
 
+  const safeHighlightedIndex = Math.min(
+    highlightedIndex,
+    Math.max(0, filteredItems.length - 1),
+  )
+
   const formatLabel = (item?: ComboboxItemType) => {
     if (!item) return ""
     return showCode ? `${item.code} - ${item.name}` : item.name
@@ -168,6 +174,7 @@ export default function SearchableCombobox(props: Props) {
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
+    setHighlightedIndex(0)
 
     if (nextOpen) {
       setTimeout(() => searchRef.current?.focus(), 0)
@@ -299,11 +306,28 @@ export default function SearchableCombobox(props: Props) {
                 className="h-9 w-full border-stone-300 pl-8 shadow-none"
                 placeholder="Search..."
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setHighlightedIndex(0)
+                }}
                 onKeyDown={(event) => {
-                  if (event.key === "Tab" && filteredItems.length > 0) {
+                  if (event.key === "ArrowDown" && filteredItems.length > 0) {
                     event.preventDefault()
-                    selectItem(filteredItems[0].code)
+                    setHighlightedIndex((current) => (current + 1) % filteredItems.length)
+                    return
+                  }
+
+                  if (event.key === "ArrowUp" && filteredItems.length > 0) {
+                    event.preventDefault()
+                    setHighlightedIndex((current) => (
+                      current - 1 + filteredItems.length
+                    ) % filteredItems.length)
+                    return
+                  }
+
+                  if ((event.key === "Enter" || event.key === "Tab") && filteredItems.length > 0) {
+                    event.preventDefault()
+                    selectItem(filteredItems[safeHighlightedIndex]?.code ?? filteredItems[0].code)
                   }
                 }}
               />
@@ -351,7 +375,11 @@ export default function SearchableCombobox(props: Props) {
               <ComboboxItem
                 key={`${item.code}-${index}`}
                 value={item.code}
-                className="min-h-10 rounded-md px-2 py-2"
+                className={cn(
+                  "min-h-10 rounded-md px-2 py-2",
+                  index === safeHighlightedIndex && "bg-accent text-accent-foreground",
+                )}
+                onMouseMove={() => setHighlightedIndex(index)}
               >
                 <span className="flex min-w-0 flex-1 items-center gap-2">
                   {showCode && (

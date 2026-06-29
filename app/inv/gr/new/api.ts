@@ -42,6 +42,12 @@ export type GoodsReceiptBatchSeries = {
   active: boolean
 }
 
+export type GoodsReceiptItemGroup = {
+  id: number
+  code: string
+  name: string
+}
+
 export type GoodsReceiptExistingBatch = {
   id: number
   item_id: number | null
@@ -66,88 +72,32 @@ export type UomConversionOption = {
   baseQty: number
 }
 
-export async function getGoodsReceiptReferences() {
-  const { data: sessionData, error: sessionError } = await db.auth.getSession()
-  if (sessionError) throw sessionError
+export type GoodsReceiptPrefetchReferences = {
+  farms: GoodsReceiptFarm[]
+  uomGroups: UomGroupOption[]
+  conversions: UomConversionOption[]
+  itemGroups: GoodsReceiptItemGroup[]
+  batchRules: GoodsReceiptBatchRule[]
+  batchSeries: GoodsReceiptBatchSeries[]
+}
 
-  const authId = sessionData.session?.user.id
+const singleRelation = <T,>(value: T | T[] | null): T | null =>
+  Array.isArray(value) ? value[0] || null : value
 
-  const userFarmsQuery = authId
-    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
-    : Promise.resolve({ data: null, error: null })
+type ConversionGroupRecord = {
+  id: number
+  code: string
+  name: string
+  base_uom: { code: string } | { code: string }[] | null
+  conversions: Array<{
+    base_qty: number
+    void: string
+    uom: { code: string } | { code: string }[] | null
+  }> | null
+}
 
-  const [itemsResult, warehousesResult, userFarmsResult, conversionGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
-    db.from('items').select('*').eq('void', 1).order('item_code'),
-    db.from('i_warehouse').select('*').eq('is_active', true).order('whse_code'),
-    userFarmsQuery,
-    db
-      .from('uom_groups')
-      .select(`
-        id,
-        code,
-        name,
-        base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
-        conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
-          base_qty,
-          void,
-          uom:uom_master_data!uom_group_conversions_uom_id_fkey(code)
-        )
-      `)
-      .eq('void', '1')
-      .eq('conversions.void', '1')
-      .order('code'),
-    db
-      .from('batch_rules')
-      .select('id, series_id, item_group_id, item_id, warehouse_id, branch_id, auto_generate, manual_entry, require_manufacturing_date, require_expiry_date, require_supplier_batch, active')
-      .eq('void', '1')
-      .eq('active', true),
-    db
-      .from('batch_number_series')
-      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, active')
-      .eq('void', '1')
-      .eq('active', true),
-  ])
-
-  if (itemsResult.error) throw itemsResult.error
-  if (warehousesResult.error) throw warehousesResult.error
-  if (userFarmsResult.error) throw userFarmsResult.error
-  if (conversionGroupsResult.error) throw conversionGroupsResult.error
-  if (batchRulesResult.error) throw batchRulesResult.error
-  if (batchSeriesResult.error) throw batchSeriesResult.error
-
-  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
-    ? userFarmsResult.data.users_farms
-        .map((code: unknown) => String(code ?? '').trim())
-        .filter(Boolean)
-    : []
-
-  const farmsResult = assignedFarmCodes.length
-    ? await db
-        .from('farms')
-        .select('id, code, name, associated_warehouses')
-        .eq('void', 1)
-        .in('code', assignedFarmCodes)
-        .order('code')
-    : { data: [], error: null }
-
-  if (farmsResult.error) throw farmsResult.error
-
-  const singleRelation = <T,>(value: T | T[] | null): T | null =>
-    Array.isArray(value) ? value[0] || null : value
-
-  type ConversionGroupRecord = {
-    id: number
-    code: string
-    name: string
-    base_uom: { code: string } | { code: string }[] | null
-    conversions: Array<{
-      base_qty: number
-      void: string
-      uom: { code: string } | { code: string }[] | null
-    }> | null
-  }
-
-  const conversionGroups = (conversionGroupsResult.data ?? []) as unknown as ConversionGroupRecord[]
+const buildUomOptions = (data: unknown) => {
+  const conversionGroups = (data ?? []) as ConversionGroupRecord[]
 
   const uomGroups = conversionGroups.flatMap(group => {
     const baseUom = singleRelation(group.base_uom)
@@ -197,12 +147,177 @@ export async function getGoodsReceiptReferences() {
           ]
     })
 
+  return { uomGroups, conversions }
+}
+
+export async function getGoodsReceiptReferences() {
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
+
+  const authId = sessionData.session?.user.id
+
+  const userFarmsQuery = authId
+    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
+    : Promise.resolve({ data: null, error: null })
+
+  const [itemsResult, warehousesResult, userFarmsResult, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+    db
+      .from('items')
+      .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
+      .eq('void', 1)
+      .order('item_code'),
+    db
+      .from('i_warehouse')
+      .select('id, whse_code, whse_name')
+      .eq('is_active', true)
+      .order('whse_code'),
+    userFarmsQuery,
+    db
+      .from('uom_groups')
+      .select(`
+        id,
+        code,
+        name,
+        base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
+        conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
+          base_qty,
+          void,
+          uom:uom_master_data!uom_group_conversions_uom_id_fkey(code)
+        )
+      `)
+      .eq('void', '1')
+      .eq('conversions.void', '1')
+      .order('code'),
+    db
+      .from('item_groups')
+      .select('id, code, name')
+      .eq('void', '1')
+      .order('code'),
+    db
+      .from('batch_rules')
+      .select('id, series_id, item_group_id, item_id, warehouse_id, branch_id, auto_generate, manual_entry, require_manufacturing_date, require_expiry_date, require_supplier_batch, active')
+      .eq('void', '1')
+      .eq('active', true),
+    db
+      .from('batch_number_series')
+      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, active')
+      .eq('void', '1')
+      .eq('active', true),
+  ])
+
+  if (itemsResult.error) throw itemsResult.error
+  if (warehousesResult.error) throw warehousesResult.error
+  if (userFarmsResult.error) throw userFarmsResult.error
+  if (conversionGroupsResult.error) throw conversionGroupsResult.error
+  if (itemGroupsResult.error) throw itemGroupsResult.error
+  if (batchRulesResult.error) throw batchRulesResult.error
+  if (batchSeriesResult.error) throw batchSeriesResult.error
+
+  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
+    ? userFarmsResult.data.users_farms
+        .map((code: unknown) => String(code ?? '').trim())
+        .filter(Boolean)
+    : []
+
+  const farmsResult = assignedFarmCodes.length
+    ? await db
+        .from('farms')
+        .select('id, code, name, associated_warehouses')
+        .eq('void', 1)
+        .in('code', assignedFarmCodes)
+        .order('code')
+    : { data: [], error: null }
+
+  if (farmsResult.error) throw farmsResult.error
+
+  const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
+
   return {
     items: (itemsResult.data ?? []) as Items[],
     warehouses: (warehousesResult.data ?? []) as WarehouseData[],
     farms: (farmsResult.data ?? []) as GoodsReceiptFarm[],
     uomGroups,
     conversions,
+    itemGroups: (itemGroupsResult.data ?? []) as GoodsReceiptItemGroup[],
+    batchRules: (batchRulesResult.data ?? []) as GoodsReceiptBatchRule[],
+    batchSeries: (batchSeriesResult.data ?? []) as GoodsReceiptBatchSeries[],
+  }
+}
+
+export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptPrefetchReferences> {
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
+
+  const authId = sessionData.session?.user.id
+  const userFarmsQuery = authId
+    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
+    : Promise.resolve({ data: null, error: null })
+
+  const [userFarmsResult, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+    userFarmsQuery,
+    db
+      .from('uom_groups')
+      .select(`
+        id,
+        code,
+        name,
+        base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
+        conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
+          base_qty,
+          void,
+          uom:uom_master_data!uom_group_conversions_uom_id_fkey(code)
+        )
+      `)
+      .eq('void', '1')
+      .eq('conversions.void', '1')
+      .order('code'),
+    db
+      .from('item_groups')
+      .select('id, code, name')
+      .eq('void', '1')
+      .order('code'),
+    db
+      .from('batch_rules')
+      .select('id, series_id, item_group_id, item_id, warehouse_id, branch_id, auto_generate, manual_entry, require_manufacturing_date, require_expiry_date, require_supplier_batch, active')
+      .eq('void', '1')
+      .eq('active', true),
+    db
+      .from('batch_number_series')
+      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, active')
+      .eq('void', '1')
+      .eq('active', true),
+  ])
+
+  if (userFarmsResult.error) throw userFarmsResult.error
+  if (conversionGroupsResult.error) throw conversionGroupsResult.error
+  if (itemGroupsResult.error) throw itemGroupsResult.error
+  if (batchRulesResult.error) throw batchRulesResult.error
+  if (batchSeriesResult.error) throw batchSeriesResult.error
+
+  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
+    ? userFarmsResult.data.users_farms
+        .map((code: unknown) => String(code ?? '').trim())
+        .filter(Boolean)
+    : []
+
+  const farmsResult = assignedFarmCodes.length
+    ? await db
+        .from('farms')
+        .select('id, code, name, associated_warehouses')
+        .eq('void', 1)
+        .in('code', assignedFarmCodes)
+        .order('code')
+    : { data: [], error: null }
+
+  if (farmsResult.error) throw farmsResult.error
+
+  const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
+
+  return {
+    farms: (farmsResult.data ?? []) as GoodsReceiptFarm[],
+    uomGroups,
+    conversions,
+    itemGroups: (itemGroupsResult.data ?? []) as GoodsReceiptItemGroup[],
     batchRules: (batchRulesResult.data ?? []) as GoodsReceiptBatchRule[],
     batchSeries: (batchSeriesResult.data ?? []) as GoodsReceiptBatchSeries[],
   }

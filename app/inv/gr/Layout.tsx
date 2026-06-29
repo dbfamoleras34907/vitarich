@@ -4,15 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowDownUp,
-  ClipboardClock,
   Eye,
   FileX2,
   ListFilter,
+  Plus,
   RefreshCw,
   Search,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import Breadcrumb from '@/lib/Breadcrumb'
 import {
   GoodsReceipt,
   getGoodsReceipts,
@@ -29,15 +30,14 @@ export default function GoodsReceiveHistory() {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setReceipts(await getGoodsReceipts())
+      setReceipts(await getGoodsReceipts(Math.max(50, Number(pageSize))))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [pageSize])
 
   useEffect(() => {
     router.prefetch('/inv/gr/new')
-    router.prefetch('/inv/gr/post')
     const timer = window.setTimeout(() => {
       refresh()
     }, 0)
@@ -61,29 +61,15 @@ export default function GoodsReceiveHistory() {
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <header className=" px-4 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
-        <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
-      </header>
-
-      <div className="px-3 pt-4">
-        <div className="inline-flex rounded-full border bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => router.push('/inv/gr/new')}
-            className="inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-medium hover:bg-stone-100"
-          >
-            <ArrowDownUp className="size-4" />
-            New GR
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-2 rounded-full bg-stone-950 px-4 text-sm font-semibold text-white shadow-sm"
-          >
-            <ClipboardClock className="size-4" />
-            Receive History
-          </button>
-        </div>
+      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
+        <Breadcrumb
+          FirstPreviewsPageName="Inventory"
+          CurrentPageName="Goods Receive"
+        />
+        <Button type="button" onClick={() => router.push('/inv/gr/new')}>
+          <Plus className="size-4" />
+          New GR
+        </Button>
       </div>
 
       <section className="m-3 mt-6 rounded-xl border bg-white p-5 shadow-sm">

@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowDownUp,
   CalendarDays,
-  ClipboardClock,
   Hash,
   List,
   PackageCheck,
@@ -30,6 +28,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import Breadcrumb from '@/lib/Breadcrumb'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { Items, WarehouseData } from '@/lib/types'
 import {
   createGoodsReceiptNumber,
@@ -44,8 +44,10 @@ import {
   GoodsReceiptBatchRule,
   GoodsReceiptBatchSeries,
   GoodsReceiptExistingBatch,
+  GoodsReceiptPrefetchReferences,
   getGoodsReceiptReferences,
   GoodsReceiptFarm,
+  GoodsReceiptItemGroup,
   UomConversionOption,
   UomGroupOption,
 } from './api'
@@ -93,6 +95,18 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
 const numberValue = (value: string) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+const asArray = <T,>(value: unknown): T[] =>
+  Array.isArray(value) ? value as T[] : []
+
+const getCachedWarehouses = (value: unknown): WarehouseData[] => {
+  if (Array.isArray(value)) return value as WarehouseData[]
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
+    return (value as { data: WarehouseData[] }).data
+  }
+
+  return []
 }
 
 const formatBatchDatePart = (
@@ -167,16 +181,9 @@ type NewGoodsReceiveProps = {
 function GoodsReceiveLoadingShell() {
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <header className="px-4 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
-        <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
-      </header>
-
-      <div className="px-3 pt-4">
-        <div className="inline-flex rounded-full border bg-white p-1 shadow-sm">
-          <div className="h-8 w-24 rounded-full bg-stone-950" />
-          <div className="h-8 w-36 rounded-full bg-stone-100" />
-        </div>
+      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
+        <div className="h-6 w-56 rounded bg-stone-200" />
+        <div className="h-9 w-24 rounded-md bg-stone-100" />
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -215,6 +222,7 @@ function GoodsReceiveLoadingShell() {
 export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { getValue } = useGlobalContext()
   const receiptId = searchParams.get('id')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
@@ -223,6 +231,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
   const [uomGroups, setUomGroups] = useState<UomGroupOption[]>([])
   const [conversions, setConversions] = useState<UomConversionOption[]>([])
+  const [itemGroups, setItemGroups] = useState<GoodsReceiptItemGroup[]>([])
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
@@ -242,8 +251,30 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           return
         }
 
+        const cachedItems = asArray<Items>(getValue('itemmaster'))
+          .filter(item => item.void === 1 || item.void == null)
+        const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
+          .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
+        const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
+        const canUseCachedReferences = cachedItems.length > 0 &&
+          cachedWarehouses.length > 0 &&
+          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups)
+
+        const referencesPromise = canUseCachedReferences
+          ? Promise.resolve({
+              items: cachedItems,
+              warehouses: cachedWarehouses,
+              farms: cachedGrReferences?.farms ?? [],
+              uomGroups: cachedGrReferences?.uomGroups ?? [],
+              conversions: cachedGrReferences?.conversions ?? [],
+              itemGroups: cachedGrReferences?.itemGroups ?? [],
+              batchRules: cachedGrReferences?.batchRules ?? [],
+              batchSeries: cachedGrReferences?.batchSeries ?? [],
+            })
+          : getGoodsReceiptReferences()
+
         const [references, savedReceipt, grNo] = await Promise.all([
-          getGoodsReceiptReferences(),
+          referencesPromise,
           receiptId ? getGoodsReceiptById(Number(receiptId)) : Promise.resolve(null),
           receiptId ? Promise.resolve('') : createGoodsReceiptNumber(),
         ])
@@ -256,6 +287,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         setFarms(references.farms)
         setUomGroups(references.uomGroups)
         setConversions(references.conversions)
+        setItemGroups(references.itemGroups)
         setBatchRules(references.batchRules)
         setBatchSeries(references.batchSeries)
       } catch (error) {
@@ -271,7 +303,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [isPostMode, receiptId, router])
+  }, [getValue, isPostMode, receiptId, router])
 
   const totalQuantity = useMemo(
     () => receipt?.lines.reduce(
@@ -311,6 +343,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     })),
     [farms],
   )
+
+  const itemGroupIdByCode = useMemo(() => {
+    const map = new Map<string, number>()
+
+    itemGroups.forEach(group => {
+      const code = String(group.code ?? '').trim().toUpperCase()
+      if (code) map.set(code, group.id)
+    })
+
+    return map
+  }, [itemGroups])
 
   useEffect(() => {
     if (loadingReferences || !receipt?.farmId) return
@@ -457,6 +500,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const getSelectedItem = (line: GoodsReceiptLine) =>
     items.find(item => item.id === line.itemId)
 
+  const getItemGroupId = (item: Items) => {
+    const rawGroup = String(item.item_group ?? '').trim()
+    const numericGroup = Number(rawGroup)
+
+    if (Number.isFinite(numericGroup) && numericGroup > 0) return numericGroup
+
+    return itemGroupIdByCode.get(rawGroup.toUpperCase()) ?? null
+  }
+
   const getBatchRuleForLine = (line: GoodsReceiptLine) => {
     const item = getSelectedItem(line)
     if (!item) return null
@@ -467,7 +519,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     )
     if (!itemUsesBatch) return null
 
-    const itemGroupId = Number(item.item_group)
+    const itemGroupId = getItemGroupId(item)
     const matchedRules = batchRules.filter(rule => {
       if (rule.item_id && rule.item_id !== item.id) return false
       if (rule.warehouse_id && rule.warehouse_id !== line.warehouseId) return false
@@ -846,29 +898,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <header className=" px-4 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Goods Receive</h1>
-        <p className="mt-1 text-sm text-stone-500">Manage your goods receive direct.</p>
-      </header>
-
-      <div className="px-3 pt-4">
-        <div className="inline-flex rounded-full border bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-2 rounded-full bg-stone-950 px-4 text-sm font-semibold text-white shadow-sm"
-          >
-            <ArrowDownUp className="size-4" />
-            {isPostMode ? 'Post GR' : 'New GR'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/inv/gr')}
-            className="inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-medium hover:bg-stone-100"
-          >
-            <ClipboardClock className="size-4" />
-            Receive History
-          </button>
-        </div>
+      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
+        <Breadcrumb
+          SecondPreviewPageName="Inventory"
+          SecondPreviewPageLink="/inv"
+          FirstPreviewsPageName="Goods Receive"
+          FirstPreviewsPageLink="/inv/gr"
+          CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
+        />
+        <Button type="button" variant="outline" onClick={() => router.push('/inv/gr')}>
+          <List className="size-4" />
+          GR List
+        </Button>
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -1184,7 +1225,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </section>
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent
+              className="sm:max-w-2xl"
+              onKeyDown={event => {
+                if (event.key !== 'Enter' || event.shiftKey) return
+
+                const target = event.target as HTMLElement
+                if (target.closest('button')) return
+
+                event.preventDefault()
+                setActiveBatchLineId(null)
+              }}
+            >
               <DialogHeader>
                 <DialogTitle>Batch Details</DialogTitle>
                 <DialogDescription>
