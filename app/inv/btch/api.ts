@@ -106,10 +106,151 @@ export type BatchReferences = {
   farms: BatchLookupOption[]
 }
 
+export type CreatedBatchInventory = {
+  id: string
+  batchId: number
+  itemId: number | null
+  itemCode: string
+  itemName: string
+  batchNumber: string
+  supplierBatchNumber: string
+  manufacturingDate: string
+  expiryDate: string
+  status: string
+  sourceGrId: number | null
+  sourceGrNo: string
+  warehouseCode: string
+  onHandQty: number
+  createdAt: string
+}
+
+export type BatchTransactionTrail = {
+  id: number
+  sourceDocType: string
+  sourceDocEntry: number
+  documentLabel: string
+  itemCode: string
+  warehouseCode: string
+  binCode: string
+  qty: number
+  signedQty: number
+  runningQty: number
+  transferType: string
+  refType: string
+  ref: string
+  refType2: string
+  ref2: string
+  createdAt: string
+}
+
+type ItemBatchInventoryRow = {
+  id: number
+  item_id: number | null
+  item_code: string
+  batch_number: string
+  supplier_batch_number: string | null
+  manufacturing_date: string | null
+  expiry_date: string | null
+  source_gr_id: number | null
+  status: string | null
+  created_at: string
+}
+
+type InventoryPostingBatchRow = {
+  id: number
+  source_doc_type?: string | null
+  source_docentry?: number | null
+  item_code: string | null
+  warehouse_code: string | null
+  bin_code?: string | null
+  qty: number | null
+  transfer_type: string | null
+  ref_type?: string | null
+  ref: string | null
+  ref_type2?: string | null
+  ref2: string | null
+  created_at?: string | null
+}
+
+type BatchItemNameRow = {
+  item_code: string | null
+  item_name: string | null
+  description: string | null
+}
+
+type BatchSourceReceiptRow = {
+  id: number
+  gr_no: string | null
+}
+
+type BatchSourceIssueRow = {
+  id: number
+  gi_no: string | null
+}
+
 async function getSessionUserId() {
   const { data, error } = await db.auth.getSession()
   if (error) throw error
   return data.session?.user.id ?? null
+}
+
+function signedPostingQty(row: InventoryPostingBatchRow) {
+  const qty = Number(row.qty ?? 0)
+  return row.transfer_type === 'OUT' ? -qty : qty
+}
+
+function addPostingQuantities(
+  rows: InventoryPostingBatchRow[],
+  batchNumbers: Set<string>,
+  quantityByBatchWarehouse: Map<string, { warehouseCode: string; qty: number }>,
+) {
+  const seenPostingIds = new Set<number>()
+
+  for (const row of rows) {
+    if (seenPostingIds.has(row.id)) continue
+    seenPostingIds.add(row.id)
+
+    const itemCode = String(row.item_code ?? '').trim()
+    const warehouseCode = String(row.warehouse_code ?? '').trim()
+    const ref = String(row.ref ?? '').trim()
+    const ref2 = String(row.ref2 ?? '').trim()
+    const refKey = ref.toUpperCase()
+    const ref2Key = ref2.toUpperCase()
+    const batchNumber = batchNumbers.has(refKey) ? ref : batchNumbers.has(ref2Key) ? ref2 : ''
+
+    if (!itemCode || !batchNumber) continue
+
+    const key = [itemCode.toUpperCase(), batchNumber.toUpperCase(), warehouseCode.toUpperCase()].join('|')
+    const current = quantityByBatchWarehouse.get(key)
+    quantityByBatchWarehouse.set(key, {
+      warehouseCode: current?.warehouseCode || warehouseCode,
+      qty: (current?.qty ?? 0) + signedPostingQty(row),
+    })
+  }
+}
+
+function dedupePostings(rows: InventoryPostingBatchRow[]) {
+  const seenPostingIds = new Set<number>()
+
+  return rows.filter(row => {
+    if (seenPostingIds.has(row.id)) return false
+    seenPostingIds.add(row.id)
+    return true
+  })
+}
+
+function getPostingBatchReference(row: InventoryPostingBatchRow, normalizedBatchNumber: string) {
+  const ref = String(row.ref ?? '').trim()
+  const ref2 = String(row.ref2 ?? '').trim()
+
+  if (ref.toUpperCase() === normalizedBatchNumber) return ref
+  if (ref2.toUpperCase() === normalizedBatchNumber) return ref2
+
+  return ''
+}
+
+function documentKey(sourceDocType: string, sourceDocEntry: number) {
+  return `${sourceDocType.toUpperCase()}|${sourceDocEntry}`
 }
 
 export async function getBatchNumberSeries(): Promise<BatchNumberSeries[]> {
@@ -271,4 +412,251 @@ export async function getBatchReferences(): Promise<BatchReferences> {
       name: row.name ?? '',
     })),
   }
+}
+
+export async function getCreatedBatchInventory(): Promise<CreatedBatchInventory[]> {
+  const authId = await getSessionUserId()
+  if (!authId) return []
+
+  const { data: batchRows, error: batchError } = await db
+    .from('item_batches')
+    .select('id, item_id, item_code, batch_number, supplier_batch_number, manufacturing_date, expiry_date, source_gr_id, status, created_at')
+    .eq('created_by', authId)
+    .eq('void', '1')
+    .order('created_at', { ascending: false })
+
+  if (batchError) throw batchError
+
+  const batches = (batchRows ?? []) as ItemBatchInventoryRow[]
+  if (batches.length === 0) return []
+
+  const batchNumbers = Array.from(new Set(
+    batches
+      .map(batch => String(batch.batch_number ?? '').trim())
+      .filter(Boolean),
+  ))
+  const itemCodes = Array.from(new Set(
+    batches
+      .map(batch => String(batch.item_code ?? '').trim())
+      .filter(Boolean),
+  ))
+  const sourceGrIds = Array.from(new Set(
+    batches
+      .map(batch => Number(batch.source_gr_id ?? 0))
+      .filter(id => Number.isFinite(id) && id > 0),
+  ))
+
+  const itemNamesByCode = new Map<string, string>()
+  const receiptNumbersById = new Map<number, string>()
+  if (itemCodes.length > 0) {
+    const { data: itemRows, error: itemError } = await db
+      .from('items')
+      .select('item_code, item_name, description')
+      .in('item_code', itemCodes)
+
+    if (itemError) throw itemError
+
+    for (const item of (itemRows ?? []) as BatchItemNameRow[]) {
+      const code = String(item.item_code ?? '').trim().toUpperCase()
+      if (!code) continue
+      itemNamesByCode.set(code, item.item_name || item.description || '')
+    }
+  }
+
+  if (sourceGrIds.length > 0) {
+    const { data: receiptRows, error: receiptError } = await db
+      .from('goods_receipt')
+      .select('id, gr_no')
+      .in('id', sourceGrIds)
+
+    if (receiptError) throw receiptError
+
+    for (const receipt of (receiptRows ?? []) as BatchSourceReceiptRow[]) {
+      receiptNumbersById.set(receipt.id, receipt.gr_no ?? '')
+    }
+  }
+
+  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, ref, ref2'
+  const [refPostingsResult, ref2PostingsResult] = await Promise.all([
+    batchNumbers.length > 0 && itemCodes.length > 0
+      ? db
+          .from('inventory_postings')
+          .select(postingSelect)
+          .in('item_code', itemCodes)
+          .in('ref', batchNumbers)
+      : Promise.resolve({ data: [], error: null }),
+    batchNumbers.length > 0 && itemCodes.length > 0
+      ? db
+          .from('inventory_postings')
+          .select(postingSelect)
+          .in('item_code', itemCodes)
+          .in('ref2', batchNumbers)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (refPostingsResult.error) throw refPostingsResult.error
+  if (ref2PostingsResult.error) throw ref2PostingsResult.error
+
+  const quantityByBatchWarehouse = new Map<string, { warehouseCode: string; qty: number }>()
+  const batchNumberSet = new Set(batchNumbers.map(batchNumber => batchNumber.toUpperCase()))
+  addPostingQuantities(
+    [
+      ...((refPostingsResult.data ?? []) as InventoryPostingBatchRow[]),
+      ...((ref2PostingsResult.data ?? []) as InventoryPostingBatchRow[]),
+    ],
+    batchNumberSet,
+    quantityByBatchWarehouse,
+  )
+
+  return batches.flatMap(batch => {
+    const itemCode = String(batch.item_code ?? '').trim()
+    const batchNumber = String(batch.batch_number ?? '').trim()
+    const keyPrefix = [itemCode.toUpperCase(), batchNumber.toUpperCase()].join('|')
+    const warehouseRows = Array.from(quantityByBatchWarehouse.entries())
+      .filter(([key]) => key.startsWith(`${keyPrefix}|`))
+      .map(([, value]) => ({
+        warehouseCode: value.warehouseCode,
+        qty: value.qty,
+      }))
+
+    const rows = warehouseRows.length > 0
+      ? warehouseRows
+      : [{ warehouseCode: '', qty: 0 }]
+
+    return rows.map(row => ({
+      id: `${batch.id}-${row.warehouseCode || 'none'}`,
+      batchId: batch.id,
+      itemId: batch.item_id,
+      itemCode,
+      itemName: itemNamesByCode.get(itemCode.toUpperCase()) ?? '',
+      batchNumber,
+      supplierBatchNumber: batch.supplier_batch_number ?? '',
+      manufacturingDate: batch.manufacturing_date ?? '',
+      expiryDate: batch.expiry_date ?? '',
+      status: batch.status ?? 'Active',
+      sourceGrId: batch.source_gr_id,
+      sourceGrNo: batch.source_gr_id ? receiptNumbersById.get(batch.source_gr_id) ?? '' : '',
+      warehouseCode: row.warehouseCode,
+      onHandQty: row.qty,
+      createdAt: batch.created_at,
+    }))
+  })
+}
+
+export async function getBatchTransactionTrail(
+  itemCode: string,
+  batchNumber: string,
+  warehouseCode?: string,
+): Promise<BatchTransactionTrail[]> {
+  const normalizedItemCode = itemCode.trim()
+  const normalizedBatchNumber = batchNumber.trim()
+  const normalizedWarehouseCode = warehouseCode?.trim() ?? ''
+
+  if (!normalizedItemCode || !normalizedBatchNumber) return []
+
+  const postingSelect = 'id, source_doc_type, source_docentry, item_code, warehouse_code, bin_code, qty, transfer_type, ref_type, ref, ref_type2, ref2, created_at'
+  const buildPostingQuery = (field: 'ref' | 'ref2') => {
+    let query = db
+      .from('inventory_postings')
+      .select(postingSelect)
+      .eq('item_code', normalizedItemCode)
+      .eq(field, normalizedBatchNumber)
+
+    if (normalizedWarehouseCode) {
+      query = query.eq('warehouse_code', normalizedWarehouseCode)
+    }
+
+    return query
+  }
+
+  const [refPostingsResult, ref2PostingsResult] = await Promise.all([
+    buildPostingQuery('ref'),
+    buildPostingQuery('ref2'),
+  ])
+
+  if (refPostingsResult.error) throw refPostingsResult.error
+  if (ref2PostingsResult.error) throw ref2PostingsResult.error
+
+  const normalizedBatchKey = normalizedBatchNumber.toUpperCase()
+  const postings = dedupePostings([
+    ...((refPostingsResult.data ?? []) as InventoryPostingBatchRow[]),
+    ...((ref2PostingsResult.data ?? []) as InventoryPostingBatchRow[]),
+  ])
+    .filter(row => getPostingBatchReference(row, normalizedBatchKey))
+    .sort((left, right) => {
+      const leftDate = String(left.created_at ?? '')
+      const rightDate = String(right.created_at ?? '')
+      return leftDate.localeCompare(rightDate) || Number(left.id) - Number(right.id)
+    })
+
+  if (postings.length === 0) return []
+
+  const receiptIds = Array.from(new Set(
+    postings
+      .filter(row => String(row.source_doc_type ?? '').toUpperCase() === 'GOODS_RECEIPT')
+      .map(row => Number(row.source_docentry ?? 0))
+      .filter(id => Number.isFinite(id) && id > 0),
+  ))
+  const issueIds = Array.from(new Set(
+    postings
+      .filter(row => String(row.source_doc_type ?? '').toUpperCase() === 'GOODS_ISSUE')
+      .map(row => Number(row.source_docentry ?? 0))
+      .filter(id => Number.isFinite(id) && id > 0),
+  ))
+
+  const documentLabelsByKey = new Map<string, string>()
+
+  if (receiptIds.length > 0) {
+    const { data: receiptRows, error: receiptError } = await db
+      .from('goods_receipt')
+      .select('id, gr_no')
+      .in('id', receiptIds)
+
+    if (receiptError) throw receiptError
+
+    for (const receipt of (receiptRows ?? []) as BatchSourceReceiptRow[]) {
+      documentLabelsByKey.set(documentKey('GOODS_RECEIPT', receipt.id), receipt.gr_no || `GR #${receipt.id}`)
+    }
+  }
+
+  if (issueIds.length > 0) {
+    const { data: issueRows, error: issueError } = await db
+      .from('goods_issue')
+      .select('id, gi_no')
+      .in('id', issueIds)
+
+    if (issueError) throw issueError
+
+    for (const issue of (issueRows ?? []) as BatchSourceIssueRow[]) {
+      documentLabelsByKey.set(documentKey('GOODS_ISSUE', issue.id), issue.gi_no || `GI #${issue.id}`)
+    }
+  }
+
+  let runningQty = 0
+
+  return postings.map(row => {
+    const sourceDocType = String(row.source_doc_type ?? '')
+    const sourceDocEntry = Number(row.source_docentry ?? 0)
+    const signedQty = signedPostingQty(row)
+    runningQty += signedQty
+
+    return {
+      id: row.id,
+      sourceDocType,
+      sourceDocEntry,
+      documentLabel: documentLabelsByKey.get(documentKey(sourceDocType, sourceDocEntry)) || `${sourceDocType || 'Document'} #${sourceDocEntry || '-'}`,
+      itemCode: String(row.item_code ?? ''),
+      warehouseCode: String(row.warehouse_code ?? ''),
+      binCode: String(row.bin_code ?? ''),
+      qty: Number(row.qty ?? 0),
+      signedQty,
+      runningQty,
+      transferType: String(row.transfer_type ?? ''),
+      refType: String(row.ref_type ?? ''),
+      ref: String(row.ref ?? ''),
+      refType2: String(row.ref_type2 ?? ''),
+      ref2: String(row.ref2 ?? ''),
+      createdAt: String(row.created_at ?? ''),
+    }
+  })
 }

@@ -30,7 +30,9 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { Items, WarehouseData } from '@/lib/types'
+import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
   getGoodsReceiptById,
@@ -223,6 +225,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const router = useRouter()
   const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
+  const { setCollapsed } = useSidebar()
   const receiptId = searchParams.get('id')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
@@ -236,9 +239,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
+  const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setCollapsed(true)
+  }, [setCollapsed])
 
   useEffect(() => {
     let cancelled = false
@@ -916,12 +924,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">GR No.</label>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
-              <Button type="button" variant="outline" onClick={() => router.push('/inv/gr')}>
-                <List className="size-4" />
-                GRs
-              </Button>
+              <span className={getInventoryStatusBadgeClass(receipt.status)}>
+                {receipt.status}
+              </span>
             </div>
           </div>
 
@@ -947,15 +954,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
               placeholder="Enter vendor"
             />
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Status:</label>
-            <div>
-              <span className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white">
-                {receipt.status}
-              </span>
-            </div>
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -1486,7 +1484,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   {saving ? 'Saving...' : 'Save as Draft'}
                 </Button>
                 {canPostDocument && (
-                  <Button type="button" onClick={() => handleSave('Posted')} disabled={saving}>
+                  <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
                     <Save className="size-4" />
                     {saving ? 'Posting...' : 'Post Document'}
                   </Button>
@@ -1498,6 +1496,45 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
         </div>
       </section>
+
+      <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Post this goods receipt?</DialogTitle>
+            <DialogDescription>
+              Posting {receipt.grNo} will add inventory for the selected receipt lines and cannot be edited afterward.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <span className="text-stone-500">Total Base Quantity</span>
+              <span className="font-semibold tabular-nums">
+                {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={saving}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              disabled={saving}
+              onClick={async () => {
+                await handleSave('Posted')
+                setPostConfirmOpen(false)
+              }}
+            >
+              <Save className="size-4" />
+              {saving ? 'Posting...' : 'Confirm Post'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

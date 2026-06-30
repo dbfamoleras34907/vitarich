@@ -43,7 +43,7 @@ export function ClassificationStatusPill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${toneClasses(
+      className={`inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs font-semibold ${toneClasses(
         tone,
       )} before:size-1.5 before:rounded-full before:content-['']`}
     >

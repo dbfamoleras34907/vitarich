@@ -97,7 +97,7 @@ export default function GlobalFarmUserSettings() {
   };
 
   return (
-    <div className="rounded-xl border shadow-sm">
+    <div className="rounded-md border shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>

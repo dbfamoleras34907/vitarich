@@ -3,6 +3,15 @@
 import { Button } from '@/components/ui/button'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import DynamicTable from '@/components/ui/DataTableV2'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -11,11 +20,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import Breadcrumb from '@/lib/Breadcrumb'
 import {
+  ArrowRightCircle,
   CheckCircle2,
   Edit,
   FileSliders,
   Hash,
   ListFilter,
+  Loader2,
+  PackageSearch,
   Plus,
   RotateCcw,
   Save,
@@ -35,9 +47,13 @@ import {
   BatchResetType,
   BatchRule,
   BatchRulePayload,
+  BatchTransactionTrail,
+  CreatedBatchInventory,
   deleteBatchNumberSeries,
   deleteBatchRule,
+  getBatchTransactionTrail,
   getBatchNumberSeries,
+  getCreatedBatchInventory,
   getBatchReferences,
   getBatchRules,
   saveBatchNumberSeries,
@@ -96,6 +112,21 @@ type BatchRuleRow = BatchRule & {
   status_label: string
   [key: string]: unknown
 }
+
+type CreatedBatchInventoryRow = CreatedBatchInventory & {
+  item_label: string
+  warehouse_label: string
+  on_hand_label: string
+  supplier_batch_label: string
+  source_label: string
+  created_label: string
+  [key: string]: unknown
+}
+
+type BatchTrailHeader = Pick<
+  CreatedBatchInventoryRow,
+  'itemCode' | 'item_label' | 'batchNumber' | 'warehouseCode' | 'warehouse_label' | 'on_hand_label'
+>
 
 const resetTypes: BatchResetType[] = ['Never', 'Daily', 'Monthly', 'Yearly']
 const dateFormats: BatchDateFormat[] = ['NONE', 'YYYYMMDD', 'YYMMDD', 'YYYYMM', 'YYMM', 'YYYY', 'YY']
@@ -208,6 +239,26 @@ const optionLabel = (option?: BatchLookupOption) => {
 const makeOptionMap = (options: BatchLookupOption[]) =>
   new Map(options.map(option => [option.id, option]))
 
+const formatBatchDate = (value: string) => value || '-'
+
+const formatQuantity = (value: number) =>
+  Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
+
+const formatDateTime = (value: string) => {
+  if (!value) return '-'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 const toSeriesForm = (series: BatchNumberSeries): BatchSeriesForm => ({
   code: series.code,
   name: series.name,
@@ -304,6 +355,7 @@ function BoolSwitch({
 export default function Layout() {
   const [series, setSeries] = useState<BatchNumberSeries[]>([])
   const [rules, setRules] = useState<BatchRule[]>([])
+  const [createdBatches, setCreatedBatches] = useState<CreatedBatchInventory[]>([])
   const [references, setReferences] = useState<BatchReferences>(emptyReferences)
   const [seriesForm, setSeriesForm] = useState<BatchSeriesForm>(emptySeriesForm)
   const [ruleForm, setRuleForm] = useState<BatchRuleForm>(emptyRuleForm)
@@ -312,6 +364,9 @@ export default function Layout() {
   const [loading, setLoading] = useState(true)
   const [savingSeries, setSavingSeries] = useState(false)
   const [savingRule, setSavingRule] = useState(false)
+  const [trailHeader, setTrailHeader] = useState<BatchTrailHeader | null>(null)
+  const [trailRows, setTrailRows] = useState<BatchTransactionTrail[]>([])
+  const [loadingTrail, setLoadingTrail] = useState(false)
 
   const seriesMap = useMemo(() => makeOptionMap(series.map(item => ({
     id: item.id,
@@ -355,18 +410,34 @@ export default function Layout() {
     [farmMap, itemGroupMap, itemMap, rules, seriesMap, warehouseMap],
   )
 
+  const createdBatchRows: CreatedBatchInventoryRow[] = useMemo(
+    () =>
+      createdBatches.map(batch => ({
+        ...batch,
+        item_label: [batch.itemCode, batch.itemName].filter(Boolean).join(' - ') || batch.itemCode,
+        warehouse_label: batch.warehouseCode || '-',
+        on_hand_label: formatQuantity(batch.onHandQty),
+        supplier_batch_label: batch.supplierBatchNumber || '-',
+        source_label: batch.sourceGrNo || (batch.sourceGrId ? `GR #${batch.sourceGrId}` : '-'),
+        created_label: formatDateTime(batch.createdAt),
+      })),
+    [createdBatches],
+  )
+
   const sampleNumber = useMemo(() => buildSampleNumber(toSeriesPayload(seriesForm)), [seriesForm])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      const [seriesData, rulesData, referenceData] = await Promise.all([
+      const [seriesData, rulesData, createdBatchData, referenceData] = await Promise.all([
         getBatchNumberSeries(),
         getBatchRules(),
+        getCreatedBatchInventory(),
         getBatchReferences(),
       ])
       setSeries(seriesData)
       setRules(rulesData)
+      setCreatedBatches(createdBatchData)
       setReferences(referenceData)
     } catch (error) {
       console.error(error)
@@ -518,6 +589,26 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const openBatchTrail = async (batch: CreatedBatchInventoryRow) => {
+    setTrailHeader(batch)
+    setTrailRows([])
+    setLoadingTrail(true)
+
+    try {
+      const rows = await getBatchTransactionTrail(
+        batch.itemCode,
+        batch.batchNumber,
+        batch.warehouseCode || undefined,
+      )
+      setTrailRows(rows)
+    } catch (error) {
+      console.error(error)
+      toast.error('Unable to load batch transaction trail')
+    } finally {
+      setLoadingTrail(false)
+    }
+  }
+
   return (
     <div className="mt-2">
       <div className="mx-4 mt-8 flex items-center justify-between">
@@ -531,8 +622,12 @@ export default function Layout() {
       <Separator className="my-2" />
 
       <div className="mx-4 rounded-lg bg-white p-4">
-        <Tabs defaultValue="rules" className="w-full">
+        <Tabs defaultValue="inventory" className="w-full">
           <TabsList className="bg-muted">
+            <TabsTrigger value="inventory">
+              <PackageSearch className="h-4 w-4" />
+              My Batches
+            </TabsTrigger>
             <TabsTrigger value="rules">
               <FileSliders className="h-4 w-4" />
               Batch Rules
@@ -542,6 +637,52 @@ export default function Layout() {
               Number Series
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="inventory" className="mt-4">
+            <DynamicTable
+              loading={loading}
+              initialFilters={[]}
+              title="My Created Batches"
+              description="Batches created by your goods receipt activity with current on-hand by warehouse"
+              searchPlaceholder="Search batches..."
+              emptyMessage="No batches created by your user were found"
+              rowKey="id"
+              columns={[
+                { key: 'batchNumber', label: 'Batch' },
+                { key: 'item_label', label: 'Item' },
+                { key: 'warehouse_label', label: 'Warehouse' },
+                { key: 'onHandQty', label: 'On Hand', align: 'right', render: row => (
+                  <span className={`font-medium tabular-nums ${Number(row.onHandQty ?? 0) > 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
+                    {row.on_hand_label}
+                  </span>
+                ) },
+                { key: 'manufacturingDate', label: 'MFG Date', render: row => formatBatchDate(row.manufacturingDate) },
+                { key: 'expiryDate', label: 'EXP Date', render: row => formatBatchDate(row.expiryDate) },
+                { key: 'supplier_batch_label', label: 'Supplier Batch' },
+                { key: 'status', label: 'Status', render: row => (
+                  <span className="inline-flex rounded-full bg-stone-100 px-2 py-1 text-xs font-medium text-stone-700">
+                    {row.status || 'Active'}
+                  </span>
+                ) },
+                { key: 'source_label', label: 'Source' },
+                { key: 'created_label', label: 'Created' },
+                { key: 'trail', label: '', type: 'button', align: 'right', sortable: false, searchable: false, render: row => (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    title="Show batch transaction trail"
+                    onClick={() => openBatchTrail(row)}
+                    className="text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                  >
+                    <ArrowRightCircle className="h-4 w-4" />
+                    <span className="sr-only">Show batch transaction trail</span>
+                  </Button>
+                ) },
+              ]}
+              data={createdBatchRows}
+            />
+          </TabsContent>
 
           <TabsContent value="rules" className="mt-4">
             <div className="grid gap-4 xl:grid-cols-[460px_minmax(0,1fr)]">
@@ -931,6 +1072,129 @@ export default function Layout() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog
+          open={Boolean(trailHeader)}
+          onOpenChange={open => {
+            if (open) return
+            setTrailHeader(null)
+            setTrailRows([])
+          }}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Batch Transaction Trail</DialogTitle>
+              <DialogDescription>
+                {trailHeader
+                  ? `${trailHeader.batchNumber} movement history for ${trailHeader.itemCode}${trailHeader.warehouseCode ? ` in ${trailHeader.warehouseCode}` : ''}.`
+                  : 'Movement history for the selected batch.'}
+              </DialogDescription>
+            </DialogHeader>
+
+            {trailHeader && (
+              <div className="space-y-4">
+                <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
+                  <div>
+                    <div className="text-xs font-medium text-amber-700">Batch</div>
+                    <div className="truncate font-semibold text-stone-950">{trailHeader.batchNumber}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-amber-700">Item</div>
+                    <div className="truncate font-semibold text-stone-950">{trailHeader.item_label}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-amber-700">Warehouse</div>
+                    <div className="font-semibold text-stone-950">{trailHeader.warehouse_label}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-amber-700">Current On Hand</div>
+                    <div className="font-semibold tabular-nums text-stone-950">{trailHeader.on_hand_label}</div>
+                  </div>
+                </div>
+
+                {loadingTrail && (
+                  <div className="flex min-h-32 items-center justify-center gap-2 rounded-md border border-dashed border-stone-300 bg-white text-sm text-stone-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading transaction trail...
+                  </div>
+                )}
+
+                {!loadingTrail && trailRows.length === 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                    No inventory postings were found for this batch.
+                  </div>
+                )}
+
+                {!loadingTrail && trailRows.length > 0 && (
+                  <div className="relative space-y-3 pl-5">
+                    <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
+                    {trailRows.map(row => {
+                      const isOut = row.signedQty < 0
+                      const movementLabel = isOut ? 'OUT' : 'IN'
+
+                      return (
+                        <div key={row.id} className="relative rounded-md border border-stone-200 bg-white p-3 shadow-sm">
+                          <div className={`absolute -left-[17px] top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-white ${isOut ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-700'}`}>
+                            <ArrowRightCircle className={`h-4 w-4 ${isOut ? 'rotate-180' : ''}`} />
+                          </div>
+
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                  {movementLabel}
+                                </span>
+                                <span className="font-semibold text-stone-950">{row.documentLabel}</span>
+                                <span className="text-xs text-stone-500">{row.sourceDocType || '-'}</span>
+                              </div>
+                              <div className="mt-1 text-xs text-stone-500">
+                                {formatDateTime(row.createdAt)}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
+                                {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
+                              </div>
+                              <div className="text-xs text-stone-500">
+                                Balance {formatQuantity(row.runningQty)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
+                            <div className="rounded-md bg-stone-50 px-2 py-1">
+                              <span className="block font-medium text-stone-500">Warehouse</span>
+                              <span className="text-stone-900">{row.warehouseCode || '-'}</span>
+                            </div>
+                            <div className="rounded-md bg-stone-50 px-2 py-1">
+                              <span className="block font-medium text-stone-500">Bin</span>
+                              <span className="text-stone-900">{row.binCode || '-'}</span>
+                            </div>
+                            <div className="rounded-md bg-stone-50 px-2 py-1">
+                              <span className="block font-medium text-stone-500">Reference</span>
+                              <span className="text-stone-900">{row.ref || row.ref2 || '-'}</span>
+                            </div>
+                            <div className="rounded-md bg-stone-50 px-2 py-1">
+                              <span className="block font-medium text-stone-500">Posting ID</span>
+                              <span className="text-stone-900">#{row.id}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

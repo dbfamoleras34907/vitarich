@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VitaHatchery",
+  title: "Vita FMS",
   description: "",
 };
 
@@ -39,7 +39,7 @@ export default function RootLayout({
       <body
         className={`  font-sans antialiased`}
       >
-        <NextTopLoader color="#2563eb" showSpinner={false} />
+        <NextTopLoader color="#00754A" showSpinner={false} />
         <GlobalProvider>
           <RouteGuard />
           <GlobalLoaderController />
@@ -55,9 +55,9 @@ export default function RootLayout({
                 {/* <GlobalLoading /> */}
 
                 <SidebarProvider>
-                  <div className="flex h-screen">
+                  <div className="flex h-screen bg-background">
                     <AppSideBarControler />
-                    <main className="flex-1 overflow-y-auto w-full ">
+                    <main className="w-full flex-1 overflow-y-auto">
                         {children}
                     </main>
                   </div>

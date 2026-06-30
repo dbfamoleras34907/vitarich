@@ -141,31 +141,31 @@ function SearchModal({
         maxWidth: 400,
         maxHeight: 300,
         overflow: "visible",
-        border: "1px solid #ddd",
+        border: "1px solid var(--border)",
         borderRadius: 6,
-        boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+        boxShadow: "var(--starbucks-card-shadow)",
         display: 'flex',
         flexDirection: 'column',
     };
     return (
-        <div ref={ref} style={style} className="bg-background" role="dialog" aria-modal="true">
-            <div style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+        <div ref={ref} style={style} className="bg-card" role="dialog" aria-modal="true">
+            <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
                 <input
                     ref={inputRef}
                     type="text"
                     placeholder="Type to search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full p-1 border rounded"
+                    className="w-full rounded border bg-input p-1 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                 />
             </div>
             <div style={{ padding: 8, overflowY: "auto" }}>
-                {filteredItems.length === 0 && <div style={{ padding: 8, color: '#999' }}>No matching results</div>}
+                {filteredItems.length === 0 && <div className="text-muted-foreground" style={{ padding: 8 }}>No matching results</div>}
                 {filteredItems.map((it, i) => (
                     <div
                         key={i}
                         style={{ padding: '6px 8px', cursor: "pointer", borderRadius: 4 }}
-                        className="hover:bg-gray-600/10"
+                        className="hover:bg-accent"
                         onMouseDown={(e) => {
                             e.preventDefault();
                             const selectedValue = it.code ?? it;
@@ -192,7 +192,7 @@ function TextCell({ value, onChange, disabled, onKeyDown, required }: { value: a
     const size = Math.max(10, displayValue.length + 2);
     if (disabled) {
         return (
-            <div className="h-8 px-2 text-sm border-none outline-none flex items-center whitespace-nowrap bg-black/5 dark:bg-white/5  ">
+            <div className="flex h-8 items-center whitespace-nowrap border-none bg-secondary/70 px-2 text-sm outline-none">
                 {displayValue}
             </div>
         );
@@ -200,7 +200,7 @@ function TextCell({ value, onChange, disabled, onKeyDown, required }: { value: a
     return (
         <input
             required={required}
-            className={`h-8 px-2 text-sm border-none outline-none w-full ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
+            className={`h-8 w-full border-none px-2 text-sm outline-none focus:bg-accent/25 ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
             disabled={disabled}
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
@@ -219,7 +219,7 @@ function NumberCell({ value, onChange, disabled, onKeyDown, required }: { value:
         <input
             required={required}
             inputMode="decimal"
-            className={`h-8 px-2 text-sm border-none outline-none text-right w-full ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
+            className={`h-8 w-full border-none px-2 text-right text-sm outline-none focus:bg-accent/25 ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
             disabled={disabled}
             value={value ?? ""}
             onChange={(e) => {
@@ -265,7 +265,7 @@ function CurrencyCell({ value, onChange, disabled, onKeyDown, required }: { valu
         <input
             required={required}
             inputMode="decimal"
-            className={`h-8 px-2 text-sm border-none outline-none text-right w-full ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
+            className={`h-8 w-full border-none px-2 text-right text-sm outline-none focus:bg-accent/25 ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
             disabled={disabled}
             value={displayValue}
             onFocus={(e) => {
@@ -289,7 +289,7 @@ function DateCell({ value, onChange, disabled, onKeyDown, required }: { value: a
         <input
             required={required}
             type="date"
-            className={`h-8 px-2 text-sm border-none outline-none w-full ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
+            className={`h-8 w-full border-none px-2 text-sm outline-none focus:bg-accent/25 ${getRequiredClass(required, value)} disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
             disabled={disabled}
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
@@ -316,7 +316,7 @@ function SearchCell({
                 required={required}
                 value={displayValue}
                 readOnly={isInteractionDisabled}
-                className={`h-8 px-2 text-sm border-none outline-none   disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
+                className={`h-8 border-none px-2 text-sm outline-none focus:bg-accent/25 disabled:bg-muted-foreground/10 disabled:cursor-not-allowed`}
                 onFocus={(e) => {
                     setActive({ r: ri, c: ci });
                     if (!isInteractionDisabled) e.currentTarget.select();
@@ -334,7 +334,7 @@ function SearchCell({
             />
             <Button
                 onMouseDown={(e) => { e.preventDefault(); if (!isInteractionDisabled) openSearchForCell(ri, ci); }}
-                className={`mr-1 rounded ${isInteractionDisabled ? "bg-black/20  hover:bg-gray-300" : ""}`}
+                className={`mr-1 ${isInteractionDisabled ? "bg-muted hover:bg-muted" : ""}`}
                 type="button"
                 disabled={isInteractionDisabled}
                 size="icon"
@@ -571,7 +571,7 @@ export function DataTable({
                 <table ref={tableRef} className={`border-collapse text-sm ${widthFull && "w-full "}`}   >
                     <thead  >
                         <tr  >
-                            <th className="rounded-l-lg bg-muted text-center p-1 " style={{ width: 40, minWidth: 40 }}>
+                            <th className="rounded-l-lg bg-secondary p-1 text-center" style={{ width: 40, minWidth: 40 }}>
                                 <input type="checkbox" checked={internalData.length > 0 && checkedRowsCount === internalData.length} onChange={() => {
                                     const allChecked = internalData.length > 0 && checkedRowsCount === internalData.length;
                                     setInternalData((prev) => prev.map((r) => ({ ...r, checked: !allChecked })));
@@ -580,7 +580,7 @@ export function DataTable({
                             {columns.map((col, i) => (
                                 // <th key={col.key} className={`bg-muted   p-1  ${i === columns.length-1 ?"rounded-r-lg text-right":" text-left mr-2"}`} style={{ width: col.width ?? 'auto', whiteSpace: 'nowrap' }}>
 
-                                <th key={col.key} className={`bg-muted   p-1  ${i === columns.length - 1 ? "rounded-r-lg " : " text-left mr-2"}`} style={{ width: col.width ?? 'auto', whiteSpace: 'nowrap' }}>
+                                <th key={col.key} className={`bg-secondary p-1 text-xs font-semibold uppercase text-foreground/70 ${i === columns.length - 1 ? "rounded-r-lg " : " text-left mr-2"}`} style={{ width: col.width ?? 'auto', whiteSpace: 'nowrap' }}>
                                     {col.label}
                                     {col.required && <span className="text-red-500 ml-1">*</span>}
                                 </th>
@@ -593,13 +593,13 @@ export function DataTable({
                             <td colSpan={columns.length + 1}></td>
                         </tr>
                         {internalData.map((row, ri) => (
-                            <tr key={ri + 'r'} className={row.checked ? "bg-[#FFDE21]/90 text-black" : ""}>
+                            <tr key={ri + 'r'} className={row.checked ? "bg-[var(--starbucks-gold)]/25 text-foreground" : "hover:bg-accent/20"}>
                                 <td className="p-0 border-t border-r text-center w-fit">
                                     <input type="checkbox" checked={!!row.checked} onChange={() => toggleRowChecked(ri)} className="w-fit" />
                                 </td>
                                 {columns.map((col, ci) => {
                                     const isActive = active?.r === ri && active?.c === ci;
-                                    const cellClass = `p-0 border-t border-r ${isActive ? "bg-primary/10" : ""}`;
+                                    const cellClass = `p-0 border-t border-r ${isActive ? "bg-accent/45" : ""}`;
                                     const val = row[col.key];
 
                                     const rowOverride = row.CellProperty?.find((cp) => cp.column === col.key);

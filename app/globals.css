@@ -45,39 +45,49 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: #f5f5f5;
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #519755;
-  --primary-foreground: #fafafa;
-  --secondary: #fff;
-  --secondary-foreground: oklch(0.37, 0, 0, 1);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(93.403% 0.00011 271.152);
+  --radius: 0.5rem;
+  --background: #edebe9;
+  --foreground: rgba(0, 0, 0, 0.87);
+  --card: #ffffff;
+  --card-foreground: rgba(0, 0, 0, 0.87);
+  --popover: #ffffff;
+  --popover-foreground: rgba(0, 0, 0, 0.87);
+  --primary: #00754a;
+  --primary-foreground: #ffffff;
+  --secondary: #edebe9;
+  --secondary-foreground: rgba(0, 0, 0, 0.87);
+  --muted: #edebe9;
+  --muted-foreground: rgba(0, 0, 0, 0.58);
+  --accent: #d4e9e2;
+  --accent-foreground: #006241;
+  --destructive: #c82014;
+  --border: #dedad4;
   /* --input: oklch(0.922 0 0); */
   --input: #ffffff;
-  --ring: oklch(0.708 0 0);
+  --ring: #00754a;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #eaeaea;
+  --sidebar-foreground: rgba(0, 0, 0, 0.87);
+  --sidebar-primary: #00754a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d4e9e2;
+  --sidebar-accent-foreground: #006241;
+  --sidebar-border: #d6d6d6;
+  --sidebar-ring: #00754a;
+  --starbucks-green: #006241;
+  --starbucks-green-accent: #00754a;
+  --starbucks-house-green: #1e3932;
+  --starbucks-green-uplift: #2b5148;
+  --starbucks-green-light: #d4e9e2;
+  --starbucks-gold: #cba258;
+  --starbucks-neutral-warm: #f2f0eb;
+  --starbucks-ceramic: #edebe9;
+  --starbucks-card-shadow: 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(0, 0, 0, 0.24);
+  --starbucks-nav-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 2px 2px rgba(0, 0, 0, 0.06), 0 0 2px rgba(0, 0, 0, 0.07);
 }
 
 .dark {
@@ -122,6 +132,12 @@
 
   body {
     @apply bg-background text-foreground;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--starbucks-green-light);
+    color: var(--starbucks-house-green);
   }
 }
 
@@ -150,7 +166,7 @@
 
 .loader-bar {
   height: 100%;
-  background: rgb(44, 226, 68);
+  background: var(--starbucks-green-accent);
   /* Red for testing */
   animation: loading-animation 2s linear infinite;
   transform-origin: left;

@@ -2,97 +2,89 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Eye,
-  Plus,
-  RefreshCw,
-} from 'lucide-react'
+import { Eye, Plus, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
+import { usePermission } from '@/hooks/usePermission'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
-  GoodsReceipt,
-  getGoodsReceipts,
-  getReceiptItemSummary,
+  getGoodsIssues,
+  getIssueItemSummary,
+  GoodsIssue,
 } from './api'
 
-type GoodsReceiptTableRow = Record<string, unknown> & {
+type GoodsIssueTableRow = Record<string, unknown> & {
   id: number | null
-  grNo: string
+  giNo: string
   itemDescription: string
-  vendor: string
   farmName: string
-  receiveDate: string
-  returnedQty: number
-  balanceQty: number
+  issueDate: string
+  warehouse: string
+  issueQty: number
   status: string
-  receipt: GoodsReceipt
+  issue: GoodsIssue
 }
 
-export default function GoodsReceiveHistory() {
+export default function GoodsIssueHistory() {
   const router = useRouter()
   const { setCollapsed } = useSidebar()
-  const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
+  const cannotView = usePermission('/inv/gi/view')
+  const cannotInsert = usePermission('/inv/gi/insert')
+  const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setReceipts(await getGoodsReceipts(100))
+      setIssues(await getGoodsIssues(100))
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    router.prefetch('/inv/gr/new')
+    router.prefetch('/inv/gi/new')
     const timer = window.setTimeout(() => {
       refresh()
     }, 0)
     return () => window.clearTimeout(timer)
   }, [refresh, router])
 
-  const rows = useMemo<GoodsReceiptTableRow[]>(
+  const rows = useMemo<GoodsIssueTableRow[]>(
     () =>
-      receipts.map(receipt => {
-        const receivedQty = receipt.lines.reduce((sum, line) => sum + Number(line.baseQty || 0), 0)
-        const returnedQty = receipt.lines.reduce((sum, line) => sum + Number(line.returnedQty || 0), 0)
-
-        return {
-          id: receipt.id,
-          grNo: receipt.grNo,
-          itemDescription: getReceiptItemSummary(receipt),
-          vendor: receipt.vendor || '-',
-          farmName: receipt.farmName || '-',
-          receiveDate: receipt.receiveDate,
-          returnedQty,
-          balanceQty: receivedQty - returnedQty,
-          status: receipt.status,
-          receipt,
-        }
-      }),
-    [receipts],
+      issues.map(issue => ({
+        id: issue.id,
+        giNo: issue.giNo,
+        itemDescription: getIssueItemSummary(issue),
+        farmName: issue.farmName || '-',
+        issueDate: issue.issueDate,
+        warehouse: issue.fromWarehouseCode || '-',
+        issueQty: issue.lines.reduce((sum, line) => sum + Number(line.baseQty || 0), 0),
+        status: issue.status,
+        issue,
+      })),
+    [issues],
   )
 
-  const columns = useMemo<Column<GoodsReceiptTableRow>[]>(
+  const columns = useMemo<Column<GoodsIssueTableRow>[]>(
     () => [
       {
-        key: 'grNo', label: 'GR No.', render: row => (
-          <>
-            <span className='bg-sidebar-accent p-1 px-2 font-semibold rounded-md'>{row.grNo}</span>
-          </>
-        )
-
+        key: 'giNo',
+        label: 'GI No.',
+        render: row => (
+          <span className="rounded-md bg-sidebar-accent px-2 py-1 font-semibold">
+            {row.giNo}
+          </span>
+        ),
       },
       { key: 'itemDescription', label: 'Item Description' },
-      { key: 'vendor', label: 'Vendor' },
       { key: 'farmName', label: 'Farm' },
-      { key: 'receiveDate', label: 'Date Received' },
-      // { key: 'returnedQty', label: 'Returned Qty', align: 'right' },
-      { key: 'balanceQty', label: 'Balance Qty', align: 'center' },
+      { key: 'issueDate', label: 'Issue Date' },
+      { key: 'warehouse', label: 'Warehouse' },
+      { key: 'issueQty', label: 'Issue Qty', align: 'center' },
       {
         key: 'status',
         label: 'Status',
@@ -101,7 +93,7 @@ export default function GoodsReceiveHistory() {
             {row.status}
           </span>
         ),
-        align: "center"
+        align: 'center',
       },
       {
         key: 'action',
@@ -114,11 +106,11 @@ export default function GoodsReceiveHistory() {
             type="button"
             size="sm"
             variant="outline"
-            disabled={row.id === null}
+            disabled={row.id === null || cannotView}
             onClick={event => {
               event.stopPropagation()
-              if (row.id === null) return
-              router.push(`/inv/gr/post?id=${row.id}`)
+              if (row.id === null || cannotView) return
+              router.push(`/inv/gi/post?id=${row.id}`)
             }}
           >
             <Eye className="size-4" />
@@ -127,12 +119,12 @@ export default function GoodsReceiveHistory() {
         ),
       },
     ],
-    [router],
+    [cannotView, router],
   )
 
-  const openNewGoodsReceipt = () => {
+  const openNewGoodsIssue = () => {
     setCollapsed(true)
-    router.push('/inv/gr/new')
+    router.push('/inv/gi/new')
   }
 
   return (
@@ -140,10 +132,10 @@ export default function GoodsReceiveHistory() {
       <div className="mt-2 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
-          CurrentPageName="Goods Receive"
+          CurrentPageName="Goods Issue"
         />
 
-        <div className='flex gap-2'>
+        <div className="flex gap-2">
           <div className="flex justify-end">
             <Button variant="outline" className="gap-2" onClick={refresh} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
@@ -151,28 +143,27 @@ export default function GoodsReceiveHistory() {
             </Button>
           </div>
 
-          <Button type="button" onClick={openNewGoodsReceipt}>
+          <Button type="button" onClick={openNewGoodsIssue} disabled={cannotInsert}>
             <Plus className="size-4" />
-            New GR
+            New GI
           </Button>
         </div>
       </div>
 
-      <div className=" mt-4 space-y-3">
-
+      <div className="mt-4 space-y-3">
         <DynamicTable
           loading={loading}
           initialFilters={[]}
-          title="Goods Receive"
-          description={`${rows.length} goods receipt(s)`}
+          title="Goods Issue"
+          description={`${rows.length} goods issue(s)`}
           columns={columns}
           data={rows}
-          rowKey={row => row.id ?? row.grNo}
-          searchPlaceholder="Search goods receipts..."
-          emptyMessage="No goods receipts found"
-          noResultsMessage="No matching goods receipts found"
+          rowKey={row => row.id ?? row.giNo}
+          searchPlaceholder="Search goods issues..."
+          emptyMessage="No goods issues found"
+          noResultsMessage="No matching goods issues found"
           onRowClick={row => {
-            if (row.id !== null) router.push(`/inv/gr/post?id=${row.id}`)
+            if (row.id !== null && !cannotView) router.push(`/inv/gi/post?id=${row.id}`)
           }}
         />
       </div>

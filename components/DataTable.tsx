@@ -116,7 +116,7 @@ export default function DataTable({
                     cursor-text
                     
                     border
-                    hover:bg-muted/50
+                    hover:bg-accent/45
                   "
           onClick={() =>
             setEditingCell({ row: rowIndex, col: col.code })
@@ -279,7 +279,7 @@ export default function DataTable({
   return (
     <div className="space-y-2">
 
-      <div className="overflow-auto -lg border ">
+      <div className="overflow-auto rounded-md border bg-card shadow-[var(--starbucks-card-shadow)]">
 
         <table
           className={`
@@ -290,7 +290,7 @@ export default function DataTable({
         >
 
           {/* HEADER */}
-          <thead className="bg-muted border-b sticky top-0 z-10">
+          <thead className="sticky top-0 z-10 border-b bg-secondary">
             <tr>
               {columns.map((col) => (
                 <th
@@ -299,7 +299,9 @@ export default function DataTable({
                   px-4 py-2
                   text-left
                   font-medium
-                  text-foreground
+                  text-foreground/75
+                  uppercase
+                  text-xs
                   whitespace-nowrap
                 "
                 >
@@ -316,7 +318,7 @@ export default function DataTable({
                 key={rowIndex}
                 className="
                 border-b
-                hover:bg-muted/10
+                hover:bg-accent/25
                 transition-colors
               "
               >
@@ -395,7 +397,6 @@ export default function DataTable({
             <Button
               size="sm"
               type="button"
-              className="-md"
               onClick={addRow}
             >
               Add Row

@@ -1,23 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import React, { Children, useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, RefreshCw, ChevronDown } from "lucide-react"
+import { Menu, ChevronDown } from "lucide-react"
 import { useSidebar } from "./SidebarProvider"
-import { VersionSwitcher } from "@/components/ui/sidebar/version-switcher"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
 import { useGlobalContext } from "../context/GlobalContext"
 import { NavFolders } from "../Defaults/DefaultValues"
 import GlobalSearch from "@/components/ui/GlobalSearch"
-import ThemeSwitch from "../ThemeSwitch"
 import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
-import GlobalFarmUserSettings from "@/components/ui/GlobalFarmUserSettings"
 
-const versions = ["1.0.1", "1.1.0-alpha", "2.0.0-beta1"]
+const ACTIVE_NAV_ITEM_CLASS =
+  "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
+
+const getSavedOpenFolders = () => {
+  if (typeof window === "undefined") return []
+
+  try {
+    return JSON.parse(localStorage.getItem("sidebar_open_folders") || "[]")
+  } catch {
+    return []
+  }
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -28,27 +36,23 @@ export function AppSidebar() {
   const { collapsed, toggle } = useSidebar()
 
   const { getValue, setValue } = useGlobalContext()
+  const userPermissions = getValue("UserPermission")
 
   const [session, setSession] = useState<Session | null>()
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   // ⭐ ENTERPRISE: persistent open folders
-  const [openFolders, setOpenFolders] = useState<number[]>([])
+  const [openFolders, setOpenFolders] = useState<number[]>(getSavedOpenFolders)
 
-  const filteredNavFolders = filterNavFolders(
-    NavFolders,
-    getValue("UserPermission") || []
+  const filteredNavFolders = useMemo(
+    () => filterNavFolders(NavFolders, userPermissions || []),
+    [userPermissions],
   )
 
   // ===============================
   // INIT
   // ===============================
-
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar_open_folders")
-    if (saved) setOpenFolders(JSON.parse(saved))
-  }, [])
 
   useEffect(() => {
     localStorage.setItem("sidebar_open_folders", JSON.stringify(openFolders))
@@ -85,7 +89,7 @@ export function AppSidebar() {
         })
       })
     })
-  }, [pathname])
+  }, [filteredNavFolders, pathname])
 
   // ===============================
   // ACTIONS
@@ -116,7 +120,7 @@ export function AppSidebar() {
           <Button
             variant="ghost"
             onClick={() => setMobileOpen(true)}
-            className="fixed z-50 left-3 top-3 p-2"
+            className="fixed z-50 left-3 top-3 bg-white/95 p-2 shadow-[var(--starbucks-nav-shadow)]"
           >
             <Menu className="size-5" />
           </Button>
@@ -129,19 +133,28 @@ export function AppSidebar() {
               onClick={() => setMobileOpen(false)}
             />
 
-            <aside className="relative h-full w-72 bg-sidebar  shadow-lg p-3 ">
+            <aside className="relative h-full w-72 bg-sidebar p-3 text-sidebar-foreground shadow-lg">
 
               {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
+              <div className="mb-3 flex items-center gap-3 rounded-md bg-white px-3 py-3 shadow-[var(--starbucks-card-shadow)]">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                  V
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-foreground">Vita FMS</div>
+                  <div className="truncate text-xs text-muted-foreground">Operations</div>
+                </div>
+              </div>
               <GlobalSearch collapsed={false} />
 
-              <div className="space-y-2 mt-4">
+              <div className="mt-4 max-h-[calc(100vh-15rem)] space-y-2 overflow-y-auto rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
 
                 {filteredNavFolders.map(folder => (
                   <div key={folder.id}>
 
                     <Button
                       variant="ghost"
-                      className="w-full justify-between"
+                      className="h-10 w-full justify-between px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       onClick={() => toggleFolder(folder.id)}
                     >
                       <div className="flex items-center gap-2">
@@ -156,12 +169,12 @@ export function AppSidebar() {
                     </Button>
 
                     {openFolders.includes(folder.id) && (
-                      <div className="ml-6 mt-2 space-y-3">
+                      <div className="mt-2 space-y-1 pl-3">
 
                         {folder.items?.map((group: any, gi: number) => (
                           <div key={gi}>
 
-                            <div className="text-xs text-muted-foreground  px-2">
+                            <div className="px-3 py-1 text-xs font-semibold uppercase text-muted-foreground">
                               {group.group}
                             </div>
 
@@ -171,8 +184,8 @@ export function AppSidebar() {
                                 <Button
                                   key={ci}
                                   variant="ghost"
-                                  className={`w-full justify-start pl-4 ${pathname.startsWith(child.url)
-                                    ? "bg-accent"
+                                  className={`h-9 w-full justify-start px-3 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
+                                    ? ACTIVE_NAV_ITEM_CLASS
                                     : ""
                                     }`}
                                   onClick={() => goTo(child.url)}
@@ -188,9 +201,9 @@ export function AppSidebar() {
                   </div>
                 ))}
 
-                {/* <ThemeSwitch collapsed={false} />
-                <UserAccountMenu session={session} collapsed={false} /> */}
-
+              </div>
+              <div className="mt-3 rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+                <UserAccountMenu session={session} collapsed={false} />
               </div>
             </aside>
           </div>
@@ -205,29 +218,40 @@ export function AppSidebar() {
 
   return (
     <aside
-      className={`flex flex-col h-screen    bg-background transition-all ${collapsed ? "w-16" : "w-72"
+      className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground shadow-[var(--starbucks-nav-shadow)] transition-all ${collapsed ? "w-16" : "w-72"
         } duration-300`}
     >
-      <div className="px-3   h-13.5  mt-1  z-50">
-        <div className="flex items-center justify-between ">
+      <div className="z-50 px-3 pt-3">
+        <div className={`flex items-center gap-3 rounded-md bg-white px-3 py-3 shadow-[var(--starbucks-card-shadow)] ${collapsed ? "justify-center" : "justify-between"}`}>
           {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
-          <Button className="m-3 text-foreground" variant="ghost" size="icon" onClick={toggle} >
+          {!collapsed && (
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                V
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">Vita FMS</div>
+                <div className="truncate text-xs text-muted-foreground">Operations</div>
+              </div>
+            </div>
+          )}
+          <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
             <Menu className="size-5" />
           </Button>
-          <div className="flex  gap-4">
-            {!collapsed &&
-              <GlobalSearch collapsed={collapsed} />
-            }
-          </div>
         </div>
+        {!collapsed && (
+          <div className="mt-3">
+            <GlobalSearch collapsed={collapsed} />
+          </div>
+        )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto   mt-9 space-y-2  ">
+      <nav className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
 
-        <div className="bg-white shadow rounded-r-2xl min-h-[calc(100vh-7rem)] ">
-          <div className="text-sm px-3 text-muted-foreground py-4">{!collapsed && "Main"} </div>
+        <div className="rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+          <div className="px-3 py-2 text-xs font-semibold uppercase text-sidebar-foreground/55">{!collapsed && "Navigation"} </div>
           {filteredNavFolders.map(folder => (
-            <div key={folder.id} className="text-foreground/60">
+            <div key={folder.id} className="text-sidebar-foreground/80">
 
               {/* HEADER */}
               {collapsed ? (
@@ -236,7 +260,7 @@ export function AppSidebar() {
                     <Button
                       variant="ghost"
                       onClick={() => toggle()} // ⭐ expand sidebar
-                      className="w-full justify-center "
+                      className="h-10 w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     >
                       <folder.icon className="size-5" />
                     </Button>
@@ -246,10 +270,10 @@ export function AppSidebar() {
               ) : (
                 <Button
                   variant="ghost"
-                  className="w-full justify-between h-6"
+                  className={`h-10 w-full justify-between px-3 font-semibold text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${folder.items?.some((group: any) => group.children?.some((child: any) => child.url && child.url !== "#" && pathname.startsWith(child.url))) ? "bg-white text-foreground shadow-[var(--starbucks-card-shadow)]" : ""}`}
                   onClick={() => toggleFolder(folder.id)}
                 >
-                  <div className="flex items-center gap-2 hover:bg-primary/5 hover:text-primary p-1 w-full">
+                  <div className="flex w-full items-center gap-2">
                     <folder.icon className="size-5" />
                     {folder.title}
                   </div>
@@ -263,12 +287,12 @@ export function AppSidebar() {
 
               {/* CONTENT */}
               {!collapsed && openFolders.includes(folder.id) && (
-                <div className="ml-6 mt- space-y-3">
+                <div className="mt-2 space-y-4 pb-2 pl-3">
 
                   {folder.items?.map((group: any, gi: number) => (
                     <div key={gi}>
 
-                      <div className="text-xs text-muted-foreground  ">
+                      <div className="px-3 py-1 text-xs font-semibold uppercase text-sidebar-foreground/45">
                         {group.group}
                       </div>
 
@@ -278,8 +302,8 @@ export function AppSidebar() {
                           <Button
                             key={ci}
                             variant="ghost"
-                            className={`h-7 w-full rounded-none justify-start hover:bg-primary/5 hover:text-primary   pl-4 ${pathname.startsWith(child.url)
-                              ? "bg-accent"
+                            className={`h-9 w-full justify-start px-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
+                              ? ACTIVE_NAV_ITEM_CLASS
                               : ""
                               }`}
                             onClick={() => goTo(child.url)}
@@ -300,10 +324,12 @@ export function AppSidebar() {
           <RefreshCw className="animate-spin size-4 fixed bottom-3 right-3" />
         )} */}
 
-        {/* <ThemeSwitch collapsed={collapsed} />
-        <UserAccountMenu session={session} collapsed={false} /> */}
-
       </nav>
+      <div className="px-3 pb-3">
+        <div className="rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+          <UserAccountMenu session={session} collapsed={collapsed} />
+        </div>
+      </div>
     </aside>
   )
 }

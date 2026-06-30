@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
-import { useOnClickOutside } from "./hooks/useOnClickOutside";
 import GlobalDefaults from "./Defaults/GlobalDefaults";
 import { UserProfileCard } from "./DefaultFunctions";
+import { Modal } from "./Moda";
 import {
   ChevronRight,
   LogOut,
@@ -15,12 +15,10 @@ import {
 
 export default function UserAccountMenu({
   session,
+  collapsed = false,
 }: any) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useOnClickOutside(menuRef, () => setIsOpen(false));
 
   const email =
     session?.user?.email ?? "guest@example.com";
@@ -29,45 +27,30 @@ export default function UserAccountMenu({
     email.charAt(0).toUpperCase();
 
   return (
-    <div
-      className="relative w-full"
-      ref={menuRef}
-    >
+    <div className="w-full">
       {/* Trigger */}
       <button
         onClick={() =>
           setIsOpen((prev) => !prev)
         }
-        className="
-          w-full text-left
-          rounded-xl
-          transition-all
-          active:scale-[0.98]
-        "
+        className="w-full rounded-md text-left transition-colors"
       >
         <UserProfileCard
           email={email}
           description=""
+          collapsed={collapsed}
         />
       </button>
 
-      {/* Dropdown */}
-      {isOpen && (
-        <div
-          className="
-            absolute top-full right-0 mt-2
-            w-72.5
-            rounded-2xl
-            border border-border
-            bg-background
-            shadow-[0_8px_24px_rgba(0,0,0,0.12)]
-            overflow-hidden
-            z-50
-            animate-in fade-in zoom-in-95 duration-150
-          "
-        >
+      <Modal
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        title="Account"
+        className="max-w-md"
+      >
+        <div className="overflow-hidden">
           {/* Profile Card */}
-          <div className="p-2">
+          <div className="px-4 pb-4">
             <button
               // onClick={() =>
               //   router.push("/profile")
@@ -75,8 +58,8 @@ export default function UserAccountMenu({
               type="button"
               className="
                 w-full
-                rounded-xl
-                bg-muted/40
+                rounded-md
+                bg-secondary/70
                 hover:bg-muted
                 transition-all
                 p-3
@@ -126,16 +109,15 @@ export default function UserAccountMenu({
                 router.push("/profile")
               }
             /> */}
-            {/* 
             <MenuItem
               icon={
                 <RefreshCcw className="h-4 w-4" />
               }
               label="Refresh Data"
               onClick={() => {
-                window.location.reload();
+                  window.location.reload();
               }}
-            /> */}
+            />
           </div>
 
 
@@ -152,13 +134,14 @@ export default function UserAccountMenu({
               icon={<LogOut className="h-4 w-4" />}
               label="Logout"
               destructive
-              onClick={() =>
+              onClick={() => {
+                setIsOpen(false)
                 router.push("/logout")
-              }
+              }}
             />
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
@@ -179,7 +162,7 @@ function MenuItem({
       onClick={onClick}
       className={`
         w-full flex items-center gap-3
-        rounded-xl
+        rounded-md
         px-3 py-2
         text-sm font-medium
         transition-all

@@ -6,13 +6,15 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import { Plus, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo } from 'react'
+
+const EMPTY_TABLE_DATA: RowDataKey[] = []
 
 export default function Layout() {
-  const { setValue, getValue } = useGlobalContext()
+  const { setValue } = useGlobalContext()
 
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState<RowDataKey[]>([])
+  const loading = false
+  const data = EMPTY_TABLE_DATA
   const route = useRouter()
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -31,7 +33,7 @@ export default function Layout() {
   const handleReset = async () => {
 
   }
-  const NewMap = async () => {
+  const NewMap = () => {
     setValue("loading_g", true)
     route.push("/inv/new")
   }
@@ -39,7 +41,7 @@ export default function Layout() {
   useEffect(() => {
     route.prefetch("/inv/new")
     setValue("loading_g", false)
-  }, [])
+  }, [route, setValue])
 
 
   return (

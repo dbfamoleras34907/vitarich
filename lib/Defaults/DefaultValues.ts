@@ -718,15 +718,16 @@ export const NavFolders: NavFolder[] = [
             edit: false,
           },
 
-          {
-            id: 50,
-            type: "Module",
-            title: "Inventory Map",
-            url: "/inv",
-            view: false,
-            insert: false,
-            edit: false,
-          },   {
+          // {
+          //   id: 50,
+          //   type: "Module",
+          //   title: "Inventory Map",
+          //   url: "/inv",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },  
+           {
             id: 50,
             type: "Module",
             title: "Item Group",
@@ -796,9 +797,9 @@ export const NavFolders: NavFolder[] = [
             url: "/inv/gi",
             inventoriable: true,
             section: "IV",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
           },
         ],
       },

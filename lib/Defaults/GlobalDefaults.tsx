@@ -20,7 +20,7 @@ import { getGoodsReceiptPrefetchReferences } from "@/app/inv/gr/new/api";
 /* =======================================================
    HOOK
 ======================================================= */
-export const getSessionUser = async () => {
+export const getSessionUser = async () => { 
   const {
     data: { session },
   } = await db.auth.getSession();

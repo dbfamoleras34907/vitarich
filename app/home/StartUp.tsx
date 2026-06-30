@@ -35,7 +35,7 @@ function toDateKey(value: Date) {
 
 function SkeletonStatCard() {
   return (
-    <Card className="overflow-hidden border-0 bg-white shadow">
+    <Card className="overflow-hidden">
       <CardContent className="p-5 space-y-3">
         <Skeleton className="h-3 w-28" />
         <Skeleton className="h-10 w-32" />
@@ -64,20 +64,20 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`overflow-hidden border-0 bg-white shadow-[0_10px_35px_rgba(15,23,42,0.08)] ${accentClassName}`}
+      className={`overflow-hidden ${accentClassName}`}
     >
       <CardContent className="p-0">
         <div className="h-1 w-full bg-current opacity-80" />
         <div className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
                 {title}
               </p>
-              <div className="text-4xl font-bold text-slate-900">{value}</div>
-              <p className="text-sm text-slate-500">{helper}</p>
+              <div className="text-4xl font-bold text-foreground">{value}</div>
+              <p className="text-sm text-muted-foreground">{helper}</p>
             </div>
-            <div className={`rounded-2xl p-3 ${badgeClassName}`}>{icon}</div>
+            <div className={`rounded-md p-3 ${badgeClassName}`}>{icon}</div>
           </div>
         </div>
       </CardContent>
@@ -152,7 +152,7 @@ export default function StockDashboard() {
   }, [filter]);
 
   return (
-    <main className="min-h-screen p-6">
+    <main className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex flex-col gap-4">
           <div className="space-y-3">
@@ -178,7 +178,7 @@ export default function StockDashboard() {
         </div>
         {/* <Separator /> */}
         {error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
@@ -198,9 +198,9 @@ export default function StockDashboard() {
                 ? `Today ${formatNumber(summary.eggsSet.today)} / Month ${formatNumber(summary.eggsSet.month)}`
                 : "Today 0 / Month 0"
             }
-            icon={<Egg className="size-6 text-sky-600" />}
-            accentClassName="text-sky-500"
-            badgeClassName="bg-sky-100"
+            icon={<Egg className="size-6 text-primary" />}
+            accentClassName="text-[var(--starbucks-green-accent)]"
+            badgeClassName="bg-accent"
           />
 
           <StatCard
@@ -217,9 +217,9 @@ export default function StockDashboard() {
                 ? `Today ${formatNumber(summary.chicksHatched.today)} / Month ${formatNumber(summary.chicksHatched.month)}`
                 : "Today 0 / Month 0"
             }
-            icon={<Bird className="size-6 text-emerald-600" />}
-            accentClassName="text-emerald-500"
-            badgeClassName="bg-emerald-100"
+            icon={<Bird className="size-6 text-[var(--starbucks-house-green)]" />}
+            accentClassName="text-[var(--starbucks-house-green)]"
+            badgeClassName="bg-[var(--starbucks-green-light)]"
           />
 
           <StatCard
@@ -236,14 +236,14 @@ export default function StockDashboard() {
                 ? `Today ${formatPercent(summary.hatchabilityRate.today)} / Month ${formatPercent(summary.hatchabilityRate.month)}`
                 : "Today 0.00% / Month 0.00%"
             }
-            icon={<Percent className="size-6 text-amber-600" />}
-            accentClassName="text-amber-500"
-            badgeClassName="bg-amber-100"
+            icon={<Percent className="size-6 text-[var(--starbucks-gold)]" />}
+            accentClassName="text-[var(--starbucks-gold)]"
+            badgeClassName="bg-[var(--starbucks-gold)]/15"
           />
         </div>
       </div>
 
-      <Card className=" h-full bg-white mt-4 mx-auto max-w-7xl space-y-6">
+      <Card className="mx-auto mt-4 h-full max-w-7xl space-y-6">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Hatchery Production Overview</CardTitle>
@@ -256,7 +256,7 @@ export default function StockDashboard() {
             <Button
               variant={groupBy === "daily" ? "default" : "outline"}
               size="sm"
-              className={groupBy === "daily" ? "bg-black text-white" : ""}
+              className={groupBy === "daily" ? "" : ""}
               onClick={() => setgroupBy("daily")}
             >
               Daily
@@ -265,7 +265,7 @@ export default function StockDashboard() {
             <Button
               variant={groupBy === "weekly" ? "default" : "outline"}
               size="sm"
-              className={groupBy === "weekly" ? "bg-black text-white" : ""}
+              className={groupBy === "weekly" ? "" : ""}
               onClick={() => setgroupBy("weekly")}
             >
               Weekly
@@ -274,7 +274,7 @@ export default function StockDashboard() {
             <Button
               variant={groupBy === "monthly" ? "default" : "outline"}
               size="sm"
-              className={groupBy === "monthly" ? "bg-black text-white" : ""}
+              className={groupBy === "monthly" ? "" : ""}
               onClick={() => setgroupBy("monthly")}
             >
               Monthly
@@ -286,7 +286,7 @@ export default function StockDashboard() {
           <Hatchabilitytrend date={date} groupBy={groupBy} />
         </CardContent>
       </Card>
-      <Card className=" h-full bg-white mt-4 mx-auto max-w-7xl space-y-6">
+      <Card className="mx-auto mt-4 h-full max-w-7xl space-y-6">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Egg Intake Trends</CardTitle>
@@ -299,7 +299,7 @@ export default function StockDashboard() {
             <Button
               variant={eggGroupBy === "daily" ? "default" : "outline"}
               size="sm"
-              className={eggGroupBy === "daily" ? "bg-black text-white" : ""}
+              className={eggGroupBy === "daily" ? "" : ""}
               onClick={() => setEggGroupBy("daily")}
             >
               Daily
@@ -308,7 +308,7 @@ export default function StockDashboard() {
             <Button
               variant={eggGroupBy === "weekly" ? "default" : "outline"}
               size="sm"
-              className={eggGroupBy === "weekly" ? "bg-black text-white" : ""}
+              className={eggGroupBy === "weekly" ? "" : ""}
               onClick={() => setEggGroupBy("weekly")}
             >
               Weekly
@@ -317,7 +317,7 @@ export default function StockDashboard() {
             <Button
               variant={eggGroupBy === "monthly" ? "default" : "outline"}
               size="sm"
-              className={eggGroupBy === "monthly" ? "bg-black text-white" : ""}
+              className={eggGroupBy === "monthly" ? "" : ""}
               onClick={() => setEggGroupBy("monthly")}
             >
               Monthly

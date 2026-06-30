@@ -520,42 +520,39 @@ export default function ApprovalDecisionForm() {
                     </div>
                 </CardHeader>
 
-                <CardContent className='bg-white rounded-2xl p-4 space-y-6'>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-2 sm:grid-cols-1 gap-4">
-                        <div className="flex items-center gap-4 w-full md:w-100 `">
+                <CardContent className='rounded-md border border-border bg-white p-4 md:p-5 space-y-5'>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="space-y-2">
                             <Label
-                                className="text-sm font-medium w-27 shrink-0 text-right"
+                                className="text-sm font-medium text-foreground"
                                 required
                             >
                                 Delivered From
                             </Label>
-                            <div className='w-full'>
+                            <SearchableCombobox
+                                multiple={false}
+                                required
+                                showCode
+                                autoHighlight
+                                className="w-full"
+                                items={farms}
+                                value={header?.soldTo || ''}
+                                onValueChange={(val) => {
+                                    const selectedFarm = farms.find((f: any) => f.code === val)
 
-                                <SearchableCombobox
-                                    multiple={false}
-                                    required
-                                    showCode
-                                    autoHighlight
-                                    className="w-full"
-                                    items={farms}
-                                    value={header?.soldTo || ''}
-                                    onValueChange={(val) => {
-                                        const selectedFarm = farms.find((f: any) => f.code === val)
+                                    setHeader(h => ({
+                                        ...(h ?? emptyApprovalRecord),
+                                        soldTo: val,
+                                        tin: selectedFarm?.tin || '',
+                                        address: selectedFarm?.address || '',
+                                    }))
+                                }}
 
-                                        setHeader(h => ({
-                                            ...(h ?? emptyApprovalRecord),
-                                            soldTo: val,
-                                            tin: selectedFarm?.tin || '',
-                                            address: selectedFarm?.address || '',
-                                        }))
-                                    }}
-
-                                />
-                            </div>
+                            />
                         </div>
                         {headerFieldsLeft.map((field, i) => (
-                            <div key={i} className="flex items-center gap-4 w-full md:max-w-[400px]">
-                                <Label className="text-sm font-medium w-27 shrink-0 text-right">
+                            <div key={i} className="space-y-2">
+                                <Label required={field.required} className="text-sm font-medium text-foreground">
                                     {field.label}
                                 </Label>
 
@@ -565,7 +562,7 @@ export default function ApprovalDecisionForm() {
                                     type={field.type || 'text'}
                                     value={field.value}
                                     onChange={e => field.onChange?.(e.target.value)}
-                                    className="h-9 text-sm w-full md:max-w-[300px]"
+                                    className="w-full"
                                 />
                             </div>
                         ))}
@@ -573,9 +570,9 @@ export default function ApprovalDecisionForm() {
 
                     <Separator className='my-2' />
 
-                    <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-                        <div className='mt-1'>
-                            <Label className="text-sm font-medium w-27 shrink-0 text-right">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div className='space-y-2'>
+                            <Label className="text-sm font-medium text-foreground">
                                 Shipped To
                             </Label>
                             <DefaultFarmComboBox
@@ -599,8 +596,8 @@ export default function ApprovalDecisionForm() {
                         </div>
 
                         {headerFieldsRight.map((field, i) => (
-                            <div key={i} className='mt-1'>
-                                <Label required={field.required} className='pb-2 mt-1'>{field.label}</Label>
+                            <div key={i} className='space-y-2'>
+                                <Label required={field.required} className='text-sm font-medium text-foreground'>{field.label}</Label>
                                 <Input
                                     required={field.required}
                                     disabled={field.disabled}
@@ -611,8 +608,8 @@ export default function ApprovalDecisionForm() {
                             </div>
                         ))}
 
-                        <div className='mt-1'>
-                            <Label className='pb-2' required>Breed</Label>
+                        <div className='space-y-2'>
+                            <Label className='text-sm font-medium text-foreground' required>Breed</Label>
                             <Input
                                 required
                                 value={headerBreed}

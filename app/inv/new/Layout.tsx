@@ -12,21 +12,26 @@ import SearchableDropdown from '@/lib/SearchableDropdown'
 import { DataTableColumn, Items, Warehouse } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useState } from 'react'
-import { upsertInventoryMapping } from './api'
+import { InventoryMappingHeader, InventoryMappingRow, upsertInventoryMapping } from './api'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error)
+
+const isWarehouseCache = (value: unknown): value is { data: Warehouse[] } =>
+  Boolean(value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data))
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext()
   const [loading, setLoading] = useState(false)
   const route = useRouter()
 
-  const [pickedRows, setPickedRows] = useState<Record<string, any>[]>([])
+  const [pickedRows, setPickedRows] = useState<InventoryMappingRow[]>([])
   const [items, setitems] = useState<Items[]>([])
   const [whs, setwhs] = useState<Warehouse[]>([])
 
-  const [header, setHeader] = useState({
+  const [header, setHeader] = useState<InventoryMappingHeader>({
     section: '',
     module: '',
   })
@@ -114,32 +119,6 @@ export default function Layout() {
     },
   ]
 
-  // ✅ SUBMIT (RPC STYLE)
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault()
-
-  //   try {
-  //     setLoading(true)
-
-  //     const payload = {
-  //       header,
-  //       rows: pickedRows,
-  //     }
-
-  //     const res = await upsertInventoryMapping(payload)
-
-  //     console.log('Saved:', res)
-
-  //     toast('Saved successfully!')
-
-  //   } catch (err: any) {
-  //     console.error(err)
-  //     toast(err.message)
-  //   } finally {
-  //     setLoading(false)
-  //   }
-  // }
-  // ✅ SUBMIT (RPC STYLE)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -184,9 +163,9 @@ export default function Layout() {
 
       toast('Saved successfully!')
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      toast(err.message)
+      toast(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -194,18 +173,24 @@ export default function Layout() {
 
   useEffect(() => {
     route.prefetch("/inv/new")
+  }, [route])
 
+  useEffect(() => {
     setValue("loading_g", loading)
+  }, [loading, setValue])
 
-    const getData = async () => {
-      const c = getValue("itemmaster") || []
-      const w = getValue("warehouses") || []
-      setitems(c)
-      setwhs(w.data)
+  useEffect(() => {
+    const cachedItems = getValue("itemmaster")
+    const cachedWarehouses = getValue("warehouses")
+
+    if (Array.isArray(cachedItems)) {
+      setitems(cachedItems)
     }
 
-    getData()
-  }, [])
+    if (isWarehouseCache(cachedWarehouses)) {
+      setwhs(cachedWarehouses.data)
+    }
+  }, [getValue])
 
   return (
     <div>
@@ -240,8 +225,8 @@ export default function Layout() {
                   list={e.list ?? []}
                   codeLabel="code"
                   nameLabel="name"
-                  value={(header as any)[e.code] || ''}
-                  onChange={(val: any) => {
+                  value={header[e.code as keyof InventoryMappingHeader] || ''}
+                  onChange={(val: string) => {
                     setHeader((prev) => ({
                       ...prev,
                       [e.code]: val,

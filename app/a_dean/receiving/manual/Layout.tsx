@@ -531,10 +531,10 @@ export default function ApprovalDecisionForm() {
           </div>
         </CardHeader>
 
-        <CardContent className='bg-white rounded-2xl p-4 space-y-6'>
-          <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-            <div className='mt-2'>
-              <Label className='pb-2' required>
+        <CardContent className='rounded-md border border-border bg-white p-4 md:p-5 space-y-5'>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className='space-y-2'>
+              <Label className='text-sm font-medium text-foreground' required>
                 Delivered From
               </Label>
               <SearchableCombobox
@@ -559,8 +559,8 @@ export default function ApprovalDecisionForm() {
               />
             </div>
             {headerFieldsLeft.map((field, i) => (
-              <div key={i} className='mt-1'>
-                <Label required={field.required} className='pb-2 mt-1'>{field.label}</Label>
+              <div key={i} className='space-y-2'>
+                <Label required={field.required} className='text-sm font-medium text-foreground'>{field.label}</Label>
                 <Input
                   required={field.required}
                   readOnly={field.disabled}
@@ -574,8 +574,8 @@ export default function ApprovalDecisionForm() {
 
           <Separator className='my-2' />
 
-          <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-            <div className='mt-1'>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className='space-y-2'>
               <DefaultFarmComboBox
                 label="Shipped To"
                 value={header?.delivered_to ?? undefined}
@@ -598,8 +598,8 @@ export default function ApprovalDecisionForm() {
             </div>
 
             {headerFieldsRight.map((field, i) => (
-              <div key={i} className='mt-1'>
-                <Label required={field.required} className='pb-2 mt-1'>{field.label}</Label>
+              <div key={i} className='space-y-2'>
+                <Label required={field.required} className='text-sm font-medium text-foreground'>{field.label}</Label>
                 <Input
                   required={field.required}
                   disabled={field.disabled}
@@ -610,8 +610,8 @@ export default function ApprovalDecisionForm() {
               </div>
             ))}
 
-            <div className='mt-1'>
-              <Label className='pb-2' required>Breed</Label>
+            <div className='space-y-2'>
+              <Label className='text-sm font-medium text-foreground' required>Breed</Label>
               <Input
                 required
                 value={headerBreed}

@@ -157,7 +157,8 @@ export default function Layout() {
             const res = await fetch('/api/dispatch')
 
             if (!res.ok) {
-                throw new Error('Failed to fetch dispatch data')
+                // throw new Error('Failed to fetch dispatch data')
+                toast("No Dispatch data found")
             }
 
             const unresolvedJson = await vwdmf_get_farmdr_unres()
