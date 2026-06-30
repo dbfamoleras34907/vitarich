@@ -1293,6 +1293,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                 setPostConfirmOpen(false)
               }}
             >
+              {/*  */}
               <Save className="size-4" />
               {saving ? 'Posting...' : 'Confirm Post'}
             </Button>
