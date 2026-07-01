@@ -801,6 +801,17 @@ export const NavFolders: NavFolder[] = [
             insert: true,
             edit: true,
           },
+          {
+            id: 56,
+            type: "Module",
+            title: "Inventory Transfer",
+            url: "/inv/it",
+            inventoriable: true,
+            section: "IV",
+            view: true,
+            insert: true,
+            edit: true,
+          },
         ],
       },
 

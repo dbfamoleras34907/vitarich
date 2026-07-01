@@ -2,7 +2,8 @@ alter table public.items
   add column if not exists is_delivery_item boolean not null default true,
   add column if not exists min_on_hand numeric(19, 6) null,
   add column if not exists max_on_hand numeric(19, 6) null,
-  add column if not exists default_expiration_months integer null;
+  add column if not exists default_expiration_months integer null,
+  add column if not exists fms_group text null;
 
 alter table public.items
   alter column is_inventory_item set default true,
@@ -29,6 +30,18 @@ set
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'items_fms_group_check'
+      and conrelid = 'public.items'::regclass
+  ) then
+    alter table public.items
+      add constraint items_fms_group_check check (
+        fms_group is null or fms_group in ('breeder', 'hatchery', 'broiler')
+      );
+  end if;
+
   if not exists (
     select 1
     from pg_constraint
@@ -78,6 +91,9 @@ create index if not exists items_void_idx
 
 create index if not exists items_item_group_idx
   on public.items (item_group);
+
+create index if not exists items_fms_group_idx
+  on public.items (fms_group);
 
 create index if not exists items_inventory_uom_idx
   on public.items (inventory_uom);

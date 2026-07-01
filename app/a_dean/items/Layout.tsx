@@ -28,6 +28,7 @@ export default function Layout() {
       { key: 'barcode', label: 'Barcode', type: 'text', disabled: true },
       { key: 'unit_measure', label: 'UoM', type: 'text', disabled: true },
       { key: 'item_group', label: 'Group', type: 'text', disabled: true },
+      { key: 'fms_group', label: 'FMS Group', type: 'text', disabled: true },
       { key: 'manage_batch_numbers', label: 'Batch', type: 'text', disabled: true },
       { key: 'batch_management_method', label: 'Batch Method', type: 'text', disabled: true },
       { key: 'default_expiration_months', label: 'Exp. Months', type: 'number', disabled: true },
@@ -110,6 +111,10 @@ export default function Layout() {
 
               if (col.key === 'manage_batch_numbers') {
                 return value ? 'Managed' : 'Not managed'
+              }
+
+              if (col.key === 'fms_group' && typeof value === 'string') {
+                return value.charAt(0).toUpperCase() + value.slice(1)
               }
 
               if (!value) return '-'

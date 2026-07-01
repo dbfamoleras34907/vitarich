@@ -39,6 +39,7 @@ export type GoodsReceiptBatchSeries = {
   next_number: number
   number_length: number
   date_format: 'NONE' | 'YYYYMMDD' | 'YYMMDD' | 'YYYYMM' | 'YYMM' | 'YYYY' | 'YY'
+  include_expiry_date: boolean | null
   active: boolean
 }
 
@@ -200,7 +201,7 @@ export async function getGoodsReceiptReferences() {
       .eq('active', true),
     db
       .from('batch_number_series')
-      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, active')
+      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, include_expiry_date, active')
       .eq('void', '1')
       .eq('active', true),
   ])
@@ -283,7 +284,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .eq('active', true),
     db
       .from('batch_number_series')
-      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, active')
+      .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, include_expiry_date, active')
       .eq('void', '1')
       .eq('active', true),
   ])
@@ -328,16 +329,18 @@ export async function findExistingItemBatch(
   manufacturingDate: string,
   expiryDate: string,
 ): Promise<GoodsReceiptExistingBatch | null> {
-  if (!itemCode || !manufacturingDate || !expiryDate) return null
+  if (!itemCode || !manufacturingDate) return null
 
-  const { data, error } = await db
+  let query = db
     .from('item_batches')
     .select('id, item_id, item_code, batch_number, manufacturing_date, expiry_date')
     .eq('item_code', itemCode)
     .eq('manufacturing_date', manufacturingDate)
-    .eq('expiry_date', expiryDate)
     .eq('void', '1')
-    .maybeSingle()
+
+  query = expiryDate ? query.eq('expiry_date', expiryDate) : query.is('expiry_date', null)
+
+  const { data, error } = await query.maybeSingle()
 
   if (error) throw error
   return data as GoodsReceiptExistingBatch | null

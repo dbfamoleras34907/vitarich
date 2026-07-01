@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  ArrowRightCircle,
   CalendarDays,
   Hash,
   List,
+  Loader2,
   PackageCheck,
   Plus,
   Save,
@@ -26,6 +28,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -53,6 +56,10 @@ import {
   UomConversionOption,
   UomGroupOption,
 } from './api'
+import {
+  BatchTransactionTrail,
+  getBatchTransactionTrail,
+} from '../../btch/api'
 
 const today = () => {
   const date = new Date()
@@ -142,7 +149,7 @@ const buildBatchNumber = (
   const prefix = series?.prefix ?? 'FD'
   const suffix = series?.suffix ?? ''
 
-  return [prefix, mfgPart, expPart, sequence, suffix]
+  return [prefix, mfgPart, series?.include_expiry_date === false ? '' : expPart, sequence, suffix]
     .map(part => String(part ?? '').trim())
     .filter(Boolean)
     .join(separator)
@@ -172,6 +179,24 @@ const addMonthsToDate = (dateValue: string, months: number) => {
 const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => {
   if (typeof warehouse === 'string') return warehouse.trim()
   return String(warehouse.whse_code ?? '').trim()
+}
+
+const formatQuantity = (value: number) =>
+  Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
+
+const formatDateTime = (value: string) => {
+  if (!value) return '-'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 type GoodsReceiveFormMode = 'draft' | 'post'
@@ -238,6 +263,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
+  const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
+  const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
@@ -395,12 +422,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.lines])
 
   const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
+  const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
+  const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
+  const batchTrailWarehouseCode = batchLineForLookup?.warehouseCode.trim() ?? ''
 
   useEffect(() => {
     const lineId = batchLineForLookup?.id
     const lineKey = lineId == null ? '' : String(lineId)
 
-    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate || !batchLineForLookup.expiryDate) {
+    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate) {
       if (lineKey) {
         setBatchMatches(current => ({
           ...current,
@@ -454,6 +484,41 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     batchLineForLookup?.manufacturingDate,
     batchLineForLookup?.expiryDate,
   ])
+
+  useEffect(() => {
+    if (!activeBatchLineId || !batchTrailItemCode || !batchTrailNumber) {
+      setBatchTrailRows([])
+      setLoadingBatchTrail(false)
+      return
+    }
+
+    let cancelled = false
+    setLoadingBatchTrail(true)
+    setBatchTrailRows([])
+
+    getBatchTransactionTrail(
+      batchTrailItemCode,
+      batchTrailNumber,
+      batchTrailWarehouseCode || undefined,
+    )
+      .then(rows => {
+        if (!cancelled) setBatchTrailRows(rows)
+      })
+      .catch(error => {
+        console.error(error)
+        if (!cancelled) {
+          setBatchTrailRows([])
+          toast.error('Unable to load batch transaction trail')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBatchTrail(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber, batchTrailWarehouseCode])
 
   if (!receipt) return <GoodsReceiveLoadingShell />
 
@@ -560,7 +625,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       needsBatchNumber: true,
       needsSupplierBatch: Boolean(rule?.require_supplier_batch),
       needsManufacturingDate: true,
-      needsExpiryDate: true,
+      needsExpiryDate: getBatchSeriesForRule(rule)?.include_expiry_date !== false,
     }
   }
 
@@ -568,8 +633,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     rule?.series_id ? batchSeries.find(series => series.id === rule.series_id) ?? null : null
 
   const getBatchKey = (line: GoodsReceiptLine) =>
-    line.itemCode && line.manufacturingDate && line.expiryDate
-      ? `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate}`
+    line.itemCode && line.manufacturingDate
+      ? `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate || 'NO_EXP'}`
       : ''
 
   const getExistingLineBatch = (line: GoodsReceiptLine) => {
@@ -624,6 +689,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           next_number: seriesOffset + 1,
           number_length: 5,
           date_format: 'YYMMDD' as GoodsReceiptBatchSeries['date_format'],
+          include_expiry_date: true,
           active: true,
         }
 
@@ -633,7 +699,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       '0',
     )
     const mfgPart = formatBatchDatePart(dateFormat, line.manufacturingDate)
-    const expPart = formatBatchDatePart(dateFormat, line.expiryDate)
+    const includesExpiryDate = numberedSeries.include_expiry_date !== false
+    const expPart = includesExpiryDate ? formatBatchDatePart(dateFormat, line.expiryDate) : ''
 
     return {
       templateSource: series ? `${series.code} - ${series.name}` : 'GR fallback template',
@@ -644,8 +711,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       suffix: numberedSeries.suffix ?? '',
       separator: numberedSeries.separator,
       dateFormat,
+      includesExpiryDate,
       defaultExpirationMonths: item?.default_expiration_months ?? null,
-      batchNumber: line.manufacturingDate && line.expiryDate
+      batchNumber: line.manufacturingDate && (!includesExpiryDate || line.expiryDate)
         ? existingLineBatch?.batchNumber || buildBatchNumber(numberedSeries, line.manufacturingDate, line.expiryDate)
         : '',
       reusedFromLine: existingLineBatch,
@@ -654,7 +722,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const getGeneratedBatchNumber = (line: GoodsReceiptLine) => {
     const requirement = getBatchRequirement(line)
-    if (!requirement || !line.manufacturingDate || !line.expiryDate) return ''
+    if (!requirement || !line.manufacturingDate || (requirement.needsExpiryDate && !line.expiryDate)) return ''
 
     return getBatchNumberParts(line).batchNumber
   }
@@ -672,9 +740,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const updateBatchLine = (line: GoodsReceiptLine, changes: Partial<GoodsReceiptLine>) => {
     const item = getSelectedItem(line)
+    const requirement = getBatchRequirement(line)
     const defaultExpirationMonths = item?.default_expiration_months
     const shouldDefaultExpiry = Object.prototype.hasOwnProperty.call(changes, 'manufacturingDate') &&
       !Object.prototype.hasOwnProperty.call(changes, 'expiryDate') &&
+      requirement?.needsExpiryDate !== false &&
       typeof defaultExpirationMonths === 'number'
     const defaultExpiryDate = shouldDefaultExpiry
       ? addMonthsToDate(changes.manufacturingDate ?? '', defaultExpirationMonths)
@@ -701,7 +771,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     const generatedBatchNumber = getGeneratedBatchNumber(line)
     if (!generatedBatchNumber) {
-      toast('Enter manufacturing and expiry dates first.')
+      toast(line.expiryDate ? 'Enter manufacturing date first.' : 'Enter required batch dates first.')
       return
     }
 
@@ -896,13 +966,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const activeBatchParts = activeBatchLine ? getBatchNumberParts(activeBatchLine) : null
   const activeBatchMatch = activeBatchLine ? batchMatches[String(activeBatchLine.id)] ?? null : null
   const activeLineBatchMatch = activeBatchParts?.reusedFromLine ?? null
+  const activeBatchDateText = activeBatchRequirement?.needsExpiryDate ? 'MFG and EXP dates' : 'MFG date'
   const activeBatchStatus = activeBatchMatch
     ? 'Existing database batch'
     : activeLineBatchMatch
       ? 'Reusing current GR batch'
       : activeBatchLine?.batchNumber
         ? 'New batch to create'
-        : 'Waiting for dates'
+        : activeBatchRequirement?.needsExpiryDate
+          ? 'Waiting for dates'
+          : 'Waiting for MFG date'
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
@@ -1057,7 +1130,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
-                                  {(!line.manufacturingDate || !line.expiryDate) && <span>MFG/EXP required</span>}
+                                  {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
+                                    <span>{batchRequirement.needsExpiryDate ? 'MFG/EXP required' : 'MFG required'}</span>
+                                  )}
                                 </span>
                               </span>
                               <Hash className="size-4 shrink-0 text-stone-400" />
@@ -1224,7 +1299,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
             <DialogContent
-              className="sm:max-w-2xl"
+              className="max-h-[85vh] overflow-y-auto sm:max-w-4xl"
               onKeyDown={event => {
                 if (event.key !== 'Enter' || event.shiftKey) return
 
@@ -1243,214 +1318,313 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </DialogHeader>
 
               {activeBatchLine && activeBatchRequirement && (
-                <div className="space-y-4">
-                  <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">
-                        {activeBatchRequirement.rule?.auto_generate || !activeBatchRequirement.rule ? 'Auto number' : 'Manual number'}
-                      </Badge>
-                      {activeBatchRequirement.rule?.manual_entry && (
-                        <Badge variant="outline">Manual edits allowed</Badge>
-                      )}
-                      {activeBatchSeries && (
-                        <Badge variant="secondary">{activeBatchSeries.code}</Badge>
-                      )}
-                      <Badge
-                        className={
-                          activeBatchMatch || activeLineBatchMatch
-                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
-                            : activeBatchLine?.batchNumber
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
-                              : 'bg-stone-100 text-stone-700 hover:bg-stone-100'
-                        }
-                      >
-                        {activeBatchStatus}
-                      </Badge>
-                      {(activeBatchMatch || activeLineBatchMatch) && (
-                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                          Reusing batch
+                <Tabs defaultValue="details" className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="details">Batch Details</TabsTrigger>
+                    <TabsTrigger value="trail">Transaction Trail</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="details" className="space-y-4">
+                    <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {activeBatchRequirement.rule?.auto_generate || !activeBatchRequirement.rule ? 'Auto number' : 'Manual number'}
                         </Badge>
+                        {activeBatchRequirement.rule?.manual_entry && (
+                          <Badge variant="outline">Manual edits allowed</Badge>
+                        )}
+                        {activeBatchSeries && (
+                          <Badge variant="secondary">{activeBatchSeries.code}</Badge>
+                        )}
+                        <Badge
+                          className={
+                            activeBatchMatch || activeLineBatchMatch
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                              : activeBatchLine?.batchNumber
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                                : 'bg-stone-100 text-stone-700 hover:bg-stone-100'
+                          }
+                        >
+                          {activeBatchStatus}
+                        </Badge>
+                        {(activeBatchMatch || activeLineBatchMatch) && (
+                          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                            Reusing batch
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeBatchMatch && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                        This item already has a batch for the selected {activeBatchDateText}. GR will use batch{' '}
+                        <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
+                      </div>
+                    )}
+
+                    {!activeBatchMatch && activeLineBatchMatch && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                        Another line in this GR already uses the same item and {activeBatchDateText}. This line will use batch{' '}
+                        <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {activeBatchRequirement.needsManufacturingDate && (
+                        <div className="space-y-2">
+                          <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
+                          <Input
+                            id="gr-manufacturing-date"
+                            type="date"
+                            value={activeBatchLine.manufacturingDate}
+                            onChange={event => updateBatchLine(activeBatchLine, { manufacturingDate: event.target.value })}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      {activeBatchRequirement.needsExpiryDate && (
+                        <div className="space-y-2">
+                          <Label htmlFor="gr-expiry-date" required>Expiry Date</Label>
+                          <Input
+                            id="gr-expiry-date"
+                            type="date"
+                            value={activeBatchLine.expiryDate}
+                            onChange={event => updateBatchLine(activeBatchLine, { expiryDate: event.target.value })}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      {activeBatchRequirement.needsSupplierBatch && (
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="gr-supplier-batch" required>Supplier Batch Number</Label>
+                          <Input
+                            id="gr-supplier-batch"
+                            value={activeBatchLine.supplierBatchNumber}
+                            onChange={event => updateLine(activeBatchLine.id, { supplierBatchNumber: event.target.value })}
+                            placeholder="Supplier batch no."
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="gr-batch-number">Generated Batch Number</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="gr-batch-number"
+                            value={activeBatchLine.batchNumber}
+                            readOnly={!activeBatchRequirement.rule?.manual_entry && Boolean(activeBatchRequirement.rule)}
+                            onChange={event => updateLine(activeBatchLine.id, { batchNumber: event.target.value })}
+                            placeholder={activeBatchRequirement.needsExpiryDate ? 'Enter MFG and EXP dates to generate' : 'Enter MFG date to generate'}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => refreshGeneratedBatchNumber(activeBatchLine)}
+                          >
+                            <Hash className="size-4" />
+                            Generate
+                          </Button>
+                        </div>
+                      </div>
+
+                      {activeBatchParts && (
+                        <div className="space-y-3 rounded-md border border-stone-200 bg-stone-50 p-3 sm:col-span-2">
+                          <div className="grid gap-3 sm:grid-cols-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-source">Template Source</Label>
+                              <Input
+                                id="gr-batch-source"
+                                value={activeBatchParts.templateSource}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-date-format">Date Format</Label>
+                              <Input
+                                id="gr-batch-date-format"
+                                value={activeBatchParts.dateFormat}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-exp-months">Exp. Months</Label>
+                              <Input
+                                id="gr-batch-exp-months"
+                                value={activeBatchParts.defaultExpirationMonths == null ? '-' : String(activeBatchParts.defaultExpirationMonths)}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-separator">Separator</Label>
+                              <Input
+                                id="gr-batch-separator"
+                                value={activeBatchParts.separator}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-5">
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-prefix">Prefix</Label>
+                              <Input
+                                id="gr-batch-prefix"
+                                value={activeBatchParts.prefix || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-mfg-part">MFG Part</Label>
+                              <Input
+                                id="gr-batch-mfg-part"
+                                value={activeBatchParts.mfgPart || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-exp-part">EXP Part</Label>
+                              <Input
+                                id="gr-batch-exp-part"
+                                value={activeBatchParts.expPart || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-sequence">Sequence</Label>
+                              <Input
+                                id="gr-batch-sequence"
+                                value={activeBatchParts.sequence}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-suffix">Suffix</Label>
+                              <Input
+                                id="gr-batch-suffix"
+                                value={activeBatchParts.suffix || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    <p className="mt-2 text-xs text-stone-500">
-                      Manufacturing and expiry dates are required. The batch number is generated from those dates, unless the same item and dates already exist.
-                    </p>
-                  </div>
+                  </TabsContent>
 
-                  {activeBatchMatch && (
-                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                      This item already has a batch for the selected MFG and EXP dates. GR will use batch{' '}
-                      <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
-                    </div>
-                  )}
-
-                  {!activeBatchMatch && activeLineBatchMatch && (
-                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                      Another line in this GR already uses the same item, MFG date, and EXP date. This line will use batch{' '}
-                      <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
-                    </div>
-                  )}
-
-                  {!activeBatchMatch && !activeLineBatchMatch && activeBatchLine.batchNumber && (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      This batch does not exist yet. It will be created when this GR is saved.
-                    </div>
-                  )}
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {activeBatchRequirement.needsManufacturingDate && (
-                      <div className="space-y-2">
-                        <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
-                        <Input
-                          id="gr-manufacturing-date"
-                          type="date"
-                          value={activeBatchLine.manufacturingDate}
-                          onChange={event => updateBatchLine(activeBatchLine, { manufacturingDate: event.target.value })}
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
-                        />
+                  <TabsContent value="trail" className="space-y-4">
+                    <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Batch</div>
+                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.batchNumber || '-'}</div>
                       </div>
-                    )}
-
-                    {activeBatchRequirement.needsExpiryDate && (
-                      <div className="space-y-2">
-                        <Label htmlFor="gr-expiry-date" required>Expiry Date</Label>
-                        <Input
-                          id="gr-expiry-date"
-                          type="date"
-                          value={activeBatchLine.expiryDate}
-                          onChange={event => updateBatchLine(activeBatchLine, { expiryDate: event.target.value })}
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
-                        />
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Item</div>
+                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.itemCode || '-'}</div>
                       </div>
-                    )}
-
-                    {activeBatchRequirement.needsSupplierBatch && (
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="gr-supplier-batch" required>Supplier Batch Number</Label>
-                        <Input
-                          id="gr-supplier-batch"
-                          value={activeBatchLine.supplierBatchNumber}
-                          onChange={event => updateLine(activeBatchLine.id, { supplierBatchNumber: event.target.value })}
-                          placeholder="Supplier batch no."
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
-                        />
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Warehouse</div>
+                        <div className="font-semibold text-stone-950">{activeBatchLine.warehouseCode || '-'}</div>
                       </div>
-                    )}
-
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="gr-batch-number">Generated Batch Number</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="gr-batch-number"
-                          value={activeBatchLine.batchNumber}
-                          readOnly={!activeBatchRequirement.rule?.manual_entry && Boolean(activeBatchRequirement.rule)}
-                          onChange={event => updateLine(activeBatchLine.id, { batchNumber: event.target.value })}
-                          placeholder="Enter MFG and EXP dates to generate"
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => refreshGeneratedBatchNumber(activeBatchLine)}
-                        >
-                          <Hash className="size-4" />
-                          Generate
-                        </Button>
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Line Quantity</div>
+                        <div className="font-semibold tabular-nums text-stone-950">{formatQuantity(activeBatchLine.baseQty)}</div>
                       </div>
                     </div>
 
-                    {activeBatchParts && (
-                      <div className="space-y-3 rounded-md border border-stone-200 bg-stone-50 p-3 sm:col-span-2">
-                        <div className="grid gap-3 sm:grid-cols-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-source">Template Source</Label>
-                            <Input
-                              id="gr-batch-source"
-                              value={activeBatchParts.templateSource}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-date-format">Date Format</Label>
-                            <Input
-                              id="gr-batch-date-format"
-                              value={activeBatchParts.dateFormat}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-exp-months">Exp. Months</Label>
-                            <Input
-                              id="gr-batch-exp-months"
-                              value={activeBatchParts.defaultExpirationMonths == null ? '-' : String(activeBatchParts.defaultExpirationMonths)}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-separator">Separator</Label>
-                            <Input
-                              id="gr-batch-separator"
-                              value={activeBatchParts.separator}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-5">
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-prefix">Prefix</Label>
-                            <Input
-                              id="gr-batch-prefix"
-                              value={activeBatchParts.prefix || '-'}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-mfg-part">MFG Part</Label>
-                            <Input
-                              id="gr-batch-mfg-part"
-                              value={activeBatchParts.mfgPart || '-'}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-exp-part">EXP Part</Label>
-                            <Input
-                              id="gr-batch-exp-part"
-                              value={activeBatchParts.expPart || '-'}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-sequence">Sequence</Label>
-                            <Input
-                              id="gr-batch-sequence"
-                              value={activeBatchParts.sequence}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="gr-batch-suffix">Suffix</Label>
-                            <Input
-                              id="gr-batch-suffix"
-                              value={activeBatchParts.suffix || '-'}
-                              disabled
-                              className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
-                            />
-                          </div>
-                        </div>
+                    {loadingBatchTrail && (
+                      <div className="flex min-h-32 items-center justify-center gap-2 rounded-md border border-dashed border-stone-300 bg-white text-sm text-stone-600">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading transaction trail...
                       </div>
                     )}
-                  </div>
-                </div>
+
+                    {!loadingBatchTrail && (!activeBatchLine.batchNumber || !activeBatchLine.itemCode) && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                        Enter an item and batch number to view the transaction trail.
+                      </div>
+                    )}
+
+                    {!loadingBatchTrail && activeBatchLine.batchNumber && activeBatchLine.itemCode && batchTrailRows.length === 0 && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                        No inventory postings were found for this batch.
+                      </div>
+                    )}
+
+                    {!loadingBatchTrail && batchTrailRows.length > 0 && (
+                      <div className="relative space-y-3 pl-5">
+                        <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
+                        {batchTrailRows.map(row => {
+                          const isOut = row.signedQty < 0
+                          const movementLabel = isOut ? 'OUT' : 'IN'
+
+                          return (
+                            <div key={row.id} className="relative rounded-md border border-stone-200 bg-white p-3 shadow-sm">
+                              <div className={`absolute -left-[17px] top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-white ${isOut ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-700'}`}>
+                                <ArrowRightCircle className={`h-4 w-4 ${isOut ? 'rotate-180' : ''}`} />
+                              </div>
+
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                      {movementLabel}
+                                    </span>
+                                    <span className="font-semibold text-stone-950">{row.documentLabel}</span>
+                                    <span className="text-xs text-stone-500">{row.sourceDocType || '-'}</span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-stone-500">
+                                    {formatDateTime(row.createdAt)}
+                                  </div>
+                                </div>
+
+                                <div className="text-right">
+                                  <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
+                                    {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
+                                  </div>
+                                  <div className="text-xs text-stone-500">
+                                    Balance {formatQuantity(row.runningQty)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Warehouse</span>
+                                  <span className="text-stone-900">{row.warehouseCode || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Bin</span>
+                                  <span className="text-stone-900">{row.binCode || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Reference</span>
+                                  <span className="text-stone-900">{row.ref || row.ref2 || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Posting ID</span>
+                                  <span className="text-stone-900">#{row.id}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
               )}
 
               <DialogFooter>

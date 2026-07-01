@@ -147,7 +147,7 @@ export function AppSidebar() {
               </div>
               <GlobalSearch collapsed={false} />
 
-              <div className="mt-4 max-h-[calc(100vh-15rem)] space-y-2 overflow-y-auto rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+              <div className="mt-4 max-h-[calc(100vh-15rem)] space-y-2 overflow-y-auto rounded-md bg-white/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)]">
 
                 {filteredNavFolders.map(folder => (
                   <div key={folder.id}>
@@ -246,9 +246,9 @@ export function AppSidebar() {
         )}
       </div>
 
-      <nav className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+      <nav className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-8">
 
-        <div className="rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+        <div className="mb-2 rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
           <div className="px-3 py-2 text-xs font-semibold uppercase text-sidebar-foreground/55">{!collapsed && "Navigation"} </div>
           {filteredNavFolders.map(folder => (
             <div key={folder.id} className="text-sidebar-foreground/80">
@@ -325,7 +325,7 @@ export function AppSidebar() {
         )} */}
 
       </nav>
-      <div className="px-3 pb-3">
+      <div className="shrink-0 px-3 pb-3 pt-3">
         <div className="rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
           <UserAccountMenu session={session} collapsed={collapsed} />
         </div>

@@ -29,6 +29,7 @@ export default function Layout() {
     const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
     const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
     const [loadingWarehouses, setLoadingWarehouses] = useState(false)
+    const showBuildingSection = false
 
     const [buildingCounter, setBuildingCounter] = useState<number | null>(null)
     const [penCounter, setPenCounter] = useState<number | null>(null)
@@ -486,122 +487,67 @@ export default function Layout() {
 
                 </div>
 
-                <Separator />
+                {showBuildingSection && (
+                    <>
+                        <Separator />
 
-                {/* BUILDINGS */}
+                        {/* BUILDINGS */}
 
-                <div className='py-4 px-4 font-semibold text-xl flex justify-between'>
+                        <div className='py-4 px-4 font-semibold text-xl flex justify-between'>
 
-                    Buildings
+                            Buildings
 
-                    <Button
-                        size="sm"
-                        onClick={addBuilding}
-                        disabled={buildingCounter === null}
-                    >
-                        <Plus className="mr-1 h-4 w-4" /> Add Building
-                    </Button>
+                            <Button
+                                size="sm"
+                                onClick={addBuilding}
+                                disabled={buildingCounter === null}
+                            >
+                                <Plus className="mr-1 h-4 w-4" /> Add Building
+                            </Button>
 
-                </div>
+                        </div>
 
-                <div className='space-y-3 m-4'>
+                        <div className='space-y-3 m-4'>
 
-                    {buildings.map((b, idx) => (
+                            {buildings.map((b, idx) => (
 
-                        <div key={b.id} className='border rounded-md'>
+                                <div key={b.id} className='border rounded-md'>
 
-                            <div className='flex items-center justify-between px-3 py-2 bg-gray-50'>
+                                    <div className='flex items-center justify-between px-3 py-2 bg-gray-50'>
 
-                                <div className='font-medium text-sm'>
-                                    Building {idx + 1}
-                                </div>
-
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    disabled={penCounter === null}
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        addPen(b.id)
-                                    }}
-                                >
-                                    <Plus className="mr-1 h-4 w-4" /> Pen
-                                </Button>
-
-                            </div>
-
-                            {/* <div className='p-3 space-y-3'>
-
-                                <div className='grid grid-cols-4 gap-3'>
-
-                                    {buildingObj.map((i, x) => (
-
-                                        <div key={x} className={i.isLong ? 'col-span-4' : ''}>
-
-                                            <Label className='text-xs'>{i.name}</Label>
-
-                                            <Input
-                                                className='h-8 text-sm'
-                                                value={b.data?.[i.code] || ""}
-                                                onChange={e =>
-                                                    updateBuilding(b.id, i.code, e.target.value)
-                                                }
-                                            />
-
+                                        <div className='font-medium text-sm'>
+                                            Building {idx + 1}
                                         </div>
 
-                                    ))}
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            disabled={penCounter === null}
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                addPen(b.id)
+                                            }}
+                                        >
+                                            <Plus className="mr-1 h-4 w-4" /> Pen
+                                        </Button>
 
-                                </div>
+                                    </div>
 
-                            </div> */}
-                            <div className='p-3 space-y-3'>
+                                    {/* <div className='p-3 space-y-3'>
 
-                                <div className='grid grid-cols-4 gap-3'>
+                                        <div className='grid grid-cols-4 gap-3'>
 
-                                    {buildingObj.map((i, x) => (
+                                            {buildingObj.map((i, x) => (
 
-                                        <div key={x} className={i.isLong ? 'col-span-4' : ''}>
+                                                <div key={x} className={i.isLong ? 'col-span-4' : ''}>
 
-                                            <Label className='text-xs'>{i.name}</Label>
-
-                                            <Input
-                                                className='h-8 text-sm'
-                                                value={b.data?.[i.code] || ""}
-                                                onChange={e =>
-                                                    updateBuilding(b.id, i.code, e.target.value)
-                                                }
-                                            />
-
-                                        </div>
-
-                                    ))}
-
-                                </div>
-
-                                {/* PENS */}
-
-                                {b.pens?.map((p, pIdx: number) => (
-
-                                    <div key={p.id} className="border rounded p-3 bg-gray-50">
-
-                                        <div className="text-xs font-medium mb-2">
-                                            Pen {pIdx + 1}
-                                        </div>
-
-                                        <div className="grid grid-cols-3 gap-3">
-
-                                            {penObj.map((i, x) => (
-
-                                                <div key={x}>
-
-                                                    <Label className="text-xs">{i.name}</Label>
+                                                    <Label className='text-xs'>{i.name}</Label>
 
                                                     <Input
-                                                        className="h-8 text-sm"
-                                                        value={p.data?.[i.code] || ""}
+                                                        className='h-8 text-sm'
+                                                        value={b.data?.[i.code] || ""}
                                                         onChange={e =>
-                                                            updatePen(b.id, p.id, i.code, e.target.value)
+                                                            updateBuilding(b.id, i.code, e.target.value)
                                                         }
                                                     />
 
@@ -611,16 +557,75 @@ export default function Layout() {
 
                                         </div>
 
+                                    </div> */}
+                                    <div className='p-3 space-y-3'>
+
+                                        <div className='grid grid-cols-4 gap-3'>
+
+                                            {buildingObj.map((i, x) => (
+
+                                                <div key={x} className={i.isLong ? 'col-span-4' : ''}>
+
+                                                    <Label className='text-xs'>{i.name}</Label>
+
+                                                    <Input
+                                                        className='h-8 text-sm'
+                                                        value={b.data?.[i.code] || ""}
+                                                        onChange={e =>
+                                                            updateBuilding(b.id, i.code, e.target.value)
+                                                        }
+                                                    />
+
+                                                </div>
+
+                                            ))}
+
+                                        </div>
+
+                                        {/* PENS */}
+
+                                        {b.pens?.map((p, pIdx: number) => (
+
+                                            <div key={p.id} className="border rounded p-3 bg-gray-50">
+
+                                                <div className="text-xs font-medium mb-2">
+                                                    Pen {pIdx + 1}
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-3">
+
+                                                    {penObj.map((i, x) => (
+
+                                                        <div key={x}>
+
+                                                            <Label className="text-xs">{i.name}</Label>
+
+                                                            <Input
+                                                                className="h-8 text-sm"
+                                                                value={p.data?.[i.code] || ""}
+                                                                onChange={e =>
+                                                                    updatePen(b.id, p.id, i.code, e.target.value)
+                                                                }
+                                                            />
+
+                                                        </div>
+
+                                                    ))}
+
+                                                </div>
+
+                                            </div>
+
+                                        ))}
+
                                     </div>
+                                </div>
 
-                                ))}
+                            ))}
 
-                            </div>
                         </div>
-
-                    ))}
-
-                </div>
+                    </>
+                )}
 
                 <Separator />
 

@@ -1,7 +1,9 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import SearchableCombobox from '@/components/SearchableCombobox'
+import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import DynamicTable from '@/components/ui/DataTableV2'
 import {
   Dialog,
@@ -19,6 +21,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 import {
   ArrowRightCircle,
   CheckCircle2,
@@ -34,7 +37,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   BatchDateFormat,
@@ -70,6 +73,7 @@ type BatchSeriesForm = {
   number_length: string
   reset_type: BatchResetType
   date_format: BatchDateFormat
+  include_expiry_date: boolean
   active: boolean
   remarks: string
 }
@@ -105,6 +109,8 @@ type BatchSeriesRow = BatchNumberSeries & {
 
 type BatchRuleRow = BatchRule & {
   series_label: string
+  scope_label: string
+  behavior_label: string
   item_group_label: string
   item_label: string
   warehouse_label: string
@@ -143,6 +149,7 @@ const emptySeriesForm: BatchSeriesForm = {
   number_length: '5',
   reset_type: 'Never',
   date_format: 'YYMMDD',
+  include_expiry_date: true,
   active: true,
   remarks: '',
 }
@@ -177,8 +184,26 @@ const emptyReferences: BatchReferences = {
   farms: [],
 }
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error ?? '')
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message
+  if (!error || typeof error !== 'object') return String(error ?? '')
+
+  const errorShape = error as {
+    message?: string
+    details?: string
+    hint?: string
+    code?: string
+  }
+
+  return [
+    errorShape.message,
+    errorShape.details,
+    errorShape.hint,
+    errorShape.code ? `Code: ${errorShape.code}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ') || 'Unknown error'
+}
 
 const toOptionalNumber = (value: string) => {
   const trimmed = value.trim()
@@ -208,6 +233,14 @@ const addDays = (date: Date, days: number) => {
   return nextDate
 }
 
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
 const buildSampleNumber = (series: {
   prefix?: string | null
   suffix?: string | null
@@ -215,13 +248,14 @@ const buildSampleNumber = (series: {
   next_number: number | string
   number_length: number | string
   date_format: BatchDateFormat
+  include_expiry_date?: boolean | null
 }) => {
   const sampleMfgDate = new Date()
   const sampleExpDate = addDays(sampleMfgDate, 90)
   const nextNumber = Math.max(0, Number(series.next_number) || 0)
   const numberLength = Math.max(1, Number(series.number_length) || 1)
   const mfgPart = formatDatePart(series.date_format, sampleMfgDate)
-  const expPart = formatDatePart(series.date_format, sampleExpDate)
+  const expPart = series.include_expiry_date === false ? '' : formatDatePart(series.date_format, sampleExpDate)
   const sequence = String(nextNumber).padStart(numberLength, '0')
   const separator = series.separator || '-'
 
@@ -269,6 +303,7 @@ const toSeriesForm = (series: BatchNumberSeries): BatchSeriesForm => ({
   number_length: String(series.number_length),
   reset_type: series.reset_type,
   date_format: series.date_format,
+  include_expiry_date: series.include_expiry_date ?? true,
   active: series.active,
   remarks: series.remarks ?? '',
 })
@@ -283,6 +318,7 @@ const toSeriesPayload = (form: BatchSeriesForm): BatchNumberSeriesPayload => ({
   number_length: Number(form.number_length),
   reset_type: form.reset_type,
   date_format: form.date_format,
+  include_expiry_date: form.include_expiry_date,
   active: form.active,
   remarks: form.remarks.trim() || null,
 })
@@ -353,9 +389,13 @@ function BoolSwitch({
 }
 
 export default function Layout() {
+  const { getValue } = useGlobalContext()
   const [series, setSeries] = useState<BatchNumberSeries[]>([])
   const [rules, setRules] = useState<BatchRule[]>([])
   const [createdBatches, setCreatedBatches] = useState<CreatedBatchInventory[]>([])
+  const [batchDateFrom, setBatchDateFrom] = useState(() => toDateInputValue(addDays(new Date(), -30)))
+  const [batchDateTo, setBatchDateTo] = useState(() => toDateInputValue(new Date()))
+  const [batchFarmId, setBatchFarmId] = useState<string | number>(() => getValue('DefaultFarmId') ?? '')
   const [references, setReferences] = useState<BatchReferences>(emptyReferences)
   const [seriesForm, setSeriesForm] = useState<BatchSeriesForm>(emptySeriesForm)
   const [ruleForm, setRuleForm] = useState<BatchRuleForm>(emptyRuleForm)
@@ -405,6 +445,12 @@ export default function Layout() {
         item_label: optionLabel(rule.item_id ? itemMap.get(rule.item_id) : undefined),
         warehouse_label: optionLabel(rule.warehouse_id ? warehouseMap.get(rule.warehouse_id) : undefined),
         branch_label: optionLabel(rule.branch_id ? farmMap.get(rule.branch_id) : undefined),
+        scope_label: [
+          optionLabel(rule.item_group_id ? itemGroupMap.get(rule.item_group_id) : undefined),
+          optionLabel(rule.warehouse_id ? warehouseMap.get(rule.warehouse_id) : undefined),
+          optionLabel(rule.branch_id ? farmMap.get(rule.branch_id) : undefined),
+        ].filter(label => label !== '-').join(' / ') || 'All items and locations',
+        behavior_label: `${rule.issue_method} / ${rule.default_status}`,
         status_label: rule.active ? 'Active' : 'Inactive',
       })),
     [farmMap, itemGroupMap, itemMap, rules, seriesMap, warehouseMap],
@@ -426,13 +472,17 @@ export default function Layout() {
 
   const sampleNumber = useMemo(() => buildSampleNumber(toSeriesPayload(seriesForm)), [seriesForm])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
       const [seriesData, rulesData, createdBatchData, referenceData] = await Promise.all([
         getBatchNumberSeries(),
         getBatchRules(),
-        getCreatedBatchInventory(),
+        getCreatedBatchInventory({
+          dateFrom: batchDateFrom || undefined,
+          dateTo: batchDateTo || undefined,
+          farmId: batchFarmId || undefined,
+        }),
         getBatchReferences(),
       ])
       setSeries(seriesData)
@@ -445,11 +495,20 @@ export default function Layout() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [batchDateFrom, batchDateTo, batchFarmId])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
+
+  useEffect(() => {
+    if (batchFarmId) return
+
+    const defaultFarmId = getValue('DefaultFarmId')
+    if (defaultFarmId) {
+      setBatchFarmId(defaultFarmId)
+    }
+  }, [batchFarmId, getValue])
 
   const updateSeriesForm = <K extends keyof BatchSeriesForm>(key: K, value: BatchSeriesForm[K]) => {
     setSeriesForm(current => ({ ...current, [key]: value }))
@@ -513,11 +572,11 @@ export default function Layout() {
       resetSeriesForm()
       await loadData()
     } catch (error) {
-      console.error(error)
       const message = getErrorMessage(error)
+      console.warn('Unable to save batch number series:', message)
       toast.error(message.includes('duplicate') || message.includes('batch_number_series_code_key')
         ? 'Series code already exists'
-        : 'Unable to save batch number series')
+        : message)
     } finally {
       setSavingSeries(false)
     }
@@ -610,7 +669,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="mt-2">
+    <div className="mt-2 overflow-x-hidden">
       <div className="mx-4 mt-8 flex items-center justify-between">
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
@@ -621,8 +680,8 @@ export default function Layout() {
 
       <Separator className="my-2" />
 
-      <div className="mx-4 rounded-lg bg-white p-4">
-        <Tabs defaultValue="inventory" className="w-full">
+      <div className="mx-4 max-w-full overflow-hidden rounded-lg bg-white p-4">
+        <Tabs defaultValue="inventory" className="w-full min-w-0">
           <TabsList className="bg-muted">
             <TabsTrigger value="inventory">
               <PackageSearch className="h-4 w-4" />
@@ -638,7 +697,36 @@ export default function Layout() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="inventory" className="mt-4">
+          <TabsContent value="inventory" className="mt-4 min-w-0">
+            <div className="mb-4 grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[180px_180px_minmax(220px,320px)]">
+              <div className="space-y-2">
+                <Label htmlFor="batch-date-from">From Date</Label>
+                <Input
+                  id="batch-date-from"
+                  type="date"
+                  value={batchDateFrom}
+                  onChange={event => setBatchDateFrom(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="batch-date-to">To Date</Label>
+                <Input
+                  id="batch-date-to"
+                  type="date"
+                  value={batchDateTo}
+                  onChange={event => setBatchDateTo(event.target.value)}
+                />
+              </div>
+
+              <DefaultFarmComboBox
+                label="Farm"
+                value={batchFarmId}
+                valueKey="id"
+                setValue={setBatchFarmId}
+              />
+            </div>
+
             <DynamicTable
               loading={loading}
               initialFilters={[]}
@@ -648,7 +736,11 @@ export default function Layout() {
               emptyMessage="No batches created by your user were found"
               rowKey="id"
               columns={[
-                { key: 'batchNumber', label: 'Batch' },
+                { key: 'batchNumber', label: 'Batch', render: row => (
+                  <span className="inline-flex max-w-full items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                    <span className="truncate">{row.batchNumber || '-'}</span>
+                  </span>
+                ) },
                 { key: 'item_label', label: 'Item' },
                 { key: 'warehouse_label', label: 'Warehouse' },
                 { key: 'onHandQty', label: 'On Hand', align: 'right', render: row => (
@@ -669,14 +761,13 @@ export default function Layout() {
                 { key: 'trail', label: '', type: 'button', align: 'right', sortable: false, searchable: false, render: row => (
                   <Button
                     type="button"
-                    size="icon-sm"
                     variant="ghost"
                     title="Show batch transaction trail"
                     onClick={() => openBatchTrail(row)}
                     className="text-amber-600 hover:bg-amber-50 hover:text-amber-700"
                   >
                     <ArrowRightCircle className="h-4 w-4" />
-                    <span className="sr-only">Show batch transaction trail</span>
+                    <span>Show trail</span>
                   </Button>
                 ) },
               ]}
@@ -684,9 +775,9 @@ export default function Layout() {
             />
           </TabsContent>
 
-          <TabsContent value="rules" className="mt-4">
-            <div className="grid gap-4 xl:grid-cols-[460px_minmax(0,1fr)]">
-              <form onSubmit={handleRuleSubmit} className="rounded-lg border border-stone-200 bg-stone-50 p-4">
+          <TabsContent value="rules" className="mt-4 min-w-0">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[460px_minmax(0,1fr)]">
+              <form onSubmit={handleRuleSubmit} className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-4">
                 <div className="flex items-center justify-between gap-3 border-b border-stone-200 pb-3">
                   <div>
                     <h1 className="text-base font-semibold text-stone-950">
@@ -896,14 +987,13 @@ export default function Layout() {
                   emptyMessage="No batch rules found"
                   rowKey="id"
                   columns={[
-                    { key: 'code', label: 'Code' },
+                    { key: 'code', label: 'Code', render: row => (
+                      <span className="font-medium text-stone-900">{row.code}</span>
+                    ) },
                     { key: 'name', label: 'Name' },
                     { key: 'series_label', label: 'Series' },
-                    { key: 'item_group_label', label: 'Item Group' },
-                    { key: 'warehouse_label', label: 'Warehouse' },
-                    { key: 'branch_label', label: 'Farm Code' },
-                    { key: 'issue_method', label: 'Issue' },
-                    { key: 'default_status', label: 'Default Status' },
+                    { key: 'scope_label', label: 'Scope' },
+                    { key: 'behavior_label', label: 'Issue / Status' },
                     { key: 'status_label', label: 'Status', render: row => (
                       <StatusBadge active={row.active} label={row.status_label} />
                     ) },
@@ -926,16 +1016,16 @@ export default function Layout() {
             </div>
           </TabsContent>
 
-          <TabsContent value="series" className="mt-4">
-            <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-              <form onSubmit={handleSeriesSubmit} className="rounded-lg border border-stone-200 bg-stone-50 p-4">
+          <TabsContent value="series" className="mt-4 min-w-0">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+              <form onSubmit={handleSeriesSubmit} className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-4">
                 <div className="flex items-center justify-between gap-3 border-b border-stone-200 pb-3">
                   <div>
                     <h1 className="text-base font-semibold text-stone-950">
                       {editingSeriesId ? 'Edit Series' : 'New Series'}
                     </h1>
                     <p className="mt-1 text-sm text-stone-500">
-                      Sample: {sampleNumber} using prefix, MFG date, EXP date, sequence, suffix.
+                      Sample: {sampleNumber} using prefix, MFG date{seriesForm.include_expiry_date ? ', EXP date' : ''}, sequence, suffix.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -995,6 +1085,21 @@ export default function Layout() {
                     </div>
                   </div>
 
+                  <label htmlFor="series-exclude-expiry" className="flex items-start gap-3 rounded-md border border-stone-200 bg-white px-3 py-3 text-sm">
+                    <Checkbox
+                      id="series-exclude-expiry"
+                      checked={!seriesForm.include_expiry_date}
+                      onCheckedChange={checked => updateSeriesForm('include_expiry_date', checked !== true)}
+                      className="mt-0.5"
+                    />
+                    <span className="grid gap-1">
+                      <span className="font-medium text-stone-900">Exclude EXP Date from Series</span>
+                      <span className="text-xs font-normal text-stone-500">
+                        Check when batches can have no expiry date and the batch number should use prefix, MFG date, sequence, and suffix only.
+                      </span>
+                    </span>
+                  </label>
+
                   <div className="grid grid-cols-2 gap-3">
                     <label className="space-y-2 text-sm font-medium text-stone-900">
                       <span>Reset Type</span>
@@ -1041,6 +1146,7 @@ export default function Layout() {
                     { key: 'code', label: 'Code' },
                     { key: 'name', label: 'Name' },
                     { key: 'sample_number', label: 'Sample Number' },
+                    { key: 'include_expiry_date', label: 'EXP in Series', render: row => row.include_expiry_date === false ? 'Excluded' : 'Included' },
                     { key: 'next_number', label: 'Next', align: 'right' },
                     { key: 'reset_type', label: 'Reset' },
                     { key: 'status_label', label: 'Status', render: row => (
@@ -1156,13 +1262,15 @@ export default function Layout() {
                               <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
                                 {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
                               </div>
-                              <div className="text-xs text-stone-500">
-                                Balance {formatQuantity(row.runningQty)}
-                              </div>
+                              <div className="text-xs text-stone-500">Movement</div>
                             </div>
                           </div>
 
-                          <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
+                          <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-5">
+                            <div className="rounded-md bg-amber-50 px-2 py-1">
+                              <span className="block font-medium text-amber-700">Running Balance</span>
+                              <span className="font-semibold tabular-nums text-amber-900">{formatQuantity(row.runningQty)}</span>
+                            </div>
                             <div className="rounded-md bg-stone-50 px-2 py-1">
                               <span className="block font-medium text-stone-500">Warehouse</span>
                               <span className="text-stone-900">{row.warehouseCode || '-'}</span>

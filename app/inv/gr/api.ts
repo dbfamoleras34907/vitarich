@@ -182,24 +182,28 @@ async function getOrCreateItemBatch({
   batchNumberByKey: Map<string, string>
 }) {
   const batchNumber = line.batchNumber.trim()
-  if (!line.itemCode || !line.manufacturingDate || !line.expiryDate || !batchNumber) {
+  if (!line.itemCode || !line.manufacturingDate || !batchNumber) {
     return { batchNumber, created: false }
   }
 
-  const batchKey = `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate}`
+  const batchKey = `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate || 'NO_EXP'}`
   const existingLineBatchNumber = batchNumberByKey.get(batchKey)
   if (existingLineBatchNumber) {
     return { batchNumber: existingLineBatchNumber, created: false }
   }
 
-  const { data: existingBatch, error: existingBatchError } = await db
+  let existingBatchQuery = db
     .from('item_batches')
     .select('id, batch_number')
     .eq('item_code', line.itemCode)
     .eq('manufacturing_date', line.manufacturingDate)
-    .eq('expiry_date', line.expiryDate)
     .eq('void', '1')
-    .maybeSingle()
+
+  existingBatchQuery = line.expiryDate
+    ? existingBatchQuery.eq('expiry_date', line.expiryDate)
+    : existingBatchQuery.is('expiry_date', null)
+
+  const { data: existingBatch, error: existingBatchError } = await existingBatchQuery.maybeSingle()
 
   if (existingBatchError) throw existingBatchError
   if (existingBatch) {
@@ -216,7 +220,7 @@ async function getOrCreateItemBatch({
     batch_number: batchNumber,
     supplier_batch_number: line.supplierBatchNumber.trim() || null,
     manufacturing_date: line.manufacturingDate,
-    expiry_date: line.expiryDate,
+    expiry_date: line.expiryDate || null,
     batch_rule_id: line.batchRuleId,
     source_gr_id: goodsReceiptId,
     status: 'Active',
@@ -241,14 +245,18 @@ async function getOrCreateItemBatch({
 
   if (insertBatchError.code !== '23505') throw insertBatchError
 
-  const { data: racedBatch, error: racedBatchError } = await db
+  let racedBatchQuery = db
     .from('item_batches')
     .select('id, batch_number')
     .eq('item_code', line.itemCode)
     .eq('manufacturing_date', line.manufacturingDate)
-    .eq('expiry_date', line.expiryDate)
     .eq('void', '1')
-    .maybeSingle()
+
+  racedBatchQuery = line.expiryDate
+    ? racedBatchQuery.eq('expiry_date', line.expiryDate)
+    : racedBatchQuery.is('expiry_date', null)
+
+  const { data: racedBatch, error: racedBatchError } = await racedBatchQuery.maybeSingle()
 
   if (racedBatchError) throw racedBatchError
 

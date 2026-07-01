@@ -9,6 +9,7 @@ export type ItemInsert = {
   unit_measure?: string
   inventory_uom?: string
   item_group?: string
+  fms_group?: string
   group?: string
   is_inventory_item?: boolean
   is_sales_item?: boolean
@@ -41,6 +42,7 @@ export type ItemRow = Required<Pick<ItemInsert, 'item_code'>> & {
   unit_measure: string | null
   inventory_uom: string | null
   item_group: string | null
+  fms_group: string | null
   group: string | null
   is_inventory_item: boolean
   is_sales_item: boolean
@@ -141,6 +143,7 @@ const cleanItemPayload = (payload: ItemInsert, itemCode: string) => {
     unit_measure: payload.unit_measure?.trim() || 'pcs',
     inventory_uom: payload.inventory_uom?.trim() || payload.unit_measure?.trim() || 'pcs',
     item_group: payload.item_group?.trim() || null,
+    fms_group: payload.fms_group?.trim() || null,
     group: payload.group?.trim() || payload.item_group?.trim() || null,
     is_inventory_item: payload.is_inventory_item ?? true,
     is_sales_item: payload.is_sales_item ?? true,

@@ -10,6 +10,7 @@ import GlobalLoading from "@/loading";
 import { SidebarProvider } from "@/lib/sidebar/SidebarProvider";
 import AppSideBarControler from "@/lib/sidebar/AppSideBarControler";
 import { Toaster } from "sonner";
+import InternetErrorToast from '@/components/InternetErrorToast';
 import RouteGuard from '@/lib/SignupUpdateGuard';
 import GlobalLoaderController from '@/lib/context/GlobalLoaderController';
 import DefaultFarm from './utils/DefaultFarm';
@@ -66,6 +67,7 @@ export default function RootLayout({
               </FloatingDialogProvider>
 
             </ConfirmProvider>
+            <InternetErrorToast />
             <Toaster position='top-center' />
           </ThemeProvider>
         </GlobalProvider>

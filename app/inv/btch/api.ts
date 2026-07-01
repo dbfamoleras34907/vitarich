@@ -22,6 +22,7 @@ export type BatchNumberSeries = {
   number_length: number
   reset_type: BatchResetType
   date_format: BatchDateFormat
+  include_expiry_date: boolean | null
   active: boolean
   remarks: string | null
   void: string
@@ -37,6 +38,7 @@ export type BatchNumberSeriesPayload = {
   number_length: number
   reset_type: BatchResetType
   date_format: BatchDateFormat
+  include_expiry_date: boolean
   active: boolean
   remarks: string | null
 }
@@ -124,6 +126,12 @@ export type CreatedBatchInventory = {
   createdAt: string
 }
 
+export type CreatedBatchInventoryParams = {
+  dateFrom?: string
+  dateTo?: string
+  farmId?: number | string | null
+}
+
 export type BatchTransactionTrail = {
   id: number
   sourceDocType: string
@@ -181,6 +189,7 @@ type BatchItemNameRow = {
 type BatchSourceReceiptRow = {
   id: number
   gr_no: string | null
+  farm_id?: number | null
 }
 
 type BatchSourceIssueRow = {
@@ -188,10 +197,47 @@ type BatchSourceIssueRow = {
   gi_no: string | null
 }
 
+type SupabaseErrorLike = {
+  message?: string
+  details?: string
+  hint?: string
+  code?: string
+}
+
 async function getSessionUserId() {
   const { data, error } = await db.auth.getSession()
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to read current session')
   return data.session?.user.id ?? null
+}
+
+function getSupabaseErrorText(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (!error || typeof error !== 'object') return String(error ?? '')
+
+  const dbError = error as SupabaseErrorLike
+  return [
+    dbError.message,
+    dbError.details,
+    dbError.hint,
+    dbError.code ? `Code: ${dbError.code}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function throwSupabaseError(error: unknown, fallbackMessage: string): never {
+  const message = getSupabaseErrorText(error)
+  if (
+    message.includes('include_expiry_date') ||
+    message.includes("Could not find the 'include_expiry_date' column") ||
+    message.includes('PGRST204')
+  ) {
+    throw new Error(
+      'Database column include_expiry_date is missing on batch_number_series. Run app/inv/btch/batch_number_series_include_expiry_date.sql in Supabase, then refresh the app.',
+    )
+  }
+
+  throw new Error(message || fallbackMessage)
 }
 
 function signedPostingQty(row: InventoryPostingBatchRow) {
@@ -260,7 +306,7 @@ export async function getBatchNumberSeries(): Promise<BatchNumberSeries[]> {
     .eq('void', '1')
     .order('created_at', { ascending: false })
 
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to load batch number series')
   return (data ?? []) as BatchNumberSeries[]
 }
 
@@ -297,7 +343,7 @@ export async function saveBatchNumberSeries(
         .single()
 
   const { data, error } = await query
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to save batch number series')
   return data as BatchNumberSeries
 }
 
@@ -311,7 +357,7 @@ export async function deleteBatchNumberSeries(id: number) {
     })
     .eq('id', id)
 
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to delete batch number series')
 }
 
 export async function getBatchRules(): Promise<BatchRule[]> {
@@ -321,7 +367,7 @@ export async function getBatchRules(): Promise<BatchRule[]> {
     .eq('void', '1')
     .order('created_at', { ascending: false })
 
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to load batch rules')
   return (data ?? []) as BatchRule[]
 }
 
@@ -355,7 +401,7 @@ export async function saveBatchRule(
         .single()
 
   const { data, error } = await query
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to save batch rule')
   return data as BatchRule
 }
 
@@ -369,7 +415,7 @@ export async function deleteBatchRule(id: number) {
     })
     .eq('id', id)
 
-  if (error) throw error
+  if (error) throwSupabaseError(error, 'Unable to delete batch rule')
 }
 
 export async function getBatchReferences(): Promise<BatchReferences> {
@@ -414,16 +460,50 @@ export async function getBatchReferences(): Promise<BatchReferences> {
   }
 }
 
-export async function getCreatedBatchInventory(): Promise<CreatedBatchInventory[]> {
+export async function getCreatedBatchInventory({
+  dateFrom,
+  dateTo,
+  farmId,
+}: CreatedBatchInventoryParams = {}): Promise<CreatedBatchInventory[]> {
   const authId = await getSessionUserId()
   if (!authId) return []
 
-  const { data: batchRows, error: batchError } = await db
+  const parsedFarmId = Number(String(farmId ?? '').trim())
+  const hasFarmParam = Number.isFinite(parsedFarmId) && parsedFarmId > 0
+  const needsReceiptParams = Boolean(dateFrom || dateTo || hasFarmParam)
+  let scopedReceiptIds: number[] | null = null
+
+  if (needsReceiptParams) {
+    let receiptQuery = db
+      .from('goods_receipt')
+      .select('id')
+
+    if (dateFrom) receiptQuery = receiptQuery.gte('receive_date', dateFrom)
+    if (dateTo) receiptQuery = receiptQuery.lte('receive_date', dateTo)
+    if (hasFarmParam) receiptQuery = receiptQuery.eq('farm_id', parsedFarmId)
+
+    const { data: receiptRows, error: receiptError } = await receiptQuery
+    if (receiptError) throw receiptError
+
+    scopedReceiptIds = (receiptRows ?? [])
+      .map(row => Number(row.id))
+      .filter(id => Number.isFinite(id) && id > 0)
+
+    if (scopedReceiptIds.length === 0) return []
+  }
+
+  let batchQuery = db
     .from('item_batches')
     .select('id, item_id, item_code, batch_number, supplier_batch_number, manufacturing_date, expiry_date, source_gr_id, status, created_at')
     .eq('created_by', authId)
     .eq('void', '1')
     .order('created_at', { ascending: false })
+
+  if (scopedReceiptIds) {
+    batchQuery = batchQuery.in('source_gr_id', scopedReceiptIds)
+  }
+
+  const { data: batchRows, error: batchError } = await batchQuery
 
   if (batchError) throw batchError
 

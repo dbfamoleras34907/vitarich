@@ -172,6 +172,7 @@ export interface Warehouse {
   whse_code: string | null
   whse_name: string | null
   full_location_code: string | null
+  fms_type: string | null
   warehouse_type: string | null
   subinventory_code: string | null
   subinventory_desc: string | null
@@ -188,7 +189,11 @@ export interface WarehouseData {
   created_by?: string | null;
   whse_code?: string | null;
   whse_name?: string | null;
+  farm_id?: number | null;
+  farm_code?: string | null;
+  farm_name?: string | null;
   full_location_code?: string | null;
+  fms_type?: string | null;
   warehouse_type?: string | null;
   subinventory_code?: string | null;
   subinventory_desc?: string | null;
@@ -542,6 +547,7 @@ export interface Items {
   on_order: number | null
   inventory_uom: string | null
   item_group: string | null
+  fms_group: string | null
   manage_batch_numbers: boolean | null
   manage_serial_numbers: boolean | null
   batch_management_method: string | null

@@ -31,6 +31,7 @@ type ItemForm = {
   barcode: string
   uom_group_code: string
   item_group: string
+  fms_group: string
   is_inventory_item: boolean
   is_sales_item: boolean
   is_purchase_item: boolean
@@ -53,6 +54,7 @@ const emptyForm: ItemForm = {
   barcode: '',
   uom_group_code: '',
   item_group: '',
+  fms_group: '',
   is_inventory_item: true,
   is_sales_item: true,
   is_purchase_item: true,
@@ -97,6 +99,7 @@ const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert 
   unit_measure: selectedUomGroup?.baseUomCode || form.uom_group_code,
   inventory_uom: form.uom_group_code,
   item_group: form.item_group,
+  fms_group: form.fms_group,
   group: form.item_group,
   is_inventory_item: form.is_inventory_item,
   is_sales_item: form.is_sales_item,
@@ -202,7 +205,7 @@ export default function AddItemPage() {
   function validateForm() {
     setMessage(null)
 
-    if (!form.item_name.trim() || !form.uom_group_code.trim() || !form.item_group.trim()) {
+    if (!form.item_name.trim() || !form.uom_group_code.trim() || !form.item_group.trim() || !form.fms_group.trim()) {
       setMessage('Please complete the required item fields.')
       return false
     }
@@ -322,6 +325,14 @@ export default function AddItemPage() {
                 value={form.item_group}
                 onChange={value => updateForm('item_group', value)}
               />
+            </Field>
+            <Field label="FMS Group" required>
+              <SelectNative value={form.fms_group} onChange={value => updateForm('fms_group', value)}>
+                <option value="">Select FMS group</option>
+                <option value="breeder">Breeder</option>
+                <option value="hatchery">Hatchery</option>
+                <option value="broiler">Broiler</option>
+              </SelectNative>
             </Field>
             <Field label="UoM Group" required hint={selectedUomGroup ? `Base: ${selectedUomGroup.baseUomCode}` : undefined}>
               <SelectNative value={form.uom_group_code} onChange={value => updateForm('uom_group_code', value)}>

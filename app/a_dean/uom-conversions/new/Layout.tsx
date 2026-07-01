@@ -118,11 +118,14 @@ export default function NewUomConversionLayout() {
       toast('Please fill in the group code, name, and base UoM.')
       return
     }
-    if (rows.some(row => !row.uom_id || !row.base_qty || Number(row.base_qty) <= 0)) {
+
+    const filledRows = rows.filter(row => row.uom_id || row.base_qty)
+    if (filledRows.some(row => !row.uom_id || !row.base_qty || Number(row.base_qty) <= 0)) {
       toast('Every conversion row needs a UoM and a base quantity greater than zero.')
       return
     }
-    const selectedIds = rows.map(row => row.uom_id)
+
+    const selectedIds = filledRows.map(row => row.uom_id)
     if (new Set(selectedIds).size !== selectedIds.length) {
       toast('A UoM can only appear once in a conversion group.')
       return
@@ -137,7 +140,7 @@ export default function NewUomConversionLayout() {
         remarks: form.remarks,
         conversions: [
           { uom_id: Number(form.base_uom_id), base_qty: 1, remarks: 'Base Unit' },
-          ...rows.map(row => ({
+          ...filledRows.map(row => ({
             uom_id: Number(row.uom_id),
             base_qty: Number(row.base_qty),
             remarks: row.remarks,
@@ -231,7 +234,7 @@ export default function NewUomConversionLayout() {
                 <div>
                   <h3 className="font-semibold">Conversion Rows</h3>
                   <p className="text-sm text-stone-500">
-                    Enter how many {baseUom?.code || 'base units'} are in one selected UoM.
+                    Optional. Add rows only when another UoM converts to {baseUom?.code || 'the base UoM'}.
                   </p>
                 </div>
                 <Button

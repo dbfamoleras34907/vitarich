@@ -1,114 +1,152 @@
 'use client'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Plus } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
-import { createWarehouse } from './api'
-import { WarehouseData } from '@/lib/types'
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 import Breadcrumb from '@/lib/Breadcrumb'
-import { toast } from 'sonner'
+import { WarehouseData } from '@/lib/types'
+import {
+  ArrowLeft,
+  MapPin,
+  PackageCheck,
+  Phone,
+  Save,
+  Warehouse,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import React, { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { createWarehouse, getWarehouseFarmOptions, type WarehouseFarmOption } from './api'
 
-interface FormItem {
-  code: string;
-  name: string;
-  type: 'text' | 'checkbox' | 'select' | 'empty';
-  required?: boolean;
-  disabled?: boolean;
-  remarks?: string;
-  value?: string;
+type FieldCode = keyof Pick<
+  WarehouseData,
+  | 'whse_name'
+  | 'fms_type'
+  | 'warehouse_type'
+  | 'full_location_code'
+  | 'addr1'
+  | 'addr2'
+  | 'city'
+  | 'province'
+  | 'phone'
+  | 'mobile'
+>
+
+type TextFieldConfig = {
+  code: FieldCode
+  label: string
+  placeholder?: string
+  required?: boolean
+  helper?: string
+  transform?: 'uppercase'
+}
+
+const FMS_TYPES = [
+  { value: 'Broiler', label: 'Broiler' },
+  { value: 'Breeder', label: 'Breeder' },
+  { value: 'Hatchery', label: 'Hatchery' },
+]
+
+const WAREHOUSE_TYPE_PREFIX: Record<string, string> = {
+  Warehouse: 'WH',
+  Building: 'BD',
+}
+
+const FMS_FARM_TYPE: Record<string, string> = {
+  Broiler: 'BR',
+  Breeder: 'BE',
+  Hatchery: 'HA',
 }
 
 const WAREHOUSE_TYPES = [
-  "Poultry-Farm",
-  "Breeder-Farm",
-  "Breeder_Layer",
-  "Poultry-Hatchery"
+  { value: 'Warehouse', label: 'Warehouse' },
+  { value: 'Building', label: 'Building' },
 ]
 
-// --- 1. MOVE FORmFIELD OUTSIDE THE MAIN COMPONENT ---
-const FormField = ({
-  item,
-  formData,
-  handleInputChange
+const compact = (value: unknown) => String(value ?? '').trim()
+const displayValue = (value: unknown) => String(value ?? '')
+const nullable = (value: unknown) => {
+  const trimmed = compact(value)
+  return trimmed ? trimmed : null
+}
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
 }: {
-  item: FormItem,
-  formData: Partial<WarehouseData>,
-  handleInputChange: (code: string, value: any) => void
-}) => {
-  if (item.type === "empty") return <div className="hidden md:block" />
-
-  const fieldCode = item.code as keyof WarehouseData
-
+  icon: React.ElementType
+  title: string
+  description: string
+}) {
   return (
-    <div className="flex flex-col space-y-1.5">
-      {item.type === "checkbox" ? (
-        <div>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id={item.code}
-              checked={!!formData[fieldCode]}
-              onCheckedChange={(checked) => handleInputChange(item.code, checked)}
-            />
-            <Label htmlFor={item.code} className="cursor-pointer">
-              {item.name}
-            </Label>
-          </div>
-          {item.remarks && (
-            <div className="mt-1 ml-6 text-xs text-muted-foreground">
-              {item.remarks}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          <Label required={item.required}>
-            {item.name}
-          </Label>
+    <div className="flex items-start gap-3">
+      <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-stone-700">
+        <Icon className="size-4" />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold text-stone-950">{title}</h2>
+        <p className="mt-1 text-sm text-stone-500">{description}</p>
+      </div>
+    </div>
+  )
+}
 
-          {item.type === "select" ? (
-            <Select
-              value={(formData[fieldCode] as string) || ""}
-              onValueChange={(value) => handleInputChange(item.code, value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select warehouse type" />
-              </SelectTrigger>
-              <SelectContent>
-                {WAREHOUSE_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={(formData[fieldCode] as string) || ""}
-              onChange={(e) => handleInputChange(item.code, e.target.value)}
-              disabled={item.disabled}
-              required={item.required}
-            />
-          )}
+function TextField({
+  field,
+  value,
+  onChange,
+}: {
+  field: TextFieldConfig
+  value: string
+  onChange: (code: FieldCode, value: string, transform?: TextFieldConfig['transform']) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={field.code} required={field.required}>
+        {field.label}
+      </Label>
+      <Input
+        id={field.code}
+        value={value}
+        placeholder={field.placeholder}
+        required={field.required}
+        onChange={(event) => onChange(field.code, event.target.value, field.transform)}
+      />
+      {field.helper ? <p className="text-xs leading-5 text-stone-500">{field.helper}</p> : null}
+    </div>
+  )
+}
 
-          {item.remarks && (
-            <div className="text-xs text-muted-foreground">
-              {item.remarks}
-            </div>
-          )}
-        </>
-      )}
+function OptionRow({
+  title,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-md border border-stone-200 bg-white px-4 py-3">
+      <div>
+        <div className="text-sm font-medium text-stone-950">{title}</div>
+        <div className="mt-1 text-xs leading-5 text-stone-500">{description}</div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   )
 }
@@ -116,97 +154,368 @@ const FormField = ({
 export default function Layout() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [farms, setFarms] = useState<WarehouseFarmOption[]>([])
+  const [loadingFarms, setLoadingFarms] = useState(false)
   const [formData, setFormData] = useState<Partial<WarehouseData>>({
     is_active: true,
-    bin_activated: false,
+    fms_type: 'Broiler',
+    warehouse_type: 'Warehouse',
   })
 
-  const warehouseDetail: FormItem[] = [
-    { code: "whse_code", name: "Warehouse Code", disabled: false, type: "text", required: true },
-    { code: "whse_name", name: "Warehouse Name", disabled: false, type: "text", required: true },
-    { code: "warehouse_type", name: "Warehouse Type", disabled: false, type: "select", required: true },
-    { code: "subinventory_desc", name: "Sub Inventory Desc", disabled: false, type: "text", required: false },
+  const identityFields: TextFieldConfig[] = [
+    {
+      code: 'whse_name',
+      label: 'Warehouse Name',
+      placeholder: 'Main Feed Warehouse',
+      required: true,
+    },
   ]
 
-  const contactInfo: FormItem[] = [
-    { code: "phone", name: "Phone No", disabled: false, type: "text" },
-    { code: "addr1", name: "Address Line 1", disabled: false, type: "text" },
-    { code: "mobile", name: "Mobile No", disabled: false, type: "text" },
-    { code: "addr2", name: "Address Line 2", disabled: false, type: "text" },
-    { code: "city", name: "City", disabled: false, type: "text" },
-    { code: "province", name: "State/Province", disabled: false, type: "text" },
+  const locationFields: TextFieldConfig[] = [
+    {
+      code: 'full_location_code',
+      label: 'Location Code',
+      placeholder: 'PLANT-AREA-WHSE',
+      helper: 'Use a stable operational code for reporting and bin hierarchy.',
+      transform: 'uppercase',
+    },
+    { code: 'addr1', label: 'Address Line 1', placeholder: 'Building, street, or site' },
+    { code: 'addr2', label: 'Address Line 2', placeholder: 'Zone, barangay, or landmark' },
+    { code: 'city', label: 'City', placeholder: 'City / Municipality' },
+    { code: 'province', label: 'Province', placeholder: 'Province / State' },
   ]
 
-  const handleInputChange = (code: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [code]: value }))
+  const contactFields: TextFieldConfig[] = [
+    { code: 'phone', label: 'Phone', placeholder: 'Landline or site local' },
+    { code: 'mobile', label: 'Mobile', placeholder: 'Warehouse contact number' },
+  ]
+
+  const addressPreview = useMemo(
+    () =>
+      [formData.addr1, formData.addr2, formData.city, formData.province]
+        .map(compact)
+        .filter(Boolean)
+        .join(', '),
+    [formData.addr1, formData.addr2, formData.city, formData.province]
+  )
+
+  const sampleWarehouseCode = useMemo(() => {
+    const prefix = WAREHOUSE_TYPE_PREFIX[compact(formData.warehouse_type)] ?? 'WH'
+    return `${prefix}-0000001`
+  }, [formData.warehouse_type])
+
+  const selectedFarmType = FMS_FARM_TYPE[compact(formData.fms_type)] ?? ''
+
+  const filteredFarms = useMemo(
+    () => farms.filter((farm) => compact(farm.farm_type) === selectedFarmType),
+    [farms, selectedFarmType]
+  )
+
+  const farmOptions: ComboboxItemType[] = useMemo(
+    () =>
+      filteredFarms.map((farm) => ({
+        code: String(farm.id),
+        name: `${farm.code} - ${farm.name || 'Unnamed farm'}`,
+      })),
+    [filteredFarms]
+  )
+
+  const handleTextChange = (
+    code: FieldCode,
+    value: string,
+    transform?: TextFieldConfig['transform']
+  ) => {
+    const nextValue = transform === 'uppercase' ? value.toUpperCase() : value
+    setFormData((prev) => ({ ...prev, [code]: nextValue }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleFmsTypeChange = (value: string) => {
+    setFormData((prev) => {
+      const nextFarmType = FMS_FARM_TYPE[value] ?? ''
+      const selectedFarm = farms.find((farm) => farm.id === prev.farm_id)
+
+      if (!selectedFarm || compact(selectedFarm.farm_type) === nextFarmType) {
+        return { ...prev, fms_type: value }
+      }
+
+      return {
+        ...prev,
+        fms_type: value,
+        farm_id: null,
+        farm_code: null,
+        farm_name: null,
+      }
+    })
+  }
+
+  const handleFarmChange = (farmId: string) => {
+    const farm = filteredFarms.find((candidate) => String(candidate.id) === farmId)
+
+    setFormData((prev) => ({
+      ...prev,
+      farm_id: farm?.id ?? null,
+      farm_code: farm?.code ?? null,
+      farm_name: farm?.name ?? null,
+    }))
+  }
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+
+    if (!compact(formData.whse_name)) {
+      toast.error('Warehouse name is required.')
+      return
+    }
+
     setLoading(true)
-    const { success, error } = await createWarehouse(formData as WarehouseData)
+    const payload: WarehouseData = {
+      whse_name: nullable(formData.whse_name),
+      farm_id: formData.farm_id ?? null,
+      farm_code: nullable(formData.farm_code),
+      farm_name: nullable(formData.farm_name),
+      fms_type: nullable(formData.fms_type),
+      warehouse_type: nullable(formData.warehouse_type),
+      full_location_code: nullable(formData.full_location_code),
+      addr1: nullable(formData.addr1),
+      addr2: nullable(formData.addr2),
+      city: nullable(formData.city),
+      province: nullable(formData.province),
+      address: addressPreview || null,
+      phone: nullable(formData.phone),
+      mobile: nullable(formData.mobile),
+      remarks: nullable(formData.remarks),
+      is_active: formData.is_active ?? true,
+    }
+
+    const { success, error } = await createWarehouse(payload)
     setLoading(false)
 
     if (success) {
-      toast("Warehouse created successfully")
-      router.push("/a_dean/warehouse")
-
-    } else {
-      toast("Error: " + error)
+      toast.success('Warehouse created successfully.')
+      router.push('/a_dean/warehouse')
+      return
     }
+
+    toast.error(`Error: ${error}`)
   }
 
   useEffect(() => {
-    router.prefetch("/a_dean/warehouse")
+    router.prefetch('/a_dean/warehouse')
+  }, [router])
+
+  useEffect(() => {
+    async function loadFarms() {
+      setLoadingFarms(true)
+
+      try {
+        const result = await getWarehouseFarmOptions()
+
+        if (result.success && Array.isArray(result.data)) {
+          setFarms(result.data)
+          return
+        }
+
+        toast.error(result.error ?? 'Unable to load farms.')
+      } catch (error) {
+        toast.error('Error: ' + (error instanceof Error ? error.message : 'Unable to load farms'))
+      } finally {
+        setLoadingFarms(false)
+      }
+    }
+
+    loadFarms()
   }, [])
 
   return (
-    <div className='w-full'>
+    <div className="min-h-screen bg-[#f7f5f1]">
       <form onSubmit={handleSubmit}>
-        <div className='flex justify-between items-center px-8 pb-3 mt-3'>
-          <Breadcrumb
-            SecondPreviewPageName="Warehouse"
-            SecondPreviewPageLink="/a_dean/warehouse"
-            CurrentPageName="Warehouse Master"
-          />
-          <Button type="submit" disabled={loading}>
-            <Plus className="mr-2 h-4 w-4" /> {loading ? "Saving..." : "Save"}
-          </Button>
+        <div className="sticky top-0 z-10 border-b border-stone-200 bg-[#f7f5f1]/95 px-4 py-3 backdrop-blur sm:px-8">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <Breadcrumb
+              SecondPreviewPageName="Warehouse"
+              SecondPreviewPageLink="/a_dean/warehouse"
+              CurrentPageName="New Warehouse"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" onClick={() => router.push('/a_dean/warehouse')}>
+                <ArrowLeft className="size-4" />
+                Back
+              </Button>
+              <Button type="submit" disabled={loading}>
+                <Save className="size-4" />
+                {loading ? 'Saving...' : 'Save Warehouse'}
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <Separator />
+        <main className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:px-8">
+          <div className="space-y-5">
+            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 md:flex-row md:items-start md:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-stone-900 text-white">
+                    <Warehouse className="size-6" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="text-xl font-semibold text-stone-950">Warehouse Master Data</h1>
+                      <Badge variant="outline">Inventory</Badge>
+                    </div>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+                      Maintain the FMS classification, warehouse type, location, and contact details used by inventory documents. Warehouse code is generated automatically from the selected warehouse type.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-        <div className="max-w-content mx-auto px-8 py-8 bg-white rounded-2xl my-4">
-          <h2 className="mb-6 text-lg font-semibold">Warehouse Detail</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-4">
-            {warehouseDetail.map((item) => (
-              <FormField
-                key={item.code}
-                item={item}
-                formData={formData}
-                handleInputChange={handleInputChange}
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {identityFields.map((field) => (
+                  <TextField
+                    key={field.code}
+                    field={field}
+                    value={displayValue(formData[field.code])}
+                    onChange={handleTextChange}
+                  />
+                ))}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label required>FMS Type</Label>
+                  <Select
+                    value={formData.fms_type ?? ''}
+                    onValueChange={handleFmsTypeChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select FMS type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FMS_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <SearchableCombobox
+                    label="Farm"
+                    items={farmOptions}
+                    value={formData.farm_id ? String(formData.farm_id) : ''}
+                    onValueChange={handleFarmChange}
+                    showCode
+                    placeholder={loadingFarms ? 'Loading farms...' : 'Select farm...'}
+                    className="w-full"
+                  />
+                  <p className="text-xs leading-5 text-stone-500">
+                    Showing {selectedFarmType || 'matching'} farms for the selected FMS type.
+                  </p>
+                  {!loadingFarms && farmOptions.length === 0 ? (
+                    <p className="text-xs leading-5 text-amber-700">
+                      No active farms found for this FMS type.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label required>Warehouse Type</Label>
+                  <Select
+                    value={formData.warehouse_type ?? ''}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, warehouse_type: value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select warehouse type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WAREHOUSE_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Sample Warehouse Code</Label>
+                  <div className="flex h-10 items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 font-mono text-sm font-semibold text-stone-800">
+                    {sampleWarehouseCode}
+                  </div>
+                  <p className="text-xs leading-5 text-stone-500">
+                    The final number is assigned automatically when the warehouse is saved.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+              <SectionHeader
+                icon={MapPin}
+                title="Location"
+                description="Codes and address lines used for inventory documents, audit trails, and warehouse lookup."
               />
-            ))}
-          </div>
-        </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {locationFields.map((field) => (
+                  <TextField
+                    key={field.code}
+                    field={field}
+                    value={displayValue(formData[field.code])}
+                    onChange={handleTextChange}
+                  />
+                ))}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Address Preview</Label>
+                  <div className="min-h-10 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                    {addressPreview || 'Address will be assembled from the location fields.'}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-        <Separator />
-
-        <div className="max-w-content mx-auto px-8 py-8 bg-white rounded-2xl mt-4">
-          <div className="flex items-center space-x-2 mb-6">
-            <h2 className="text-lg font-semibold">Warehouse Location Info</h2>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-4">
-            {contactInfo.map((item) => (
-              <FormField
-                key={item.code}
-                item={item}
-                formData={formData}
-                handleInputChange={handleInputChange}
+            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+              <SectionHeader
+                icon={Phone}
+                title="Contact And Remarks"
+                description="Operational contact information for dispatch, receiving, and cycle count coordination."
               />
-            ))}
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {contactFields.map((field) => (
+                  <TextField
+                    key={field.code}
+                    field={field}
+                    value={displayValue(formData[field.code])}
+                    onChange={handleTextChange}
+                  />
+                ))}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="remarks">Remarks</Label>
+                  <Textarea
+                    id="remarks"
+                    value={formData.remarks ?? ''}
+                    placeholder="Receiving cut-off, storage rules, access notes, or other warehouse instructions"
+                    onChange={(event) => setFormData((prev) => ({ ...prev, remarks: event.target.value }))}
+                    className="min-h-24"
+                  />
+                </div>
+              </div>
+            </section>
           </div>
-        </div>
+
+          <aside className="space-y-5">
+            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+              <SectionHeader
+                icon={PackageCheck}
+                title="Controls"
+                description="Operational flags that determine warehouse availability."
+              />
+              <div className="mt-5 space-y-3">
+                <OptionRow
+                  title="Active Warehouse"
+                  description="Allow this warehouse to appear in inventory transactions and master lookups."
+                  checked={formData.is_active ?? true}
+                  onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, is_active: checked }))}
+                />
+              </div>
+            </section>
+          </aside>
+        </main>
       </form>
     </div>
   )

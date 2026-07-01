@@ -98,6 +98,7 @@ export default function Layout() {
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
   const [loadingWarehouses, setLoadingWarehouses] = useState(false)
+  const showBuildingSection = false
 
   const warehouseOptions: ComboboxItemType[] = warehouses
     .filter(warehouse => warehouse.whse_code)
@@ -426,144 +427,150 @@ export default function Layout() {
 
         </div>
 
-        <Separator />
+        {showBuildingSection && (
+          <>
+            <Separator />
 
-        {/* BUILDINGS */}
+            {/* BUILDINGS */}
 
-        <div className='py-4 px-4 font-semibold text-xl flex justify-between items-center'>
+            <div className='py-4 px-4 font-semibold text-xl flex justify-between items-center'>
 
-          Buildings
+              Buildings
 
-          <Button
-            size="sm"
-            onClick={addBuilding}
-            disabled={buildingCounter === null}
-          >
-            <Plus className="mr-1 h-4 w-4" /> Add Building
-          </Button>
-
-        </div>
-
-        <div className='space-y-3 m-4'>
-
-          {buildings.map((b, idx) => (
-
-            <div key={b.id} className='border rounded-md'>
-
-              <div
-                className='flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer'
-                onClick={() => toggleBuilding(b.id)}
+              <Button
+                size="sm"
+                onClick={addBuilding}
+                disabled={buildingCounter === null}
               >
+                <Plus className="mr-1 h-4 w-4" /> Add Building
+              </Button>
 
-                <div className='font-medium text-sm flex items-center'>
+            </div>
 
-                  Building {idx + 1}
+            <div className='space-y-3 m-4'>
 
-                  {b.expanded
-                    ? <ArrowDown className='size-4 mx-1' />
-                    : <ArrowUp className='size-4 mx-1' />}
+              {buildings.map((b, idx) => (
 
-                </div>
+                <div key={b.id} className='border rounded-md'>
 
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={penCounter === null}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    addPen(b.id)
-                  }}
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Pen
-                </Button>
+                  <div
+                    className='flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer'
+                    onClick={() => toggleBuilding(b.id)}
+                  >
 
-              </div>
+                    <div className='font-medium text-sm flex items-center'>
 
-              {b.expanded && (
+                      Building {idx + 1}
 
-                <div className='p-3 space-y-3'>
+                      {b.expanded
+                        ? <ArrowDown className='size-4 mx-1' />
+                        : <ArrowUp className='size-4 mx-1' />}
 
-                  <div className='grid grid-cols-4 gap-3'>
+                    </div>
 
-                    {buildingObj.map((i, x) => (
-
-                      <div key={x} className={i.isLong ? 'col-span-4' : ''}>
-
-                        <Label className='text-xs'>{i.name}</Label>
-
-                        {i.code === "code" ? (
-
-                          <Input
-                            value={b.data.code || ""}
-                            readOnly
-                            className="h-8 text-sm bg-gray-100"
-                          />
-
-                        ) : (
-
-                          <Input
-                            className='h-8 text-sm'
-                            type={i.type}
-                            onChange={e =>
-                              updateBuilding(b.id, i.code, e.target.value)
-                            }
-                          />
-
-                        )}
-
-                      </div>
-
-                    ))}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={penCounter === null}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        addPen(b.id)
+                      }}
+                    >
+                      <Plus className="mr-1 h-4 w-4" /> Pen
+                    </Button>
 
                   </div>
 
-                  {b.pens.length > 0 && (
+                  {b.expanded && (
 
-                    <div className='border rounded'>
+                    <div className='p-3 space-y-3'>
 
-                      <div className='grid grid-cols-4 bg-gray-100 px-2 py-1 text-xs font-medium'>
-                        <div>#</div>
-                        <div>Pen Code</div>
-                        <div>Pen Name</div>
-                        <div>Status</div>
-                      </div>
+                      <div className='grid grid-cols-4 gap-3'>
 
-                      {b.pens.map((p, pIdx: number) => (
+                        {buildingObj.map((i, x) => (
 
-                        <div
-                          key={p.id}
-                          className='grid grid-cols-4 gap-2 px-2 py-2 border-t'
-                        >
+                          <div key={x} className={i.isLong ? 'col-span-4' : ''}>
 
-                          <div className='text-xs flex items-center'>
-                            {pIdx + 1}
+                            <Label className='text-xs'>{i.name}</Label>
+
+                            {i.code === "code" ? (
+
+                              <Input
+                                value={b.data.code || ""}
+                                readOnly
+                                className="h-8 text-sm bg-gray-100"
+                              />
+
+                            ) : (
+
+                              <Input
+                                className='h-8 text-sm'
+                                type={i.type}
+                                onChange={e =>
+                                  updateBuilding(b.id, i.code, e.target.value)
+                                }
+                              />
+
+                            )}
+
                           </div>
 
-                          {penObj.map((i, x) =>
-                            i.code === "code"
-                              ? (
-                                <Input
-                                  key={x}
-                                  value={p.data.code || ""}
-                                  readOnly
-                                  className='h-8 text-sm bg-gray-100'
-                                />
-                              )
-                              : (
-                                <Input
-                                  key={x}
-                                  className='h-8 text-sm'
-                                  type={i.type}
-                                  onChange={e =>
-                                    updatePen(b.id, p.id, i.code, e.target.value)
-                                  }
-                                />
-                              )
-                          )}
+                        ))}
+
+                      </div>
+
+                      {b.pens.length > 0 && (
+
+                        <div className='border rounded'>
+
+                          <div className='grid grid-cols-4 bg-gray-100 px-2 py-1 text-xs font-medium'>
+                            <div>#</div>
+                            <div>Pen Code</div>
+                            <div>Pen Name</div>
+                            <div>Status</div>
+                          </div>
+
+                          {b.pens.map((p, pIdx: number) => (
+
+                            <div
+                              key={p.id}
+                              className='grid grid-cols-4 gap-2 px-2 py-2 border-t'
+                            >
+
+                              <div className='text-xs flex items-center'>
+                                {pIdx + 1}
+                              </div>
+
+                              {penObj.map((i, x) =>
+                                i.code === "code"
+                                  ? (
+                                    <Input
+                                      key={x}
+                                      value={p.data.code || ""}
+                                      readOnly
+                                      className='h-8 text-sm bg-gray-100'
+                                    />
+                                  )
+                                  : (
+                                    <Input
+                                      key={x}
+                                      className='h-8 text-sm'
+                                      type={i.type}
+                                      onChange={e =>
+                                        updatePen(b.id, p.id, i.code, e.target.value)
+                                      }
+                                    />
+                                  )
+                              )}
+
+                            </div>
+
+                          ))}
 
                         </div>
 
-                      ))}
+                      )}
 
                     </div>
 
@@ -571,13 +578,11 @@ export default function Layout() {
 
                 </div>
 
-              )}
+              ))}
 
             </div>
-
-          ))}
-
-        </div>
+          </>
+        )}
 
         <Separator />
 
