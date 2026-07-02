@@ -13,6 +13,7 @@ import {
   PenBoxIcon,
   ShoppingCartIcon,
   Wrench,
+  Drumstick,
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
@@ -852,53 +853,109 @@ export const NavFolders: NavFolder[] = [
     ],
   },
 
+  // {
+  //   id: 4,
+  //   title: "Workspace",
+  //   url: "#",
+  //   icon: FolderTree,
+  //   view: false,
+  //   insert: false,
+  //   edit: false,
+  //   items: [
+  //     {
+  //       group: "Projects",
+  //       children: [
+  //         {
+  //           id: 33,
+  //           type: "Module",
+  //           title: "Dashboard",
+  //           url: "/wks/dashboard",
+  //           view: false,
+  //           insert: false,
+  //           edit: false,
+  //         },
+
+  //         {
+  //           id: 34,
+  //           type: "Module",
+  //           title: "Projects",
+  //           url: "/wks/projects",
+  //           view: false,
+  //           insert: false,
+  //           edit: false,
+  //         },
+
+  //         {
+  //           id: 35,
+  //           type: "Module",
+  //           title: "Task",
+  //           url: "/wks/tasks",
+  //           view: false,
+  //           insert: false,
+  //           edit: false,
+  //         },
+
+  //         {
+  //           id: 36,
+  //           type: "Module",
+  //           title: "Timesheet",
+  //           url: "/wks/timelines",
+  //           view: false,
+  //           insert: false,
+  //           edit: false,
+  //         },
+  //       ],
+  //     },
+  //   ],
+  // },
+
   {
-    id: 4,
-    title: "Workspace",
+    id: 6,
+    title: "Broiler",
     url: "#",
-    icon: FolderTree,
+    icon: Drumstick,
     view: false,
     insert: false,
     edit: false,
     items: [
       {
-        group: "Projects",
+        group: "Menus",
         children: [
           {
-            id: 33,
+            id: 60,
             type: "Module",
             title: "Dashboard",
-            url: "/wks/dashboard",
+            url: "/brd/dashboard",
             view: false,
             insert: false,
             edit: false,
           },
 
           {
-            id: 34,
+            id: 61,
             type: "Module",
-            title: "Projects",
-            url: "/wks/projects",
+            title: "Flock Card",
+            url: "/brd/fc",
             view: false,
             insert: false,
             edit: false,
           },
 
           {
-            id: 35,
+            id: 62,
             type: "Module",
-            title: "Task",
-            url: "/wks/tasks",
+            title: "Delivery",
+            url: "/brd/dr",
             view: false,
             insert: false,
             edit: false,
           },
 
           {
-            id: 36,
+            id: 63,
             type: "Module",
-            title: "Timesheet",
-            url: "/wks/timelines",
+            title: "Clean up",
+            url: "/brd/cu",
             view: false,
             insert: false,
             edit: false,
