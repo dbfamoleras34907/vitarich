@@ -3,22 +3,36 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import GlobalDefaults from "./Defaults/GlobalDefaults";
 import { UserProfileCard } from "./DefaultFunctions";
 import { Modal } from "./Moda";
+import { useTheme } from "next-themes";
 import {
   ChevronRight,
   LogOut,
+  Moon,
   RefreshCcw,
-  UserCircle2,
+  Sun,
 } from "lucide-react";
+
+type UserAccountMenuProps = {
+  session?: {
+    user?: {
+      email?: string | null;
+    } | null;
+  } | null;
+  collapsed?: boolean;
+};
 
 export default function UserAccountMenu({
   session,
   collapsed = false,
-}: any) {
+}: UserAccountMenuProps) {
   const router = useRouter();
+  const { setTheme, theme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const isDarkMode = theme === "dark";
 
   const email =
     session?.user?.email ?? "guest@example.com";
@@ -124,6 +138,47 @@ export default function UserAccountMenu({
           {/* Global Defaults */}
           <div className="pb-2 px-2 ">
             <GlobalDefaults collapsed={false} />
+          </div>
+
+          <Separator />
+
+          {/* Appearance */}
+          <div className="p-2">
+            <div
+              className="
+                w-full flex items-center gap-3
+                rounded-md
+                px-3 py-2
+                text-sm font-medium
+                transition-all
+                hover:bg-muted
+              "
+            >
+              <div
+                className="
+                  h-8 w-8 rounded-full
+                  bg-muted
+                  flex items-center justify-center
+                  shrink-0
+                "
+              >
+                {isDarkMode ? (
+                  <Moon className="h-4 w-4" />
+                ) : (
+                  <Sun className="h-4 w-4" />
+                )}
+              </div>
+
+              <span className="flex-1">Dark Mode</span>
+
+              <Switch
+                checked={isDarkMode}
+                onCheckedChange={(checked) =>
+                  setTheme(checked ? "dark" : "light")
+                }
+                aria-label="Toggle dark mode"
+              />
+            </div>
           </div>
 
           <Separator />

@@ -184,18 +184,18 @@ export default function SearchableCombobox(props: Props) {
   }
 
   return (
-    <div className="relative min-w-0 space-y-0.5">
+    <div className="relative min-w-0 ">
       {(props.label || props.multiple) && (
-        <div className="flex min-h-5 items-center justify-between gap-2">
+        <div className="flex  items-center justify-between mb-0.5">
           {props.label && (
-            <Label required={props.required}>
+            <Label required={props.required} className="">
               {props.label}
             </Label>
           )}
 
           {props.multiple && (
-            <span className="text-xs text-muted-foreground">
-              {selectedCodes.length} selected
+            <span className="text-xs text-muted-foreground ">
+              {selectedCodes.length} selecteda
             </span>
           )}
         </div>
@@ -220,7 +220,7 @@ export default function SearchableCombobox(props: Props) {
         <ComboboxChips
           ref={anchor}
           className={cn(
-            "min-h-10 border-[#b8b2aa] bg-[#fffdfb] px-3 py-2 shadow-none hover:border-ring",
+            "min-h-10 border-[#b8b2aa] bg-[#fffdfb] px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
             props.multiple && "items-start",
             className
           )}

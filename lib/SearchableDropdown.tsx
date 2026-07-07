@@ -150,7 +150,7 @@ export default function SearchableDropdown<
           type="button"
           disabled={disabled}
           title={displayText}
-          className=" bg-input border text-foreground hover:bg-input/50 h-9 w-full justify-start overflow-hidden whitespace-nowrap  disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-9 w-full justify-start overflow-hidden whitespace-nowrap border border-input bg-[#fffdfb] text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50"
           onKeyDown={(event) => {
             if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !open) {
               event.preventDefault()

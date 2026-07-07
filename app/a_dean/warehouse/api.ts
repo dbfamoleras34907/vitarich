@@ -2,6 +2,30 @@
 import { db } from "@/lib/Supabase/supabaseClient"
 import { WarehouseData } from "@/lib/types"
 
+type SupabaseErrorLike = {
+    message?: string
+    details?: string
+    hint?: string
+    code?: string
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error) return error.message
+
+    if (error && typeof error === 'object') {
+        const dbError = error as SupabaseErrorLike
+        const parts = [dbError.message, dbError.details, dbError.hint]
+            .map(part => String(part ?? '').trim())
+            .filter(Boolean)
+
+        if (parts.length > 0) {
+            return dbError.code ? `${parts.join(' ')} (${dbError.code})` : parts.join(' ')
+        }
+    }
+
+    return fallback
+}
+
 export type WarehouseListResult = {
     rows: WarehouseData[]
     totalCount: number
@@ -24,7 +48,7 @@ export async function getWarehouses(id?: string) {
         return { success: true, data: data as WarehouseData[] };
 
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unable to fetch warehouse';
+        const message = getErrorMessage(error, 'Unable to fetch warehouse');
         console.error('Error fetching warehouse:', message);
         return { success: false, error: message };
     }
@@ -53,7 +77,7 @@ export async function getWarehousePage(page = 1, limit = 10) {
             } satisfies WarehouseListResult,
         }
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unable to fetch warehouses'
+        const message = getErrorMessage(error, 'Unable to fetch warehouses')
         console.error('Error fetching warehouse page:', message)
         return { success: false, error: message }
     }
@@ -61,18 +85,23 @@ export async function getWarehousePage(page = 1, limit = 10) {
 
 export async function updateWarehouse(id: string | number, data: WarehouseData) {
     try {
-        const { data: result, error } = await db
+        const { error, count } = await db
             .from('i_warehouse')
-            .update(data)
+            .update(data, { count: 'exact' })
             .eq('id', id)
-            .select()
-            .single()
 
         if (error) throw error
 
-        return { success: true, data: result as WarehouseData }
+        if (count === 0) {
+            return {
+                success: false,
+                error: 'Warehouse was not updated. It may no longer exist, or your account may not have permission to update it.',
+            }
+        }
+
+        return { success: true, data: { ...data, id: Number(id) } as WarehouseData }
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unable to update warehouse'
+        const message = getErrorMessage(error, 'Unable to update warehouse')
         console.error('Error updating warehouse:', message)
         return { success: false, error: message }
     }

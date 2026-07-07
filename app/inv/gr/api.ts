@@ -30,6 +30,7 @@ export type GoodsReceipt = {
   grNo: string
   vendor: string
   receiveDate: string
+  fmsType: string
   farmId: number | null
   farmCode: string
   farmName: string
@@ -44,6 +45,7 @@ type GoodsReceiptRow = {
   gr_no: string
   vendor: string
   receive_date: string
+  fms_type: string | null
   farm_id: number | null
   farm_code: string | null
   farm_name: string | null
@@ -87,6 +89,19 @@ type ItemBatchRow = {
   batch_number: string
 }
 
+type DbErrorLike = {
+  code?: string
+  details?: string | null
+  message?: string | null
+}
+
+const isDuplicateGoodsReceiptNumberError = (error: DbErrorLike | null | undefined) => {
+  if (error?.code !== '23505') return false
+
+  const detailText = `${error.details ?? ''} ${error.message ?? ''}`.toLowerCase()
+  return detailText.includes('goods_reciept_gr_no_key') || detailText.includes('gr_no')
+}
+
 const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   id: row.id,
   itemId: row.item_id,
@@ -118,6 +133,7 @@ const toReceipt = (
   grNo: row.gr_no,
   vendor: row.vendor,
   receiveDate: row.receive_date,
+  fmsType: row.fms_type ?? '',
   farmId: row.farm_id,
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
@@ -155,6 +171,7 @@ const toReceiptListItem = (
   grNo: row.gr_no,
   vendor: row.vendor,
   receiveDate: row.receive_date,
+  fmsType: row.fms_type ?? '',
   farmId: row.farm_id,
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
@@ -272,7 +289,7 @@ async function getOrCreateItemBatch({
 export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
   const { data: receiptRows, error: receiptError } = await db
     .from('goods_receipt')
-    .select('id, gr_no, vendor, receive_date, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
+    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -352,6 +369,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
     gr_no: receipt.grNo,
     vendor: receipt.vendor,
     receive_date: receipt.receiveDate,
+    fms_type: receipt.fmsType || null,
     farm_id: receipt.farmId,
     farm_code: receipt.farmCode || null,
     farm_name: receipt.farmName || null,
@@ -373,16 +391,47 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
         .select('*')
         .single()
 
-  let { data: savedHeader, error: headerError } = await saveHeader(headerPayload)
+  const saveHeaderWithStatusFallback = async (payload: typeof headerPayload) => {
+    let result = await saveHeader(payload)
 
-  if (headerError?.code === '23514' && receipt.status === 'Posted') {
-    const fallbackHeaderPayload = {
-      ...headerPayload,
-      status: 'Received' as GoodsReceiptDbStatus,
+    if (result.error?.code === '23514' && receipt.status === 'Posted') {
+      result = await saveHeader({
+        ...payload,
+        status: 'Received' as GoodsReceiptDbStatus,
+      })
     }
-    const fallbackResult = await saveHeader(fallbackHeaderPayload)
-    savedHeader = fallbackResult.data
-    headerError = fallbackResult.error
+
+    return result
+  }
+
+  let savedHeader = null
+  let headerError = null
+
+  if (receipt.id) {
+    const result = await saveHeaderWithStatusFallback(headerPayload)
+    savedHeader = result.data
+    headerError = result.error
+  } else {
+    let payload = headerPayload
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const result = await saveHeaderWithStatusFallback(payload)
+      savedHeader = result.data
+      headerError = result.error
+
+      if (!headerError) break
+      if (!isDuplicateGoodsReceiptNumberError(headerError)) break
+      if (attempt === 3) break
+
+      payload = {
+        ...payload,
+        gr_no: await createGoodsReceiptNumber(),
+      }
+    }
+  }
+
+  if (isDuplicateGoodsReceiptNumberError(headerError)) {
+    throw new Error('Unable to generate a unique GR number after 3 attempts. Please try again.')
   }
 
   if (headerError) throw headerError

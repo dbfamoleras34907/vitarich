@@ -39,7 +39,7 @@ export async function updateUser(id: number, updates: Partial<Customer>) {
 
 
 export async function GetUsers(params?: Partial<Customer>) {
-  let query = db.from('users').select('*')
+  const query = db.from('users').select('*')
 
   // if (params) {
   //   for (const [key, value] of Object.entries(params)) {
@@ -152,40 +152,29 @@ export async function insertUserProfile(userProfileData: UserInsert): Promise<Us
 
 export async function updateUserProfile(
   userProfileData: UserInsert,
-  defaultFarms?: string[] | []
+  defaultFarms: string[] = []
 ) {
+  const response = await fetch('/api/admin/updateUserProfile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userProfileData,
+      defaultFarms,
+    }),
+  })
 
-
-  console.log({ userProfileData, defaultFarms })
-  const payload = {
-    p_auth_id: userProfileData.auth_id,
-    p_updated_by: userProfileData.created_by,
-    p_firstname: userProfileData.firstname,
-    p_middlename: userProfileData.middlename,
-    p_lastname: userProfileData.lastname,
-    p_gender: userProfileData.gender,
-    p_phone: userProfileData.phone,
-    p_mobile: userProfileData.mobile,
-    p_birthdate: userProfileData.birthdate,
-    p_location: userProfileData.location,
-    p_remarks: userProfileData.remarks,
-    p_default_farm: userProfileData.default_farm,
-    p_supervisor: userProfileData.supervisor,
-    p_default_farms: defaultFarms,
-    p_archipelago: userProfileData.archipelago, // need to add on function parameter and payload
-    p_region: userProfileData.region, // need to add on function parameter and payload
-  };
-  // app/admin/user/api.ts
-  const { error } = await db.rpc(
-    'fn_update_user_profile_with_farms',
-    payload
-  );
-
-  if (error) {
-    console.error('Supabase RPC Error:', error);
-    throw new Error(error.message);
+  const result = await response.json() as {
+    activeFarmCodes?: string[]
+    error?: string
   }
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Unable to update user profile.')
+  }
+
+  return result
 }
+
 
 export async function signupUser(
   userProfileData: UserInsert
@@ -249,33 +238,66 @@ export async function getProfileByAuthId(authId: string): Promise<UserRow | null
 // }
 
 
-export async function getUserInfoById(authId: string) {
+export async function getUserInfoById(authId: string | number) {
   const { data, error } = await db
-    .from('vw_users_with_farms')
+    .from('users')
     .select(`*`)
-    .eq('id', authId);
+    .eq('id', authId)
+    .maybeSingle();
   if (error) {
     console.error('Supabase Select Error:', error);
     throw new Error(error.message);
   }
   console.log({ authId })
 
-  return data;
+  if (!data?.id) return [];
+
+  const users_farms = await getUserFarmCodesByUserId(data.id);
+
+  return [{
+    ...data,
+    users_farms,
+  }];
+}
+
+export async function getUserFarmCodesByUserId(userId: string | number) {
+  const { data, error } = await db
+    .from('users_farms')
+    .select('farm_code')
+    .eq('users_id', userId)
+    .eq('void', 1)
+
+  if (error) {
+    console.error('Supabase User Farms Select Error:', error)
+    throw new Error(error.message)
+  }
+
+  return (data ?? [])
+    .map((row) => String(row.farm_code ?? '').trim())
+    .filter(Boolean)
 }
 
 export async function getUserInfoAuthSession() {
   const { data: { session },
   } = await db.auth.getSession();
   const { data, error } = await db
-    .from('vw_users_with_farms')
+    .from('users')
     .select(`*`)
-    .eq('auth_id', session?.user.id);
+    .eq('auth_id', session?.user.id)
+    .maybeSingle();
   if (error) {
     console.error('Supabase Select Error:', error);
     throw new Error(error.message);
   }
 
-  return data;
+  if (!data?.id) return [];
+
+  const users_farms = await getUserFarmCodesByUserId(data.id);
+
+  return [{
+    ...data,
+    users_farms,
+  }];
 }
 
 

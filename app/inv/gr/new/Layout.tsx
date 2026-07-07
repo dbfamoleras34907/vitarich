@@ -29,6 +29,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { FormTable, FormTableFooter } from '@/components/ui/form-table'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -61,6 +62,12 @@ import {
   getBatchTransactionTrail,
 } from '../../btch/api'
 
+const FMS_TYPE_OPTIONS = [
+  { value: 'broiler', label: 'Broiler' },
+  { value: 'breeder', label: 'Breeder' },
+  { value: 'hatchery', label: 'Hatchery' },
+]
+
 const today = () => {
   const date = new Date()
   const offset = date.getTimezoneOffset()
@@ -92,12 +99,26 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   grNo,
   vendor: '',
   receiveDate: today(),
+  fmsType: '',
   farmId: null,
   farmCode: '',
   farmName: '',
   defaultWarehouseId: null,
   status: 'Draft',
   lines: Array.from({ length: 5 }, newLine),
+  createdAt: new Date().toISOString(),
+})
+
+const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => ({
+  ...source,
+  id: null,
+  grNo,
+  status: 'Draft',
+  lines: source.lines.map(line => ({
+    ...line,
+    id: crypto.randomUUID(),
+    returnedQty: 0,
+  })),
   createdAt: new Date().toISOString(),
 })
 
@@ -181,6 +202,12 @@ const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => 
   return String(warehouse.whse_code ?? '').trim()
 }
 
+const isWarehouseType = (warehouse: WarehouseData) =>
+  String(warehouse.warehouse_type ?? '').trim().toLowerCase() === 'warehouse'
+
+const getItemFmsType = (item: Items) =>
+  String(item.fms_group ?? '').trim().toLowerCase()
+
 const formatQuantity = (value: number) =>
   Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
 
@@ -252,6 +279,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const receiptId = searchParams.get('id')
+  const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
   const [items, setItems] = useState<Items[]>([])
@@ -310,13 +338,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
         const [references, savedReceipt, grNo] = await Promise.all([
           referencesPromise,
-          receiptId ? getGoodsReceiptById(Number(receiptId)) : Promise.resolve(null),
-          receiptId ? Promise.resolve('') : createGoodsReceiptNumber(),
+          receiptId
+            ? getGoodsReceiptById(Number(receiptId))
+            : duplicateId
+              ? getGoodsReceiptById(Number(duplicateId))
+              : Promise.resolve(null),
+          receiptId && !duplicateId ? Promise.resolve('') : createGoodsReceiptNumber(),
         ])
 
         if (cancelled) return
 
-        setReceipt(savedReceipt ?? emptyReceipt(grNo))
+        setReceipt(duplicateId && savedReceipt
+          ? duplicateReceipt(savedReceipt, grNo)
+          : savedReceipt ?? emptyReceipt(grNo))
         setItems(references.items)
         setWarehouses(references.warehouses)
         setFarms(references.farms)
@@ -338,7 +372,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [getValue, isPostMode, receiptId, router])
+  }, [duplicateId, getValue, isPostMode, receiptId, router])
 
   const totalQuantity = useMemo(
     () => receipt?.lines.reduce(
@@ -367,7 +401,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const farmWarehouses = useMemo(() => {
     if (!farmWarehouseCodes.size) return []
     return warehouses.filter(warehouse =>
-      farmWarehouseCodes.has(String(warehouse.whse_code ?? '').trim())
+      farmWarehouseCodes.has(String(warehouse.whse_code ?? '').trim()) &&
+      isWarehouseType(warehouse)
     )
   }, [farmWarehouseCodes, warehouses])
 
@@ -378,6 +413,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     })),
     [farms],
   )
+
+  const availableItems = useMemo(() => {
+    const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
+    if (!fmsType) return []
+
+    return items.filter(item => getItemFmsType(item) === fmsType)
+  }, [items, receipt?.fmsType])
 
   const itemGroupIdByCode = useMemo(() => {
     const map = new Map<string, number>()
@@ -421,10 +463,78 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     } : current)
   }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.lines])
 
+  useEffect(() => {
+    if (loadingReferences || receipt?.farmId || farms.length !== 1) return
+
+    const [farm] = farms
+    const allowedCodes = new Set(
+      (farm.associated_warehouses ?? [])
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean)
+    )
+
+    setReceipt(current => {
+      if (!current || current.farmId) return current
+
+      return {
+        ...current,
+        farmId: farm.id,
+        farmCode: farm.code,
+        farmName: farm.name ?? '',
+        defaultWarehouseId: null,
+        lines: current.lines.map(line =>
+          allowedCodes.has(line.warehouseCode)
+            ? line
+            : {
+              ...line,
+              warehouseId: null,
+              warehouseCode: '',
+              warehouseName: '',
+            }
+        ),
+      }
+    })
+  }, [farms, loadingReferences, receipt?.farmId])
+
+  useEffect(() => {
+    const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
+    if (!fmsType || !receipt?.lines.length) return
+
+    const allowedItemCodes = new Set(
+      availableItems
+        .map(item => String(item.item_code ?? '').trim())
+        .filter(Boolean)
+    )
+
+    const nextLines = receipt.lines.map(line =>
+      !line.itemCode || allowedItemCodes.has(line.itemCode)
+        ? line
+        : {
+          ...line,
+          itemId: null,
+          itemCode: '',
+          description: '',
+          batchRuleId: null,
+          batchNumber: '',
+          supplierBatchNumber: '',
+          manufacturingDate: '',
+          expiryDate: '',
+          altUom: '',
+          baseUom: '',
+        }
+    )
+
+    if (nextLines.every((line, index) => line === receipt.lines[index])) return
+
+    setReceipt(current => current ? {
+      ...current,
+      lines: nextLines,
+    } : current)
+  }, [availableItems, receipt?.fmsType, receipt?.lines])
+
   const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
   const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
   const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
-  const batchTrailWarehouseCode = batchLineForLookup?.warehouseCode.trim() ?? ''
 
   useEffect(() => {
     const lineId = batchLineForLookup?.id
@@ -499,7 +609,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     getBatchTransactionTrail(
       batchTrailItemCode,
       batchTrailNumber,
-      batchTrailWarehouseCode || undefined,
     )
       .then(rows => {
         if (!cancelled) setBatchTrailRows(rows)
@@ -518,7 +627,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber, batchTrailWarehouseCode])
+  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber])
 
   if (!receipt) return <GoodsReceiveLoadingShell />
 
@@ -779,7 +888,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   const selectItem = (line: GoodsReceiptLine, itemCode: string) => {
-    const item = items.find(candidate => candidate.item_code === itemCode)
+    const item = availableItems.find(candidate => candidate.item_code === itemCode)
     if (!item) {
       updateLine(line.id, {
         itemId: null,
@@ -894,6 +1003,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast('Please enter a vendor.')
       return
     }
+    if (!receipt.fmsType) {
+      toast('Please select an FMS type.')
+      return
+    }
     if (!receipt.farmId) {
       toast('Please select a farm.')
       return
@@ -978,8 +1091,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           : 'Waiting for MFG date'
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
+    <main className="min-h-[calc(100vh-80rem)]">
+      <div className="mx-4 mt-4 flex items-center justify-between gap-3">
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
@@ -1006,6 +1119,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">Vendor</label>
+            <Input
+              value={receipt.vendor}
+              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
+              placeholder="Enter vendor"
+            />
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">Farm</label>
             <SearchableCombobox
               items={farmOptions}
@@ -1021,15 +1143,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Vendor</label>
-            <Input
-              value={receipt.vendor}
-              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
-              placeholder="Enter vendor"
-            />
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">Receive Date</label>
             <label className="relative">
               <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
@@ -1042,7 +1155,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </label>
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
             <label className="text-sm font-semibold">Default WH</label>
             <select
               value={receipt.defaultWarehouseId ?? ''}
@@ -1067,22 +1180,61 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
             )}
           </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-sm font-semibold">FMS Type</label>
+            <select
+              value={receipt.fmsType}
+              onChange={event => setReceipt(current => current ? { ...current, fmsType: event.target.value } : current)}
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
+            >
+              <option value="">Select FMS type...</option>
+              {FMS_TYPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="border-t p-5">
-          <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="border-b border-stone-200 bg-white px-3 py-3">
-              <h2 className="text-base font-semibold text-stone-950">
-                Receive Item Lines (Non-PO)
-              </h2>
-              <p className="mt-1 text-sm text-stone-600">
-                {receipt.lines.length} {receipt.lines.length === 1 ? 'line' : 'lines'}
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
+          <FormTable
+            title="Receive Item Lines"
+            description={`${receipt.lines.length} ${receipt.lines.length === 1 ? 'line' : 'lines'}`}
+            emptyState={receipt.lines.length === 0 && (
+              <div className="border-t px-4 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">No item lines added</p>
+                <p className="mt-1 text-sm text-muted-foreground">Use Add Lines to continue.</p>
+              </div>
+            )}
+            footer={(
+              <FormTableFooter>
+                <Input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={lineCount}
+                  onChange={event => setLineCount(Math.max(1, numberValue(event.target.value)))}
+                  className="w-20"
+                  aria-label="Number of lines to add"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setReceipt(current => current ? {
+                    ...current,
+                    lines: [...current.lines, ...Array.from({ length: lineCount }, newLine)],
+                  } : current)}
+                >
+                  <Plus className="size-4" />
+                  Add Lines
+                </Button>
+              </FormTableFooter>
+            )}
+          >
               <table className="min-w-[1480px] w-full text-sm">
-                <thead className="bg-stone-100">
+                <thead className="bg-secondary">
                   <tr>
                     <th className="h-10 w-12 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
                     <th className="h-10 min-w-80 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
@@ -1095,20 +1247,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     <th className="h-10 w-20 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-200">
+                <tbody className="divide-y">
                   {receipt.lines.map((line, index) => {
                     const batchRequirement = getBatchRequirement(line)
 
                     return (
-                      <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
+                      <tr key={line.id} className="odd:bg-card even:bg-secondary/40 hover:bg-accent/30">
                         <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
                         <td className="px-3 py-2 align-middle">
                           <SearchableDropdown
-                            list={items}
+                            list={availableItems}
                             codeLabel="item_code"
                             nameLabel="item_name"
                             value={line.itemCode}
-                            placeholder="Select item..."
+                            placeholder={receipt.fmsType ? 'Select item...' : 'Select FMS type first'}
                             width={420}
                             onChange={(value) => selectItem(line, value)}
                           />
@@ -1264,38 +1416,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   })}
                 </tbody>
               </table>
-            </div>
-
-            {receipt.lines.length === 0 && (
-              <div className="border-t border-stone-200 px-4 py-10 text-center">
-                <p className="text-sm font-medium text-stone-900">No item lines added</p>
-                <p className="mt-1 text-sm text-stone-500">Use Add Lines to continue.</p>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
-              <Input
-                type="number"
-                min="1"
-                max="50"
-                value={lineCount}
-                onChange={event => setLineCount(Math.max(1, numberValue(event.target.value)))}
-                className="w-20 border-stone-300 bg-white"
-                aria-label="Number of lines to add"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setReceipt(current => current ? {
-                  ...current,
-                  lines: [...current.lines, ...Array.from({ length: lineCount }, newLine)],
-                } : current)}
-              >
-                <Plus className="size-4" />
-                Add Lines
-              </Button>
-            </div>
-          </section>
+          </FormTable>
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
             <DialogContent

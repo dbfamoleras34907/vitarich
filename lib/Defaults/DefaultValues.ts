@@ -997,7 +997,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 39,
             type: "Module",
-            title: "Farm Settings",
+            title: "Farm Management",
             url: "/a_dean/farm",
             view: false,
             insert: false,

@@ -215,9 +215,9 @@ export default function Layout() {
         </div>
 
         {/* HEADER FIELDS */}
-        <Card className='my-4 grid lg:grid-cols-2'>
+        <Card className='mx-4 my-4 grid gap-4 p-4 lg:grid-cols-2'>
           {headerComponents.map((e, i) => (
-            <div className='mx-4' key={i}>
+            <div key={i}>
               <Label className='mb-1'>{e.name}</Label>
 
               {e.type === "search" ? (
@@ -241,7 +241,7 @@ export default function Layout() {
         </Card>
 
         {/* TABLE */}
-        <Card className='bg-white p-4 rounded-2xl'>
+        <Card className='mx-4 p-4'>
           <DataTable
             columns={components}
             rows={pickedRows}

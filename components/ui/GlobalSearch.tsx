@@ -11,32 +11,49 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
-import { Search, FileText, Package, Settings, ArrowUp, ArrowDown, CornerDownLeft, Smartphone } from "lucide-react"
+import { Search, Settings, ArrowUp, ArrowDown, CornerDownLeft } from "lucide-react"
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
+import { getModuleIcon } from '@/lib/sidebar/moduleIcons'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { Modal } from "@/lib/Moda"
-import GlobalFarmUserSettings, { getAllowedFarms } from "./GlobalFarmUserSettings"
+import GlobalFarmUserSettings from "./GlobalFarmUserSettings"
 import { Kbd } from "./kbd"
 
 interface collapsed {
   collapsed: boolean
 }
 
+type NavCommandChild = {
+  title: string
+  url: string
+  type?: string
+}
+
+type NavCommandGroup = {
+  group: string
+  children: NavCommandChild[]
+}
+
+type NavCommandFolder = {
+  id: number | string
+  title: string
+  items?: NavCommandGroup[]
+}
+
 export default function GlobalSearch({ collapsed }: collapsed) {
+  const router = useRouter()
+  const { getValue } = useGlobalContext()
+
   const [open, setOpen] = useState(false)
   const [selectedFilter, setSelectedFilter] = useState("All")
   const navtype = ["All", "Settings", "Navigation"]
-  // internal modal state example
-  const [farmModalOpen, setFarmModalOpen] = useState(false)
-
-  const router = useRouter()
-  const { getValue } = useGlobalContext()
+  const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
   const filteredFolders = filterNavFolders(
     NavFolders,
     getValue("UserPermission") || []
-  )
+  ) as NavCommandFolder[]
 
   /**
    * INTERNAL COMMANDS
@@ -54,12 +71,6 @@ export default function GlobalSearch({ collapsed }: collapsed) {
       ],
     },
   ]
-
-  useEffect(() => {
-    if (getValue('DefaultFarmId') == null || getValue('DefaultFarmId') == undefined) setFarmModalOpen(true)
-  }, [getValue])
-
-
 
   /**
    * Keyboard shortcut (CTRL+K / CMD+K)
@@ -86,18 +97,17 @@ export default function GlobalSearch({ collapsed }: collapsed) {
       {/* SEARCH BUTTON */}
       <Button
         type="button"
-        variant={"secondary"}
+        variant="ghost"
         onClick={() => setOpen(true)}
-        className={` mr-5 bg-white p-2  relative h-9 w-[100%]   gap-2 px-3 py-4 text-sm text-muted-foreground transition-colors hover:bg-muted/50  : ""
-          }`}
+        className="relative h-9 w-full justify-start gap-2 rounded-xl border border-border/80 bg-card px-3 py-2 text-sm font-normal text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
       >
         <Search className="h-4 w-4" />
 
         {!collapsed && (
           <>
-            <span className="flex-1 text-left">Search...</span>
+            <span className="flex-1 text-left">Search settings...</span>
 
-            <kbd className="pointer-events-none absolute right-1.5 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+            <kbd className="pointer-events-none absolute right-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted/70 px-1.5 font-mono text-[10px] font-medium opacity-80 sm:flex">
               <span className="text-xs">⌘</span>K
             </kbd>
           </>
@@ -113,7 +123,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
               key={filter}
               size={"xs"}
               variant={selectedFilter === filter ? "default" : "outline"}
-              className={`${selectedFilter === filter ? "bg-black hover:bg-black/70" : "bg-transparent"} h-6 px-2`}
+              className={`${selectedFilter === filter ? "" : "bg-transparent"} h-6 px-2`}
               onClick={() => setSelectedFilter(filter)}
             >
               {filter}
@@ -161,8 +171,11 @@ export default function GlobalSearch({ collapsed }: collapsed) {
           {(selectedFilter === "All" || selectedFilter === "Navigation") && filteredFolders.map((folder) => (
             <React.Fragment key={folder.id}>
               <CommandGroup heading={folder.title}>
-                {folder.items.map((group: any) =>
-                  group.children.map((child: any) => (
+                {folder.items?.map((group) =>
+                  group.children.map((child) => {
+                    const Icon = getModuleIcon(child.title, child.type)
+
+                    return (
                     <CommandItem
                       key={child.url + child.title}
                       value={`${folder.title} ${child.title} ${group.group}`}
@@ -174,11 +187,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                         }
                       }}
                     >
-                      {child.type === "Module" ? (
-                        <Package className="mr-2 h-4 w-4 text-blue-500" />
-                      ) : (
-                        <FileText className="mr-2 h-4 w-4 text-orange-500" />
-                      )}
+                      <Icon className="mr-2 h-4 w-4 text-muted-foreground" />
 
                       <div className="flex flex-col">
                         <span>{child.title}</span>
@@ -187,7 +196,8 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                         </span>
                       </div>
                     </CommandItem>
-                  ))
+                    )
+                  })
                 )}
               </CommandGroup>
 
@@ -238,7 +248,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
         </div>
         <Button
           onClick={() => setFarmModalOpen(false)}
-          className="bg-black text-white float-right mx-4 mb-3 hover:bg-black/70" size={"xs"}>Close</Button>
+          className="float-right mx-4 mb-3" size={"xs"}>Close</Button>
       </Modal>
     </>
   )

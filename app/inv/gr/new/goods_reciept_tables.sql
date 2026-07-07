@@ -7,6 +7,7 @@ create table if not exists public.goods_receipt (
   gr_no text not null,
   vendor text not null,
   receive_date date not null,
+  fms_type text null,
   farm_id bigint null,
   farm_code text null,
   farm_name text null,
@@ -66,6 +67,28 @@ create index if not exists goods_reciept_farm_id_idx
 
 create index if not exists goods_reciept_status_idx
   on public.goods_receipt (status);
+
+alter table public.goods_receipt
+  add column if not exists fms_type text null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'goods_reciept_fms_type_check'
+      and conrelid = 'public.goods_receipt'::regclass
+  ) then
+    alter table public.goods_receipt
+      add constraint goods_reciept_fms_type_check check (
+        fms_type is null or fms_type in ('breeder', 'hatchery', 'broiler')
+      );
+  end if;
+end;
+$$;
+
+create index if not exists goods_reciept_fms_type_idx
+  on public.goods_receipt (fms_type);
 
 create index if not exists goods_reciept_items_goods_reciept_id_idx
   on public.goods_receipt_items (goods_reciept_id);

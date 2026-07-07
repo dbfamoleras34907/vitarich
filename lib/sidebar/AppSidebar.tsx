@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, ChevronDown } from "lucide-react"
+import { Menu } from "lucide-react"
 import { useSidebar } from "./SidebarProvider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
@@ -13,19 +13,12 @@ import GlobalSearch from "@/components/ui/GlobalSearch"
 import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
+import { getModuleIcon } from "./moduleIcons"
 
 const ACTIVE_NAV_ITEM_CLASS =
   "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
-
-const getSavedOpenFolders = () => {
-  if (typeof window === "undefined") return []
-
-  try {
-    return JSON.parse(localStorage.getItem("sidebar_open_folders") || "[]")
-  } catch {
-    return []
-  }
-}
+const SIDEBAR_SCROLL_CLASS =
+  "[scrollbar-color:#d6d3d1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300/80 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400/90"
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -42,9 +35,6 @@ export function AppSidebar() {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // ⭐ ENTERPRISE: persistent open folders
-  const [openFolders, setOpenFolders] = useState<number[]>(getSavedOpenFolders)
-
   const filteredNavFolders = useMemo(
     () => filterNavFolders(NavFolders, userPermissions || []),
     [userPermissions],
@@ -53,10 +43,6 @@ export function AppSidebar() {
   // ===============================
   // INIT
   // ===============================
-
-  useEffect(() => {
-    localStorage.setItem("sidebar_open_folders", JSON.stringify(openFolders))
-  }, [openFolders])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768)
@@ -74,34 +60,8 @@ export function AppSidebar() {
   }, [])
 
   // ===============================
-  // AUTO-OPEN FOLDER BASED ON ROUTE
-  // ===============================
-
-  useEffect(() => {
-    filteredNavFolders.forEach(folder => {
-      folder.items?.forEach((group: any) => {
-        group.children?.forEach((child: any) => {
-          if (child.url && child.url !== "#" && pathname.startsWith(child.url)) {
-            setOpenFolders(prev =>
-              prev.includes(folder.id) ? prev : [...prev, folder.id]
-            )
-          }
-        })
-      })
-    })
-  }, [filteredNavFolders, pathname])
-
-  // ===============================
   // ACTIONS
   // ===============================
-
-  const toggleFolder = (id: number) => {
-    setOpenFolders(prev =>
-      prev.includes(id)
-        ? prev.filter(x => x !== id)
-        : [...prev, id]
-    )
-  }
 
   const goTo = (url: string) => {
     setValue("loading_s", true)
@@ -120,7 +80,7 @@ export function AppSidebar() {
           <Button
             variant="ghost"
             onClick={() => setMobileOpen(true)}
-            className="fixed z-50 left-3 top-3 bg-white/95 p-2 shadow-[var(--starbucks-nav-shadow)]"
+            className="fixed z-50 left-3 top-3 bg-card/95 p-2 shadow-[var(--starbucks-nav-shadow)]"
           >
             <Menu className="size-5" />
           </Button>
@@ -136,7 +96,7 @@ export function AppSidebar() {
             <aside className="relative h-full w-72 bg-sidebar p-3 text-sidebar-foreground shadow-lg">
 
               {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
-              <div className="mb-3 flex items-center gap-3 rounded-md bg-white px-3 py-3 shadow-[var(--starbucks-card-shadow)]">
+              <div className="mb-3 flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)]">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
                   V
                 </div>
@@ -147,62 +107,41 @@ export function AppSidebar() {
               </div>
               <GlobalSearch collapsed={false} />
 
-              <div className="mt-4 max-h-[calc(100vh-15rem)] space-y-2 overflow-y-auto rounded-md bg-white/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)]">
+              <div className={`mt-4 max-h-[calc(100vh-15rem)] space-y-5 overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
 
                 {filteredNavFolders.map(folder => (
-                  <div key={folder.id}>
+                  <div key={folder.id} className="space-y-1">
+                    <div className="px-2 text-xs font-medium text-sidebar-foreground/45">
+                      {folder.title}
+                    </div>
 
-                    <Button
-                      variant="ghost"
-                      className="h-10 w-full justify-between px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      onClick={() => toggleFolder(folder.id)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <folder.icon className="size-5" />
-                        {folder.title}
-                      </div>
+                    {folder.items?.flatMap((group: any) =>
+                      group.children
+                        .filter((child: any) => child.url && child.url !== "#")
+                        .map((child: any) => {
+                          const Icon = getModuleIcon(child.title, child.type)
 
-                      <ChevronDown
-                        className={`size-4 transition ${openFolders.includes(folder.id) ? "rotate-180" : ""
-                          }`}
-                      />
-                    </Button>
-
-                    {openFolders.includes(folder.id) && (
-                      <div className="mt-2 space-y-1 pl-3">
-
-                        {folder.items?.map((group: any, gi: number) => (
-                          <div key={gi}>
-
-                            <div className="px-3 py-1 text-xs font-semibold uppercase text-muted-foreground">
-                              {group.group}
-                            </div>
-
-                            {group.children
-                              .filter((c: any) => c.url && c.url !== "#")
-                              .map((child: any, ci: number) => (
-                                <Button
-                                  key={ci}
-                                  variant="ghost"
-                                  className={`h-9 w-full justify-start px-3 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
-                                    ? ACTIVE_NAV_ITEM_CLASS
-                                    : ""
-                                    }`}
-                                  onClick={() => goTo(child.url)}
-                                >
-                                  {child.title}
-                                </Button>
-                              ))}
-                          </div>
-                        ))}
-
-                      </div>
+                          return (
+                            <Button
+                              key={`${folder.id}-${group.group}-${child.title}`}
+                              variant="ghost"
+                              className={`h-9 w-full justify-start rounded-md px-2 text-sm font-normal text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : ""
+                                }`}
+                              onClick={() => goTo(child.url)}
+                            >
+                              <Icon className="size-4 shrink-0 text-sidebar-foreground/70" />
+                              <span className="truncate">{child.title}</span>
+                            </Button>
+                          )
+                        })
                     )}
                   </div>
                 ))}
 
               </div>
-              <div className="mt-3 rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+              <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
                 <UserAccountMenu session={session} collapsed={false} />
               </div>
             </aside>
@@ -222,7 +161,7 @@ export function AppSidebar() {
         } duration-300`}
     >
       <div className="z-50 px-3 pt-3">
-        <div className={`flex items-center gap-3 rounded-md bg-white px-3 py-3 shadow-[var(--starbucks-card-shadow)] ${collapsed ? "justify-center" : "justify-between"}`}>
+        <div className={`flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)] ${collapsed ? "justify-center" : "justify-between"}`}>
           {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
           {!collapsed && (
             <div className="flex min-w-0 items-center gap-3">
@@ -246,14 +185,12 @@ export function AppSidebar() {
         )}
       </div>
 
-      <nav className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-8">
+      <nav className={`mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-8 ${collapsed ? "space-y-1" : "space-y-5"} ${SIDEBAR_SCROLL_CLASS}`}>
 
-        <div className="mb-2 rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
-          <div className="px-3 py-2 text-xs font-semibold uppercase text-sidebar-foreground/55">{!collapsed && "Navigation"} </div>
+        <div className={`mb-2 ${collapsed ? "space-y-1" : "rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]"}`}>
           {filteredNavFolders.map(folder => (
-            <div key={folder.id} className="text-sidebar-foreground/80">
+            <div key={folder.id} className={`text-sidebar-foreground/80 ${collapsed ? "" : "space-y-1 pb-3 last:pb-0"}`}>
 
-              {/* HEADER */}
               {collapsed ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -268,53 +205,36 @@ export function AppSidebar() {
                   <TooltipContent>{folder.title}</TooltipContent>
                 </Tooltip>
               ) : (
-                <Button
-                  variant="ghost"
-                  className={`h-10 w-full justify-between px-3 font-semibold text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${folder.items?.some((group: any) => group.children?.some((child: any) => child.url && child.url !== "#" && pathname.startsWith(child.url))) ? "bg-white text-foreground shadow-[var(--starbucks-card-shadow)]" : ""}`}
-                  onClick={() => toggleFolder(folder.id)}
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <folder.icon className="size-5" />
+                <>
+                  <div className="px-2 text-xs font-medium text-sidebar-foreground/45">
                     {folder.title}
                   </div>
 
-                  <ChevronDown
-                    className={`size-4 transition ${openFolders.includes(folder.id) ? "rotate-180" : ""
-                      }`}
-                  />
-                </Button>
-              )}
+                  <div className="space-y-1">
+                    {folder.items?.flatMap((group: any) =>
+                      group.children
+                        .filter((child: any) => child.url && child.url !== "#")
+                        .map((child: any) => {
+                          const Icon = getModuleIcon(child.title, child.type)
 
-              {/* CONTENT */}
-              {!collapsed && openFolders.includes(folder.id) && (
-                <div className="mt-2 space-y-4 pb-2 pl-3">
-
-                  {folder.items?.map((group: any, gi: number) => (
-                    <div key={gi}>
-
-                      <div className="px-3 py-1 text-xs font-semibold uppercase text-sidebar-foreground/45">
-                        {group.group}
-                      </div>
-
-                      {group.children
-                        .filter((c: any) => c.url && c.url !== "#")
-                        .map((child: any, ci: number) => (
-                          <Button
-                            key={ci}
-                            variant="ghost"
-                            className={`h-9 w-full justify-start px-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
-                              ? ACTIVE_NAV_ITEM_CLASS
-                              : ""
-                              }`}
-                            onClick={() => goTo(child.url)}
-                          >
-                            {child.title}
-                          </Button>
-                        ))}
-                    </div>
-                  ))}
-
-                </div>
+                          return (
+                            <Button
+                              key={`${folder.id}-${group.group}-${child.title}`}
+                              variant="ghost"
+                              className={`h-9 w-full justify-start rounded-md px-2 text-sm font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
+                                ? ACTIVE_NAV_ITEM_CLASS
+                                : ""
+                                }`}
+                              onClick={() => goTo(child.url)}
+                            >
+                              <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
+                              <span className="truncate">{child.title}</span>
+                            </Button>
+                          )
+                        })
+                    )}
+                  </div>
+                </>
               )}
             </div>
           ))}
@@ -326,7 +246,7 @@ export function AppSidebar() {
 
       </nav>
       <div className="shrink-0 px-3 pb-3 pt-3">
-        <div className="rounded-md bg-white/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+        <div className="rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
           <UserAccountMenu session={session} collapsed={collapsed} />
         </div>
       </div>

@@ -657,7 +657,6 @@ export default function Layout() {
       const rows = await getBatchTransactionTrail(
         batch.itemCode,
         batch.batchNumber,
-        batch.warehouseCode || undefined,
       )
       setTrailRows(rows)
     } catch (error) {
@@ -1192,7 +1191,7 @@ export default function Layout() {
               <DialogTitle>Batch Transaction Trail</DialogTitle>
               <DialogDescription>
                 {trailHeader
-                  ? `${trailHeader.batchNumber} movement history for ${trailHeader.itemCode}${trailHeader.warehouseCode ? ` in ${trailHeader.warehouseCode}` : ''}.`
+                  ? `${trailHeader.batchNumber} movement history for ${trailHeader.itemCode}.`
                   : 'Movement history for the selected batch.'}
               </DialogDescription>
             </DialogHeader>
@@ -1209,7 +1208,7 @@ export default function Layout() {
                     <div className="truncate font-semibold text-stone-950">{trailHeader.item_label}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-medium text-amber-700">Warehouse</div>
+                    <div className="text-xs font-medium text-amber-700">Selected Warehouse</div>
                     <div className="font-semibold text-stone-950">{trailHeader.warehouse_label}</div>
                   </div>
                   <div>

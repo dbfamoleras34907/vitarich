@@ -7,6 +7,7 @@ import {
   GoodsReceiptBatchRule,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
+  getAssignedFarmCodesByAuthId,
   UomConversionOption,
   UomGroupOption,
 } from '@/app/inv/gr/new/api'
@@ -108,11 +109,9 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
   if (sessionError) throw sessionError
 
   const authId = sessionData.session?.user.id
-  const userFarmsQuery = authId
-    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
-    : Promise.resolve({ data: null, error: null })
+  const assignedFarmCodesQuery = getAssignedFarmCodesByAuthId(authId)
 
-  const [itemsResult, warehousesResult, userFarmsResult, conversionGroupsResult, itemGroupsResult, batchRulesResult] = await Promise.all([
+  const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult] = await Promise.all([
     db
       .from('items')
       .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
@@ -123,7 +122,7 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
       .select('id, whse_code, whse_name')
       .eq('is_active', true)
       .order('whse_code'),
-    userFarmsQuery,
+    assignedFarmCodesQuery,
     db
       .from('uom_groups')
       .select(`
@@ -154,16 +153,9 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
 
   if (itemsResult.error) throwReferenceError('Items', itemsResult.error)
   if (warehousesResult.error) throwReferenceError('Warehouses', warehousesResult.error)
-  if (userFarmsResult.error) throwReferenceError('Assigned farms', userFarmsResult.error)
   if (conversionGroupsResult.error) throwReferenceError('UoM conversions', conversionGroupsResult.error)
   if (itemGroupsResult.error) throwReferenceError('Item groups', itemGroupsResult.error)
   if (batchRulesResult.error) throwReferenceError('Batch rules', batchRulesResult.error)
-
-  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
-    ? userFarmsResult.data.users_farms
-        .map((code: unknown) => String(code ?? '').trim())
-        .filter(Boolean)
-    : []
 
   const farmsResult = assignedFarmCodes.length
     ? await db

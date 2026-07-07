@@ -626,28 +626,19 @@ export async function getCreatedBatchInventory({
 export async function getBatchTransactionTrail(
   itemCode: string,
   batchNumber: string,
-  warehouseCode?: string,
 ): Promise<BatchTransactionTrail[]> {
   const normalizedItemCode = itemCode.trim()
   const normalizedBatchNumber = batchNumber.trim()
-  const normalizedWarehouseCode = warehouseCode?.trim() ?? ''
 
   if (!normalizedItemCode || !normalizedBatchNumber) return []
 
   const postingSelect = 'id, source_doc_type, source_docentry, item_code, warehouse_code, bin_code, qty, transfer_type, ref_type, ref, ref_type2, ref2, created_at'
-  const buildPostingQuery = (field: 'ref' | 'ref2') => {
-    let query = db
+  const buildPostingQuery = (field: 'ref' | 'ref2') =>
+    db
       .from('inventory_postings')
       .select(postingSelect)
       .eq('item_code', normalizedItemCode)
       .eq(field, normalizedBatchNumber)
-
-    if (normalizedWarehouseCode) {
-      query = query.eq('warehouse_code', normalizedWarehouseCode)
-    }
-
-    return query
-  }
 
   const [refPostingsResult, ref2PostingsResult] = await Promise.all([
     buildPostingQuery('ref'),

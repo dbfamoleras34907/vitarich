@@ -321,7 +321,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                       setPageSize(Number(event.target.value))
                       setPage(1)
                     }}
-                    className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15"
+                    className="h-10 rounded-md border border-input bg-[#fffdfb] px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
                   >
                     {pageSizeOptions.map(option => (
                       <option key={option} value={option}>
@@ -336,7 +336,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                 <button
                   type="button"
                   onClick={openFilterDialog}
-                  className="relative inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-white px-4 text-sm font-semibold text-foreground transition hover:border-ring hover:text-primary focus:outline-none focus:ring-2 focus:ring-ring/15"
+                  className="relative inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-[#fffdfb] px-4 text-sm font-semibold text-foreground transition hover:border-ring hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
                   aria-haspopup="dialog"
                   aria-expanded={showFilter}
                 >
@@ -351,7 +351,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               )}
 
               {enableSearch && (
-                <label className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-input bg-white px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 sm:w-72">
+                <label className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
                   <Search className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="sr-only">Search table</span>
                   <input
@@ -441,14 +441,14 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                           )
                         )
                       }
-                      className="h-9 w-full rounded-md border bg-input px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:opacity-50"
+                      className="h-9 w-full rounded-md border border-input bg-[#fffdfb] px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:opacity-50 dark:bg-input/30"
                     >
                       <option value="and">AND</option>
                       <option value="or">OR</option>
                     </select>
                   </label>
 
-                  <div className="flex min-h-9 items-center rounded-md border bg-input px-3 text-sm font-medium text-foreground">
+                  <div className="flex min-h-9 items-center rounded-md border border-input bg-[#fffdfb] px-3 text-sm font-medium text-foreground dark:bg-input/30">
                     {filterableColumns.find(column => String(column.key) === filter.columnKey)?.label ?? filter.columnKey}
                   </div>
 
@@ -465,7 +465,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                           )
                         )
                       }
-                      className="h-9 w-full rounded-md border bg-input px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                      className="h-9 w-full rounded-md border border-input bg-[#fffdfb] px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-input/30"
                     >
                       <option value="like">Contains</option>
                       <option value="equals">Equals</option>
@@ -486,7 +486,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                         )
                       }
                       placeholder="Value"
-                      className="h-9 w-full rounded-md border bg-input px-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+                      className="h-9 w-full rounded-md border border-input bg-[#fffdfb] px-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-input/30"
                     />
                   </label>
                 </div>
@@ -502,7 +502,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                     setPage(1)
                     setShowFilter(false)
                   }}
-                  className="h-9 rounded-md border bg-white px-3 text-sm font-semibold text-foreground hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring/20"
+                  className="h-9 rounded-md border bg-background px-3 text-sm font-semibold text-foreground hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring/20"
                 >
                   Clear
                 </button>
@@ -604,7 +604,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                         onRowClick?.(row)
                       }
                     }}
-                    className={`odd:bg-white even:bg-secondary/40 ${clickable ? 'cursor-pointer hover:bg-accent/45 focus:bg-accent/45 focus:outline-none' : 'hover:bg-accent/30'} ${rowClassName}`}
+                    className={`odd:bg-card even:bg-secondary/40 ${clickable ? 'cursor-pointer hover:bg-accent/45 focus:bg-accent/45 focus:outline-none' : 'hover:bg-accent/30'} ${rowClassName}`}
                   >
                     {columns.map(column => (
                       <td
@@ -664,7 +664,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               type="button"
               disabled={safePage === 1}
               onClick={() => setPage(1)}
-              className="inline-flex size-9 items-center justify-center rounded-md border bg-white text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="First page"
             >
               <ChevronFirst className="size-4" aria-hidden="true" />
@@ -673,7 +673,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               type="button"
               disabled={safePage === 1}
               onClick={() => setPage(Math.max(1, safePage - 1))}
-              className="inline-flex h-9 items-center justify-center gap-1 rounded-md border bg-white px-3 text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-md border bg-background px-3 text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="size-4" aria-hidden="true" />
               Prev
@@ -685,7 +685,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               type="button"
               disabled={safePage >= totalPages}
               onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-              className="inline-flex h-9 items-center justify-center gap-1 rounded-md border bg-white px-3 text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-md border bg-background px-3 text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
               <ChevronRight className="size-4" aria-hidden="true" />
@@ -694,7 +694,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               type="button"
               disabled={safePage >= totalPages}
               onClick={() => setPage(totalPages)}
-              className="inline-flex size-9 items-center justify-center rounded-md border bg-white text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-foreground/75 hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Last page"
             >
               <ChevronLast className="size-4" aria-hidden="true" />

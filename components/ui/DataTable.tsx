@@ -156,7 +156,7 @@ function SearchModal({
                     placeholder="Type to search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded border bg-input p-1 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    className="w-full rounded border border-input bg-[#fffdfb] p-1 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-input/30"
                 />
             </div>
             <div style={{ padding: 8, overflowY: "auto" }}>

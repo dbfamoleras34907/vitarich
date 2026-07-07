@@ -1,8 +1,29 @@
 import { db } from "@/lib/Supabase/supabaseClient"
 import { WarehouseData } from "@/lib/types"
 
-const getErrorMessage = (error: unknown) =>
-    error instanceof Error ? error.message : 'Unexpected warehouse request error'
+type SupabaseErrorLike = {
+    message?: string
+    details?: string
+    hint?: string
+    code?: string
+}
+
+const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error) return error.message
+
+    if (error && typeof error === 'object') {
+        const dbError = error as SupabaseErrorLike
+        const parts = [dbError.message, dbError.details, dbError.hint]
+            .map(part => String(part ?? '').trim())
+            .filter(Boolean)
+
+        if (parts.length > 0) {
+            return dbError.code ? `${parts.join(' ')} (${dbError.code})` : parts.join(' ')
+        }
+    }
+
+    return 'Unexpected warehouse request error'
+}
 
 export type WarehouseFarmOption = {
     id: number

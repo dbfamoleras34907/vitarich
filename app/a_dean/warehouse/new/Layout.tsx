@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { WarehouseData } from '@/lib/types'
 import {
@@ -27,7 +26,7 @@ import {
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { createWarehouse, getWarehouseFarmOptions, type WarehouseFarmOption } from './api'
+import { createWarehouse } from './api'
 
 type FieldCode = keyof Pick<
   WarehouseData,
@@ -61,12 +60,6 @@ const FMS_TYPES = [
 const WAREHOUSE_TYPE_PREFIX: Record<string, string> = {
   Warehouse: 'WH',
   Building: 'BD',
-}
-
-const FMS_FARM_TYPE: Record<string, string> = {
-  Broiler: 'BR',
-  Breeder: 'BE',
-  Hatchery: 'HA',
 }
 
 const WAREHOUSE_TYPES = [
@@ -154,8 +147,6 @@ function OptionRow({
 export default function Layout() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [farms, setFarms] = useState<WarehouseFarmOption[]>([])
-  const [loadingFarms, setLoadingFarms] = useState(false)
   const [formData, setFormData] = useState<Partial<WarehouseData>>({
     is_active: true,
     fms_type: 'Broiler',
@@ -204,22 +195,6 @@ export default function Layout() {
     return `${prefix}-0000001`
   }, [formData.warehouse_type])
 
-  const selectedFarmType = FMS_FARM_TYPE[compact(formData.fms_type)] ?? ''
-
-  const filteredFarms = useMemo(
-    () => farms.filter((farm) => compact(farm.farm_type) === selectedFarmType),
-    [farms, selectedFarmType]
-  )
-
-  const farmOptions: ComboboxItemType[] = useMemo(
-    () =>
-      filteredFarms.map((farm) => ({
-        code: String(farm.id),
-        name: `${farm.code} - ${farm.name || 'Unnamed farm'}`,
-      })),
-    [filteredFarms]
-  )
-
   const handleTextChange = (
     code: FieldCode,
     value: string,
@@ -227,36 +202,6 @@ export default function Layout() {
   ) => {
     const nextValue = transform === 'uppercase' ? value.toUpperCase() : value
     setFormData((prev) => ({ ...prev, [code]: nextValue }))
-  }
-
-  const handleFmsTypeChange = (value: string) => {
-    setFormData((prev) => {
-      const nextFarmType = FMS_FARM_TYPE[value] ?? ''
-      const selectedFarm = farms.find((farm) => farm.id === prev.farm_id)
-
-      if (!selectedFarm || compact(selectedFarm.farm_type) === nextFarmType) {
-        return { ...prev, fms_type: value }
-      }
-
-      return {
-        ...prev,
-        fms_type: value,
-        farm_id: null,
-        farm_code: null,
-        farm_name: null,
-      }
-    })
-  }
-
-  const handleFarmChange = (farmId: string) => {
-    const farm = filteredFarms.find((candidate) => String(candidate.id) === farmId)
-
-    setFormData((prev) => ({
-      ...prev,
-      farm_id: farm?.id ?? null,
-      farm_code: farm?.code ?? null,
-      farm_name: farm?.name ?? null,
-    }))
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -270,9 +215,6 @@ export default function Layout() {
     setLoading(true)
     const payload: WarehouseData = {
       whse_name: nullable(formData.whse_name),
-      farm_id: formData.farm_id ?? null,
-      farm_code: nullable(formData.farm_code),
-      farm_name: nullable(formData.farm_name),
       fms_type: nullable(formData.fms_type),
       warehouse_type: nullable(formData.warehouse_type),
       full_location_code: nullable(formData.full_location_code),
@@ -303,29 +245,6 @@ export default function Layout() {
     router.prefetch('/a_dean/warehouse')
   }, [router])
 
-  useEffect(() => {
-    async function loadFarms() {
-      setLoadingFarms(true)
-
-      try {
-        const result = await getWarehouseFarmOptions()
-
-        if (result.success && Array.isArray(result.data)) {
-          setFarms(result.data)
-          return
-        }
-
-        toast.error(result.error ?? 'Unable to load farms.')
-      } catch (error) {
-        toast.error('Error: ' + (error instanceof Error ? error.message : 'Unable to load farms'))
-      } finally {
-        setLoadingFarms(false)
-      }
-    }
-
-    loadFarms()
-  }, [])
-
   return (
     <div className="min-h-screen bg-[#f7f5f1]">
       <form onSubmit={handleSubmit}>
@@ -336,7 +255,7 @@ export default function Layout() {
               SecondPreviewPageLink="/a_dean/warehouse"
               CurrentPageName="New Warehouse"
             />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 justify-between">
               <Button type="button" variant="secondary" onClick={() => router.push('/a_dean/warehouse')}>
                 <ArrowLeft className="size-4" />
                 Back
@@ -349,7 +268,7 @@ export default function Layout() {
           </div>
         </div>
 
-        <main className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:px-8">
+        <main className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] lg:px-8">
           <div className="space-y-5">
             <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 md:flex-row md:items-start md:justify-between">
@@ -370,9 +289,9 @@ export default function Layout() {
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {identityFields.map((field) => (
+                {identityFields.map((field,i) => (
                   <TextField
-                    key={field.code}
+                    key={i}
                     field={field}
                     value={displayValue(formData[field.code])}
                     onChange={handleTextChange}
@@ -382,14 +301,14 @@ export default function Layout() {
                   <Label required>FMS Type</Label>
                   <Select
                     value={formData.fms_type ?? ''}
-                    onValueChange={handleFmsTypeChange}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, fms_type: value }))}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select FMS type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {FMS_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
+                      {FMS_TYPES.map((type,i) => (
+                        <SelectItem key={i} value={type.value}>
                           {type.label}
                         </SelectItem>
                       ))}
@@ -397,23 +316,11 @@ export default function Layout() {
                   </Select>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <SearchableCombobox
-                    label="Farm"
-                    items={farmOptions}
-                    value={formData.farm_id ? String(formData.farm_id) : ''}
-                    onValueChange={handleFarmChange}
-                    showCode
-                    placeholder={loadingFarms ? 'Loading farms...' : 'Select farm...'}
-                    className="w-full"
-                  />
+                  <Label>Farm</Label>
+                  <Input value="Assigned from Farm Master" disabled className="bg-stone-100 text-stone-600" />
                   <p className="text-xs leading-5 text-stone-500">
-                    Showing {selectedFarmType || 'matching'} farms for the selected FMS type.
+                    Farm assignment is controlled in Farm Master.
                   </p>
-                  {!loadingFarms && farmOptions.length === 0 ? (
-                    <p className="text-xs leading-5 text-amber-700">
-                      No active farms found for this FMS type.
-                    </p>
-                  ) : null}
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label required>Warehouse Type</Label>
@@ -498,7 +405,7 @@ export default function Layout() {
             </section>
           </div>
 
-          <aside className="space-y-5">
+          <aside className="min-w-0 space-y-5">
             <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
               <SectionHeader
                 icon={PackageCheck}

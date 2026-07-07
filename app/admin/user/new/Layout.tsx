@@ -15,7 +15,8 @@ import { db } from '@/lib/Supabase/supabaseClient'
 import {
   updateUserProfile,
   getProfileByAuthId,
-  getUserInfoById,
+  getUserFarmCodesByUserId,
+  getUserInfoAuthSession,
 } from '../api'
 
 import { User } from '@supabase/supabase-js'
@@ -82,7 +83,7 @@ const uniqueFarmOptions = (farms: FarmOption[]) => {
 
 export type AuthUser = {
   email: string
-  id: string
+  id: string | number
   auth_id: string
 }
 
@@ -207,14 +208,27 @@ export default function Layout() {
     try {
       setLoading(true)
       console.log({ form })
-      await updateUserProfile(
+      const selectedFarmCodes = uniqueFarmCodes(defaultFarms)
+
+      const result = await updateUserProfile(
         {
           ...form,
           auth_id: authSelected.auth_id,
           created_by: loggedInUser.id,
         } as UserInsert,
-        uniqueFarmCodes(defaultFarms)
+        selectedFarmCodes
       )
+
+      await loadSuperUserData(String(authSelected.id))
+
+      if (Array.isArray(result.activeFarmCodes)) {
+        setDefaultFarms(uniqueFarmCodes(result.activeFarmCodes))
+      }
+
+      if (authSelected.auth_id === loggedInUser.id) {
+        const sessionUserInfo = await getUserInfoAuthSession()
+        setValue('UserInfoAuthSession', sessionUserInfo)
+      }
 
       toast.success(
         `Profile for ${authSelected.email} saved successfully`
@@ -249,15 +263,15 @@ export default function Layout() {
     }
   }
 
-  const loadSuperUserData = async (userId: string) => {
+  const loadSuperUserData = async (userId: string | number) => {
     try {
-      const [userInfo, superUsersList] = await Promise.all([
-        getUserInfoById(userId),
+      const [userFarmCodes, superUsersList] = await Promise.all([
+        getUserFarmCodesByUserId(userId),
         get_vwdmf_super_users(),
       ])
-      console.log({ userInfo, superUsersList })
+      console.log({ userFarmCodes, superUsersList })
       setSuperUsers(superUsersList)
-      setDefaultFarms(uniqueFarmCodes(userInfo?.[0]?.users_farms ?? []))
+      setDefaultFarms(uniqueFarmCodes(userFarmCodes))
     } catch {
       toast.error('Failed loading supervisor data')
     }

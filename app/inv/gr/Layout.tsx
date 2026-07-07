@@ -3,12 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  Copy,
   Eye,
+  MoreHorizontal,
   Plus,
   RefreshCw,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -110,20 +119,43 @@ export default function GoodsReceiveHistory() {
         sortable: false,
         searchable: false,
         render: row => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={row.id === null}
-            onClick={event => {
-              event.stopPropagation()
-              if (row.id === null) return
-              router.push(`/inv/gr/post?id=${row.id}`)
-            }}
-          >
-            <Eye className="size-4" />
-            View
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={row.id === null}
+                aria-label={`Open actions for ${row.grNo}`}
+                onClick={event => event.stopPropagation()}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40" onClick={event => event.stopPropagation()}>
+              <DropdownMenuItem
+                onClick={event => {
+                  event.stopPropagation()
+                  if (row.id === null) return
+                  router.push(`/inv/gr/post?id=${row.id}`)
+                }}
+              >
+                <Eye className="size-4" />
+                View
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={event => {
+                  event.stopPropagation()
+                  if (row.id === null) return
+                  router.push(`/inv/gr/new?duplicateId=${row.id}`)
+                }}
+              >
+                <Copy className="size-4" />
+                Duplicate
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ),
       },
     ],

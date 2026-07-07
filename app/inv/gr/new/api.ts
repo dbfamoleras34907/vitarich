@@ -97,6 +97,31 @@ type ConversionGroupRecord = {
   }> | null
 }
 
+export async function getAssignedFarmCodesByAuthId(authId?: string) {
+  if (!authId) return []
+
+  const { data: user, error: userError } = await db
+    .from('users')
+    .select('id')
+    .eq('auth_id', authId)
+    .maybeSingle()
+
+  if (userError) throw userError
+  if (!user?.id) return []
+
+  const { data: userFarms, error: userFarmsError } = await db
+    .from('users_farms')
+    .select('farm_code')
+    .eq('users_id', user.id)
+    .eq('void', 1)
+
+  if (userFarmsError) throw userFarmsError
+
+  return (userFarms ?? [])
+    .map((row) => String(row.farm_code ?? '').trim())
+    .filter(Boolean)
+}
+
 const buildUomOptions = (data: unknown) => {
   const conversionGroups = (data ?? []) as ConversionGroupRecord[]
 
@@ -157,22 +182,20 @@ export async function getGoodsReceiptReferences() {
 
   const authId = sessionData.session?.user.id
 
-  const userFarmsQuery = authId
-    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
-    : Promise.resolve({ data: null, error: null })
+  const assignedFarmCodesQuery = getAssignedFarmCodesByAuthId(authId)
 
-  const [itemsResult, warehousesResult, userFarmsResult, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+  const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
     db
       .from('items')
-      .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
+      .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
       .eq('void', 1)
       .order('item_code'),
     db
       .from('i_warehouse')
-      .select('id, whse_code, whse_name')
+      .select('id, whse_code, whse_name, warehouse_type')
       .eq('is_active', true)
       .order('whse_code'),
-    userFarmsQuery,
+    assignedFarmCodesQuery,
     db
       .from('uom_groups')
       .select(`
@@ -208,17 +231,10 @@ export async function getGoodsReceiptReferences() {
 
   if (itemsResult.error) throw itemsResult.error
   if (warehousesResult.error) throw warehousesResult.error
-  if (userFarmsResult.error) throw userFarmsResult.error
   if (conversionGroupsResult.error) throw conversionGroupsResult.error
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
   if (batchSeriesResult.error) throw batchSeriesResult.error
-
-  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
-    ? userFarmsResult.data.users_farms
-        .map((code: unknown) => String(code ?? '').trim())
-        .filter(Boolean)
-    : []
 
   const farmsResult = assignedFarmCodes.length
     ? await db
@@ -250,12 +266,10 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
   if (sessionError) throw sessionError
 
   const authId = sessionData.session?.user.id
-  const userFarmsQuery = authId
-    ? db.from('vw_users_with_farms').select('users_farms').eq('auth_id', authId).maybeSingle()
-    : Promise.resolve({ data: null, error: null })
+  const assignedFarmCodesQuery = getAssignedFarmCodesByAuthId(authId)
 
-  const [userFarmsResult, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
-    userFarmsQuery,
+  const [assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+    assignedFarmCodesQuery,
     db
       .from('uom_groups')
       .select(`
@@ -289,17 +303,10 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .eq('active', true),
   ])
 
-  if (userFarmsResult.error) throw userFarmsResult.error
   if (conversionGroupsResult.error) throw conversionGroupsResult.error
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
   if (batchSeriesResult.error) throw batchSeriesResult.error
-
-  const assignedFarmCodes = Array.isArray(userFarmsResult.data?.users_farms)
-    ? userFarmsResult.data.users_farms
-        .map((code: unknown) => String(code ?? '').trim())
-        .filter(Boolean)
-    : []
 
   const farmsResult = assignedFarmCodes.length
     ? await db
