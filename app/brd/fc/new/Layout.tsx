@@ -2407,7 +2407,7 @@ import {
   getFlockCardSheet,
   getFeedBatchOnHandByWarehouse,
   getFarmBuildings,
-  reverseFlockCardLine,
+  reverseFlockCardFeedIntake,
   saveFlockCard,
   type FeedBatchOnHand,
   type FarmBuildingOption,
@@ -2437,6 +2437,12 @@ const feedDailyKgColumnIndex = 7;
 const feedDailyPerBirdColumnIndex = 8;
 const feedGuidelineColumnIndex = 9;
 const feedBatchColumnIndex = 10;
+const feedIntakeColumnIndexes = new Set([
+  feedDailyKgColumnIndex,
+  feedDailyPerBirdColumnIndex,
+  feedGuidelineColumnIndex,
+  feedBatchColumnIndex,
+]);
 
 // Static list of column indexes, reused every render instead of allocating
 // a fresh array for every row.
@@ -2879,7 +2885,6 @@ export default function StickyTablePage() {
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
   const [feedBatchAllocationsByRow, setFeedBatchAllocationsByRow] = useState<Record<number, FeedBatchAllocation[]>>({});
   const [hydratedSavedFeedBatchRows, setHydratedSavedFeedBatchRows] = useState<Record<number, true>>({});
-  const [backendFeedBatchAdjustmentByBatchId, setBackendFeedBatchAdjustmentByBatchId] = useState<Record<string, number>>({});
   const [reviewFeedBatch, setReviewFeedBatch] = useState<FeedBatchOnHand | null>(null);
   const [feedBatchTraceRows, setFeedBatchTraceRows] = useState<BatchTransactionTrail[]>([]);
   const [loadingFeedBatchTrace, setLoadingFeedBatchTrace] = useState(false);
@@ -3087,8 +3092,7 @@ export default function StickyTablePage() {
 
       return Array.from(rowsById.values()).map(row => {
         const allocatedQty = feedBatchAllocatedQtyByBatchId.get(row.id) ?? 0;
-        const backendAdjustmentQty = backendFeedBatchAdjustmentByBatchId[row.id] ?? 0;
-        const onHandQty = Number(row.onHandQty || 0) + backendAdjustmentQty;
+        const onHandQty = Number(row.onHandQty || 0);
 
         return {
           ...row,
@@ -3098,12 +3102,17 @@ export default function StickyTablePage() {
         };
       });
     },
-    [backendFeedBatchAdjustmentByBatchId, feedBatchAllocatedQtyByBatchId, feedBatchAllocationsByRow, fifoFeedBatchRows, hydratedSavedFeedBatchRows]
+    [feedBatchAllocatedQtyByBatchId, feedBatchAllocationsByRow, fifoFeedBatchRows, hydratedSavedFeedBatchRows]
+  );
+
+  const positiveAvailableFeedBatchRows = useMemo(
+    () => availableFeedBatchRows.filter(row => row.availableOnHandQty > 0),
+    [availableFeedBatchRows]
   );
 
   const totalFeedOnHand = useMemo(
-    () => availableFeedBatchRows.reduce((total, row) => total + row.availableOnHandQty, 0),
-    [availableFeedBatchRows]
+    () => positiveAvailableFeedBatchRows.reduce((total, row) => total + row.availableOnHandQty, 0),
+    [positiveAvailableFeedBatchRows]
   );
 
   const feedBatchSelectionAge = feedBatchSelectionRowIndex == null
@@ -3157,11 +3166,11 @@ export default function StickyTablePage() {
   const activeFeedRemainingQty = Math.max(activeFeedRequiredQty - activeFeedAllocatedQty, 0);
 
   const activeAvailableFeedBatches = useMemo(
-    () => availableFeedBatchRows.map(row => ({
+    () => positiveAvailableFeedBatchRows.map(row => ({
       ...row,
       availableToSelect: row.availableOnHandQty,
     })),
-    [availableFeedBatchRows]
+    [positiveAvailableFeedBatchRows]
   );
 
   useEffect(() => {
@@ -3197,7 +3206,6 @@ export default function StickyTablePage() {
 
     let cancelled = false;
     setHydratedSavedFeedBatchRows({});
-    setBackendFeedBatchAdjustmentByBatchId({});
 
     getFlockCardSheet({ id: cardId, cardNo: requestedCardNo })
       .then(card => {
@@ -3213,22 +3221,23 @@ export default function StickyTablePage() {
         const nextSavedLineByRowIndex: Record<number, { id: number; age: number }> = {};
         const nextAllocationsByRow: Record<number, FeedBatchAllocation[]> = {};
         const nextHydratedSavedFeedBatchRows: Record<number, true> = {};
-        const nextBackendFeedBatchAdjustments: Record<string, number> = {};
 
         for (const line of card.lines) {
           const rowIndex = rows.findIndex(row => row.age === line.age);
           if (rowIndex < 0) continue;
 
           nextGridValues[rowIndex] = line.values.slice(0, dataColumnCount);
-          nextSavedLineByRowIndex[rowIndex] = { id: line.id, age: line.age };
+          const hasSavedFeedIntake =
+            getNumericValue(line.values[feedDailyKgColumnIndex] ?? "") > 0 ||
+            String(line.values[feedBatchColumnIndex] ?? "").trim() !== "" ||
+            line.allocations.length > 0;
+
+          if (hasSavedFeedIntake) {
+            nextSavedLineByRowIndex[rowIndex] = { id: line.id, age: line.age };
+          }
           if (line.allocations.length > 0) {
             nextAllocationsByRow[rowIndex] = line.allocations;
             nextHydratedSavedFeedBatchRows[rowIndex] = true;
-
-            line.allocations.forEach(allocation => {
-              nextBackendFeedBatchAdjustments[allocation.batchId] =
-                (nextBackendFeedBatchAdjustments[allocation.batchId] ?? 0) + Number(allocation.selectedQty || 0);
-            });
           }
         }
 
@@ -3236,7 +3245,6 @@ export default function StickyTablePage() {
         setSavedLineByRowIndex(nextSavedLineByRowIndex);
         setFeedBatchAllocationsByRow(nextAllocationsByRow);
         setHydratedSavedFeedBatchRows(nextHydratedSavedFeedBatchRows);
-        setBackendFeedBatchAdjustmentByBatchId(nextBackendFeedBatchAdjustments);
       })
       .catch(error => {
         console.error(error);
@@ -3424,7 +3432,7 @@ export default function StickyTablePage() {
     colIndex: number,
     value: string
   ) {
-    if (savedLineByRowIndex[rowIndex]) return;
+    if (savedLineByRowIndex[rowIndex] && feedIntakeColumnIndexes.has(colIndex)) return;
 
     const shouldClearFeedBatch =
       colIndex === feedDailyKgColumnIndex && getNumericValue(value) <= 0;
@@ -3468,6 +3476,19 @@ export default function StickyTablePage() {
     return getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
   }
 
+  function rowHasFeedIntakeData(rowIndex: number) {
+    const rowValues = gridValues[rowIndex] ?? [];
+
+    return getNumericValue(rowValues[feedDailyKgColumnIndex] ?? "") > 0 ||
+      String(rowValues[feedBatchColumnIndex] ?? "").trim() !== "" ||
+      (feedBatchAllocationsByRow[rowIndex] ?? []).length > 0;
+  }
+
+  function rowHasFeedBatchData(rowIndex: number) {
+    return String(gridValues[rowIndex]?.[feedBatchColumnIndex] ?? "").trim() !== "" ||
+      (feedBatchAllocationsByRow[rowIndex] ?? []).length > 0;
+  }
+
   async function copyRow(rowIndex: number) {
     const rowText = [rows[rowIndex]?.age ?? rowIndex, ...(computedGridValues[rowIndex] ?? [])].join("\t");
 
@@ -3507,6 +3528,51 @@ export default function StickyTablePage() {
       .join(", ");
   }
 
+  function parseFeedBatchAllocationCell(value: string) {
+    const matches = value.matchAll(/([^,()]+?)\s*\(([-\d,.]+)\)/g);
+
+    return Array.from(matches).flatMap(match => {
+      const batchNumber = match[1]?.trim() ?? "";
+      const selectedQty = getNumericValue(match[2] ?? "");
+
+      return batchNumber && selectedQty > 0
+        ? [{ batchNumber, selectedQty }]
+        : [];
+    });
+  }
+
+  function getFeedBatchAllocationsForSave(rowIndex: number) {
+    const existingAllocations = feedBatchAllocationsByRow[rowIndex] ?? [];
+    const parsedAllocations = parseFeedBatchAllocationCell(
+      gridValues[rowIndex]?.[feedBatchColumnIndex] ?? ""
+    );
+
+    if (parsedAllocations.length === 0) return existingAllocations;
+
+    return parsedAllocations.map(parsedAllocation => {
+      const normalizedBatchNumber = parsedAllocation.batchNumber.toUpperCase();
+      const existingAllocation = existingAllocations.find(allocation =>
+        allocation.batchNumber.toUpperCase() === normalizedBatchNumber
+      );
+      const batch = availableFeedBatchRows.find(row =>
+        row.batchNumber.toUpperCase() === normalizedBatchNumber
+      );
+
+      if (existingAllocation) {
+        return {
+          ...existingAllocation,
+          selectedQty: parsedAllocation.selectedQty,
+        };
+      }
+
+      if (batch) {
+        return toFeedBatchAllocation(batch, parsedAllocation.selectedQty, "MANUAL");
+      }
+
+      throw new Error(`Unable to resolve feed batch ${parsedAllocation.batchNumber}. Please select it again from the feed batch dialog.`);
+    });
+  }
+
   function commitFeedBatchAllocations(rowIndex: number, allocations: FeedBatchAllocation[]) {
     if (savedLineByRowIndex[rowIndex]) return;
 
@@ -3535,6 +3601,29 @@ export default function StickyTablePage() {
       availableQty: Number(batch.onHandQty || 0),
       selectedQty,
       source,
+    };
+  }
+
+  function getFeedBatchAllocationId(itemCode: string, batchNumber: string, warehouseCode: string) {
+    return [
+      itemCode.trim().toUpperCase(),
+      batchNumber.trim().toUpperCase(),
+      warehouseCode.trim().toUpperCase(),
+    ].join("|");
+  }
+
+  function payloadAllocationToFeedBatchAllocation(allocation: FlockCardLinePayload["allocations"][number]): FeedBatchAllocation {
+    return {
+      batchId: getFeedBatchAllocationId(allocation.itemCode, allocation.batchNumber, allocation.warehouseCode),
+      batchNumber: allocation.batchNumber,
+      itemCode: allocation.itemCode,
+      itemName: allocation.itemName ?? allocation.itemCode,
+      warehouseCode: allocation.warehouseCode,
+      manufacturingDate: allocation.manufacturingDate ?? "",
+      expiryDate: allocation.expiryDate ?? "",
+      availableQty: allocation.onHandSnapshot,
+      selectedQty: allocation.allocatedQty,
+      source: allocation.source ?? "MANUAL",
     };
   }
 
@@ -3625,19 +3714,16 @@ export default function StickyTablePage() {
   finishFeedBatchAllocationRef.current = finishFeedBatchAllocation;
 
   function autoSelectFeedBatch() {
-    if (feedBatchSelectionRowIndex == null || availableFeedBatchRows.length === 0) return;
+    if (feedBatchSelectionRowIndex == null || activeAvailableFeedBatches.length === 0) return;
     if (savedLineByRowIndex[feedBatchSelectionRowIndex]) return;
 
     let remainingQty = activeFeedRequiredQty;
     const allocations: FeedBatchAllocation[] = [];
 
-    for (const batch of availableFeedBatchRows) {
+    for (const batch of activeAvailableFeedBatches) {
       if (remainingQty <= 0) break;
 
-      const availableQty = Math.max(
-        Number(batch.onHandQty || 0) - getFeedBatchAllocatedQty(batch.id, feedBatchSelectionRowIndex),
-        0
-      );
+      const availableQty = batch.availableToSelect;
       const selectedQty = Math.min(remainingQty, availableQty);
       if (selectedQty <= 0) continue;
 
@@ -3665,7 +3751,7 @@ export default function StickyTablePage() {
       const canAutoSelect =
         !loadingFeedBatches &&
         activeFeedRequiredQty > 0 &&
-        availableFeedBatchRows.length > 0;
+        activeAvailableFeedBatches.length > 0;
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "a") {
         if (!canAutoSelect) return;
@@ -3699,7 +3785,7 @@ export default function StickyTablePage() {
     feedBatchSelectionRowIndex,
     loadingFeedBatches,
     activeFeedRequiredQty,
-    availableFeedBatchRows,
+    activeAvailableFeedBatches,
   ]);
 
   function openFeedBatchSelection(rowIndex: number) {
@@ -3720,7 +3806,7 @@ export default function StickyTablePage() {
 
   function openFeedBatchReview(rowIndex: number) {
     const rowLocked = Boolean(savedLineByRowIndex[rowIndex]);
-    if (!rowHasFeedQuantity(rowIndex)) return;
+    if (!rowHasFeedQuantity(rowIndex) && !rowHasFeedBatchData(rowIndex)) return;
 
     if ((feedBatchAllocationsByRow[rowIndex] ?? []).length > 0) {
       openFeedBatchSelection(rowIndex);
@@ -3766,12 +3852,15 @@ export default function StickyTablePage() {
     });
 
     return rows.flatMap((row, rowIndex) => {
-      if (savedLineByRowIndex[rowIndex]) return [];
+      const savedLine = savedLineByRowIndex[rowIndex];
+      const feedBatchAllocationsForSave = getFeedBatchAllocationsForSave(rowIndex);
 
       return [{
+        id: savedLine?.id ?? null,
         age: row.age,
         values: computedValuesForSave[rowIndex],
-        allocations: (feedBatchAllocationsByRow[rowIndex] ?? []).map((allocation, allocationIndex) => {
+        feedIntakeLocked: Boolean(savedLine),
+        allocations: feedBatchAllocationsForSave.map((allocation, allocationIndex) => {
           const item = feedItemByCode.get(allocation.itemCode.toUpperCase());
           const warehouse = warehouseByCode.get(allocation.warehouseCode.toUpperCase());
 
@@ -3816,6 +3905,7 @@ export default function StickyTablePage() {
     setSaving(true);
 
     try {
+      const lines = buildFlockCardLines();
       const savedCard = await saveFlockCard({
         id: flockCardId,
         fcNo: flockCardNo,
@@ -3834,7 +3924,7 @@ export default function StickyTablePage() {
         feedWarehouseCode: selectedWarehouseCode,
         feedWarehouseName: selectedWarehouse?.whse_name ?? null,
         animalQty: numberOfAnimals,
-        lines: buildFlockCardLines(),
+        lines,
       });
 
       setFlockCardId(savedCard.id);
@@ -3857,8 +3947,34 @@ export default function StickyTablePage() {
 
         for (const savedLine of savedCard.savedLines) {
           const rowIndex = rows.findIndex(row => row.age === savedLine.age);
-          if (rowIndex >= 0) next[rowIndex] = savedLine;
+          if (rowIndex >= 0 && rowHasFeedIntakeData(rowIndex)) {
+            next[rowIndex] = savedLine;
+          }
         }
+
+        return next;
+      });
+      setFeedBatchAllocationsByRow(current => {
+        const next = { ...current };
+
+        lines.forEach(line => {
+          const rowIndex = rows.findIndex(row => row.age === line.age);
+          if (rowIndex >= 0 && line.allocations.length > 0) {
+            next[rowIndex] = line.allocations.map(payloadAllocationToFeedBatchAllocation);
+          }
+        });
+
+        return next;
+      });
+      setHydratedSavedFeedBatchRows(current => {
+        const next = { ...current };
+
+        lines.forEach(line => {
+          const rowIndex = rows.findIndex(row => row.age === line.age);
+          if (rowIndex >= 0 && line.allocations.length > 0) {
+            next[rowIndex] = true;
+          }
+        });
 
         return next;
       });
@@ -3871,13 +3987,29 @@ export default function StickyTablePage() {
     }
   }
 
-  async function reverseRow(rowIndex: number) {
+  async function reverseFeedIntake(rowIndex: number) {
     const savedLine = savedLineByRowIndex[rowIndex];
     if (!savedLine) return;
 
     try {
-      await reverseFlockCardLine(savedLine.id, `Reversed from flock card row age ${savedLine.age}`);
+      await reverseFlockCardFeedIntake(savedLine.id, `Reversed feed intake from flock card row age ${savedLine.age}`);
       setSavedLineByRowIndex(current => {
+        const next = { ...current };
+        delete next[rowIndex];
+        return next;
+      });
+      startGridTransition(() => {
+        setGridValues(currentValues =>
+          currentValues.map((gridRow, currentRowIndex) =>
+            currentRowIndex === rowIndex
+              ? gridRow.map((cellValue, currentColIndex) =>
+                feedIntakeColumnIndexes.has(currentColIndex) ? "" : cellValue
+              )
+              : gridRow
+          )
+        );
+      });
+      setFeedBatchAllocationsByRow(current => {
         const next = { ...current };
         delete next[rowIndex];
         return next;
@@ -3887,10 +4019,10 @@ export default function StickyTablePage() {
         delete next[rowIndex];
         return next;
       });
-      toast(`Age ${savedLine.age} reversed. You can now enter the corrected row.`);
+      toast(`Age ${savedLine.age} feed intake reversed. You can now enter corrected feed intake.`);
     } catch (error) {
       console.error(error);
-      toast(`Unable to reverse row: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast(`Unable to reverse feed intake: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
@@ -4123,7 +4255,7 @@ export default function StickyTablePage() {
                         {loadingFeedBatches ? "Loading..." : formatQuantity(totalFeedOnHand)}
                       </span>
                       <span className="rounded border bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
-                        {feedBatchRows.length}
+                        {positiveAvailableFeedBatchRows.length}
                       </span>
                       <MousePointerClick className="size-4 shrink-0 text-primary" />
                     </Button>
@@ -4302,7 +4434,7 @@ export default function StickyTablePage() {
                   Batch count
                 </div>
                 <div className="mt-1 text-lg font-semibold tabular-nums">
-                  {feedBatchRows.length}
+                  {positiveAvailableFeedBatchRows.length}
                 </div>
               </div>
 
@@ -4326,7 +4458,7 @@ export default function StickyTablePage() {
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   {feedBatchError}
                 </div>
-              ) : feedBatchRows.length === 0 ? (
+              ) : positiveAvailableFeedBatchRows.length === 0 ? (
                 <div className="rounded-md border bg-muted/40 px-3 py-8 text-center text-sm text-muted-foreground">
                   No feed on-hand quantity was found in this warehouse.
                 </div>
@@ -4342,7 +4474,7 @@ export default function StickyTablePage() {
                     </div>
 
                     <div className="max-h-[48vh] overflow-y-auto">
-                      {availableFeedBatchRows.map(row => (
+                      {positiveAvailableFeedBatchRows.map(row => (
                         <div
                           key={row.id}
                           className="grid grid-cols-[minmax(130px,1fr)_minmax(180px,1.5fr)_110px_100px_100px] gap-3 border-t px-3 py-2 text-sm"
@@ -4527,7 +4659,7 @@ export default function StickyTablePage() {
                       </div>
 
                       <div className="max-h-[42vh] overflow-y-auto">
-                        {availableFeedBatchRows.map(row => (
+                        {positiveAvailableFeedBatchRows.map(row => (
                           <div
                             key={row.id}
                             className="grid grid-cols-[minmax(130px,1fr)_minmax(180px,1.5fr)_110px_100px_100px_90px] gap-3 border-t px-3 py-2 text-sm"
@@ -4712,7 +4844,7 @@ export default function StickyTablePage() {
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 {feedBatchError}
               </div>
-            ) : feedBatchRows.length === 0 ? (
+            ) : positiveAvailableFeedBatchRows.length === 0 ? (
               <div className="rounded-md border bg-muted/40 px-3 py-8 text-center text-sm text-muted-foreground">
                 No feed batches with on-hand balance in this warehouse.
               </div>
@@ -4729,7 +4861,7 @@ export default function StickyTablePage() {
                   </div>
 
                   <div className="max-h-[48vh] overflow-y-auto">
-                    {availableFeedBatchRows.map(row => (
+                    {positiveAvailableFeedBatchRows.map(row => (
                       <div
                         key={row.id}
                         className="grid grid-cols-[minmax(130px,1fr)_minmax(180px,1.5fr)_110px_100px_100px_90px] gap-3 border-t px-3 py-2 text-sm"
@@ -4816,7 +4948,7 @@ export default function StickyTablePage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={activeFeedBatchRowLocked || loadingFeedBatches || availableFeedBatchRows.length === 0 || activeFeedRequiredQty <= 0}
+                    disabled={activeFeedBatchRowLocked || loadingFeedBatches || activeAvailableFeedBatches.length === 0 || activeFeedRequiredQty <= 0}
                     onClick={autoSelectFeedBatch}
                   >
                     <PackageCheck className="size-4" />
@@ -4876,7 +5008,7 @@ export default function StickyTablePage() {
                 // Computed once per row instead of once per cell (27x fewer calls).
                 const hasFeedQuantity = rowHasFeedQuantity(rowIndex);
                 const savedLine = savedLineByRowIndex[rowIndex];
-                const rowLocked = Boolean(savedLine);
+                const feedIntakeLocked = Boolean(savedLine);
                 const bodyBorderClasses = striped ? bodyBorderClassesStriped : bodyBorderClassesPlain;
 
                 return (
@@ -4903,10 +5035,10 @@ export default function StickyTablePage() {
                             <Copy className="size-4" />
                             Copy Row
                           </DropdownMenuItem>
-                          {rowLocked ? (
-                            <DropdownMenuItem onClick={() => void reverseRow(rowIndex)}>
+                          {feedIntakeLocked ? (
+                            <DropdownMenuItem onClick={() => void reverseFeedIntake(rowIndex)}>
                               <RotateCcw className="size-4" />
-                              Reverse Row
+                              Reverse Feed Intake
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
@@ -4922,10 +5054,13 @@ export default function StickyTablePage() {
                     </TableCell>
 
                     {columnIndexes.map((colIndex) => {
-                      const disabled = rowLocked || columnDisabledFlags[colIndex];
+                      const feedIntakeCellLocked = feedIntakeLocked && feedIntakeColumnIndexes.has(colIndex);
+                      const disabled = feedIntakeCellLocked || columnDisabledFlags[colIndex];
                       const inputDisabled = colIndex === feedBatchColumnIndex
                         ? columnDisabledFlags[colIndex]
                         : disabled;
+                      const feedBatchCellCanOpen =
+                        hasFeedQuantity || rowHasFeedBatchData(rowIndex);
 
                       const active =
                         activeCell?.rowIndex === rowIndex &&
@@ -4948,10 +5083,11 @@ export default function StickyTablePage() {
                                 onFocus={() => setActiveCell({ rowIndex, colIndex })}
                                 onClick={() => openFeedBatchReview(rowIndex)}
                                 onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
+                                disabled={!feedBatchCellCanOpen}
                                 className="flex min-w-0 flex-1 items-center justify-center gap-1 whitespace-normal break-words px-1.5 py-1 text-center text-xs leading-tight text-[#4f4a43] shadow-none transition-none focus:font-semibold focus:text-emerald-950 focus:outline-none disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[#7c766c] dark:text-foreground dark:focus:text-emerald-100 dark:disabled:bg-transparent dark:disabled:text-muted-foreground"
                                 title={
-                                  rowLocked
-                                    ? "Saved row. Reverse before editing."
+                                  feedIntakeCellLocked
+                                    ? "Saved feed intake. Open to view batches or reverse feed intake before editing."
                                     : !hasFeedQuantity
                                       ? "Enter Daily kg/Flock before selecting a feed batch"
                                       : gridValues[rowIndex]?.[feedBatchColumnIndex] || "Select feed batch"
@@ -4966,7 +5102,7 @@ export default function StickyTablePage() {
                               {gridValues[rowIndex]?.[feedBatchColumnIndex]?.trim() ? (
                                 <button
                                   type="button"
-                                  disabled={rowLocked}
+                                  disabled={feedIntakeCellLocked}
                                   onClick={() => clearFeedBatch(rowIndex)}
                                   className="flex w-7 shrink-0 items-center justify-center border-l border-[#ded8ce] text-muted-foreground hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-ring/20 dark:border-border"
                                   title="Clear feed batch"

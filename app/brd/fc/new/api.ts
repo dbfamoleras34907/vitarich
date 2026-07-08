@@ -54,9 +54,11 @@ export type FlockCardBatchAllocationPayload = {
 };
 
 export type FlockCardLinePayload = {
+  id?: number | null;
   age: number;
   values: string[];
   allocations: FlockCardBatchAllocationPayload[];
+  feedIntakeLocked?: boolean;
 };
 
 export type FlockCardPayload = {
@@ -254,23 +256,23 @@ async function findLinkedPlacementCardNo(payload: FlockCardPayload) {
   const buildingId = Number(payload.buildingId ?? 0);
   const buildingKey = payload.buildingKey?.trim();
   const buildingCode = payload.buildingCode?.trim();
-  const queries: Array<Promise<{ data: PlacementCardLinkRow | null; error: unknown }>> = [];
+  const queries: Array<() => PromiseLike<{ data: PlacementCardLinkRow | null; error: unknown }>> = [];
 
   if (Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
-    queries.push(basePlacementQuery().eq("building_whse_id", buildingWarehouseId).maybeSingle());
+    queries.push(() => basePlacementQuery().eq("building_whse_id", buildingWarehouseId).maybeSingle());
   }
   if (Number.isFinite(buildingId) && buildingId > 0) {
-    queries.push(basePlacementQuery().eq("building_id", buildingId).maybeSingle());
+    queries.push(() => basePlacementQuery().eq("building_id", buildingId).maybeSingle());
   }
   if (buildingKey) {
-    queries.push(basePlacementQuery().eq("building_key", buildingKey).maybeSingle());
+    queries.push(() => basePlacementQuery().eq("building_key", buildingKey).maybeSingle());
   }
   if (buildingCode) {
-    queries.push(basePlacementQuery().eq("building_code", buildingCode).maybeSingle());
+    queries.push(() => basePlacementQuery().eq("building_code", buildingCode).maybeSingle());
   }
 
-  for (const query of queries) {
-    const result = await query;
+  for (const runQuery of queries) {
+    const result = await runQuery();
     if (result.error) throwDbError(result.error, "Unable to load linked placement card");
 
     const cardNo = String(result.data?.card_no ?? "").trim();
@@ -316,6 +318,62 @@ function linePayloadToRow(line: FlockCardLinePayload, fcId: number, userId: stri
   };
 }
 
+function linePayloadToUpdateRow(line: FlockCardLinePayload, userId: string | null) {
+  const {
+    created_by: _createdBy,
+    fc_id: _fcId,
+    age: _age,
+    void: _void,
+    ...row
+  } = linePayloadToRow(line, 0, userId);
+
+  void _createdBy;
+  void _fcId;
+  void _age;
+  void _void;
+
+  return row;
+}
+
+function lineNeedsFeedIntakeRpc(line: FlockCardLinePayload) {
+  return !line.feedIntakeLocked && line.allocations.length > 0;
+}
+
+function omitFeedIntakeColumns<T extends Record<string, unknown>>(row: T) {
+  const {
+    feed_kg,
+    feed_bird,
+    feed_guideline,
+    feed_batch_text,
+    is_locked,
+    ...nonFeedRow
+  } = row;
+
+  void feed_kg;
+  void feed_bird;
+  void feed_guideline;
+  void feed_batch_text;
+  void is_locked;
+
+  return nonFeedRow;
+}
+
+function linePayloadToBaseInsertRow(line: FlockCardLinePayload, fcId: number, userId: string | null) {
+  const row = linePayloadToRow(line, fcId, userId);
+
+  return lineNeedsFeedIntakeRpc(line)
+    ? omitFeedIntakeColumns(row)
+    : row;
+}
+
+function linePayloadToBaseUpdateRow(line: FlockCardLinePayload, userId: string | null) {
+  const row = linePayloadToUpdateRow(line, userId);
+
+  return line.feedIntakeLocked || lineNeedsFeedIntakeRpc(line)
+    ? omitFeedIntakeColumns(row)
+    : row;
+}
+
 function hasLineData(line: FlockCardLinePayload) {
   return line.values.some((value, index) =>
     index !== 9 && String(value ?? "").trim() !== ""
@@ -323,30 +381,30 @@ function hasLineData(line: FlockCardLinePayload) {
     line.allocations.length > 0;
 }
 
-function allocationPayloadToRow(
-  allocation: FlockCardBatchAllocationPayload,
-  fcLineId: number,
-  userId: string | null,
-) {
-  return {
-    created_by: userId,
-    updated_by: userId,
-    fc_line_id: fcLineId,
-    line_no: allocation.lineNo,
-    item_id: allocation.itemId ?? null,
-    item_code: allocation.itemCode,
-    item_name: allocation.itemName ?? null,
-    batch_no: allocation.batchNumber,
-    whse_id: allocation.warehouseId ?? null,
-    whse_code: allocation.warehouseCode,
-    whse_name: allocation.warehouseName ?? null,
-    alloc_qty: allocation.allocatedQty,
-    onhand_snapshot: allocation.onHandSnapshot,
-    mfg_date: allocation.manufacturingDate || null,
-    exp_date: allocation.expiryDate || null,
-    source: allocation.source ?? "MANUAL",
-    void: "1",
-  };
+async function saveFlockCardLineFeedIntake(lineId: number, line: FlockCardLinePayload) {
+  const result = await db.rpc("save_brd_fc_feed_intake", {
+    p_line_id: lineId,
+    p_feed_kg: parseNumberOrNull(line.values[7]),
+    p_feed_bird: parseNumberOrNull(line.values[8]),
+    p_feed_guideline: parseNumberOrNull(line.values[9]),
+    p_feed_batch_text: line.values[10]?.trim() || null,
+    p_allocations: line.allocations.map(allocation => ({
+      itemId: allocation.itemId ?? null,
+      itemCode: allocation.itemCode,
+      itemName: allocation.itemName ?? null,
+      batchNumber: allocation.batchNumber,
+      warehouseId: allocation.warehouseId ?? null,
+      warehouseCode: allocation.warehouseCode,
+      warehouseName: allocation.warehouseName ?? null,
+      allocatedQty: allocation.allocatedQty,
+      onHandSnapshot: allocation.onHandSnapshot,
+      manufacturingDate: allocation.manufacturingDate || null,
+      expiryDate: allocation.expiryDate || null,
+      source: allocation.source ?? "MANUAL",
+    })),
+  });
+
+  if (result.error) throwDbError(result.error, "Unable to save feed intake");
 }
 
 export async function saveFlockCard(
@@ -400,25 +458,49 @@ export async function saveFlockCard(
   }
 
   const agesToSave = linesToSave.map(line => line.age);
-  const activeAgeResult = await db
+  const activeLineResult = await db
     .from("brd_fc_line")
-    .select("age")
+    .select("id, age")
     .eq("fc_id", fcId)
     .eq("void", "1")
     .in("age", agesToSave);
 
-  if (activeAgeResult.error) throwDbError(activeAgeResult.error, "Unable to check saved flock card lines");
+  if (activeLineResult.error) throwDbError(activeLineResult.error, "Unable to check saved flock card lines");
 
-  const activeAges = (activeAgeResult.data ?? []).map(row => Number(row.age));
-  if (activeAges.length > 0) {
-    throw new Error(`Age ${activeAges.sort((a, b) => a - b).join(", ")} already saved. Reverse the row before editing it.`);
+  const activeLineIdByAge = new Map(
+    (activeLineResult.data ?? []).map(row => [Number(row.age), Number(row.id)]),
+  );
+  const linesToInsert = linesToSave.filter(line => !activeLineIdByAge.has(line.age));
+  const linesToUpdate = linesToSave.filter(line => activeLineIdByAge.has(line.age));
+
+  for (const line of linesToUpdate) {
+    const lineId = activeLineIdByAge.get(line.age);
+    if (!lineId) continue;
+
+    const updatePayload = linePayloadToBaseUpdateRow(line, userId);
+
+    const lineResult = await db
+      .from("brd_fc_line")
+      .update(updatePayload)
+      .eq("id", lineId)
+      .eq("void", "1")
+      .select("id, age")
+      .single();
+
+    if (lineResult.error) throwDbError(lineResult.error, "Unable to update flock card line");
+
+    if (lineNeedsFeedIntakeRpc(line)) {
+      await saveFlockCardLineFeedIntake(lineId, line);
+    }
   }
 
-  const lineRows = linesToSave.map(line => linePayloadToRow(line, fcId, userId));
-  const savedLinesResult = await db
-    .from("brd_fc_line")
-    .insert(lineRows)
-    .select("id, age");
+  const lineRows = linesToInsert.map(line => linePayloadToBaseInsertRow(line, fcId, userId));
+  const savedLinesResult = lineRows.length > 0
+    ? await db
+      .from("brd_fc_line")
+      .insert(lineRows)
+      .select("id, age")
+    : { data: [], error: null };
 
   if (savedLinesResult.error) throwDbError(savedLinesResult.error, "Unable to save flock card lines");
 
@@ -426,71 +508,44 @@ export async function saveFlockCard(
     (savedLinesResult.data ?? []).map(row => [Number(row.age), Number(row.id)]),
   );
 
-  const allocationRows = linesToSave.flatMap(line => {
+  for (const line of linesToInsert) {
     const fcLineId = lineIdByAge.get(line.age);
-    if (!fcLineId) return [];
+    if (!fcLineId || !lineNeedsFeedIntakeRpc(line)) continue;
 
-    return line.allocations.map(allocation =>
-      allocationPayloadToRow(allocation, fcLineId, userId)
-    );
-  });
-
-  if (allocationRows.length > 0) {
-    const savedAllocationsResult = await db
-      .from("brd_fc_ba")
-      .insert(allocationRows);
-
-    if (savedAllocationsResult.error) throwDbError(savedAllocationsResult.error, "Unable to save feed batch allocations");
+    await saveFlockCardLineFeedIntake(fcLineId, line);
   }
 
   return {
     id: fcId,
     fcNo: savedHeader.data.fc_no,
-    savedLines: (savedLinesResult.data ?? []).map(row => ({
+    savedLines: [
+      ...(activeLineResult.data ?? []),
+      ...(savedLinesResult.data ?? []),
+    ].map(row => ({
       id: Number(row.id),
       age: Number(row.age),
     })),
   };
 }
 
-export async function reverseFlockCardLine(lineId: number, reason?: string | null) {
-  const userId = await getSessionUserId();
+export async function reverseFlockCardFeedIntake(lineId: number, reason?: string | null) {
   const reversalReason = reason?.trim() || null;
 
-  const allocationResult = await db
-    .from("brd_fc_ba")
-    .update({
-      void: "0",
-      updated_by: userId,
-      reversed_by: userId,
-      reversed_at: new Date().toISOString(),
-      reversal_reason: reversalReason,
-    })
-    .eq("fc_line_id", lineId)
-    .eq("void", "1");
+  const lineResult = await db.rpc("reverse_brd_fc_feed_intake", {
+    p_line_id: lineId,
+    p_reason: reversalReason,
+  });
 
-  if (allocationResult.error) throwDbError(allocationResult.error, "Unable to reverse feed batch allocations");
+  if (lineResult.error) throwDbError(lineResult.error, "Unable to reverse flock card feed intake");
+  const reversedLine = Array.isArray(lineResult.data) ? lineResult.data[0] : lineResult.data;
 
-  const lineResult = await db
-    .from("brd_fc_line")
-    .update({
-      void: "0",
-      is_locked: false,
-      updated_by: userId,
-      reversed_by: userId,
-      reversed_at: new Date().toISOString(),
-      reversal_reason: reversalReason,
-    })
-    .eq("id", lineId)
-    .eq("void", "1")
-    .select("id, age")
-    .single();
-
-  if (lineResult.error) throwDbError(lineResult.error, "Unable to reverse flock card line");
+  if (!reversedLine) {
+    throw new Error("Unable to reverse flock card feed intake: no line was returned");
+  }
 
   return {
-    id: Number(lineResult.data.id),
-    age: Number(lineResult.data.age),
+    id: Number(reversedLine.id),
+    age: Number(reversedLine.age),
   };
 }
 
@@ -713,27 +768,23 @@ function addPostingQuantities(
     const itemCode = String(row.item_code ?? "").trim();
     const itemKey = itemCode.toUpperCase();
     const warehouseCode = String(row.warehouse_code ?? "").trim();
-    const ref = String(row.ref ?? "").trim();
-    const ref2 = String(row.ref2 ?? "").trim();
-    const batchNumbers = Array.from(new Set([ref, ref2].filter(Boolean)));
+    const batchNumber = String(row.ref ?? "").trim();
 
-    if (!itemCode || !feedItemCodes.has(itemKey) || batchNumbers.length === 0) continue;
+    if (!itemCode || !feedItemCodes.has(itemKey) || !batchNumber) continue;
 
-    for (const batchNumber of batchNumbers) {
-      const key = [itemKey, batchNumber.toUpperCase(), warehouseCode.toUpperCase()].join("|");
-      const current = quantityByItemBatch.get(key);
+    const key = [itemKey, batchNumber.toUpperCase(), warehouseCode.toUpperCase()].join("|");
+    const current = quantityByItemBatch.get(key);
 
-      quantityByItemBatch.set(key, {
-        id: key,
-        itemCode,
-        itemName: current?.itemName ?? "",
-        batchNumber,
-        manufacturingDate: current?.manufacturingDate ?? "",
-        expiryDate: current?.expiryDate ?? "",
-        warehouseCode: current?.warehouseCode || warehouseCode,
-        onHandQty: (current?.onHandQty ?? 0) + signedPostingQty(row),
-      });
-    }
+    quantityByItemBatch.set(key, {
+      id: key,
+      itemCode,
+      itemName: current?.itemName ?? "",
+      batchNumber,
+      manufacturingDate: current?.manufacturingDate ?? "",
+      expiryDate: current?.expiryDate ?? "",
+      warehouseCode: current?.warehouseCode || warehouseCode,
+      onHandQty: (current?.onHandQty ?? 0) + signedPostingQty(row),
+    });
   }
 }
 
@@ -749,32 +800,20 @@ export async function getFeedBatchOnHandByWarehouse(
   if (!normalizedWarehouseCode || normalizedItemCodes.length === 0) return [];
 
   const postingSelect = "id, item_code, warehouse_code, qty, transfer_type, ref, ref2";
-  const [refPostingsResult, ref2PostingsResult] = await Promise.all([
-    db
-      .from("inventory_postings")
-      .select(postingSelect)
-      .eq("warehouse_code", normalizedWarehouseCode)
-      .in("item_code", normalizedItemCodes)
-      .not("ref", "is", null),
-    db
-      .from("inventory_postings")
-      .select(postingSelect)
-      .eq("warehouse_code", normalizedWarehouseCode)
-      .in("item_code", normalizedItemCodes)
-      .not("ref2", "is", null),
-  ]);
+  const postingsResult = await db
+    .from("inventory_postings")
+    .select(postingSelect)
+    .eq("warehouse_code", normalizedWarehouseCode)
+    .in("item_code", normalizedItemCodes)
+    .not("ref", "is", null);
 
-  if (refPostingsResult.error) throw refPostingsResult.error;
-  if (ref2PostingsResult.error) throw ref2PostingsResult.error;
+  if (postingsResult.error) throw postingsResult.error;
 
   const feedItemCodeSet = new Set(normalizedItemCodes.map(code => code.toUpperCase()));
   const quantityByItemBatch = new Map<string, FeedBatchOnHand>();
 
   addPostingQuantities(
-    [
-      ...((refPostingsResult.data ?? []) as InventoryPostingBatchRow[]),
-      ...((ref2PostingsResult.data ?? []) as InventoryPostingBatchRow[]),
-    ],
+    (postingsResult.data ?? []) as InventoryPostingBatchRow[],
     feedItemCodeSet,
     quantityByItemBatch,
   );

@@ -31,6 +31,7 @@ import {
   type FarmOriginBatchOption,
   type FlockCardFarmInfo,
 } from "../../api";
+import { calculateFlockAgeFromStartDate } from "../../age";
 import { getFlockCardPlacement, saveFlockCardPlacement } from "./api";
 
 type AddFlockRoutePayload = {
@@ -288,7 +289,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
         setEditingCardId(card.id);
         setEditingCardNo(card.cardNo);
         setForm({
-          age: String(card.age ?? 0),
+          age: String(card.startDate ? calculateFlockAgeFromStartDate(card.startDate) : card.age ?? 0),
           flockStartDate: card.startDate || today(),
           broilerType: card.broilerType ?? "",
           breed: card.breed ?? "",
@@ -340,6 +341,14 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
     setForm(current => ({ ...current, [key]: value }));
   }
 
+  function updateFlockStartDate(value: string) {
+    setForm(current => ({
+      ...current,
+      flockStartDate: value,
+      age: String(calculateFlockAgeFromStartDate(value)),
+    }));
+  }
+
   function updateOriginRow(id: string, changes: Partial<FlockOriginRow>) {
     setOriginRows(current => current.map(row =>
       row.id === id ? { ...row, ...changes } : row
@@ -383,7 +392,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
       return;
     }
 
-    if (!form.age || !form.broilerType || !form.breed || !firstOrigin?.batch.trim()) {
+    if (!form.flockStartDate || !form.broilerType || !form.breed || !firstOrigin?.batch.trim()) {
       toast("Please complete required flock fields.");
       return;
     }
@@ -391,6 +400,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
     setSaving(true);
 
     try {
+      const flockAge = calculateFlockAgeFromStartDate(form.flockStartDate);
       const savedCard = await saveFlockCardPlacement({
         id: editingCardId,
         cardNo: editingCardNo,
@@ -403,7 +413,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
         buildingKey: routePayload.buildingKey,
         buildingCode: selectedBuilding?.code || routePayload.buildingCode || null,
         buildingName: selectedBuilding?.name || routePayload.buildingName || null,
-        age: Number(form.age || 0),
+        age: flockAge,
         startDate: form.flockStartDate,
         broilerType: form.broilerType,
         breed: form.breed,
@@ -533,7 +543,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => updateForm("age", String(Math.max(Number(form.age || 0) - 1, 0)))}
+                    disabled
                   >
                     <Minus className="size-4" />
                   </Button>
@@ -541,14 +551,14 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                     type="number"
                     min={0}
                     value={form.age}
-                    onChange={event => updateForm("age", event.target.value)}
-                    className="mx-2 text-right"
+                    readOnly
+                    className="mx-2 bg-stone-50 text-right"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => updateForm("age", String(Number(form.age || 0) + 1))}
+                    disabled
                   >
                     <Plus className="size-4" />
                   </Button>
@@ -560,7 +570,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                 <Input
                   type="date"
                   value={form.flockStartDate}
-                  onChange={event => updateForm("flockStartDate", event.target.value)}
+                  onChange={event => updateFlockStartDate(event.target.value)}
                 />
               </div>
 

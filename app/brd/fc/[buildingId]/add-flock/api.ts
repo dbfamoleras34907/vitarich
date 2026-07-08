@@ -132,7 +132,7 @@ function throwDbError(error: unknown, context: string): never {
       dbError.code ? `code: ${dbError.code}` : "",
     ].filter(Boolean).join(" ");
 
-    throw new Error(details ? `${context}: ${details}` : context);
+    // throw new Error(details ? `${context}: ${details}` : context);
   }
 
   throw new Error(`${context}: ${String(error ?? "Unknown error")}`);

@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { calculateFlockAgeFromStartDate } from "./age";
 
 export type FarmBuildingListRow = {
   key: string;
@@ -143,7 +144,7 @@ function throwDbError(error: unknown, context: string): never {
       dbError.code ? `code: ${dbError.code}` : "",
     ].filter(Boolean).join(" ");
 
-    throw new Error(details ? `${context}: ${details}` : context);
+    // throw new Error(details ? `${context}: ${details}` : context);
   }
 
   throw new Error(`${context}: ${String(error ?? "Unknown error")}`);
@@ -312,12 +313,13 @@ export async function getFarmBuildingsForFlockCard(
   const cardToListInfo = (card: FlockCardListRow): FlockCardListInfo => {
     const cardId = Number(card.id);
     const buildingFlockKey = getBuildingFlockKey(card);
+    const startDate = String(card.start_date ?? "").trim();
 
     return {
       id: cardId,
       cardNo: String(card.card_no ?? "").trim(),
-      age: Number(card.age ?? 0),
-      startDate: String(card.start_date ?? "").trim(),
+      age: startDate ? calculateFlockAgeFromStartDate(startDate) : Number(card.age ?? 0),
+      startDate,
       flockCode: String(card.flock_code ?? "").trim(),
       breed: String(card.breed ?? "").trim(),
       animalQty: buildingFlockKey

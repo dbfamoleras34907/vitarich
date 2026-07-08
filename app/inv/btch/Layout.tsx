@@ -730,7 +730,7 @@ export default function Layout() {
               loading={loading}
               initialFilters={[]}
               title="My Created Batches"
-              description="Batches created by your goods receipt activity with current on-hand by warehouse"
+              // description="Batches created by your goods receipt activity with current on-hand by warehouse"
               searchPlaceholder="Search batches..."
               emptyMessage="No batches created by your user were found"
               rowKey="id"
