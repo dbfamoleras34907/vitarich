@@ -15,6 +15,7 @@ export type AssociatedWarehousePayload = {
   whse_code: string
   whse_name: string | null
   is_default_feed?: boolean
+  is_default_receiving?: boolean
 }
 
 export type FarmFullPayload = {

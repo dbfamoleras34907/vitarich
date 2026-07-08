@@ -364,6 +364,12 @@
   background: var(--card);
 }
 
+.dark .fc-grid-cell-editable input,
+.dark .fc-grid-cell-editable [data-fc-cell="true"] {
+  background: var(--card);
+  color: var(--foreground);
+}
+
 .dark .fc-grid-cell-readonly {
   background: color-mix(in srgb, var(--card) 80%, black);
 }
@@ -373,6 +379,15 @@
 .dark .fc-grid-cell:focus-within {
   background: rgb(2 44 34 / 0.65);
   box-shadow: inset 0 0 0 3px #4ade808f;
+}
+
+.dark .fc-grid-cell-editable:hover input,
+.dark .fc-grid-cell-editable:hover [data-fc-cell="true"],
+.dark .fc-grid-cell-active input,
+.dark .fc-grid-cell-active [data-fc-cell="true"],
+.dark .fc-grid-cell:focus-within input,
+.dark .fc-grid-cell:focus-within [data-fc-cell="true"] {
+  color: rgb(209 250 229);
 }
 
 .dark .fc-grid-row:has(.fc-grid-cell-editable:hover) > .fc-grid-age,

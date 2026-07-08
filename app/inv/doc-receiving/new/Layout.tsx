@@ -68,6 +68,15 @@ const FMS_TYPE_OPTIONS = [
   { value: 'hatchery', label: 'Hatchery' },
 ]
 
+const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
+  BE: 'breeder',
+  HA: 'hatchery',
+  BR: 'broiler',
+  BREEDER: 'breeder',
+  HATCHERY: 'hatchery',
+  BROILER: 'broiler',
+}
+
 const today = () => {
   const date = new Date()
   const offset = date.getTimezoneOffset()
@@ -202,8 +211,55 @@ const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => 
   return String(warehouse.whse_code ?? '').trim()
 }
 
+const isDefaultReceivingAssociation = (warehouse: AssociatedWarehouse | string) =>
+  typeof warehouse === 'object' && (
+    Boolean(warehouse?.is_default_receiving) ||
+    Boolean(warehouse?.is_default_receiving_warehouse)
+  )
+
 const isWarehouseType = (warehouse: WarehouseData) =>
   String(warehouse.warehouse_type ?? '').trim().toLowerCase() === 'warehouse'
+
+const getFarmFmsType = (farm: GoodsReceiptFarm | undefined | null) =>
+  FARM_TYPE_TO_FMS_TYPE[String(farm?.farm_type ?? '').trim().toUpperCase()] ?? ''
+
+const getWarehouseFmsType = (warehouse: WarehouseData | undefined | null) =>
+  FARM_TYPE_TO_FMS_TYPE[String(warehouse?.fms_type ?? '').trim().toUpperCase()] ?? ''
+
+const getWarehousesForFarm = (farm: GoodsReceiptFarm | undefined | null, warehouseList: WarehouseData[]) => {
+  const associations = farm?.associated_warehouses
+  if (!Array.isArray(associations)) return []
+
+  const allowedCodes = new Set(
+    associations
+      .map(getAssociatedWarehouseCode)
+      .filter(Boolean)
+  )
+
+  return warehouseList.filter(warehouse =>
+    allowedCodes.has(String(warehouse.whse_code ?? '').trim()) &&
+    isWarehouseType(warehouse)
+  )
+}
+
+const getDefaultReceivingWarehouse = (
+  farm: GoodsReceiptFarm | undefined | null,
+  farmWarehouseList: WarehouseData[],
+) => {
+  const associations = farm?.associated_warehouses
+  const defaultAssociationCode = Array.isArray(associations)
+    ? associations.find(isDefaultReceivingAssociation)
+    : null
+  const defaultCode = defaultAssociationCode
+    ? getAssociatedWarehouseCode(defaultAssociationCode)
+    : ''
+
+  const defaultWarehouse = farmWarehouseList.find(warehouse =>
+    defaultCode && String(warehouse.whse_code ?? '').trim() === defaultCode
+  ) ?? farmWarehouseList.find(warehouse => Boolean(warehouse.is_default_receiving_warehouse)) ?? null
+
+  return defaultWarehouse ?? (farmWarehouseList.length === 1 ? farmWarehouseList[0] : null)
+}
 
 const getItemFmsType = (item: Items) =>
   String(item.fms_group ?? '').trim().toLowerCase()
@@ -309,8 +365,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     async function loadPageData() {
       try {
         if (isPostMode && !receiptId) {
-          toast('Select a draft goods receipt to post.')
-          router.push('/inv/gr')
+          toast('Select a draft DOC receiving document to post.')
+          router.push('/inv/doc-receiving')
           return
         }
 
@@ -319,9 +375,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
           .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
         const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
+        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
+          farm => typeof farm.farm_type !== 'undefined',
+        )
         const canUseCachedReferences = cachedItems.length > 0 &&
           cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups)
+          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
+          cachedReferencesHaveFarmMetadata
 
         const referencesPromise = canUseCachedReferences
           ? Promise.resolve({
@@ -387,24 +447,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     [farms, receipt?.farmId],
   )
 
-  const farmWarehouseCodes = useMemo(() => {
-    const associations = selectedFarm?.associated_warehouses
-    if (!Array.isArray(associations)) return new Set<string>()
-
-    return new Set(
-      associations
-        .map(getAssociatedWarehouseCode)
-        .filter(Boolean)
-    )
-  }, [selectedFarm])
-
-  const farmWarehouses = useMemo(() => {
-    if (!farmWarehouseCodes.size) return []
-    return warehouses.filter(warehouse =>
-      farmWarehouseCodes.has(String(warehouse.whse_code ?? '').trim()) &&
-      isWarehouseType(warehouse)
-    )
-  }, [farmWarehouseCodes, warehouses])
+  const farmWarehouses = useMemo(
+    () => getWarehousesForFarm(selectedFarm, warehouses),
+    [selectedFarm, warehouses],
+  )
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -438,35 +484,46 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const allowedCodes = new Set(
       farmWarehouses.map(warehouse => String(warehouse.whse_code ?? '').trim())
     )
-    const defaultWarehouseIsAllowed = receipt.defaultWarehouseId == null ||
-      farmWarehouses.some(warehouse => warehouse.id === receipt.defaultWarehouseId)
+    const currentDefaultWarehouse = receipt.defaultWarehouseId == null
+      ? null
+      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
+    const nextDefaultWarehouse = defaultWarehouse ?? currentDefaultWarehouse
+    const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
+    const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
 
-    const nextLines = receipt.lines.map(line =>
-      !line.warehouseCode || allowedCodes.has(line.warehouseCode)
-        ? line
-        : {
-          ...line,
-          warehouseId: null,
-          warehouseCode: '',
-          warehouseName: '',
-        }
-    )
+    const nextLines = receipt.lines.map(line => {
+      if (line.warehouseCode && allowedCodes.has(line.warehouseCode)) return line
+      if (!line.warehouseCode && !nextDefaultWarehouse) return line
+
+      return {
+        ...line,
+        warehouseId: nextDefaultWarehouse?.id ?? null,
+        warehouseCode: nextDefaultWarehouse?.whse_code ?? '',
+        warehouseName: nextDefaultWarehouse?.whse_name ?? '',
+      }
+    })
 
     const linesChanged = nextLines.some((line, index) => line !== receipt.lines[index])
+    const defaultWarehouseChanged = receipt.defaultWarehouseId !== nextDefaultWarehouseId
+    const fmsTypeChanged = Boolean(nextFmsType) && receipt.fmsType !== nextFmsType
 
-    if (defaultWarehouseIsAllowed && !linesChanged) return
+    if (!defaultWarehouseChanged && !fmsTypeChanged && !linesChanged) return
 
     setReceipt(current => current ? {
       ...current,
-      defaultWarehouseId: defaultWarehouseIsAllowed ? current.defaultWarehouseId : null,
+      fmsType: nextFmsType || current.fmsType,
+      defaultWarehouseId: nextDefaultWarehouseId,
       lines: nextLines,
     } : current)
-  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.lines])
+  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.fmsType, receipt?.lines, selectedFarm])
 
   useEffect(() => {
     if (loadingReferences || receipt?.farmId || farms.length !== 1) return
 
     const [farm] = farms
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
     const allowedCodes = new Set(
       (farm.associated_warehouses ?? [])
         .map(getAssociatedWarehouseCode)
@@ -481,20 +538,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         farmId: farm.id,
         farmCode: farm.code,
         farmName: farm.name ?? '',
-        defaultWarehouseId: null,
+        fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+        defaultWarehouseId: defaultWarehouse?.id ?? null,
         lines: current.lines.map(line =>
           allowedCodes.has(line.warehouseCode)
             ? line
             : {
               ...line,
-              warehouseId: null,
-              warehouseCode: '',
-              warehouseName: '',
+              warehouseId: defaultWarehouse?.id ?? null,
+              warehouseCode: defaultWarehouse?.whse_code ?? '',
+              warehouseName: defaultWarehouse?.whse_name ?? '',
             }
         ),
       }
     })
-  }, [farms, loadingReferences, receipt?.farmId])
+  }, [farms, loadingReferences, receipt?.farmId, warehouses])
 
   useEffect(() => {
     const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
@@ -791,7 +849,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : {
           id: 0,
           code: 'GR',
-          name: 'Item Stock In',
+          name: 'DOC Receiving',
           prefix: 'FD',
           suffix: null,
           separator: '-',
@@ -812,7 +870,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const expPart = includesExpiryDate ? formatBatchDatePart(dateFormat, line.expiryDate) : ''
 
     return {
-      templateSource: series ? `${series.code} - ${series.name}` : 'GR fallback template',
+      templateSource: series ? `${series.code} - ${series.name}` : 'DOC Receiving fallback template',
       prefix: numberedSeries.prefix ?? '',
       mfgPart,
       expPart,
@@ -955,6 +1013,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const selectFarm = (farmId: string) => {
     const farm = farms.find(candidate => String(candidate.id) === farmId)
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
     const allowedCodes = new Set(
       (farm?.associated_warehouses ?? [])
         .map(getAssociatedWarehouseCode)
@@ -966,15 +1026,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       farmId: farm?.id ?? null,
       farmCode: farm?.code ?? '',
       farmName: farm?.name ?? '',
-      defaultWarehouseId: null,
+      fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+      defaultWarehouseId: defaultWarehouse?.id ?? null,
       lines: current.lines.map(line =>
         allowedCodes.has(line.warehouseCode)
           ? line
           : {
             ...line,
-            warehouseId: null,
-            warehouseCode: '',
-            warehouseName: '',
+            warehouseId: defaultWarehouse?.id ?? null,
+            warehouseCode: defaultWarehouse?.whse_code ?? '',
+            warehouseName: defaultWarehouse?.whse_name ?? '',
           }
       ),
     } : current)
@@ -1055,19 +1116,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast(posting ? 'Goods receipt posted successfully.' : 'Goods receipt draft saved.')
 
       if (posting) {
-        router.push('/inv/gr')
+        router.push('/inv/doc-receiving')
         return
       }
 
       if (!isPostMode && savedReceipt?.id) {
-        router.push(`/inv/gr/post?id=${savedReceipt.id}`)
+        router.push(`/inv/doc-receiving/post?id=${savedReceipt.id}`)
         return
       }
 
       if (savedReceipt) setReceipt(savedReceipt)
     } catch (error) {
       console.log({ error })
-      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save goods receipt'))
+      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save DOC receiving document'))
     } finally {
       setSaving(false)
     }
@@ -1083,7 +1144,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const activeBatchStatus = activeBatchMatch
     ? 'Existing database batch'
     : activeLineBatchMatch
-      ? 'Reusing current GR batch'
+      ? 'Reusing current DOC Receiving batch'
       : activeBatchLine?.batchNumber
         ? 'New batch to create'
         : activeBatchRequirement?.needsExpiryDate
@@ -1096,20 +1157,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="Item Stock In"
-          FirstPreviewsPageLink="/inv/gr"
-          CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
+          FirstPreviewsPageName="DOC Receiving"
+          FirstPreviewsPageLink="/inv/doc-receiving"
+          CurrentPageName={isPostMode ? 'Post DOC Receiving' : 'New DOC Receiving'}
         />
-        <Button type="button" variant="outline" onClick={() => router.push('/inv/gr')}>
+        <Button type="button" variant="outline" onClick={() => router.push('/inv/doc-receiving')}>
           <List className="size-4" />
-          GR List
+          DOC Receiving List
         </Button>
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">GR No.</label>
+            <label className="text-sm font-semibold">DOC Receiving No.</label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
@@ -1185,8 +1246,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             <label className="text-sm font-semibold">FMS Type</label>
             <select
               value={receipt.fmsType}
-              onChange={event => setReceipt(current => current ? { ...current, fmsType: event.target.value } : current)}
-              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
+              disabled
+              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
             >
               <option value="">Select FMS type...</option>
               {FMS_TYPE_OPTIONS.map(option => (
@@ -1478,14 +1539,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
                     {activeBatchMatch && (
                       <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        This item already has a batch for the selected {activeBatchDateText}. GR will use batch{' '}
+                        This item already has a batch for the selected {activeBatchDateText}. DOC Receiving will use batch{' '}
                         <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
                       </div>
                     )}
 
                     {!activeBatchMatch && activeLineBatchMatch && (
                       <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        Another line in this GR already uses the same item and {activeBatchDateText}. This line will use batch{' '}
+                        Another line in this DOC Receiving already uses the same item and {activeBatchDateText}. This line will use batch{' '}
                         <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
                       </div>
                     )}
@@ -1795,7 +1856,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Post this goods receipt?</DialogTitle>
+            <DialogTitle>Post this DOC receiving document?</DialogTitle>
             <DialogDescription>
               Posting {receipt.grNo} will add inventory for the selected receipt lines and cannot be edited afterward.
             </DialogDescription>

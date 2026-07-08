@@ -258,7 +258,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
     async function loadPageData() {
       try {
         if (isPostMode && !issueId) {
-          toast('Select a draft goods issue to post.')
+          toast('Select a draft item stock out transaction to post.')
           router.push('/inv/gi')
           return
         }
@@ -630,7 +630,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         lines: linesToSave,
       })
 
-      toast(posting ? 'Goods issue posted successfully.' : 'Goods issue draft saved.')
+      toast(posting ? 'Item stock out posted successfully.' : 'Item stock out draft saved.')
 
       if (posting) {
         router.push('/inv/gi')
@@ -643,7 +643,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       if (savedIssue) setIssue(savedIssue)
     } catch (error) {
       console.error(error)
-      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save goods issue'))
+      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save item stock out'))
     } finally {
       setSaving(false)
     }
@@ -750,13 +750,13 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="Goods Issue"
+          FirstPreviewsPageName="Item Stock Out"
           FirstPreviewsPageLink="/inv/gi"
           CurrentPageName={isPostMode ? 'Post GI' : 'New GI'}
         />
         <Button type="button" variant="outline" onClick={() => router.push('/inv/gi')}>
           <List className="size-4" />
-          Goods issue List
+          Item Stock Out List
         </Button>
       </div>
 
@@ -1016,7 +1016,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                 <DialogTitle>{activeDocumentIsPosted ? 'Batch Information' : 'Select On-hand Batch'}</DialogTitle>
                 <DialogDescription>
                   {activeDocumentIsPosted
-                    ? 'This is the batch used by the posted goods issue transaction.'
+                    ? 'This is the batch used by the posted item stock out transaction.'
                     : `${activeBatchLine?.itemCode || 'Selected item'} batches in ${activeBatchLine?.fromWarehouseCode || 'selected warehouse'}.`}
                 </DialogDescription>
               </DialogHeader>
@@ -1045,7 +1045,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                     <p className="mt-2 text-xs text-stone-500">
                       {activeDocumentIsPosted
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
-                        : 'Choose an available batch for this goods issue line. The selected batch will carry its on-hand quantity, manufacturing date, and expiry date back to the row.'}
+                        : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity, manufacturing date, and expiry date back to the row.'}
                     </p>
                   </div>
 
@@ -1266,7 +1266,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Post this goods issue?</DialogTitle>
+            <DialogTitle>Post this item stock out?</DialogTitle>
             <DialogDescription>
               Posting {issue.giNo} will deduct inventory for the selected issue lines and cannot be edited afterward.
             </DialogDescription>

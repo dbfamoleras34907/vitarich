@@ -210,6 +210,7 @@ export default function Layout() {
   const [assignedWarehouseCodes, setAssignedWarehouseCodes] = useState<string[]>([])
   const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
   const [defaultFeedWarehouse, setDefaultFeedWarehouse] = useState('')
+  const [defaultReceivingWarehouse, setDefaultReceivingWarehouse] = useState('')
   const [loadingWarehouses, setLoadingWarehouses] = useState(false)
   const showBuildingSection = false
 
@@ -220,8 +221,9 @@ export default function Layout() {
     return warehouses.filter((warehouse) => {
       const code = compact(warehouse.whse_code)
       const warehouseFmsType = compact(warehouse.fms_type)
+      const assignedFarmId = Number(warehouse.farm_id ?? 0)
 
-      return code && !unavailableCodes.has(code) && warehouseFmsType === requiredFmsType
+      return code && !unavailableCodes.has(code) && !assignedFarmId && warehouseFmsType === requiredFmsType
     })
   }, [assignedWarehouseCodes, farmData.farm_type, warehouses])
 
@@ -252,6 +254,7 @@ export default function Layout() {
     if (code === 'farm_type') {
       setSelectedWarehouses([])
       setDefaultFeedWarehouse('')
+      setDefaultReceivingWarehouse('')
     }
   }
 
@@ -358,10 +361,22 @@ export default function Layout() {
     if (defaultFeedWarehouse && !codes.includes(defaultFeedWarehouse)) {
       setDefaultFeedWarehouse('')
     }
+
+    if (defaultReceivingWarehouse && !codes.includes(defaultReceivingWarehouse)) {
+      setDefaultReceivingWarehouse('')
+    }
   }
 
   const updateDefaultFeedWarehouse = (code: string) => {
     setDefaultFeedWarehouse(code)
+
+    if (code && !selectedWarehouses.includes(code)) {
+      setSelectedWarehouses((prev) => [...prev, code])
+    }
+  }
+
+  const updateDefaultReceivingWarehouse = (code: string) => {
+    setDefaultReceivingWarehouse(code)
 
     if (code && !selectedWarehouses.includes(code)) {
       setSelectedWarehouses((prev) => [...prev, code])
@@ -387,6 +402,7 @@ export default function Layout() {
           whse_code: code,
           whse_name: warehouse?.whse_name ?? null,
           is_default_feed: code === defaultFeedWarehouse,
+          is_default_receiving: code === defaultReceivingWarehouse,
         }
       })
 
@@ -597,6 +613,21 @@ export default function Layout() {
                       ? 'Loading warehouses...'
                       : farmData.farm_type
                         ? 'Select default feed warehouse...'
+                        : 'Select farm type first'
+                  }
+                  className="w-full"
+                />
+                <SearchableCombobox
+                  label="Default Receiving Warehouse"
+                  items={warehouseOptions}
+                  value={defaultReceivingWarehouse}
+                  onValueChange={updateDefaultReceivingWarehouse}
+                  showCode
+                  placeholder={
+                    loadingWarehouses
+                      ? 'Loading warehouses...'
+                      : farmData.farm_type
+                        ? 'Select default receiving warehouse...'
                         : 'Select farm type first'
                   }
                   className="w-full"
@@ -819,6 +850,12 @@ export default function Layout() {
                   <div className="text-xs font-medium uppercase text-stone-500">Default Feed WH</div>
                   <div className="mt-1 font-medium text-stone-950">
                     {defaultFeedWarehouse || 'Not selected'}
+                  </div>
+                </div>
+                <div className="rounded-md border border-stone-200 bg-stone-50 px-4 py-3">
+                  <div className="text-xs font-medium uppercase text-stone-500">Default Receiving WH</div>
+                  <div className="mt-1 font-medium text-stone-950">
+                    {defaultReceivingWarehouse || 'Not selected'}
                   </div>
                 </div>
                 <div className="rounded-md border border-stone-200 bg-stone-50 px-4 py-3">

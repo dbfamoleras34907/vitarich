@@ -5,7 +5,7 @@ import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { RowDataKey } from '@/lib/Defaults/DefaultTypes'
-import { Edit, Plus, RefreshCcw } from 'lucide-react'
+import { Edit, Plus, RefreshCcw, WandSparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -104,6 +104,7 @@ export default function FarmMasterPage() {
 
   useEffect(() => {
     router.prefetch('/a_dean/farm/new')
+    router.prefetch('/a_dean/farm/setup')
     getData()
   }, [getData, router])
 
@@ -118,6 +119,10 @@ export default function FarmMasterPage() {
         <div className="flex flex-wrap gap-2 sm:justify-end">
           <Button variant="secondary" onClick={getData} disabled={loading}>
             <RefreshCcw className={loading ? 'animate-spin' : ''} />
+          </Button>
+          <Button variant="outline" onClick={() => router.push('/a_dean/farm/setup')}>
+            <WandSparkles className="h-4 w-4" />
+            Setup Wizard
           </Button>
           <Button onClick={() => router.push('/a_dean/farm/new')}>
             <Plus className="h-4 w-4" />

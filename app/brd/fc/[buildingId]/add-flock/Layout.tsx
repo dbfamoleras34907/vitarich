@@ -445,7 +445,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
         })),
       });
 
-      toast(`Flock saved: ${savedCard.cardNo}`);
+      toast(`Cycle saved: ${savedCard.cardNo}`);
       router.push("/brd/fc");
     } catch (error) {
       console.error(error);
@@ -461,19 +461,19 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
         <Breadcrumb
           SecondPreviewPageName="Breeder"
           SecondPreviewPageLink="/brd"
-          FirstPreviewsPageName="Flock Card"
+          FirstPreviewsPageName="Cycle Card"
           FirstPreviewsPageLink="/brd/fc"
-          CurrentPageName="Add Flock"
+          CurrentPageName="Add Cycle"
         />
         <Button type="button" variant="outline" onClick={() => router.push("/brd/fc")}>
           <ArrowLeft className="size-4" />
-          Flock Card List
+          Cycle Card List
         </Button>
       </div>
 
       <section className="mx-auto mt-6 max-w-[1270px] overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-card">
         <div className="border-b p-5">
-          <h1 className="text-lg font-semibold">{editingCardId ? "Edit flock" : "Add new flock"}</h1>
+          <h1 className="text-lg font-semibold">{editingCardId ? "Edit flock" : "Add new Cycle"}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Building {selectedBuilding?.code || selectedBuilding?.name || routePayload?.buildingCode || routePayload?.buildingName || "-"}
             {editingCardNo ? ` | ${editingCardNo}` : ""}
@@ -566,7 +566,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Flock start date</label>
+                <label className="text-sm font-medium">Cycle start date</label>
                 <Input
                   type="date"
                   value={form.flockStartDate}
@@ -631,7 +631,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                 ["coccidiostatProgramId", "Cocci programs", "Add cocci program"],
                 ["otherProgramId", "Other programs", "Add other program"],
                 ["vaccinationProgramId", "Vaccination programs", "Add vaccination program"],
-                ["flockId", "Flock ID", "Enter the flock ID"],
+                ["flockId", "Cycle ID", "Enter the flock ID"],
                 ["trialCode", "Trial code", "Enter the trial code"],
                 ["cycleNumber", "Cycle number", "Enter the cycle number"],
                 ["nofAnimals", "Number of animals (on start date)", "Enter the number of animals"],
@@ -668,7 +668,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
 
           <section className="rounded-lg border">
             <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <h2 className="text-sm font-semibold">Origin</h2>
+              <h2 className="text-sm font-semibold">Placement</h2>
               <Button type="button" size="sm" variant="outline" onClick={() => setOriginRows(current => [...current, newOriginRow()])}>
                 <Plus className="size-4" />
                 Add

@@ -51,6 +51,25 @@ begin
     updated_at = now()
   where id = p_farm_id;
 
+  update public.i_warehouse
+  set
+    farm_id = null,
+    farm_code = null,
+    farm_name = null,
+    is_default_feed_warehouse = false,
+    is_default_receiving_warehouse = false
+  where farm_id = p_farm_id;
+
+  update public.i_warehouse w
+  set
+    farm_id = p_farm_id,
+    farm_code = payload->'farm'->>'code',
+    farm_name = payload->'farm'->>'name',
+    is_default_feed_warehouse = coalesce((warehouse_item->>'is_default_feed')::boolean, false),
+    is_default_receiving_warehouse = coalesce((warehouse_item->>'is_default_receiving')::boolean, false)
+  from unnest(associated_warehouse_items) as warehouse_items(warehouse_item)
+  where w.whse_code = warehouse_item->>'whse_code';
+
   delete from farm_pens
   where building_id in (
     select id from farm_buildings where farm_id = p_farm_id

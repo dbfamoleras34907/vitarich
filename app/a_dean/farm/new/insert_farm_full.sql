@@ -61,6 +61,16 @@ begin
   )
   returning id into new_farm_id;
 
+  update public.i_warehouse w
+  set
+    farm_id = new_farm_id,
+    farm_code = payload->'farm'->>'code',
+    farm_name = payload->'farm'->>'name',
+    is_default_feed_warehouse = coalesce((warehouse_item->>'is_default_feed')::boolean, false),
+    is_default_receiving_warehouse = coalesce((warehouse_item->>'is_default_receiving')::boolean, false)
+  from unnest(associated_warehouse_items) as warehouse_items(warehouse_item)
+  where w.whse_code = warehouse_item->>'whse_code';
+
   for b in
     select * from jsonb_array_elements(coalesce(payload->'buildings', '[]'::jsonb))
   loop

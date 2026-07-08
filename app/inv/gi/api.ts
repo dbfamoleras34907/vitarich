@@ -542,7 +542,7 @@ export async function createGoodsIssueNumber() {
     .order('gi_no', { ascending: false })
     .limit(1)
 
-  if (error) throw new Error(`Goods issue number could not be created. ${errorDetails(error)}`)
+  if (error) throw new Error(`Item stock out number could not be created. ${errorDetails(error)}`)
 
   const latestNo = data?.[0]?.gi_no ?? ''
   const latestSequence = Number(latestNo.match(/(\d+)$/)?.[1] ?? 0)

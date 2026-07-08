@@ -16,6 +16,7 @@ export type AssociatedWarehousePayload = {
   whse_code: string
   whse_name: string | null
   is_default_feed?: boolean
+  is_default_receiving?: boolean
 }
 
 export type FarmFullPayload = {
@@ -62,6 +63,40 @@ export async function updateFarmFull(id: number, payload: FarmFullPayload) {
   }
 
   return data
+}
+
+export async function getAssignedWarehouseCodes(excludeFarmId?: number): Promise<string[]> {
+  let query = db
+    .from('farms')
+    .select('id, associated_warehouses')
+    .eq('void', 1)
+
+  if (excludeFarmId) {
+    query = query.neq('id', excludeFarmId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+
+  const assignedCodes = new Set<string>()
+
+  for (const farm of data ?? []) {
+    const associatedWarehouses = farm.associated_warehouses
+
+    if (!Array.isArray(associatedWarehouses)) continue
+
+    for (const warehouse of associatedWarehouses) {
+      const code =
+        typeof warehouse === 'string'
+          ? warehouse
+          : String(warehouse?.whse_code ?? '')
+
+      if (code.trim()) assignedCodes.add(code.trim())
+    }
+  }
+
+  return Array.from(assignedCodes)
 }
 
 

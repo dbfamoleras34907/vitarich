@@ -132,7 +132,7 @@ export default function GoodsIssueHistory() {
       <div className="mt-2 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
-          CurrentPageName="Goods Issue"
+          CurrentPageName="Item Stock Out"
         />
 
         <div className="flex gap-2">
@@ -154,14 +154,14 @@ export default function GoodsIssueHistory() {
         <DynamicTable
           loading={loading}
           initialFilters={[]}
-          title="Goods Issue"
-          description={`${rows.length} goods issue(s)`}
+          title="Item Stock Out"
+          description={`${rows.length} item stock out transaction(s)`}
           columns={columns}
           data={rows}
           rowKey={row => row.id ?? row.giNo}
-          searchPlaceholder="Search goods issues..."
-          emptyMessage="No goods issues found"
-          noResultsMessage="No matching goods issues found"
+          searchPlaceholder="Search item stock out transactions..."
+          emptyMessage="No item stock out transactions found"
+          noResultsMessage="No matching item stock out transactions found"
           onRowClick={row => {
             if (row.id !== null && !cannotView) router.push(`/inv/gi/post?id=${row.id}`)
           }}

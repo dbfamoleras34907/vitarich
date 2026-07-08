@@ -15,7 +15,7 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Building2, Factory, MapPin, Plus, Save, Warehouse, Wrench } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
-import { getFarmFull, updateFarmFull, getLastCode, type AssociatedWarehousePayload, type FarmBuildingPayload, type FarmChildRow, type FarmFormData, type FarmFullPayload } from './api'
+import { getAssignedWarehouseCodes, getFarmFull, updateFarmFull, getLastCode, type AssociatedWarehousePayload, type FarmBuildingPayload, type FarmChildRow, type FarmFormData, type FarmFullPayload } from './api'
 import { toast } from 'sonner'
 import { useRouter, useParams } from 'next/navigation'
 import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
@@ -126,8 +126,10 @@ export default function Layout() {
     const [farmData, setFarmData] = useState<FarmFormData>({})
     const [addressData, setAddressData] = useState<FarmFormData>({})
     const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
+    const [assignedWarehouseCodes, setAssignedWarehouseCodes] = useState<string[]>([])
     const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
     const [defaultFeedWarehouse, setDefaultFeedWarehouse] = useState('')
+    const [defaultReceivingWarehouse, setDefaultReceivingWarehouse] = useState('')
     const [loadingWarehouses, setLoadingWarehouses] = useState(false)
     const showBuildingSection = false
 
@@ -150,21 +152,28 @@ export default function Layout() {
 
     const requiredFmsType = FARM_TYPE_TO_WAREHOUSE_FMS_TYPE[farmData.farm_type]
 
-    const warehouseOptions: ComboboxItemType[] = useMemo(
-        () =>
-            warehouses
-                .filter(warehouse => {
-                    const code = compact(warehouse.whse_code)
-                    const warehouseFmsType = compact(warehouse.fms_type)
+    const warehouseOptions: ComboboxItemType[] = useMemo(() => {
+        const unavailableCodes = new Set(assignedWarehouseCodes)
 
-                    return code && (!requiredFmsType || warehouseFmsType === requiredFmsType)
-                })
-                .map(warehouse => ({
-                    code: String(warehouse.whse_code),
-                    name: warehouse.whse_name || warehouse.full_location_code || 'Unnamed warehouse',
-                })),
-        [requiredFmsType, warehouses]
-    )
+        return warehouses
+            .filter(warehouse => {
+                const code = compact(warehouse.whse_code)
+                const warehouseFmsType = compact(warehouse.fms_type)
+                const assignedFarmId = Number(warehouse.farm_id ?? 0)
+                const isCurrentFarmWarehouse = assignedFarmId === farmId || selectedWarehouses.includes(code)
+
+                return (
+                    code &&
+                    (!requiredFmsType || warehouseFmsType === requiredFmsType) &&
+                    !unavailableCodes.has(code) &&
+                    (!assignedFarmId || isCurrentFarmWarehouse)
+                )
+            })
+            .map(warehouse => ({
+                code: String(warehouse.whse_code),
+                name: warehouse.whse_name || warehouse.full_location_code || 'Unnamed warehouse',
+            }))
+    }, [assignedWarehouseCodes, farmId, requiredFmsType, selectedWarehouses, warehouses])
 
     const locationPreview = useMemo(
         () =>
@@ -217,6 +226,7 @@ export default function Layout() {
         if (code === "farm_type") {
             setSelectedWarehouses([])
             setDefaultFeedWarehouse('')
+            setDefaultReceivingWarehouse('')
         }
     }
 
@@ -348,10 +358,22 @@ export default function Layout() {
         if (defaultFeedWarehouse && !codes.includes(defaultFeedWarehouse)) {
             setDefaultFeedWarehouse('')
         }
+
+        if (defaultReceivingWarehouse && !codes.includes(defaultReceivingWarehouse)) {
+            setDefaultReceivingWarehouse('')
+        }
     }
 
     const updateDefaultFeedWarehouse = (code: string) => {
         setDefaultFeedWarehouse(code)
+
+        if (code && !selectedWarehouses.includes(code)) {
+            setSelectedWarehouses(prev => [...prev, code])
+        }
+    }
+
+    const updateDefaultReceivingWarehouse = (code: string) => {
+        setDefaultReceivingWarehouse(code)
 
         if (code && !selectedWarehouses.includes(code)) {
             setSelectedWarehouses(prev => [...prev, code])
@@ -375,6 +397,7 @@ export default function Layout() {
                 whse_code: code,
                 whse_name: warehouse?.whse_name ?? null,
                 is_default_feed: code === defaultFeedWarehouse,
+                is_default_receiving: code === defaultReceivingWarehouse,
             }
         })
 
@@ -434,6 +457,22 @@ export default function Layout() {
                     : ''
             )
 
+            const defaultReceiving = Array.isArray(associatedWarehouses)
+                ? associatedWarehouses.find(
+                    (warehouse: unknown) =>
+                        warehouse &&
+                        typeof warehouse === 'object' &&
+                        'is_default_receiving' in warehouse &&
+                        Boolean((warehouse as AssociatedWarehousePayload).is_default_receiving)
+                )
+                : null
+
+            setDefaultReceivingWarehouse(
+                defaultReceiving && typeof defaultReceiving === 'object' && 'whse_code' in defaultReceiving
+                    ? String((defaultReceiving as AssociatedWarehousePayload).whse_code || '')
+                    : ''
+            )
+
         }
 
         loadFarm()
@@ -445,7 +484,12 @@ export default function Layout() {
             setLoadingWarehouses(true)
 
             try {
-                const result = await getWarehouses()
+                const [result, assignedCodes] = await Promise.all([
+                    getWarehouses(),
+                    getAssignedWarehouseCodes(farmId),
+                ])
+
+                setAssignedWarehouseCodes(assignedCodes)
 
                 if (result.success && Array.isArray(result.data)) {
                     setWarehouses(result.data)
@@ -461,7 +505,7 @@ export default function Layout() {
         }
 
         loadWarehouses()
-    }, [])
+    }, [farmId])
 
     // ================= LOAD COUNTERS =================
 
@@ -598,6 +642,21 @@ export default function Layout() {
                                     ? 'Loading warehouses...'
                                     : farmData.farm_type
                                         ? 'Select default feed warehouse...'
+                                        : 'Select farm type first'
+                            }
+                            className="w-full"
+                        />
+                        <SearchableCombobox
+                            label="Default Receiving Warehouse"
+                            items={warehouseOptions}
+                            value={defaultReceivingWarehouse}
+                            onValueChange={updateDefaultReceivingWarehouse}
+                            showCode
+                            placeholder={
+                                loadingWarehouses
+                                    ? 'Loading warehouses...'
+                                    : farmData.farm_type
+                                        ? 'Select default receiving warehouse...'
                                         : 'Select farm type first'
                             }
                             className="w-full"

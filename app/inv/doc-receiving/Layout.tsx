@@ -57,7 +57,7 @@ export default function GoodsReceiveHistory() {
   }, [])
 
   useEffect(() => {
-    router.prefetch('/inv/gr/new')
+    router.prefetch('/inv/doc-receiving/new')
     const timer = window.setTimeout(() => {
       refresh()
     }, 0)
@@ -89,7 +89,7 @@ export default function GoodsReceiveHistory() {
   const columns = useMemo<Column<GoodsReceiptTableRow>[]>(
     () => [
       {
-        key: 'grNo', label: 'GR No.', render: row => (
+        key: 'grNo', label: 'DOC Receiving No.', render: row => (
           <>
             <span className='bg-sidebar-accent p-1 px-2 font-semibold rounded-md'>{row.grNo}</span>
           </>
@@ -137,7 +137,7 @@ export default function GoodsReceiveHistory() {
                 onClick={event => {
                   event.stopPropagation()
                   if (row.id === null) return
-                  router.push(`/inv/gr/post?id=${row.id}`)
+                  router.push(`/inv/doc-receiving/post?id=${row.id}`)
                 }}
               >
                 <Eye className="size-4" />
@@ -148,7 +148,7 @@ export default function GoodsReceiveHistory() {
                 onClick={event => {
                   event.stopPropagation()
                   if (row.id === null) return
-                  router.push(`/inv/gr/new?duplicateId=${row.id}`)
+                  router.push(`/inv/doc-receiving/new?duplicateId=${row.id}`)
                 }}
               >
                 <Copy className="size-4" />
@@ -164,7 +164,7 @@ export default function GoodsReceiveHistory() {
 
   const openNewGoodsReceipt = () => {
     setCollapsed(true)
-    router.push('/inv/gr/new')
+    router.push('/inv/doc-receiving/new')
   }
 
   return (
@@ -172,7 +172,7 @@ export default function GoodsReceiveHistory() {
       <div className="mt-2 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
-          CurrentPageName="Item Stock In"
+          CurrentPageName="DOC Receiving"
         />
 
         <div className='flex gap-2'>
@@ -185,7 +185,7 @@ export default function GoodsReceiveHistory() {
 
           <Button type="button" onClick={openNewGoodsReceipt}>
             <Plus className="size-4" />
-            New GR
+            New DOC Receiving
           </Button>
         </div>
       </div>
@@ -195,16 +195,16 @@ export default function GoodsReceiveHistory() {
         <DynamicTable
           loading={loading}
           initialFilters={[]}
-          title="Item Stock In"
-          description={`${rows.length} goods receipt(s)`}
+          title="DOC Receiving"
+          description={`${rows.length} DOC receiving document(s)`}
           columns={columns}
           data={rows}
           rowKey={row => row.id ?? row.grNo}
-          searchPlaceholder="Search goods receipts..."
-          emptyMessage="No goods receipts found"
-          noResultsMessage="No matching goods receipts found"
+          searchPlaceholder="Search DOC receiving documents..."
+          emptyMessage="No DOC receiving documents found"
+          noResultsMessage="No matching DOC receiving documents found"
           onRowClick={row => {
-            if (row.id !== null) router.push(`/inv/gr/post?id=${row.id}`)
+            if (row.id !== null) router.push(`/inv/doc-receiving/post?id=${row.id}`)
           }}
         />
       </div>

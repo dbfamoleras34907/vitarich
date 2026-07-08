@@ -783,8 +783,19 @@ export const NavFolders: NavFolder[] = [
           {
             id: 51,
             type: "Module",
-            title: "Goods Receipt",
+            title: "Item Stock In",
             url: "/inv/gr",
+            inventoriable: true,
+            section: "IV",
+            view: false,
+            insert: false,
+            edit: false,
+          },
+          {
+            id: 57,
+            type: "Module",
+            title: "DOC Receiving",
+            url: "/inv/doc-receiving",
             inventoriable: true,
             section: "IV",
             view: false,
@@ -794,7 +805,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 52,
             type: "Module",
-            title: "Goods Issue",
+            title: "Item Stock Out",
             url: "/inv/gi",
             inventoriable: true,
             section: "IV",
@@ -1001,6 +1012,16 @@ export const NavFolders: NavFolder[] = [
             url: "/a_dean/farm",
             view: false,
             insert: false,
+            edit: false,
+          },
+
+          {
+            id: 64,
+            type: "Module",
+            title: "Farm Setup Wizard",
+            url: "/a_dean/farm/setup",
+            view: false,
+            insert: true,
             edit: false,
           },
 
