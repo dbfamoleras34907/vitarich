@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
-  CalendarDays,
   Hash,
   List,
   Loader2,
@@ -29,7 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FormTable, FormTableFooter } from '@/components/ui/form-table'
+import { FormTable } from '@/components/ui/form-table'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -58,6 +57,10 @@ import {
   UomGroupOption,
 } from './api'
 import {
+  DocReceivingSettings,
+  getDocReceivingSettings,
+} from '@/app/a_dean/doc-receiving-settings/api'
+import {
   BatchTransactionTrail,
   getBatchTransactionTrail,
 } from '../../btch/api'
@@ -67,6 +70,65 @@ const FMS_TYPE_OPTIONS = [
   { value: 'breeder', label: 'Breeder' },
   { value: 'hatchery', label: 'Hatchery' },
 ]
+
+const DOC_RECEIVING_DETAIL_COLUMNS = [
+  { code: 'receive_date', name: 'Receive Date' },
+  { code: 'mnf_date', name: 'MNF Date' },
+  { code: 'transfer_slip', name: 'Transfer Slip' },
+  { code: 'average_doc_weight', name: 'Average DOC Weight' },
+  { code: 'quantity_received', name: 'Total Received' },
+  { code: 'actual_received', name: 'Actual Received' },
+  { code: 'short_count', name: 'Short Count' },
+  { code: 'short_count_remarks', name: 'Short Count Remarks' },
+  { code: 'doa_quantity', name: 'DOA Count' },
+  { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
+  { code: 'reject_count', name: 'Reject Count' },
+  { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
+]
+
+const DOC_RECEIVING_NUMERIC_DETAIL_CODES = new Set([
+  'average_doc_weight',
+  'quantity_received',
+  'actual_received',
+  'doa_quantity',
+  'short_count',
+  'reject_count',
+])
+
+const DOC_RECEIVING_DATE_DETAIL_CODES = new Set([
+  'receive_date',
+  'mnf_date',
+])
+
+type DocDetailRow = {
+  id: string
+  receive_date: string
+  mnf_date: string
+  transfer_slip: string
+  average_doc_weight: string
+  quantity_received: string
+  actual_received: string
+  short_count_remarks: string
+  doa_quantity: string
+  doa_count_remarks: string
+  reject_count: string
+  reject_count_remarks: string
+}
+
+const newDocDetailRow = (receiveDate = ''): DocDetailRow => ({
+  id: crypto.randomUUID(),
+  receive_date: receiveDate,
+  mnf_date: '',
+  transfer_slip: '',
+  average_doc_weight: '',
+  quantity_received: '',
+  actual_received: '',
+  short_count_remarks: '',
+  doa_quantity: '',
+  doa_count_remarks: '',
+  reject_count: '',
+  reject_count_remarks: '',
+})
 
 const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
   BE: 'breeder',
@@ -114,7 +176,7 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   farmName: '',
   defaultWarehouseId: null,
   status: 'Draft',
-  lines: Array.from({ length: 5 }, newLine),
+  lines: Array.from({ length: 1 }, newLine),
   createdAt: new Date().toISOString(),
 })
 
@@ -264,6 +326,23 @@ const getDefaultReceivingWarehouse = (
 const getItemFmsType = (item: Items) =>
   String(item.fms_group ?? '').trim().toLowerCase()
 
+const getItemDescription = (item: Items) =>
+  item.item_name || item.description || ''
+
+const hasDocReceivingSettings = (
+  settings: DocReceivingSettings | null,
+): settings is DocReceivingSettings & { good_doc: number; bad_doc: number; reject_doc: number } =>
+  Boolean(settings?.good_doc && settings.bad_doc && settings.reject_doc)
+
+const hasDocDetailValues = (rows: DocDetailRow[]) =>
+  rows.some(row =>
+    row.mnf_date ||
+    numberValue(row.quantity_received) > 0 ||
+    numberValue(row.actual_received) > 0 ||
+    numberValue(row.doa_quantity) > 0 ||
+    numberValue(row.reject_count) > 0
+  )
+
 const formatQuantity = (value: number) =>
   Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
 
@@ -346,12 +425,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [itemGroups, setItemGroups] = useState<GoodsReceiptItemGroup[]>([])
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
+  const [docReceivingSettings, setDocReceivingSettings] = useState<DocReceivingSettings | null>(null)
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
   const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
-  const [lineCount, setLineCount] = useState(1)
+  const [docDetailRows, setDocDetailRows] = useState(() => [newDocDetailRow()])
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -396,7 +476,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             })
           : getGoodsReceiptReferences()
 
-        const [references, savedReceipt, grNo] = await Promise.all([
+        const [references, savedReceipt, grNo, settings] = await Promise.all([
           referencesPromise,
           receiptId
             ? getGoodsReceiptById(Number(receiptId))
@@ -404,6 +484,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               ? getGoodsReceiptById(Number(duplicateId))
               : Promise.resolve(null),
           receiptId && !duplicateId ? Promise.resolve('') : createGoodsReceiptNumber(),
+          getDocReceivingSettings(),
         ])
 
         if (cancelled) return
@@ -419,6 +500,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         setItemGroups(references.itemGroups)
         setBatchRules(references.batchRules)
         setBatchSeries(references.batchSeries)
+        setDocReceivingSettings(settings)
       } catch (error) {
         console.error(error)
         toast('Reference data could not be loaded.')
@@ -433,14 +515,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       cancelled = true
     }
   }, [duplicateId, getValue, isPostMode, receiptId, router])
-
-  const totalQuantity = useMemo(
-    () => receipt?.lines.reduce(
-      (total, line) => total + Number(line.baseQty || 0),
-      0,
-    ) ?? 0,
-    [receipt],
-  )
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === receipt?.farmId),
@@ -467,6 +541,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return items.filter(item => getItemFmsType(item) === fmsType)
   }, [items, receipt?.fmsType])
 
+  const itemById = useMemo(() => {
+    const map = new Map<number, Items>()
+
+    items.forEach(item => {
+      if (typeof item.id === 'number') map.set(item.id, item)
+    })
+
+    return map
+  }, [items])
+
   const itemGroupIdByCode = useMemo(() => {
     const map = new Map<string, number>()
 
@@ -477,6 +561,138 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     return map
   }, [itemGroups])
+
+  const derivedReceiptLines = useMemo(() => {
+    if (!receipt || !hasDocReceivingSettings(docReceivingSettings)) return []
+
+    const defaultWarehouse = receipt.defaultWarehouseId == null
+      ? null
+      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    const existingLineByKey = new Map<string, GoodsReceiptLine>()
+
+    receipt.lines.forEach(line => {
+      if (!line.itemId || !line.manufacturingDate) return
+      existingLineByKey.set(`${line.itemId}|${line.manufacturingDate}`, line)
+    })
+
+    const quantities = new Map<string, {
+      itemId: number
+      manufacturingDate: string
+      quantity: number
+    }>()
+
+    const addQuantity = (itemId: number | null | undefined, manufacturingDate: string, quantity: number) => {
+      if (!itemId || !manufacturingDate || quantity <= 0) return
+
+      const key = `${itemId}|${manufacturingDate}`
+      const current = quantities.get(key)
+      quantities.set(key, {
+        itemId,
+        manufacturingDate,
+        quantity: (current?.quantity ?? 0) + quantity,
+      })
+    }
+
+    docDetailRows.forEach(row => {
+      const manufacturingDate = row.mnf_date
+      const actualReceived = numberValue(row.actual_received)
+      const daoQuantity = numberValue(row.doa_quantity)
+      const rejectCount = numberValue(row.reject_count)
+      const goodQuantity = actualReceived - (daoQuantity + rejectCount)
+
+      addQuantity(docReceivingSettings.good_doc, manufacturingDate, goodQuantity)
+      addQuantity(docReceivingSettings.bad_doc, manufacturingDate, daoQuantity)
+      addQuantity(docReceivingSettings.reject_doc, manufacturingDate, rejectCount)
+    })
+
+    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, quantity }) => {
+      const item = itemById.get(itemId)
+      if (!item) return []
+
+      const inventoryUom = item.inventory_uom || ''
+      const unitMeasure = item.unit_measure || ''
+      const selectedGroup = uomGroups.find(group => group.code.toUpperCase() === inventoryUom.toUpperCase())
+      const selectedGroupCode = selectedGroup?.code ?? conversions.find(
+        option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+      )?.groupCode ?? ''
+      const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+      const conversion = conversions.find(
+        option =>
+          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
+          option.uomCode.toUpperCase() === uom.toUpperCase(),
+      )
+      const baseQty = selectedGroupCode && uom
+        ? quantity * (conversion?.baseQty ?? 0)
+        : 0
+      const existingLine = existingLineByKey.get(`${itemId}|${manufacturingDate}`)
+      const expiryDate = typeof item.default_expiration_months === 'number'
+        ? addMonthsToDate(manufacturingDate, item.default_expiration_months)
+        : ''
+
+      return [{
+        id: existingLine?.id ?? crypto.randomUUID(),
+        itemId,
+        itemCode: item.item_code || '',
+        description: getItemDescription(item),
+        batchRuleId: existingLine?.batchRuleId ?? null,
+        batchNumber: existingLine?.batchNumber ?? '',
+        supplierBatchNumber: existingLine?.supplierBatchNumber ?? '',
+        manufacturingDate,
+        expiryDate,
+        altQty: quantity,
+        altUom: uom,
+        baseQty,
+        baseUom: selectedGroupCode,
+        warehouseId: defaultWarehouse?.id ?? null,
+        warehouseCode: defaultWarehouse?.whse_code ?? '',
+        warehouseName: defaultWarehouse?.whse_name ?? '',
+        returnedQty: existingLine?.returnedQty ?? 0,
+      }]
+    })
+  }, [conversions, docDetailRows, docReceivingSettings, farmWarehouses, itemById, receipt, uomGroups])
+
+  const shouldDeriveReceiptLines = Boolean(
+    receipt &&
+    hasDocReceivingSettings(docReceivingSettings) &&
+    (!receipt.id || hasDocDetailValues(docDetailRows)),
+  )
+  const displayReceiptLines = shouldDeriveReceiptLines ? derivedReceiptLines : receipt?.lines ?? []
+  const displayTotalQuantity = displayReceiptLines.reduce(
+    (total, line) => total + Number(line.baseQty || 0),
+    0,
+  )
+
+  useEffect(() => {
+    if (!receipt || !shouldDeriveReceiptLines) return
+
+    const lineSignature = (line: GoodsReceiptLine) => [
+      line.itemId,
+      line.itemCode,
+      line.description,
+      line.batchRuleId,
+      line.batchNumber,
+      line.supplierBatchNumber,
+      line.manufacturingDate,
+      line.expiryDate,
+      line.altQty,
+      line.altUom,
+      line.baseQty,
+      line.baseUom,
+      line.warehouseId,
+      line.warehouseCode,
+      line.warehouseName,
+      line.returnedQty,
+    ].join('|')
+
+    const currentSignature = receipt.lines.map(lineSignature).join('||')
+    const nextSignature = derivedReceiptLines.map(lineSignature).join('||')
+    if (currentSignature === nextSignature) return
+
+    setReceipt(current => current ? {
+      ...current,
+      lines: derivedReceiptLines,
+    } : current)
+  }, [derivedReceiptLines, receipt, shouldDeriveReceiptLines])
 
   useEffect(() => {
     if (loadingReferences || !receipt?.farmId) return
@@ -555,6 +771,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [farms, loadingReferences, receipt?.farmId, warehouses])
 
   useEffect(() => {
+    if (shouldDeriveReceiptLines) return
+
     const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
     if (!fmsType || !receipt?.lines.length) return
 
@@ -588,7 +806,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       ...current,
       lines: nextLines,
     } : current)
-  }, [availableItems, receipt?.fmsType, receipt?.lines])
+  }, [availableItems, receipt?.fmsType, receipt?.lines, shouldDeriveReceiptLines])
 
   const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
   const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
@@ -696,6 +914,38 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     )
   }
 
+  const updateDocDetailRow = (rowId: string, code: string, value: string) => {
+    setDocDetailRows(current => current.map(row => {
+      if (row.id !== rowId) return row
+
+      return {
+        ...row,
+        [code]: value,
+      }
+    }))
+
+    if (code === 'receive_date') {
+      setReceipt(current => current ? { ...current, receiveDate: value } : current)
+    }
+  }
+
+  const removeDocDetailRow = (rowId: string) => {
+    setDocDetailRows(current => {
+      const nextRows = current.filter(row => row.id !== rowId)
+      return nextRows.length > 0 ? nextRows : [newDocDetailRow(receipt.receiveDate)]
+    })
+  }
+
+  const getDocDetailValue = (row: DocDetailRow, code: string) => {
+    if (code === 'receive_date') return row.receive_date || receipt.receiveDate
+    if (code === 'short_count') {
+      const shortCount = numberValue(row.quantity_received) - numberValue(row.actual_received)
+      return Number.isFinite(shortCount) ? String(shortCount) : ''
+    }
+
+    return String(row[code as keyof DocDetailRow] ?? '')
+  }
+
   const calculateBaseQty = (
     altQty: number,
     altUom: string,
@@ -712,19 +962,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     )
 
     return conversion ? altQty * conversion.baseQty : 0
-  }
-
-  const getGroupUoms = (groupCode: string) => {
-    const seen = new Set<string>()
-
-    return conversions
-      .filter(conversion => conversion.groupCode === groupCode)
-      .filter(conversion => {
-        const code = conversion.uomCode.toUpperCase()
-        if (seen.has(code)) return false
-        seen.add(code)
-        return true
-      })
   }
 
   const getSelectedGroup = (groupCode: string) =>
@@ -894,17 +1131,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return getBatchNumberParts(line).batchNumber
   }
 
-  const openBatchDialog = (line: GoodsReceiptLine) => {
-    const requirement = getBatchRequirement(line)
-    if (!requirement) return
-
-    updateLine(line.id, {
-      batchRuleId: requirement.rule?.id ?? null,
-    })
-
-    setActiveBatchLineId(line.id)
-  }
-
   const updateBatchLine = (line: GoodsReceiptLine, changes: Partial<GoodsReceiptLine>) => {
     const item = getSelectedItem(line)
     const requirement = getBatchRequirement(line)
@@ -1045,7 +1271,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const canPostDocument = isPostMode && receipt.status === 'Draft'
 
   const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
-    const completedLines = receipt.lines.filter(line => line.itemId)
+    if (!hasDocReceivingSettings(docReceivingSettings)) {
+      toast('Please configure DOC Receiving Settings first.')
+      return
+    }
+
+    const receiptLines = shouldDeriveReceiptLines ? derivedReceiptLines : receipt.lines
+    const completedLines = receiptLines.filter(line => line.itemId)
     const posting = targetStatus === 'Posted'
     const completeLines = completedLines.filter(line =>
       line.itemCode &&
@@ -1073,7 +1305,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
     if (posting && completedLines.length === 0) {
-      toast('Please select at least one item.')
+      toast('Please enter DOC Details that generate at least one item line.')
       return
     }
     if (posting && completedLines.some(line =>
@@ -1203,19 +1435,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Receive Date</label>
-            <label className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
-              <Input
-                type="date"
-                value={receipt.receiveDate}
-                onChange={event => setReceipt(current => current ? { ...current, receiveDate: event.target.value } : current)}
-                className="pl-9"
-              />
-            </label>
-          </div>
-
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
             <label className="text-sm font-semibold">Default WH</label>
             <select
@@ -1259,85 +1478,136 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
         </div>
 
-        <div className="border-t p-5">
+        <div className="border-t">
+          {!loadingReferences && !hasDocReceivingSettings(docReceivingSettings) && (
+            <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-900">
+              Please configure DOC Receiving Settings first.
+            </div>
+          )}
+
+          <FormTable
+            title="DOC Details"
+            description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
+            actions={(
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDocDetailRows(current => [...current, newDocDetailRow(receipt.receiveDate)])}
+              >
+                <Plus className="size-4" />
+                Add Row
+              </Button>
+            )}
+            className="rounded-none border-0 border-b shadow-none"
+          >
+            <table className="min-w-[1710px] w-full text-sm">
+              <thead className="bg-secondary">
+                <tr>
+                  <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">
+                    Action
+                  </th>
+                  {DOC_RECEIVING_DETAIL_COLUMNS.map(column => (
+                    <th
+                      key={column.code}
+                      className="h-9 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700"
+                    >
+                      {column.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {docDetailRows.map(row => (
+                  <tr key={row.id} className="odd:bg-card even:bg-secondary/40">
+                    <td className="px-1 py-1 text-center align-middle">
+                      <button
+                        type="button"
+                        onClick={() => removeDocDetailRow(row.id)}
+                        className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                        aria-label="Remove DOC detail row"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </td>
+                    {DOC_RECEIVING_DETAIL_COLUMNS.map(column => (
+                      <td key={column.code} className="px-1 py-1 align-middle">
+                        <Input
+                          type={
+                            DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
+                              ? 'date'
+                              : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
+                                ? 'number'
+                                : 'text'
+                          }
+                          value={getDocDetailValue(row, column.code)}
+                          readOnly={column.code === 'short_count'}
+                          onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
+                          step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
+                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'short_count' ? 'bg-stone-100' : 'bg-white'}`}
+                          aria-label={column.name}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </FormTable>
+
           <FormTable
             title="Receive Item Lines"
-            description={`${receipt.lines.length} ${receipt.lines.length === 1 ? 'line' : 'lines'}`}
-            emptyState={receipt.lines.length === 0 && (
+            description={`${displayReceiptLines.length} ${displayReceiptLines.length === 1 ? 'line' : 'lines'}`}
+            className="rounded-none border-0 shadow-none"
+            emptyState={displayReceiptLines.length === 0 && (
               <div className="border-t px-4 py-10 text-center">
                 <p className="text-sm font-medium text-foreground">No item lines added</p>
-                <p className="mt-1 text-sm text-muted-foreground">Use Add Lines to continue.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Item lines will follow the DOC details.</p>
               </div>
-            )}
-            footer={(
-              <FormTableFooter>
-                <Input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={lineCount}
-                  onChange={event => setLineCount(Math.max(1, numberValue(event.target.value)))}
-                  className="w-20"
-                  aria-label="Number of lines to add"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setReceipt(current => current ? {
-                    ...current,
-                    lines: [...current.lines, ...Array.from({ length: lineCount }, newLine)],
-                  } : current)}
-                >
-                  <Plus className="size-4" />
-                  Add Lines
-                </Button>
-              </FormTableFooter>
             )}
           >
               <table className="min-w-[1480px] w-full text-sm">
                 <thead className="bg-secondary">
                   <tr>
-                    <th className="h-10 w-12 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
-                    <th className="h-10 min-w-80 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
-                    <th className="h-10 min-w-72 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
-                    <th className="h-10 w-44 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
-                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
-                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt UoM</th>
-                    <th className="h-10 w-52 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
-                    <th className="h-10 min-w-48 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
-                    <th className="h-10 w-20 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">Action</th>
+                    <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
+                    <th className="h-9 min-w-80 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
+                    <th className="h-9 min-w-72 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
+                    <th className="h-9 w-44 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
+                    <th className="h-9 w-28 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
+                    <th className="h-9 w-52 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
+                    <th className="h-9 min-w-48 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {receipt.lines.map((line, index) => {
+                  {displayReceiptLines.map((line, index) => {
                     const batchRequirement = getBatchRequirement(line)
 
                     return (
                       <tr key={line.id} className="odd:bg-card even:bg-secondary/40 hover:bg-accent/30">
-                        <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="px-1 py-1 text-center align-middle text-stone-500">{index + 1}</td>
+                        <td className="px-1 py-1 align-middle">
                           <SearchableDropdown
                             list={availableItems}
                             codeLabel="item_code"
                             nameLabel="item_name"
-                            value={line.itemCode}
-                            placeholder={receipt.fmsType ? 'Select item...' : 'Select FMS type first'}
-                            width={420}
-                            onChange={(value) => selectItem(line, value)}
-                          />
+                          value={line.itemCode}
+                          placeholder={receipt.fmsType ? 'Select item...' : 'Select FMS type first'}
+                          width={420}
+                          disabled
+                          onChange={(value) => selectItem(line, value)}
+                        />
                         </td>
-                        <td className="px-3 py-2 align-top">
+                        <td className="px-1 py-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"
-                              onClick={() => openBatchDialog(line)}
-                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-white px-3 py-2 text-left text-sm shadow-none transition hover:border-stone-500 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-200"
+                              disabled
+                              className="flex min-h-10 w-full cursor-not-allowed items-center justify-between gap-3 rounded-md border border-stone-300 bg-stone-100 px-3 py-2 text-left text-sm shadow-none text-stone-600"
                             >
                               <span className="min-w-0">
                                 <span className="flex items-center gap-2 font-medium text-stone-900">
                                   <PackageCheck className="size-4 shrink-0 text-stone-500" />
                                   <span className="truncate">
-                                    {line.batchNumber || 'Batch details'}
+                                    {line.batchNumber || getGeneratedBatchNumber(line) || 'Batch details'}
                                   </span>
                                 </span>
                                 <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
@@ -1354,7 +1624,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
                           )}
                         </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="px-1 py-1 align-middle">
                         <select
                           value={line.baseUom}
                           disabled
@@ -1383,12 +1653,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="px-1 py-1 align-middle">
                         <Input
                           type="number"
                           min="0"
                           step="any"
                           value={line.altQty}
+                          disabled
                           onChange={event => updateLine(line.id, {
                             altQty: numberValue(event.target.value),
                             baseQty: calculateBaseQty(
@@ -1397,36 +1668,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               line.baseUom,
                             ),
                           })}
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          className="border-stone-300 bg-stone-100 shadow-none disabled:cursor-not-allowed disabled:opacity-100"
                         />
                       </td>
-                      <td className="px-3 py-2 align-middle">
-                        <select
-                          value={line.altUom}
-                          disabled={!line.baseUom}
-                          onChange={event => {
-                            const altUom = event.target.value
-                            updateLine(line.id, {
-                              altUom,
-                              baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
-                            })
-                          }}
-                          className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
-                        >
-                          <option value="">
-                            {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
-                          </option>
-                          {getGroupUoms(line.baseUom).map(conversion => (
-                            <option
-                              key={`${conversion.groupId}-${conversion.uomCode}`}
-                              value={conversion.uomCode}
-                            >
-                              {conversion.uomCode}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-3 py-3 align-middle text-stone-800">
+                      <td className="px-1 py-1 align-middle text-stone-800">
                         {line.baseUom && line.altUom ? (
                           <div className="whitespace-nowrap">
                             <span className="font-medium tabular-nums">
@@ -1448,7 +1693,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           <span className="text-stone-400">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="px-1 py-1 align-middle">
                         <SearchableDropdown
                           list={farmWarehouses}
                           codeLabel="whse_code"
@@ -1456,21 +1701,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           value={line.warehouseCode}
                           placeholder={receipt.farmId ? 'Select warehouse...' : 'Select farm first'}
                           width={360}
+                          disabled
                           onChange={(value) => selectWarehouse(line.id, value)}
                         />
-                      </td>
-                      <td className="px-3 py-3 text-center align-middle">
-                        <button
-                          type="button"
-                          onClick={() => setReceipt(current => current ? {
-                            ...current,
-                            lines: current.lines.filter(candidate => candidate.id !== line.id),
-                          } : current)}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
-                          aria-label={`Delete line ${index + 1}`}
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
                       </td>
                     </tr>
                     )
@@ -1823,7 +2056,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               <div className="mt-3 flex justify-between text-sm">
                 <span>Total Base Quantity</span>
                 <span className="font-medium tabular-nums">
-                  {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                  {displayTotalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
                 </span>
               </div>
             </div>
@@ -1866,7 +2099,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             <div className="flex justify-between gap-3">
               <span className="text-stone-500">Total Base Quantity</span>
               <span className="font-semibold tabular-nums">
-                {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                {displayTotalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
               </span>
             </div>
           </div>

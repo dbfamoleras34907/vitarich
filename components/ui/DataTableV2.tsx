@@ -275,19 +275,32 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     return String(value ?? '')
   }
 
+  const tableMinWidth = useMemo(() => {
+    const estimatedWidth = columns.reduce((total, column) => {
+      if (column.type === 'button') return total + 88
+
+      const labelWidth = String(column.label).length * 8 + 48
+      return total + Math.min(Math.max(labelWidth, 88), 180)
+    }, 0)
+
+    return Math.max(640, estimatedWidth)
+  }, [columns])
+
   return (
     <section
-      className="overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)]"
+      className="w-full min-w-0 max-w-full overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] [contain:inline-size]"
       aria-labelledby={title ? `${tableId}-title` : undefined}
     >
-      <div className="flex flex-col gap-3 border-b bg-card px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <div 
+      className="flex min-w-0 flex-col gap-3 border-b bg-card px-3 py-3 lg:flex-row lg:items-center lg:justify-between"
+      >
         {loading ? (
           <>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Skeleton className="h-5 w-36" />
               <Skeleton className="h-4 w-48" />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Skeleton className="h-9 w-28" />
               <Skeleton className="h-9 w-44" />
               <Skeleton className="h-9 w-28" />
@@ -311,7 +324,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               {enablePagination && (
                 <label className="flex h-10 items-center gap-2 text-sm text-foreground">
                   <span>Rows</span>
@@ -351,7 +364,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               )}
 
               {enableSearch && (
-                <label className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
+                <label className="flex h-10 min-w-0 max-w-full items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
                   <Search className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="sr-only">Search table</span>
                   <input
@@ -519,8 +532,12 @@ export default function DynamicTable<T extends Record<string, unknown>>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm" aria-busy={loading}>
+      <div className="block w-full min-w-0 max-w-full overflow-x-auto">
+        <table
+          className="w-full table-auto text-sm"
+          style={{ minWidth: tableMinWidth }}
+          aria-busy={loading}
+        >
           <thead className="bg-secondary">
             <tr>
               {columns.map(column => {
@@ -580,7 +597,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               Array.from({ length: 5 }).map((_, rowIndex) => (
                 <tr key={rowIndex}>
                   {columns.map((column, colIndex) => (
-                    <td key={`${String(column.key)}-${colIndex}`} className="px-3 py-3">
+                    <td key={`${String(column.key)}-${colIndex}`} className="p-2">
                       <Skeleton className="h-4 w-full" />
                     </td>
                   ))}
@@ -609,10 +626,12 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                     {columns.map(column => (
                       <td
                         key={String(column.key)}
-                        className={`px-3 py-3 align-middle text-foreground/85 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'} ${column.type === 'button' ? 'whitespace-nowrap' : 'max-w-[320px] truncate'}`}
+                        className={`p-2 align-middle text-foreground/85 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'} ${column.type === 'button' ? 'whitespace-nowrap' : 'max-w-[320px]'}`}
                         title={column.type === 'button' ? undefined : String(row[column.key as keyof T] ?? '')}
                       >
-                        {renderCell(row, column)}
+                        <div className={column.type === 'button' ? 'flex justify-end' : 'truncate'}>
+                          {renderCell(row, column)}
+                        </div>
                       </td>
                     ))}
                   </tr>
@@ -652,14 +671,14 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       )}
 
       {showFooter && (
-        <div className="flex flex-col gap-3 border-t bg-secondary/70 px-3 py-3 text-sm text-foreground/75 sm:flex-row sm:items-center sm:justify-between">
-          <p aria-live="polite">
+        <div className="flex min-w-0 flex-col gap-3 border-t bg-secondary/70 px-3 py-3 text-sm text-foreground/75 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0" aria-live="polite">
             Showing <span className="font-medium text-foreground">{firstRow}</span> to{' '}
             <span className="font-medium text-foreground">{lastRow}</span> of{' '}
             <span className="font-medium text-foreground">{sortedData.length}</span>
           </p>
 
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <button
               type="button"
               disabled={safePage === 1}

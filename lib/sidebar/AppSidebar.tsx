@@ -174,7 +174,7 @@ export function AppSidebar() {
               </div>
             </div>
           )}
-          <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
+        <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
             <Menu className="size-5" />
           </Button>
         </div>
@@ -188,22 +188,53 @@ export function AppSidebar() {
       <nav className={`mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-8 ${collapsed ? "space-y-1" : "space-y-5"} ${SIDEBAR_SCROLL_CLASS}`}>
 
         <div className={`mb-2 ${collapsed ? "space-y-1" : "rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]"}`}>
+          {collapsed && (
+            <div className="text-sidebar-foreground/80">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <GlobalSearch collapsed={collapsed} />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">Search</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           {filteredNavFolders.map(folder => (
             <div key={folder.id} className={`text-sidebar-foreground/80 ${collapsed ? "" : "space-y-1 pb-3 last:pb-0"}`}>
 
               {collapsed ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      onClick={() => toggle()} // ⭐ expand sidebar
-                      className="h-10 w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    >
-                      <folder.icon className="size-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{folder.title}</TooltipContent>
-                </Tooltip>
+                <div className="space-y-1">
+                  {folder.items?.flatMap((group: any) =>
+                    group.children
+                      .filter((child: any) => child.url && child.url !== "#")
+                      .map((child: any) => {
+                        const Icon = getModuleIcon(child.title, child.type)
+
+                        return (
+                          <Tooltip key={`${folder.id}-${group.group}-${child.title}`}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                onClick={() => goTo(child.url)}
+                                className={`h-10 w-full justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
+                                  ? ACTIVE_NAV_ITEM_CLASS
+                                  : ""
+                                  }`}
+                                aria-label={child.title}
+                              >
+                                <Icon className="size-5 text-sidebar-foreground/70" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">
+                              {child.title}
+                            </TooltipContent>
+                          </Tooltip>
+                        )
+                      })
+                  )}
+                </div>
               ) : (
                 <>
                   <div className="px-2 text-xs font-medium text-sidebar-foreground/45">

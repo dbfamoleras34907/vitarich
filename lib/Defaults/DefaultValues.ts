@@ -1026,6 +1026,16 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 65,
+            type: "Module",
+            title: "DOC Receiving Settings",
+            url: "/a_dean/doc-receiving-settings",
+            view: false,
+            insert: true,
+            edit: true,
+          },
+
+          {
             id: 40,
             type: "Module",
             title: "Broiler Settings",

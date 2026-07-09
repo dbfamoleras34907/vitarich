@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Boxes, PackageCheck, Save, Settings2 } from 'lucide-react'
+import { ArrowLeft, Boxes, ChevronDown, PackageCheck, Save, Settings2 } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -16,6 +16,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -47,6 +53,8 @@ type ItemForm = {
   min_on_hand: string
   max_on_hand: string
 }
+
+type SaveMode = 'createAnother' | 'goToList'
 
 const emptyForm: ItemForm = {
   item_name: '',
@@ -128,6 +136,7 @@ export default function AddItemPage() {
   const [nextItemCode, setNextItemCode] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingPayload, setPendingPayload] = useState<ItemInsert | null>(null)
+  const [pendingSaveMode, setPendingSaveMode] = useState<SaveMode>('createAnother')
 
   const selectedGroup = useMemo(
     () => itemGroups.find(group => group.code === form.item_group),
@@ -236,12 +245,17 @@ export default function AddItemPage() {
     return true
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
+  function prepareSave(mode: SaveMode = 'createAnother') {
     if (!validateForm()) return
 
     setPendingPayload(toPayload(form, selectedUomGroup))
+    setPendingSaveMode(mode)
     setConfirmOpen(true)
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    prepareSave('createAnother')
   }
 
   async function confirmSave() {
@@ -254,9 +268,24 @@ export default function AddItemPage() {
       const savedItem = await addItem(pendingPayload)
       const savedCode = typeof savedItem?.item_code === 'string' ? savedItem.item_code : ''
       setMessage(`Item saved successfully${savedCode ? `: ${savedCode}` : ''}.`)
-      setForm(emptyForm)
-      setNextItemCode('')
       setPendingPayload(null)
+
+      if (pendingSaveMode === 'goToList') {
+        router.push('/a_dean/items')
+        return
+      }
+
+      setForm(current => ({ ...current, item_name: '' }))
+      if (pendingPayload.item_group) {
+        try {
+          setNextItemCode(await getNextItemCode(pendingPayload.item_group))
+        } catch (error) {
+          console.error('Error generating next item code:', error)
+          setNextItemCode('')
+        }
+      } else {
+        setNextItemCode('')
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to add item.')
     } finally {
@@ -277,10 +306,36 @@ export default function AddItemPage() {
               <ArrowLeft className="size-4" />
               Back
             </Button>
-            <Button type="submit" disabled={loading || !canInsert}>
-              <Save className="size-4" />
-              {loading ? 'Saving...' : 'Save Item'}
-            </Button>
+            <div className="flex">
+              <Button
+                type="submit"
+                disabled={loading || !canInsert}
+                className="rounded-r-none border-r-primary-foreground/30"
+              >
+                <Save className="size-4" />
+                {loading ? 'Saving...' : 'Save Item'}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    disabled={loading || !canInsert}
+                    className="rounded-l-none px-2"
+                    aria-label="Select save option"
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => prepareSave('createAnother')}>
+                    Save and Create Another
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => prepareSave('goToList')}>
+                    Save and Go to List
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
@@ -428,12 +483,15 @@ export default function AddItemPage() {
             <AlertDialogTitle>Save this item?</AlertDialogTitle>
             <AlertDialogDescription>
               This will create {form.item_name || 'the item'} with item code {itemCodePreview}.
+              {pendingSaveMode === 'createAnother'
+                ? ' After saving, only the item name will be cleared.'
+                : ' After saving, you will go back to the item list.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmSave} disabled={loading}>
-              {loading ? 'Saving...' : 'Confirm Save'}
+              {loading ? 'Saving...' : pendingSaveMode === 'createAnother' ? 'Save and Create Another' : 'Save and Go to List'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

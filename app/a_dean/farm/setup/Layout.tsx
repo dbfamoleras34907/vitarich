@@ -12,17 +12,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import Breadcrumb from '@/lib/Breadcrumb'
 import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Factory,
-  MapPin,
+  Circle,
   Plus,
   Save,
   Trash2,
-  Warehouse,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
@@ -62,9 +59,21 @@ const WAREHOUSE_TYPES = [
 ]
 
 const STEPS = [
-  { id: 0, title: 'Farm Details' },
-  { id: 1, title: 'Warehouse Or Building' },
-  { id: 2, title: 'Defaults And Review' },
+  {
+    id: 0,
+    title: 'Farm Info',
+    description: 'Register the farm profile and location.',
+  },
+  {
+    id: 1,
+    title: 'Warehouse Structure',
+    description: 'Add the first warehouse or building.',
+  },
+  {
+    id: 2,
+    title: 'Review & Launch',
+    description: 'Choose defaults and complete setup.',
+  },
 ]
 
 const farmFields: FieldConfig[] = [
@@ -104,14 +113,16 @@ function TextField({
   field,
   value,
   onChange,
+  className,
 }: {
   field: FieldConfig
   value: string
   onChange: (code: string, value: string) => void
+  className?: string
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={field.code} required={field.required}>
+    <div className={className ?? 'space-y-2'}>
+      <Label htmlFor={field.code} required={field.required} className="text-xs font-semibold text-neutral-950">
         {field.label}
       </Label>
       <Input
@@ -121,55 +132,219 @@ function TextField({
         placeholder={field.placeholder}
         required={field.required}
         readOnly={field.readOnly}
-        className={field.readOnly ? 'bg-stone-100 font-mono text-sm' : undefined}
+        className={`h-12 border-neutral-200 bg-white text-sm shadow-none placeholder:text-neutral-400 ${
+          field.readOnly ? 'bg-neutral-50 font-mono' : ''
+        }`}
         onChange={(event) => onChange(field.code, event.target.value)}
       />
     </div>
   )
 }
 
-function SectionHeader({
-  icon: Icon,
+function WizardHeader({
   title,
   description,
+  onClose,
 }: {
-  icon: React.ElementType
   title: string
   description: string
+  onClose: () => void
 }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-stone-700">
-        <Icon className="size-4" />
-      </div>
-      <div>
-        <h2 className="text-base font-semibold text-stone-950">{title}</h2>
-        <p className="mt-1 text-sm leading-5 text-stone-500">{description}</p>
+    <div className="border-b border-neutral-100 px-5 py-5 sm:px-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-neutral-950">{title}</h1>
+          <p className="mt-1 text-sm leading-5 text-neutral-500">{description}</p>
+        </div>
+        <Button type="button" variant="ghost" onClick={onClose} className="mt-0.5 text-neutral-600 hover:text-neutral-950">
+          <ArrowLeft className="size-4" />
+          Back to Farm List
+        </Button>
       </div>
     </div>
   )
 }
 
-function StepTabs({ currentStep }: { currentStep: number }) {
+function SectionIntro({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
   return (
-    <div className="grid gap-2 md:grid-cols-3">
-      {STEPS.map((step) => (
-        <div
-          key={step.id}
-          className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-            currentStep === step.id
-              ? 'border-stone-900 bg-stone-900 text-white'
-              : currentStep > step.id
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                : 'border-stone-200 bg-white text-stone-600'
-          }`}
-        >
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-current text-xs">
-            {currentStep > step.id ? <Check className="size-3" /> : step.id + 1}
-          </span>
-          <span className="truncate font-medium">{step.title}</span>
+    <div>
+      <h2 className="text-sm font-semibold text-neutral-950">{title}</h2>
+      <p className="mt-1 text-xs leading-5 text-neutral-500">{description}</p>
+    </div>
+  )
+}
+
+function WizardSidebar({ currentStep }: { currentStep: number }) {
+  const completedCount = currentStep + 1
+  const progress = (completedCount / STEPS.length) * 100
+
+  return (
+    <aside className="flex shrink-0 flex-col border-b border-neutral-200 bg-[#f4f5f6] p-5 md:w-72 md:border-r md:border-b-0">
+      <div>
+        <div className="text-sm font-semibold text-neutral-950">Farm Setup Wizard</div>
+        <div className="mt-3 h-px w-full bg-neutral-200">
+          <div className="h-px bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
-      ))}
+        <div className="mt-2 text-xs text-neutral-500">
+          {completedCount}/{STEPS.length} completed
+        </div>
+      </div>
+
+      <nav className="mt-8 grid gap-5 md:gap-6">
+        {STEPS.map((stepItem) => {
+          const isComplete = currentStep > stepItem.id
+          const isActive = currentStep === stepItem.id
+
+          return (
+            <div key={stepItem.id} className="flex items-center gap-3 text-sm">
+              <span
+                className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${
+                  isComplete
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : isActive
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-neutral-300 text-neutral-400'
+                }`}
+              >
+                {isComplete ? <Check className="size-3" /> : <Circle className="size-2 fill-current" />}
+              </span>
+              <span className={isActive ? 'font-medium text-neutral-950' : 'text-neutral-500'}>
+                {stepItem.title}
+              </span>
+            </div>
+          )
+        })}
+      </nav>
+    </aside>
+  )
+}
+
+function WizardActions({
+  step,
+  loading,
+  onBack,
+  onNext,
+  onSubmit,
+}: {
+  step: number
+  loading: boolean
+  onBack: () => void
+  onNext: () => void
+  onSubmit: () => void
+}) {
+  return (
+    <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-4 sm:px-6">
+      <Button type="button" variant="secondary" onClick={onBack} className="h-10 bg-white px-4 text-neutral-700">
+        <ArrowLeft className="size-4" />
+        Back
+      </Button>
+      {step < STEPS.length - 1 ? (
+        <Button type="button" onClick={onNext} className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800">
+          Next
+          <ArrowRight className="size-4" />
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          onClick={onSubmit}
+          disabled={loading}
+          className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800"
+        >
+          <Save className="size-4" />
+          {loading ? 'Saving...' : 'Complete Setup'}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function InlineSelect({
+  label,
+  required,
+  value,
+  placeholder,
+  onValueChange,
+  children,
+}: {
+  label: string
+  required?: boolean
+  value: string
+  placeholder: string
+  onValueChange: (value: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2">
+      <Label required={required} className="text-xs font-semibold text-neutral-950">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className="h-12 w-full border-neutral-200 bg-white text-sm shadow-none">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>{children}</SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function EmptyDraftState({ onAdd, disabled }: { onAdd: () => void; disabled: boolean }) {
+  return (
+    <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-7 text-center">
+      <div className="text-sm font-medium text-neutral-950">No warehouse or building yet</div>
+      <p className="mt-1 text-xs leading-5 text-neutral-500">
+        Select the farm type first, then add the first farm structure.
+      </p>
+      <Button
+        type="button"
+        onClick={onAdd}
+        disabled={disabled}
+        className="mt-4 h-9 bg-emerald-700 text-white hover:bg-emerald-800"
+      >
+        <Plus className="size-4" />
+        Add Structure
+      </Button>
+    </div>
+  )
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-neutral-200 bg-white px-4 py-3">
+      <div className="text-xs font-medium uppercase text-neutral-400">{label}</div>
+      <div className="mt-1 text-sm font-medium text-neutral-950">{value}</div>
+    </div>
+  )
+}
+
+function ReviewDraftRow({
+  draft,
+  isDefaultFeed,
+  isDefaultReceiving,
+}: {
+  draft: WarehouseDraft
+  isDefaultFeed: boolean
+  isDefaultReceiving: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="text-sm font-medium text-neutral-950">{draft.data.whse_name || 'Unnamed draft'}</div>
+        <div className="mt-1 text-xs text-neutral-500">
+          {draft.data.warehouse_type} / {draft.data.fms_type}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {isDefaultFeed ? <Badge className="bg-emerald-700 text-white">Feed</Badge> : null}
+        {isDefaultReceiving ? <Badge className="bg-emerald-700 text-white">Receiving</Badge> : null}
+      </div>
     </div>
   )
 }
@@ -351,305 +526,240 @@ export default function Layout() {
   }, [loadFarmCode, router])
 
   return (
-    <div className="min-h-screen bg-[#f7f5f1]">
-      <div className="sticky top-0 z-10 border-b border-stone-200 bg-[#f7f5f1]/95 px-4 py-3 backdrop-blur sm:px-8">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <Breadcrumb
-            SecondPreviewPageName="Farm"
-            SecondPreviewPageLink="/a_dean/farm"
-            CurrentPageName="Farm Setup Wizard"
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" onClick={goBack}>
-              <ArrowLeft className="size-4" />
-              {step === 0 ? 'Back' : 'Previous'}
-            </Button>
-            {step < STEPS.length - 1 ? (
-              <Button type="button" onClick={goNext}>
-                Next
-                <ArrowRight className="size-4" />
-              </Button>
-            ) : (
-              <Button type="button" onClick={handleSubmit} disabled={loading}>
-                <Save className="size-4" />
-                {loading ? 'Saving...' : 'Complete Setup'}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-[#d7dcdf] px-3 py-5 sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-2.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl md:min-h-[680px] md:flex-row">
+        <WizardSidebar currentStep={step} />
 
-      <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6 sm:px-8">
-        <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-stone-900 text-white">
-                <Factory className="size-6" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-semibold text-stone-950">Farm Setup Wizard</h1>
-                  <Badge variant="outline">Farm Management</Badge>
-                </div>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-                  Create the farm, its first warehouse or building, and default warehouse flags in one final save.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-5">
-            <StepTabs currentStep={step} />
-          </div>
-        </section>
-
-        {step === 0 ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                icon={Factory}
-                title="Farm Details"
-                description="Core farm registration, classification, and contact details."
+        <section className="flex min-w-0 flex-1 flex-col">
+          {step === 0 ? (
+            <>
+              <WizardHeader
+                title="Farm Info"
+                description="Set up the core farm profile, contact details, and site address."
+                onClose={() => router.push('/a_dean/farm')}
               />
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {farmFields.map((field) => (
-                  <TextField
-                    key={field.code}
-                    field={field}
-                    value={farmData[field.code] ?? ''}
-                    onChange={updateFarm}
-                  />
-                ))}
-                <div className="space-y-2 sm:col-span-2">
-                  <Label required>Farm Type</Label>
-                  <Select value={farmData.farm_type ?? ''} onValueChange={(value) => updateFarm('farm_type', value)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select farm type" />
-                    </SelectTrigger>
-                    <SelectContent>
+              <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+                <SectionIntro title="Register Farm Details" description={STEPS[0].description} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {farmFields.map((field) => (
+                    <TextField
+                      key={field.code}
+                      field={field}
+                      value={farmData[field.code] ?? ''}
+                      onChange={updateFarm}
+                    />
+                  ))}
+                  <div className="sm:col-span-2">
+                    <InlineSelect
+                      label="Farm Type"
+                      required
+                      value={farmData.farm_type ?? ''}
+                      placeholder="select farm type"
+                      onValueChange={(value) => updateFarm('farm_type', value)}
+                    >
                       {FARM_TYPES.map((type) => (
                         <SelectItem key={type.value} value={type.value}>
                           {type.label}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                icon={MapPin}
-                title="Location"
-                description="Address used for farm lookup and warehouse defaults."
-              />
-              <div className="mt-5 grid gap-4">
-                {addressFields.map((field) => (
-                  <TextField
-                    key={field.code}
-                    field={field}
-                    value={addressData[field.code] ?? ''}
-                    onChange={(code, value) => setAddressData((prev) => ({ ...prev, [code]: value }))}
-                  />
-                ))}
-                <div className="space-y-2">
-                  <Label>Address Preview</Label>
-                  <div className="min-h-10 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-                    {locationPreview || 'Address will be assembled from the location fields.'}
+                    </InlineSelect>
                   </div>
                 </div>
-              </div>
-            </section>
-          </div>
-        ) : null}
 
-        {step === 1 ? (
-          <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <SectionHeader
-                icon={Warehouse}
-                title="Associated Warehouse Or Building"
-                description="Create the warehouse or building draft first. It will be saved before the farm during final setup."
-              />
-              <Button type="button" onClick={addWarehouseDraft} disabled={!farmData.farm_type}>
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </div>
-
-            {warehouseDrafts.length === 0 ? (
-              <div className="mt-5 rounded-md border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center">
-                <div className="text-sm font-medium text-stone-900">No warehouse or building drafted</div>
-                <p className="mt-1 text-xs leading-5 text-stone-500">
-                  Select the farm type, then add the first warehouse or building for this farm.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="mt-5 space-y-4">
-              {warehouseDrafts.map((draft, index) => (
-                <div key={draft.clientKey} className="rounded-md border border-stone-200 p-4">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm font-semibold text-stone-950">Draft {index + 1}</div>
-                      <Badge variant="outline">{draft.data.warehouse_type || 'Warehouse'}</Badge>
+                <SectionIntro title="Farm Location" description="This address is reused as the initial warehouse address." />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {addressFields.map((field) => (
+                    <TextField
+                      key={field.code}
+                      field={field}
+                      value={addressData[field.code] ?? ''}
+                      onChange={(code, value) => setAddressData((prev) => ({ ...prev, [code]: value }))}
+                    />
+                  ))}
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label className="text-xs font-semibold text-neutral-950">Address Preview</Label>
+                    <div className="min-h-12 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-5 text-neutral-600">
+                      {locationPreview || 'Address will be assembled from the location fields.'}
                     </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeWarehouse(draft.clientKey)}
-                      aria-label={`Remove draft ${index + 1}`}
-                    >
-                      <Trash2 className="size-4 text-red-600" />
-                    </Button>
                   </div>
+                </div>
+              </div>
+            </>
+          ) : null}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label required>Warehouse Type</Label>
-                      <Select
-                        value={draft.data.warehouse_type ?? 'Warehouse'}
-                        onValueChange={(value) => updateWarehouse(draft.clientKey, 'warehouse_type', value)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select warehouse type" />
-                        </SelectTrigger>
-                        <SelectContent>
+          {step === 1 ? (
+            <>
+              <WizardHeader
+                title="Warehouse Structure"
+                description="Create one or more warehouses or buildings for this farm."
+                onClose={() => router.push('/a_dean/farm')}
+              />
+              <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <SectionIntro title="Associated Warehouse Or Building" description={STEPS[1].description} />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={addWarehouseDraft}
+                    disabled={!farmData.farm_type}
+                    className="h-10 bg-white text-neutral-700"
+                  >
+                    <Plus className="size-4" />
+                    Add Other Structure
+                  </Button>
+                </div>
+
+                {warehouseDrafts.length === 0 ? (
+                  <div className="mt-5">
+                    <EmptyDraftState onAdd={addWarehouseDraft} disabled={!farmData.farm_type} />
+                  </div>
+                ) : null}
+
+                <div className="mt-5 space-y-4">
+                  {warehouseDrafts.map((draft, index) => (
+                    <div key={draft.clientKey} className="rounded-md border border-neutral-200 bg-white p-4">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-semibold text-neutral-950">Structure {index + 1}</div>
+                          <Badge variant="outline">{draft.data.warehouse_type || 'Warehouse'}</Badge>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => removeWarehouse(draft.clientKey)}
+                          aria-label={`Remove structure ${index + 1}`}
+                        >
+                          <Trash2 className="size-4 text-red-600" />
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <InlineSelect
+                          label="Warehouse Type"
+                          required
+                          value={draft.data.warehouse_type ?? 'Warehouse'}
+                          placeholder="select warehouse type"
+                          onValueChange={(value) => updateWarehouse(draft.clientKey, 'warehouse_type', value)}
+                        >
                           {WAREHOUSE_TYPES.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
                               {type.label}
                             </SelectItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>FMS Type</Label>
-                      <Input value={draft.data.fms_type ?? ''} readOnly className="bg-stone-100" />
-                    </div>
-                    {warehouseFields.map((field) => (
-                      <TextField
-                        key={field.code}
-                        field={field}
-                        value={draft.data[field.code] ?? ''}
-                        onChange={(code, value) => updateWarehouse(draft.clientKey, code, value)}
-                      />
-                    ))}
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor={`remarks-${draft.clientKey}`}>Remarks</Label>
-                      <Textarea
-                        id={`remarks-${draft.clientKey}`}
-                        value={draft.data.remarks ?? ''}
-                        className="min-h-20"
-                        onChange={(event) => updateWarehouse(draft.clientKey, 'remarks', event.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {step === 2 ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                icon={Warehouse}
-                title="Default Warehouses"
-                description="Choose from the warehouse or building drafts that will be created in this setup."
-              />
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label required>Default Feed</Label>
-                  <Select value={defaultFeedKey} onValueChange={setDefaultFeedKey}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select feed warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouseDrafts.map((draft) => (
-                        <SelectItem key={draft.clientKey} value={draft.clientKey}>
-                          {draft.data.whse_name || 'Unnamed draft'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label required>Default Receiving</Label>
-                  <Select value={defaultReceivingKey} onValueChange={setDefaultReceivingKey}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select receiving warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouseDrafts.map((draft) => (
-                        <SelectItem key={draft.clientKey} value={draft.clientKey}>
-                          {draft.data.whse_name || 'Unnamed draft'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-md border border-stone-200">
-                {warehouseDrafts.map((draft) => (
-                  <div
-                    key={draft.clientKey}
-                    className="flex flex-col gap-2 border-t border-stone-200 px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-stone-950">{draft.data.whse_name || 'Unnamed draft'}</div>
-                      <div className="mt-1 text-xs text-stone-500">
-                        {draft.data.warehouse_type} | {draft.data.fms_type}
+                        </InlineSelect>
+                        <TextField
+                          field={{ code: 'fms_type', label: 'FMS Type', readOnly: true }}
+                          value={draft.data.fms_type ?? ''}
+                          onChange={(code, value) => updateWarehouse(draft.clientKey, code, value)}
+                        />
+                        {warehouseFields.map((field) => (
+                          <TextField
+                            key={field.code}
+                            field={field}
+                            value={draft.data[field.code] ?? ''}
+                            onChange={(code, value) => updateWarehouse(draft.clientKey, code, value)}
+                          />
+                        ))}
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label
+                            htmlFor={`remarks-${draft.clientKey}`}
+                            className="text-xs font-semibold text-neutral-950"
+                          >
+                            Remarks
+                          </Label>
+                          <Textarea
+                            id={`remarks-${draft.clientKey}`}
+                            value={draft.data.remarks ?? ''}
+                            placeholder="e.g. Main feed storage, receiving dock, or building note."
+                            className="min-h-24 border-neutral-200 bg-white text-sm placeholder:text-neutral-400"
+                            onChange={(event) => updateWarehouse(draft.clientKey, 'remarks', event.target.value)}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {draft.clientKey === defaultFeedKey ? <Badge>Feed</Badge> : null}
-                      {draft.clientKey === defaultReceivingKey ? <Badge>Receiving</Badge> : null}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </section>
+            </>
+          ) : null}
 
-            <aside className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                icon={Check}
-                title="Review"
-                description="Final save creates every draft in one database transaction."
+          {step === 2 ? (
+            <>
+              <WizardHeader
+                title="Review & Launch"
+                description="Select defaults and confirm the farm setup before saving."
+                onClose={() => router.push('/a_dean/farm')}
               />
-              <div className="mt-5 space-y-3 text-sm">
-                <SummaryRow label="Farm" value={farmData.name || 'Not set'} />
-                <SummaryRow label="Farm Code" value={farmData.code || 'Not set'} />
-                <SummaryRow label="Farm Type" value={selectedFarmType?.label || 'Not selected'} />
-                <SummaryRow label="Warehouses / Buildings" value={String(warehouseDrafts.length)} />
-                <SummaryRow
-                  label="Default Feed"
-                  value={warehouseDrafts.find((draft) => draft.clientKey === defaultFeedKey)?.data.whse_name || 'Not selected'}
-                />
-                <SummaryRow
-                  label="Default Receiving"
-                  value={
-                    warehouseDrafts.find((draft) => draft.clientKey === defaultReceivingKey)?.data.whse_name ||
-                    'Not selected'
-                  }
-                />
-              </div>
-            </aside>
-          </div>
-        ) : null}
-      </main>
-    </div>
-  )
-}
+              <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+                <SectionIntro title="Default Warehouses" description={STEPS[2].description} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <InlineSelect
+                    label="Default Feed"
+                    required
+                    value={defaultFeedKey}
+                    placeholder="select feed warehouse"
+                    onValueChange={setDefaultFeedKey}
+                  >
+                    {warehouseDrafts.map((draft) => (
+                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
+                        {draft.data.whse_name || 'Unnamed draft'}
+                      </SelectItem>
+                    ))}
+                  </InlineSelect>
+                  <InlineSelect
+                    label="Default Receiving"
+                    required
+                    value={defaultReceivingKey}
+                    placeholder="select receiving warehouse"
+                    onValueChange={setDefaultReceivingKey}
+                  >
+                    {warehouseDrafts.map((draft) => (
+                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
+                        {draft.data.whse_name || 'Unnamed draft'}
+                      </SelectItem>
+                    ))}
+                  </InlineSelect>
+                </div>
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-stone-200 bg-stone-50 px-4 py-3">
-      <div className="text-xs font-medium uppercase text-stone-500">{label}</div>
-      <div className="mt-1 font-medium text-stone-950">{value}</div>
+                <div className="rounded-md border border-neutral-200">
+                  {warehouseDrafts.map((draft) => (
+                    <ReviewDraftRow
+                      key={draft.clientKey}
+                      draft={draft}
+                      isDefaultFeed={draft.clientKey === defaultFeedKey}
+                      isDefaultReceiving={draft.clientKey === defaultReceivingKey}
+                    />
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SummaryRow label="Farm" value={farmData.name || 'Not set'} />
+                  <SummaryRow label="Farm Code" value={farmData.code || 'Not set'} />
+                  <SummaryRow label="Farm Type" value={selectedFarmType?.label || 'Not selected'} />
+                  <SummaryRow label="Warehouses / Buildings" value={String(warehouseDrafts.length)} />
+                  <SummaryRow
+                    label="Default Feed"
+                    value={
+                      warehouseDrafts.find((draft) => draft.clientKey === defaultFeedKey)?.data.whse_name ||
+                      'Not selected'
+                    }
+                  />
+                  <SummaryRow
+                    label="Default Receiving"
+                    value={
+                      warehouseDrafts.find((draft) => draft.clientKey === defaultReceivingKey)?.data.whse_name ||
+                      'Not selected'
+                    }
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          <WizardActions step={step} loading={loading} onBack={goBack} onNext={goNext} onSubmit={handleSubmit} />
+        </section>
+      </main>
     </div>
   )
 }

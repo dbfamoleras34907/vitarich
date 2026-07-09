@@ -58,7 +58,7 @@ export default function RootLayout({
                 <SidebarProvider>
                   <div className="flex h-screen bg-background">
                     <AppSideBarControler />
-                    <main className="w-full flex-1 overflow-y-auto">
+                    <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
                         {children}
                     </main>
                   </div>
