@@ -148,6 +148,7 @@ alter table public.brd_fc
   add column if not exists building_status text null;
 
 alter table public.brd_fc_line
+  add column if not exists extra jsonb not null default '{}'::jsonb,
   add column if not exists is_locked boolean not null default false,
   add column if not exists reversed_at timestamp with time zone null,
   add column if not exists reversed_by uuid null,
@@ -894,6 +895,446 @@ drop index if exists public.inventory_postings_brd_fc_feed_idx;
 create unique index inventory_postings_brd_fc_feed_idx
   on public.inventory_postings (source_doc_type, source_docentry)
   where source_doc_type in ('BRD_FC_FEED_USAGE', 'BRD_FC_FEED_REVERSAL');
+
+create or replace function public.reverse_brd_fc_mortality_thinning(
+  p_line_id bigint,
+  p_reason text default null
+)
+returns table (id bigint, age integer)
+language plpgsql
+as $$
+declare
+  v_line record;
+  v_card record;
+  v_posting record;
+  v_user uuid;
+  v_docentry_start bigint;
+  v_docentry_end bigint;
+begin
+  v_user := auth.uid();
+
+  select *
+  into v_line
+  from public.brd_fc_line line
+  where line.id = p_line_id
+    and line.void = '1'
+  for update;
+
+  if not found then
+    raise exception 'Unable to reverse mortality/thinning: flock card line % was not found', p_line_id;
+  end if;
+
+  select *
+  into v_card
+  from public.brd_fc card
+  where card.id = v_line.fc_id
+    and card.void = '1';
+
+  if not found then
+    raise exception 'Unable to reverse mortality/thinning: flock card % was not found', v_line.fc_id;
+  end if;
+
+  v_user := coalesce(v_user, v_line.updated_by, v_line.created_by, v_card.updated_by, v_card.created_by);
+
+  if v_user is null then
+    raise exception 'Unable to reverse mortality/thinning: user is required';
+  end if;
+
+  v_docentry_start := p_line_id * 1000000;
+  v_docentry_end := v_docentry_start + 999999;
+
+  for v_posting in
+    select
+      row_number() over (order by ip.id)::integer as line_no,
+      ip.*
+    from public.inventory_postings ip
+    where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+      and (
+        ip.source_docentry = p_line_id
+        or ip.source_docentry between v_docentry_start and v_docentry_end
+      )
+      and not exists (
+        select 1
+        from public.inventory_postings reversal_posting
+        where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and reversal_posting.ref = ip.ref
+          and reversal_posting.item_code = ip.item_code
+          and reversal_posting.warehouse_code = ip.warehouse_code
+          and reversal_posting.qty = ip.qty
+      )
+  loop
+    insert into public.inventory_postings (
+      source_doc_type,
+      source_docentry,
+      item_code,
+      warehouse_code,
+      bin_code,
+      qty,
+      created_by,
+      ref_type,
+      ref,
+      transfer_type,
+      ref_type2,
+      ref2
+    )
+    values (
+      'BRD_FC_MORT_THIN_REVERSAL',
+      p_line_id * 1000000 + 700000 + v_posting.line_no,
+      v_posting.item_code,
+      v_posting.warehouse_code,
+      coalesce(v_posting.bin_code, 'DEFAULT'),
+      v_posting.qty,
+      v_user,
+      coalesce(v_posting.ref_type, 'batch_code'),
+      v_posting.ref,
+      'IN',
+      'FLOCK_CARD',
+      v_card.fc_no
+    );
+  end loop;
+
+  return query
+  update public.brd_fc_line line
+  set
+    mort_am = null,
+    mort_pm = null,
+    mort_total = null,
+    thin_am = null,
+    thin_pm = null,
+    row_total = null,
+    cum_total = null,
+    extra = coalesce(line.extra, '{}'::jsonb) - 'mortalityBatchAllocations',
+    updated_by = v_user,
+    reversed_by = v_user,
+    reversed_at = coalesce(line.reversed_at, now()),
+    reversal_reason = coalesce(nullif(btrim(p_reason), ''), line.reversal_reason, 'Reverse mortality/thinning')
+  where line.id = p_line_id
+    and line.void = '1'
+  returning line.id, line.age;
+end;
+$$;
+
+create or replace function public.post_brd_fc_mortality_thinning_inventory()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_card record;
+  v_fc_id bigint;
+  v_dest_whse_code text;
+  v_docentry_base bigint;
+  v_docentry_start bigint;
+  v_docentry_end bigint;
+  v_docentry_generation integer;
+  v_user uuid;
+  v_allocation record;
+  v_on_hand numeric(18, 6);
+  v_line_changed boolean;
+  v_has_usage boolean;
+  v_has_legacy_usage boolean;
+  v_should_reverse boolean;
+begin
+  if tg_op = 'INSERT' then
+    if new.void <> '1' then
+      return new;
+    end if;
+
+    v_line_changed := true;
+    v_has_usage := false;
+    v_has_legacy_usage := false;
+    v_should_reverse := false;
+  else
+    v_docentry_start := old.id * 1000000;
+    v_docentry_end := v_docentry_start + 999999;
+    v_line_changed := old.extra is distinct from new.extra;
+    select exists (
+      select 1
+      from public.inventory_postings ip
+      where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+        and ip.source_docentry between v_docentry_start and v_docentry_end
+    )
+    into v_has_usage;
+    select exists (
+      select 1
+      from public.inventory_postings usage_posting
+      where usage_posting.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+        and usage_posting.source_docentry = old.id
+        and not exists (
+          select 1
+          from public.inventory_postings reversal_posting
+          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+            and reversal_posting.ref = usage_posting.ref
+            and reversal_posting.item_code = usage_posting.item_code
+            and reversal_posting.warehouse_code = usage_posting.warehouse_code
+            and reversal_posting.qty = usage_posting.qty
+        )
+    )
+    into v_has_legacy_usage;
+    v_should_reverse := v_has_usage and (v_line_changed or (old.void = '1' and new.void = '0'));
+
+    if old.void = '1' and new.void = '0' then
+      v_line_changed := true;
+    elsif v_has_legacy_usage then
+      v_line_changed := true;
+    elsif not v_line_changed
+      and not v_has_usage
+      and jsonb_array_length(
+        case
+          when jsonb_typeof(coalesce(new.extra->'mortalityBatchAllocations', '[]'::jsonb)) = 'array'
+            then coalesce(new.extra->'mortalityBatchAllocations', '[]'::jsonb)
+          else '[]'::jsonb
+        end
+      ) > 0 then
+      v_line_changed := true;
+    elsif not v_line_changed then
+      return new;
+    end if;
+  end if;
+
+  v_fc_id := case
+    when tg_op = 'INSERT' then new.fc_id
+    else coalesce(new.fc_id, old.fc_id)
+  end;
+  v_docentry_base := new.id * 1000000;
+
+  select
+    card.*,
+    iw.whse_code as building_whse_code
+  into v_card
+  from public.brd_fc card
+  left join public.i_warehouse iw
+    on iw.id = card.building_whse_id
+  where card.id = v_fc_id;
+
+  if not found then
+    raise exception 'Unable to post mortality/thinning inventory: flock card % was not found', v_fc_id;
+  end if;
+
+  v_user := case
+    when tg_op = 'INSERT' then coalesce(new.updated_by, new.created_by, v_card.updated_by, v_card.created_by, auth.uid())
+    else coalesce(new.updated_by, new.created_by, old.updated_by, old.created_by, v_card.updated_by, v_card.created_by, auth.uid())
+  end;
+  v_dest_whse_code := nullif(btrim(coalesce(v_card.building_code, v_card.building_whse_code, '')), '');
+
+  if v_user is null then
+    raise exception 'Unable to post mortality/thinning inventory: user is required';
+  end if;
+
+  if tg_op = 'UPDATE' and v_has_legacy_usage then
+    for v_allocation in
+      select
+        row_number() over (order by ip.id)::integer as line_no,
+        ip.item_code,
+        ip.ref as batch_no,
+        ip.warehouse_code as whse_code,
+        ip.qty as alloc_qty
+      from public.inventory_postings ip
+      where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+        and ip.source_docentry = old.id
+        and not exists (
+          select 1
+          from public.inventory_postings reversal_posting
+          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+            and reversal_posting.ref = ip.ref
+            and reversal_posting.item_code = ip.item_code
+            and reversal_posting.warehouse_code = ip.warehouse_code
+            and reversal_posting.qty = ip.qty
+        )
+    loop
+      insert into public.inventory_postings (
+        source_doc_type,
+        source_docentry,
+        item_code,
+        warehouse_code,
+        bin_code,
+        qty,
+        created_by,
+        ref_type,
+        ref,
+        transfer_type,
+        ref_type2,
+        ref2
+      )
+      values (
+        'BRD_FC_MORT_THIN_REVERSAL',
+        old.id * 1000000 + 900000 + v_allocation.line_no,
+        v_allocation.item_code,
+        v_allocation.whse_code,
+        'DEFAULT',
+        v_allocation.alloc_qty,
+        v_user,
+        'batch_code',
+        v_allocation.batch_no,
+        'IN',
+        'FLOCK_CARD',
+        v_card.fc_no
+      );
+    end loop;
+  end if;
+
+  if tg_op = 'UPDATE' and v_should_reverse then
+    for v_allocation in
+      select
+        row_number() over (order by ip.id)::integer as line_no,
+        ip.item_code,
+        ip.ref as batch_no,
+        ip.warehouse_code as whse_code,
+        ip.qty as alloc_qty
+      from public.inventory_postings ip
+      where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+        and ip.source_docentry between v_docentry_start and v_docentry_end
+        and not exists (
+          select 1
+          from public.inventory_postings reversal_posting
+          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+            and reversal_posting.ref = ip.ref
+            and reversal_posting.item_code = ip.item_code
+            and reversal_posting.warehouse_code = ip.warehouse_code
+            and reversal_posting.qty = ip.qty
+        )
+    loop
+      if v_allocation.item_code is null
+        or v_allocation.whse_code is null
+        or v_allocation.batch_no is null
+        or coalesce(v_allocation.alloc_qty, 0) <= 0 then
+        continue;
+      end if;
+
+      insert into public.inventory_postings (
+        source_doc_type,
+        source_docentry,
+        item_code,
+        warehouse_code,
+        bin_code,
+        qty,
+        created_by,
+        ref_type,
+        ref,
+        transfer_type,
+        ref_type2,
+        ref2
+      )
+      values (
+        'BRD_FC_MORT_THIN_REVERSAL',
+        old.id * 1000000 + 800000 + v_allocation.line_no,
+        v_allocation.item_code,
+        v_allocation.whse_code,
+        'DEFAULT',
+        v_allocation.alloc_qty,
+        v_user,
+        'batch_code',
+        v_allocation.batch_no,
+        'IN',
+        'FLOCK_CARD',
+        v_card.fc_no
+      );
+    end loop;
+  end if;
+
+  if new.void <> '1' then
+    return new;
+  end if;
+
+  select coalesce(max(((ip.source_docentry - v_docentry_base) / 1000)::integer), -1) + 1
+  into v_docentry_generation
+  from public.inventory_postings ip
+  where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
+    and ip.source_docentry between v_docentry_base and v_docentry_base + 999999;
+
+  for v_allocation in
+    select
+      allocation.ordinality::integer as line_no,
+      nullif(allocation.value->>'itemCode', '') as item_code,
+      nullif(allocation.value->>'batchNumber', '') as batch_no,
+      nullif(allocation.value->>'warehouseCode', '') as whse_code,
+      coalesce(nullif(allocation.value->>'allocatedQty', '')::numeric, 0) as alloc_qty
+    from jsonb_array_elements(
+      case
+        when jsonb_typeof(coalesce(new.extra->'mortalityBatchAllocations', '[]'::jsonb)) = 'array'
+          then coalesce(new.extra->'mortalityBatchAllocations', '[]'::jsonb)
+        else '[]'::jsonb
+      end
+    ) with ordinality as allocation(value, ordinality)
+  loop
+    v_allocation.whse_code := coalesce(v_dest_whse_code, v_allocation.whse_code);
+
+    if v_allocation.item_code is null then
+      raise exception 'Unable to post mortality/thinning inventory: item_code is required';
+    end if;
+
+    if v_allocation.whse_code is null then
+      raise exception 'Unable to post mortality/thinning inventory: warehouse is required';
+    end if;
+
+    if v_allocation.batch_no is null then
+      raise exception 'Unable to post mortality/thinning inventory: batch_no is required';
+    end if;
+
+    if coalesce(v_allocation.alloc_qty, 0) <= 0 then
+      raise exception 'Unable to post mortality/thinning inventory: allocation quantity must be greater than zero';
+    end if;
+
+    select coalesce(sum(case when ip.transfer_type = 'OUT' then -ip.qty else ip.qty end), 0)
+    into v_on_hand
+    from public.inventory_postings ip
+    where ip.item_code = v_allocation.item_code
+      and ip.warehouse_code = v_allocation.whse_code
+      and ip.ref is not distinct from v_allocation.batch_no;
+
+    if v_allocation.alloc_qty > v_on_hand then
+      raise exception 'Flock card mortality/thinning exceeds on-hand inventory for item %, batch %, warehouse %.',
+        v_allocation.item_code, v_allocation.batch_no, v_allocation.whse_code;
+    end if;
+
+    insert into public.inventory_postings (
+      source_doc_type,
+      source_docentry,
+      item_code,
+      warehouse_code,
+      bin_code,
+      qty,
+      created_by,
+      ref_type,
+      ref,
+      transfer_type,
+      ref_type2,
+      ref2
+    )
+    values (
+      'BRD_FC_MORT_THIN_USAGE',
+      v_docentry_base + (v_docentry_generation * 1000) + v_allocation.line_no,
+      v_allocation.item_code,
+      v_allocation.whse_code,
+      'DEFAULT',
+      v_allocation.alloc_qty,
+      v_user,
+      'batch_code',
+      v_allocation.batch_no,
+      'OUT',
+      'FLOCK_CARD',
+      v_card.fc_no
+    );
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists post_brd_fc_mortality_thinning_inventory_insert on public.brd_fc_line;
+create trigger post_brd_fc_mortality_thinning_inventory_insert
+after insert on public.brd_fc_line
+for each row
+execute function public.post_brd_fc_mortality_thinning_inventory();
+
+drop trigger if exists post_brd_fc_mortality_thinning_inventory_update on public.brd_fc_line;
+create trigger post_brd_fc_mortality_thinning_inventory_update
+after update on public.brd_fc_line
+for each row
+execute function public.post_brd_fc_mortality_thinning_inventory();
+
+create index if not exists inventory_postings_brd_fc_mort_thin_idx
+  on public.inventory_postings (source_doc_type, source_docentry)
+  where source_doc_type in ('BRD_FC_MORT_THIN_USAGE', 'BRD_FC_MORT_THIN_REVERSAL');
 
 notify pgrst, 'reload schema';
 

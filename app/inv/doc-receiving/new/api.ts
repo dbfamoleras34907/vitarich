@@ -350,8 +350,10 @@ export async function findExistingItemBatch(
 
   query = expiryDate ? query.eq('expiry_date', expiryDate) : query.is('expiry_date', null)
 
-  const { data, error } = await query.maybeSingle()
+  const { data, error } = await query
+    .order('id', { ascending: true })
+    .limit(1)
 
   if (error) throw error
-  return data as GoodsReceiptExistingBatch | null
+  return (data?.[0] ?? null) as GoodsReceiptExistingBatch | null
 }

@@ -5,12 +5,15 @@ export type AssociatedWarehouse = {
   id?: number | null
   whse_code?: string | null
   whse_name?: string | null
+  is_default_receiving?: boolean | null
+  is_default_receiving_warehouse?: boolean | null
 }
 
 export type GoodsReceiptFarm = {
   id: number
   code: string
   name: string | null
+  farm_type?: string | null
   associated_warehouses: AssociatedWarehouse[] | string[] | null
 }
 
@@ -192,7 +195,7 @@ export async function getGoodsReceiptReferences() {
       .order('item_code'),
     db
       .from('i_warehouse')
-      .select('id, whse_code, whse_name, warehouse_type')
+      .select('*')
       .eq('is_active', true)
       .order('whse_code'),
     assignedFarmCodesQuery,
@@ -239,7 +242,7 @@ export async function getGoodsReceiptReferences() {
   const farmsResult = assignedFarmCodes.length
     ? await db
         .from('farms')
-        .select('id, code, name, associated_warehouses')
+        .select('*')
         .eq('void', 1)
         .in('code', assignedFarmCodes)
         .order('code')
@@ -311,7 +314,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
   const farmsResult = assignedFarmCodes.length
     ? await db
         .from('farms')
-        .select('id, code, name, associated_warehouses')
+        .select('*')
         .eq('void', 1)
         .in('code', assignedFarmCodes)
         .order('code')

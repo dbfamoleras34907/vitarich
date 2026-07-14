@@ -953,6 +953,16 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 67,
+            type: "Report",
+            title: "Flock Card Report",
+            url: "/brd/fc/report",
+            view: true,
+            insert: false,
+            edit: false,
+          },
+
+          {
             id: 62,
             type: "Module",
             title: "Delivery",
@@ -1032,6 +1042,16 @@ export const NavFolders: NavFolder[] = [
             url: "/a_dean/doc-receiving-settings",
             view: false,
             insert: true,
+            edit: true,
+          },
+
+          {
+            id: 66,
+            type: "Module",
+            title: "Flock Card Settings",
+            url: "/brd/fc/settings",
+            view: false,
+            insert: false,
             edit: true,
           },
 

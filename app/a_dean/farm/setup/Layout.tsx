@@ -122,7 +122,7 @@ function TextField({
 }) {
   return (
     <div className={className ?? 'space-y-2'}>
-      <Label htmlFor={field.code} required={field.required} className="text-xs font-semibold text-neutral-950">
+      <Label htmlFor={field.code} required={field.required} className="text-xs font-semibold text-neutral-950 dark:text-foreground">
         {field.label}
       </Label>
       <Input
@@ -132,8 +132,8 @@ function TextField({
         placeholder={field.placeholder}
         required={field.required}
         readOnly={field.readOnly}
-        className={`h-12 border-neutral-200 bg-white text-sm shadow-none placeholder:text-neutral-400 ${
-          field.readOnly ? 'bg-neutral-50 font-mono' : ''
+        className={`h-12 border-neutral-200 bg-white text-sm shadow-none placeholder:text-neutral-400 dark:border-border dark:bg-input/30 dark:placeholder:text-muted-foreground ${
+          field.readOnly ? 'bg-neutral-50 font-mono dark:bg-input/20' : ''
         }`}
         onChange={(event) => onChange(field.code, event.target.value)}
       />
@@ -151,13 +151,13 @@ function WizardHeader({
   onClose: () => void
 }) {
   return (
-    <div className="border-b border-neutral-100 px-5 py-5 sm:px-6">
+    <div className="border-b border-neutral-100 px-5 py-5 dark:border-border sm:px-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-neutral-950">{title}</h1>
-          <p className="mt-1 text-sm leading-5 text-neutral-500">{description}</p>
+          <h1 className="text-xl font-semibold text-neutral-950 dark:text-foreground">{title}</h1>
+          <p className="mt-1 text-sm leading-5 text-neutral-500 dark:text-muted-foreground">{description}</p>
         </div>
-        <Button type="button" variant="ghost" onClick={onClose} className="mt-0.5 text-neutral-600 hover:text-neutral-950">
+        <Button type="button" variant="ghost" onClick={onClose} className="mt-0.5 text-neutral-600 hover:text-neutral-950 dark:text-muted-foreground dark:hover:text-foreground">
           <ArrowLeft className="size-4" />
           Back to Farm List
         </Button>
@@ -175,8 +175,8 @@ function SectionIntro({
 }) {
   return (
     <div>
-      <h2 className="text-sm font-semibold text-neutral-950">{title}</h2>
-      <p className="mt-1 text-xs leading-5 text-neutral-500">{description}</p>
+      <h2 className="text-sm font-semibold text-neutral-950 dark:text-foreground">{title}</h2>
+      <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-muted-foreground">{description}</p>
     </div>
   )
 }
@@ -186,13 +186,13 @@ function WizardSidebar({ currentStep }: { currentStep: number }) {
   const progress = (completedCount / STEPS.length) * 100
 
   return (
-    <aside className="flex shrink-0 flex-col border-b border-neutral-200 bg-[#f4f5f6] p-5 md:w-72 md:border-r md:border-b-0">
+    <aside className="flex shrink-0 flex-col border-b border-neutral-200 bg-[#f4f5f6] p-5 dark:border-border dark:bg-secondary md:w-72 md:border-r md:border-b-0">
       <div>
-        <div className="text-sm font-semibold text-neutral-950">Farm Setup Wizard</div>
-        <div className="mt-3 h-px w-full bg-neutral-200">
+        <div className="text-sm font-semibold text-neutral-950 dark:text-foreground">Farm Setup Wizard</div>
+        <div className="mt-3 h-px w-full bg-neutral-200 dark:bg-border">
           <div className="h-px bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
-        <div className="mt-2 text-xs text-neutral-500">
+        <div className="mt-2 text-xs text-neutral-500 dark:text-muted-foreground">
           {completedCount}/{STEPS.length} completed
         </div>
       </div>
@@ -209,13 +209,13 @@ function WizardSidebar({ currentStep }: { currentStep: number }) {
                   isComplete
                     ? 'border-emerald-600 bg-emerald-600 text-white'
                     : isActive
-                      ? 'border-emerald-600 text-emerald-700'
-                      : 'border-neutral-300 text-neutral-400'
+                      ? 'border-emerald-600 text-emerald-700 dark:text-emerald-300'
+                      : 'border-neutral-300 text-neutral-400 dark:border-border dark:text-muted-foreground'
                 }`}
               >
                 {isComplete ? <Check className="size-3" /> : <Circle className="size-2 fill-current" />}
               </span>
-              <span className={isActive ? 'font-medium text-neutral-950' : 'text-neutral-500'}>
+              <span className={isActive ? 'font-medium text-neutral-950 dark:text-foreground' : 'text-neutral-500 dark:text-muted-foreground'}>
                 {stepItem.title}
               </span>
             </div>
@@ -240,8 +240,8 @@ function WizardActions({
   onSubmit: () => void
 }) {
   return (
-    <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-4 sm:px-6">
-      <Button type="button" variant="secondary" onClick={onBack} className="h-10 bg-white px-4 text-neutral-700">
+    <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-4 dark:border-border sm:px-6">
+      <Button type="button" variant="secondary" onClick={onBack} className="h-10 bg-white px-4 text-neutral-700 dark:bg-secondary dark:text-secondary-foreground">
         <ArrowLeft className="size-4" />
         Back
       </Button>
@@ -282,11 +282,11 @@ function InlineSelect({
 }) {
   return (
     <div className="space-y-2">
-      <Label required={required} className="text-xs font-semibold text-neutral-950">
+      <Label required={required} className="text-xs font-semibold text-neutral-950 dark:text-foreground">
         {label}
       </Label>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className="h-12 w-full border-neutral-200 bg-white text-sm shadow-none">
+        <SelectTrigger className="h-12 w-full border-neutral-200 bg-white text-sm shadow-none dark:border-border dark:bg-input/30">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>{children}</SelectContent>
@@ -297,9 +297,9 @@ function InlineSelect({
 
 function EmptyDraftState({ onAdd, disabled }: { onAdd: () => void; disabled: boolean }) {
   return (
-    <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-7 text-center">
-      <div className="text-sm font-medium text-neutral-950">No warehouse or building yet</div>
-      <p className="mt-1 text-xs leading-5 text-neutral-500">
+    <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-7 text-center dark:border-border dark:bg-secondary">
+      <div className="text-sm font-medium text-neutral-950 dark:text-foreground">No warehouse or building yet</div>
+      <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-muted-foreground">
         Select the farm type first, then add the first farm structure.
       </p>
       <Button
@@ -317,9 +317,9 @@ function EmptyDraftState({ onAdd, disabled }: { onAdd: () => void; disabled: boo
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-neutral-200 bg-white px-4 py-3">
-      <div className="text-xs font-medium uppercase text-neutral-400">{label}</div>
-      <div className="mt-1 text-sm font-medium text-neutral-950">{value}</div>
+    <div className="rounded-md border border-neutral-200 bg-white px-4 py-3 dark:border-border dark:bg-card">
+      <div className="text-xs font-medium uppercase text-neutral-400 dark:text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium text-neutral-950 dark:text-foreground">{value}</div>
     </div>
   )
 }
@@ -334,10 +334,10 @@ function ReviewDraftRow({
   isDefaultReceiving: boolean
 }) {
   return (
-    <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 first:border-t-0 dark:border-border sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <div className="text-sm font-medium text-neutral-950">{draft.data.whse_name || 'Unnamed draft'}</div>
-        <div className="mt-1 text-xs text-neutral-500">
+        <div className="text-sm font-medium text-neutral-950 dark:text-foreground">{draft.data.whse_name || 'Unnamed draft'}</div>
+        <div className="mt-1 text-xs text-neutral-500 dark:text-muted-foreground">
           {draft.data.warehouse_type} / {draft.data.fms_type}
         </div>
       </div>
@@ -526,8 +526,8 @@ export default function Layout() {
   }, [loadFarmCode, router])
 
   return (
-    <div className="min-h-screen bg-[#d7dcdf] px-3 py-5 sm:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-2.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl md:min-h-[680px] md:flex-row">
+    <div className="min-h-screen bg-[#d7dcdf] px-3 py-5 dark:bg-background sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-2.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl dark:border-border dark:bg-card md:min-h-[680px] md:flex-row">
         <WizardSidebar currentStep={step} />
 
         <section className="flex min-w-0 flex-1 flex-col">
@@ -577,8 +577,8 @@ export default function Layout() {
                     />
                   ))}
                   <div className="space-y-2 sm:col-span-2">
-                    <Label className="text-xs font-semibold text-neutral-950">Address Preview</Label>
-                    <div className="min-h-12 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-5 text-neutral-600">
+                    <Label className="text-xs font-semibold text-neutral-950 dark:text-foreground">Address Preview</Label>
+                    <div className="min-h-12 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-5 text-neutral-600 dark:border-border dark:bg-secondary dark:text-muted-foreground">
                       {locationPreview || 'Address will be assembled from the location fields.'}
                     </div>
                   </div>
@@ -595,19 +595,7 @@ export default function Layout() {
                 onClose={() => router.push('/a_dean/farm')}
               />
               <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <SectionIntro title="Associated Warehouse Or Building" description={STEPS[1].description} />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={addWarehouseDraft}
-                    disabled={!farmData.farm_type}
-                    className="h-10 bg-white text-neutral-700"
-                  >
-                    <Plus className="size-4" />
-                    Add Other Structure
-                  </Button>
-                </div>
+                <SectionIntro title="Associated Warehouse Or Building" description={STEPS[1].description} />
 
                 {warehouseDrafts.length === 0 ? (
                   <div className="mt-5">
@@ -617,10 +605,10 @@ export default function Layout() {
 
                 <div className="mt-5 space-y-4">
                   {warehouseDrafts.map((draft, index) => (
-                    <div key={draft.clientKey} className="rounded-md border border-neutral-200 bg-white p-4">
+                    <div key={draft.clientKey} className="rounded-md border border-neutral-200 bg-white p-4 dark:border-border dark:bg-card">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                          <div className="text-sm font-semibold text-neutral-950">Structure {index + 1}</div>
+                          <div className="text-sm font-semibold text-neutral-950 dark:text-foreground">Structure {index + 1}</div>
                           <Badge variant="outline">{draft.data.warehouse_type || 'Warehouse'}</Badge>
                         </div>
                         <Button
@@ -664,7 +652,7 @@ export default function Layout() {
                         <div className="space-y-2 sm:col-span-2">
                           <Label
                             htmlFor={`remarks-${draft.clientKey}`}
-                            className="text-xs font-semibold text-neutral-950"
+                            className="text-xs font-semibold text-neutral-950 dark:text-foreground"
                           >
                             Remarks
                           </Label>
@@ -672,7 +660,7 @@ export default function Layout() {
                             id={`remarks-${draft.clientKey}`}
                             value={draft.data.remarks ?? ''}
                             placeholder="e.g. Main feed storage, receiving dock, or building note."
-                            className="min-h-24 border-neutral-200 bg-white text-sm placeholder:text-neutral-400"
+                            className="min-h-24 border-neutral-200 bg-white text-sm placeholder:text-neutral-400 dark:border-border dark:bg-input/30 dark:placeholder:text-muted-foreground"
                             onChange={(event) => updateWarehouse(draft.clientKey, 'remarks', event.target.value)}
                           />
                         </div>
@@ -680,6 +668,21 @@ export default function Layout() {
                     </div>
                   ))}
                 </div>
+
+                {warehouseDrafts.length > 0 ? (
+                  <div className="mt-5 flex justify-end border-t border-neutral-100 pt-4 dark:border-border">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={addWarehouseDraft}
+                      disabled={!farmData.farm_type}
+                      className="h-10 bg-white text-neutral-700 dark:bg-secondary dark:text-secondary-foreground"
+                    >
+                      <Plus className="size-4" />
+                      Add Other Structure
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </>
           ) : null}
@@ -722,7 +725,7 @@ export default function Layout() {
                   </InlineSelect>
                 </div>
 
-                <div className="rounded-md border border-neutral-200">
+                <div className="rounded-md border border-neutral-200 dark:border-border">
                   {warehouseDrafts.map((draft) => (
                     <ReviewDraftRow
                       key={draft.clientKey}

@@ -68,6 +68,15 @@ const FMS_TYPE_OPTIONS = [
   { value: 'hatchery', label: 'Hatchery' },
 ]
 
+const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
+  BE: 'breeder',
+  HA: 'hatchery',
+  BR: 'broiler',
+  BREEDER: 'breeder',
+  HATCHERY: 'hatchery',
+  BROILER: 'broiler',
+}
+
 const today = () => {
   const date = new Date()
   const offset = date.getTimezoneOffset()
@@ -202,11 +211,74 @@ const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => 
   return String(warehouse.whse_code ?? '').trim()
 }
 
+const isDefaultReceivingAssociation = (warehouse: AssociatedWarehouse | string) =>
+  typeof warehouse === 'object' && (
+    Boolean(warehouse?.is_default_receiving) ||
+    Boolean(warehouse?.is_default_receiving_warehouse)
+  )
+
 const isWarehouseType = (warehouse: WarehouseData) =>
   String(warehouse.warehouse_type ?? '').trim().toLowerCase() === 'warehouse'
 
+const getFarmFmsType = (farm: GoodsReceiptFarm | undefined | null) =>
+  FARM_TYPE_TO_FMS_TYPE[String(farm?.farm_type ?? '').trim().toUpperCase()] ?? ''
+
+const getWarehouseFmsType = (warehouse: WarehouseData | undefined | null) =>
+  FARM_TYPE_TO_FMS_TYPE[String(warehouse?.fms_type ?? '').trim().toUpperCase()] ?? ''
+
+const getWarehousesForFarm = (farm: GoodsReceiptFarm | undefined | null, warehouseList: WarehouseData[]) => {
+  const associations = farm?.associated_warehouses
+  if (!Array.isArray(associations)) return []
+
+  const allowedCodes = new Set(
+    associations
+      .map(getAssociatedWarehouseCode)
+      .filter(Boolean)
+  )
+
+  return warehouseList.filter(warehouse =>
+    allowedCodes.has(String(warehouse.whse_code ?? '').trim()) &&
+    isWarehouseType(warehouse)
+  )
+}
+
+const getDefaultReceivingWarehouse = (
+  farm: GoodsReceiptFarm | undefined | null,
+  farmWarehouseList: WarehouseData[],
+) => {
+  const associations = farm?.associated_warehouses
+  const defaultAssociationCode = Array.isArray(associations)
+    ? associations.find(isDefaultReceivingAssociation)
+    : null
+  const defaultCode = defaultAssociationCode
+    ? getAssociatedWarehouseCode(defaultAssociationCode)
+    : ''
+
+  const defaultWarehouse = farmWarehouseList.find(warehouse =>
+    defaultCode && String(warehouse.whse_code ?? '').trim() === defaultCode
+  ) ?? farmWarehouseList.find(warehouse => Boolean(warehouse.is_default_receiving_warehouse)) ?? null
+
+  return defaultWarehouse ?? (farmWarehouseList.length === 1 ? farmWarehouseList[0] : null)
+}
+
+const getItemDescription = (item: Items) =>
+  item.item_name || item.description || ''
+
 const getItemFmsType = (item: Items) =>
   String(item.fms_group ?? '').trim().toLowerCase()
+
+const isDocItem = (item: Items) => {
+  const tokens = [
+    item.item_code,
+    item.item_name,
+    item.description,
+    item.item_group,
+    item.fms_group,
+    item.group,
+  ].map(value => String(value ?? '').trim().toUpperCase())
+
+  return tokens.some(token => token === 'DOC' || token.startsWith('DOC'))
+}
 
 const formatQuantity = (value: number) =>
   Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
@@ -319,9 +391,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
           .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
         const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
+        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
+          farm => typeof farm.farm_type !== 'undefined',
+        )
         const canUseCachedReferences = cachedItems.length > 0 &&
           cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups)
+          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
+          cachedReferencesHaveFarmMetadata
 
         const referencesPromise = canUseCachedReferences
           ? Promise.resolve({
@@ -387,24 +463,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     [farms, receipt?.farmId],
   )
 
-  const farmWarehouseCodes = useMemo(() => {
-    const associations = selectedFarm?.associated_warehouses
-    if (!Array.isArray(associations)) return new Set<string>()
-
-    return new Set(
-      associations
-        .map(getAssociatedWarehouseCode)
-        .filter(Boolean)
-    )
-  }, [selectedFarm])
-
-  const farmWarehouses = useMemo(() => {
-    if (!farmWarehouseCodes.size) return []
-    return warehouses.filter(warehouse =>
-      farmWarehouseCodes.has(String(warehouse.whse_code ?? '').trim()) &&
-      isWarehouseType(warehouse)
-    )
-  }, [farmWarehouseCodes, warehouses])
+  const farmWarehouses = useMemo(
+    () => getWarehousesForFarm(selectedFarm, warehouses),
+    [selectedFarm, warehouses],
+  )
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -418,8 +480,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
     if (!fmsType) return []
 
-    return items.filter(item => getItemFmsType(item) === fmsType)
+    return items.filter(item => getItemFmsType(item) === fmsType && !isDocItem(item))
   }, [items, receipt?.fmsType])
+
+  const itemDropdownOptions = useMemo(
+    () => availableItems.map(item => ({
+      ...item,
+      itemDisplayDescription: getItemDescription(item),
+    })),
+    [availableItems],
+  )
 
   const itemGroupIdByCode = useMemo(() => {
     const map = new Map<string, number>()
@@ -438,35 +508,46 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const allowedCodes = new Set(
       farmWarehouses.map(warehouse => String(warehouse.whse_code ?? '').trim())
     )
-    const defaultWarehouseIsAllowed = receipt.defaultWarehouseId == null ||
-      farmWarehouses.some(warehouse => warehouse.id === receipt.defaultWarehouseId)
+    const currentDefaultWarehouse = receipt.defaultWarehouseId == null
+      ? null
+      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
+    const nextDefaultWarehouse = defaultWarehouse ?? currentDefaultWarehouse
+    const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
+    const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
 
-    const nextLines = receipt.lines.map(line =>
-      !line.warehouseCode || allowedCodes.has(line.warehouseCode)
-        ? line
-        : {
-          ...line,
-          warehouseId: null,
-          warehouseCode: '',
-          warehouseName: '',
-        }
-    )
+    const nextLines = receipt.lines.map(line => {
+      if (line.warehouseCode && allowedCodes.has(line.warehouseCode)) return line
+      if (!line.warehouseCode && !nextDefaultWarehouse) return line
+
+      return {
+        ...line,
+        warehouseId: nextDefaultWarehouse?.id ?? null,
+        warehouseCode: nextDefaultWarehouse?.whse_code ?? '',
+        warehouseName: nextDefaultWarehouse?.whse_name ?? '',
+      }
+    })
 
     const linesChanged = nextLines.some((line, index) => line !== receipt.lines[index])
+    const defaultWarehouseChanged = receipt.defaultWarehouseId !== nextDefaultWarehouseId
+    const fmsTypeChanged = Boolean(nextFmsType) && receipt.fmsType !== nextFmsType
 
-    if (defaultWarehouseIsAllowed && !linesChanged) return
+    if (!defaultWarehouseChanged && !fmsTypeChanged && !linesChanged) return
 
     setReceipt(current => current ? {
       ...current,
-      defaultWarehouseId: defaultWarehouseIsAllowed ? current.defaultWarehouseId : null,
+      fmsType: nextFmsType || current.fmsType,
+      defaultWarehouseId: nextDefaultWarehouseId,
       lines: nextLines,
     } : current)
-  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.lines])
+  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.fmsType, receipt?.lines, selectedFarm])
 
   useEffect(() => {
     if (loadingReferences || receipt?.farmId || farms.length !== 1) return
 
     const [farm] = farms
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
     const allowedCodes = new Set(
       (farm.associated_warehouses ?? [])
         .map(getAssociatedWarehouseCode)
@@ -481,20 +562,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         farmId: farm.id,
         farmCode: farm.code,
         farmName: farm.name ?? '',
-        defaultWarehouseId: null,
+        fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+        defaultWarehouseId: defaultWarehouse?.id ?? null,
         lines: current.lines.map(line =>
           allowedCodes.has(line.warehouseCode)
             ? line
             : {
               ...line,
-              warehouseId: null,
-              warehouseCode: '',
-              warehouseName: '',
+              warehouseId: defaultWarehouse?.id ?? null,
+              warehouseCode: defaultWarehouse?.whse_code ?? '',
+              warehouseName: defaultWarehouse?.whse_name ?? '',
             }
         ),
       }
     })
-  }, [farms, loadingReferences, receipt?.farmId])
+  }, [farms, loadingReferences, receipt?.farmId, warehouses])
 
   useEffect(() => {
     const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
@@ -915,7 +997,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     updateLine(line.id, {
       itemId: item.id,
       itemCode: item.item_code || '',
-      description: item.item_name || item.description || '',
+      description: getItemDescription(item),
       batchRuleId: null,
       batchNumber: '',
       supplierBatchNumber: '',
@@ -955,6 +1037,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const selectFarm = (farmId: string) => {
     const farm = farms.find(candidate => String(candidate.id) === farmId)
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
     const allowedCodes = new Set(
       (farm?.associated_warehouses ?? [])
         .map(getAssociatedWarehouseCode)
@@ -966,15 +1050,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       farmId: farm?.id ?? null,
       farmCode: farm?.code ?? '',
       farmName: farm?.name ?? '',
-      defaultWarehouseId: null,
+      fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+      defaultWarehouseId: defaultWarehouse?.id ?? null,
       lines: current.lines.map(line =>
         allowedCodes.has(line.warehouseCode)
           ? line
           : {
             ...line,
-            warehouseId: null,
-            warehouseCode: '',
-            warehouseName: '',
+            warehouseId: defaultWarehouse?.id ?? null,
+            warehouseCode: defaultWarehouse?.whse_code ?? '',
+            warehouseName: defaultWarehouse?.whse_name ?? '',
           }
       ),
     } : current)
@@ -1185,8 +1270,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             <label className="text-sm font-semibold">FMS Type</label>
             <select
               value={receipt.fmsType}
-              onChange={event => setReceipt(current => current ? { ...current, fmsType: event.target.value } : current)}
-              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
+              disabled
+              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
             >
               <option value="">Select FMS type...</option>
               {FMS_TYPE_OPTIONS.map(option => (
@@ -1256,9 +1341,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
                         <td className="px-3 py-2 align-middle">
                           <SearchableDropdown
-                            list={availableItems}
+                            list={itemDropdownOptions}
                             codeLabel="item_code"
-                            nameLabel="item_name"
+                            nameLabel="itemDisplayDescription"
                             value={line.itemCode}
                             placeholder={receipt.fmsType ? 'Select item...' : 'Select FMS type first'}
                             width={420}

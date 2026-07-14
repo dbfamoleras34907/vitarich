@@ -14,6 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Keyboard } from "lucide-react";
 
 const hotkeys = [
   {
@@ -45,16 +46,18 @@ export default function Help() {
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
             <Button
-              aria-label="Open help"
-              variant={"outline"}
+              aria-label="View keyboard shortcuts"
+              variant={"ghost"}
               size={"sm"}
+              className="text-muted-foreground"
             >
-              Key Binds
+              <Keyboard className="size-4" />
+              Shortcuts
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
 
-        <TooltipContent>click for more information</TooltipContent>
+        <TooltipContent>View keyboard shortcuts</TooltipContent>
       </Tooltip>
 
       <DialogContent className="sm:max-w-md">

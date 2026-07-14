@@ -106,7 +106,7 @@ function TextField({
                 placeholder={field.placeholder}
                 required={field.required}
                 readOnly={field.readOnly}
-                className={field.readOnly ? 'bg-stone-100 font-mono text-sm' : undefined}
+                className={field.readOnly ? ' font-mono text-sm' : undefined}
                 onChange={(event) => onChange(field.code, event.target.value)}
             />
             {field.helper ? <p className="text-xs leading-5 text-stone-500">{field.helper}</p> : null}
@@ -532,8 +532,8 @@ export default function Layout() {
     }, [])
 
     return (
-        <div className="min-h-screen bg-[#f7f5f1]">
-            <div className="sticky top-0 z-10 border-b border-stone-200 bg-[#f7f5f1]/95 px-4 py-3 backdrop-blur sm:px-8">
+        <div className="min-h-screen ">
+            <div className="sticky top-0 z-10 border-b  px-4 py-3 backdrop-blur sm:px-8">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <Breadcrumb
                         SecondPreviewPageName="Farm"

@@ -9,12 +9,22 @@ import {
   ChevronLast,
   ChevronLeft,
   ChevronRight,
+  Download,
+  FileSpreadsheet,
+  FileText,
   Filter,
   Search,
   SlidersHorizontal,
   X,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './dropdown-menu'
 import { Skeleton } from './skeleton'
 
 export type Column<T> = {
@@ -69,6 +79,56 @@ const alignClass = {
 }
 
 const normalizeFilterText = (value: unknown) => String(value ?? '').toLowerCase().trim()
+
+const escapeDelimitedValue = (value: unknown) => {
+  return String(value ?? '').replace(/[\t\r\n]+/g, ' ').trim()
+}
+
+const escapeHtml = (value: unknown) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const downloadFile = (content: string, filename: string, type: string) => {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const copyToClipboard = async (content: string) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+
+  textarea.value = content
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  try {
+    const copied = document.execCommand('copy')
+    if (!copied) throw new Error('Copy command failed')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
 
 const matchesFilter = (cellValue: unknown, filter: FilterRule) => {
   const filterValue = normalizeFilterText(filter.value)
@@ -134,6 +194,10 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   }, [columns])
 
   const filterableColumns = useMemo(() => {
+    return columns.filter(column => column.type !== 'button')
+  }, [columns])
+
+  const exportableColumns = useMemo(() => {
     return columns.filter(column => column.type !== 'button')
   }, [columns])
 
@@ -275,6 +339,67 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     return String(value ?? '')
   }
 
+  const getExportValue = useCallback((row: T, column: Column<T>) => {
+    const value = row[column.key as keyof T]
+
+    if (column.type === 'date' && value) return formatDateTime(String(value))
+    return value
+  }, [])
+
+  const buildExportRows = useCallback(() => {
+    return sortedData.map(row =>
+      exportableColumns.map(column => getExportValue(row, column))
+    )
+  }, [exportableColumns, getExportValue, sortedData])
+
+  const getExportFilename = useCallback((extension: string) => {
+    const baseName = (title || 'table-export')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'table-export'
+
+    return `${baseName}.${extension}`
+  }, [title])
+
+  const exportToTextTab = useCallback(async () => {
+    const headers = exportableColumns.map(column => escapeDelimitedValue(column.label)).join('\t')
+    const rows = buildExportRows().map(row =>
+      row.map(value => escapeDelimitedValue(value)).join('\t')
+    )
+
+    try {
+      await copyToClipboard([headers, ...rows].join('\n'))
+      toast('Data copied to clipboard.')
+    } catch {
+      toast('Unable to copy data to clipboard.')
+    }
+  }, [buildExportRows, exportableColumns])
+
+  const exportToExcel = useCallback(() => {
+    const headerCells = exportableColumns
+      .map(column => `<th>${escapeHtml(column.label)}</th>`)
+      .join('')
+    const bodyRows = buildExportRows()
+      .map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`)
+      .join('')
+    const worksheet = `<!doctype html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body>
+<table>
+<thead><tr>${headerCells}</tr></thead>
+<tbody>${bodyRows}</tbody>
+</table>
+</body>
+</html>`
+
+    downloadFile(
+      worksheet,
+      getExportFilename('xls'),
+      'application/vnd.ms-excel;charset=utf-8'
+    )
+  }, [buildExportRows, exportableColumns, getExportFilename])
+
   const tableMinWidth = useMemo(() => {
     const estimatedWidth = columns.reduce((total, column) => {
       if (column.type === 'button') return total + 88
@@ -291,8 +416,8 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       className="w-full min-w-0 max-w-full overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] [contain:inline-size]"
       aria-labelledby={title ? `${tableId}-title` : undefined}
     >
-      <div 
-      className="flex min-w-0 flex-col gap-3 border-b bg-card px-3 py-3 lg:flex-row lg:items-center lg:justify-between"
+      <div
+        className="flex min-w-0 flex-col gap-3 border-b bg-card px-3 py-3 lg:flex-row lg:items-center lg:justify-between"
       >
         {loading ? (
           <>
@@ -325,16 +450,18 @@ export default function DynamicTable<T extends Record<string, unknown>>({
             </div>
 
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+
+
               {enablePagination && (
                 <label className="flex h-10 items-center gap-2 text-sm text-foreground">
-                  <span>Rows</span>
+                  {/* <span>Rows</span> */}
                   <select
                     value={pageSize}
                     onChange={event => {
                       setPageSize(Number(event.target.value))
                       setPage(1)
                     }}
-                    className="h-10 rounded-md border border-input bg-[#fffdfb] px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
+                    className="h-8 rounded-md border border-input bg-[#fffdfb] px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
                   >
                     {pageSizeOptions.map(option => (
                       <option key={option} value={option}>
@@ -349,12 +476,12 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                 <button
                   type="button"
                   onClick={openFilterDialog}
-                  className="relative inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-[#fffdfb] px-4 text-sm font-semibold text-foreground transition hover:border-ring hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
+                  className="relative inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-[#fffdfb] px-4 text-sm font-semibold text-foreground transition hover:border-ring hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/15 dark:bg-input/30"
                   aria-haspopup="dialog"
                   aria-expanded={showFilter}
                 >
                   <SlidersHorizontal className="size-4" aria-hidden="true" />
-                  Filter
+                  {/* Filter */}
                   {activeFilterCount > 0 && (
                     <span className="ml-1 rounded-md bg-[var(--starbucks-gold)] px-2 py-0.5 text-xs font-semibold text-white">
                       {activeFilterCount}
@@ -363,8 +490,32 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                 </button>
               )}
 
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-[#fffdfb] px-4 text-sm font-semibold text-foreground transition hover:border-ring hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+                    disabled={exportableColumns.length === 0}
+                  >
+                    <Download className="size-4" aria-hidden="true" />
+                    {/* Export to
+                    <ChevronDown className="size-4" aria-hidden="true" /> */}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onClick={exportToTextTab}>
+                    <FileText className="size-4" aria-hidden="true" />
+                    To text-tab
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportToExcel}>
+                    <FileSpreadsheet className="size-4" aria-hidden="true" />
+                    To Excel
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               {enableSearch && (
-                <label className="flex h-10 min-w-0 max-w-full items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
+                <label className="flex h-8 min-w-0 max-w-full items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
                   <Search className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="sr-only">Search table</span>
                   <input
@@ -507,26 +658,26 @@ export default function DynamicTable<T extends Record<string, unknown>>({
             </div>
 
             <div className="flex flex-col gap-2 border-t px-4 py-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraftFilters([])
-                    setAppliedFilters([])
-                    setPage(1)
-                    setShowFilter(false)
-                  }}
-                  className="h-9 rounded-md border bg-background px-3 text-sm font-semibold text-foreground hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring/20"
-                >
-                  Clear
-                </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftFilters([])
+                  setAppliedFilters([])
+                  setPage(1)
+                  setShowFilter(false)
+                }}
+                className="h-9 rounded-md border bg-background px-3 text-sm font-semibold text-foreground hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring/20"
+              >
+                Clear
+              </button>
 
-                <button
-                  type="button"
-                  onClick={applyFilters}
-                  className="h-9 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring/20"
-                >
-                  Apply
-                </button>
+              <button
+                type="button"
+                onClick={applyFilters}
+                className="h-9 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring/20"
+              >
+                Apply
+              </button>
             </div>
           </div>
         </div>

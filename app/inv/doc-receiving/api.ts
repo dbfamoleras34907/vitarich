@@ -23,6 +23,25 @@ export type GoodsReceiptLine = {
   warehouseCode: string
   warehouseName: string
   returnedQty: number
+  docBatchSeparated?: boolean
+  docBatchReference?: string
+  docBatchReferenceKey?: string
+  docBatchReferenceColumn?: string
+}
+
+export type GoodsReceiptDocLine = {
+  id: number | string
+  receive_date: string
+  mnf_date: string
+  transfer_slip: string
+  average_doc_weight: string
+  quantity_received: string
+  actual_received: string
+  short_count_remarks: string
+  doa_quantity: string
+  doa_count_remarks: string
+  reject_count: string
+  reject_count_remarks: string
 }
 
 export type GoodsReceipt = {
@@ -37,6 +56,7 @@ export type GoodsReceipt = {
   defaultWarehouseId: number | null
   status: GoodsReceiptDbStatus
   lines: GoodsReceiptLine[]
+  docDetails: GoodsReceiptDocLine[]
   createdAt: string
 }
 
@@ -76,6 +96,24 @@ type GoodsReceiptItemRow = {
   void: string
 }
 
+type GoodsReceiptDocRow = {
+  id: number
+  goods_reciept_id: number
+  line_no: number
+  receive_date: string | null
+  mnf_date: string | null
+  transfer_slip: string | null
+  average_doc_weight: number | null
+  quantity_received: number
+  actual_received: number
+  short_count_remarks: string | null
+  doa_quantity: number
+  doa_count_remarks: string | null
+  reject_count: number
+  reject_count_remarks: string | null
+  void: string
+}
+
 type GoodsReceiptListItemRow = {
   goods_reciept_id: number
   item_code: string
@@ -102,6 +140,11 @@ const isDuplicateGoodsReceiptNumberError = (error: DbErrorLike | null | undefine
   return detailText.includes('goods_reciept_gr_no_key') || detailText.includes('gr_no')
 }
 
+const numberValue = (value: string | number | null | undefined) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   id: row.id,
   itemId: row.item_id,
@@ -122,12 +165,28 @@ const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   returnedQty: Number(row.returned_qty),
 })
 
+const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
+  id: row.id,
+  receive_date: row.receive_date ?? '',
+  mnf_date: row.mnf_date ?? '',
+  transfer_slip: row.transfer_slip ?? '',
+  average_doc_weight: row.average_doc_weight == null ? '' : String(row.average_doc_weight),
+  quantity_received: String(row.quantity_received ?? ''),
+  actual_received: String(row.actual_received ?? ''),
+  short_count_remarks: row.short_count_remarks ?? '',
+  doa_quantity: String(row.doa_quantity ?? ''),
+  doa_count_remarks: row.doa_count_remarks ?? '',
+  reject_count: String(row.reject_count ?? ''),
+  reject_count_remarks: row.reject_count_remarks ?? '',
+})
+
 const normalizeReceiptStatus = (status: GoodsReceiptDbStatus): GoodsReceiptStatus =>
   status === 'Received' ? 'Posted' : status
 
 const toReceipt = (
   row: GoodsReceiptRow,
   lines: GoodsReceiptItemRow[],
+  docDetails: GoodsReceiptDocRow[] = [],
 ): GoodsReceipt => ({
   id: row.id,
   grNo: row.gr_no,
@@ -140,6 +199,7 @@ const toReceipt = (
   defaultWarehouseId: row.default_warehouse_id,
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptLine),
+  docDetails: docDetails.map(toReceiptDocLine),
   createdAt: row.created_at,
 })
 
@@ -178,6 +238,7 @@ const toReceiptListItem = (
   defaultWarehouseId: row.default_warehouse_id,
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptListLine),
+  docDetails: [],
   createdAt: row.created_at,
 })
 
@@ -185,6 +246,23 @@ async function getSessionUserId() {
   const { data, error } = await db.auth.getSession()
   if (error) throw error
   return data.session?.user.id ?? null
+}
+
+async function getReceiptIdsWithDocReceiving() {
+  const { data, error } = await db
+    .from('goods_receipt_doc')
+    .select('goods_reciept_id')
+    .eq('void', '1')
+
+  if (error) throw error
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map(row => Number(row.goods_reciept_id))
+        .filter(id => Number.isFinite(id))
+    )
+  )
 }
 
 async function getOrCreateItemBatch({
@@ -203,30 +281,45 @@ async function getOrCreateItemBatch({
     return { batchNumber, created: false }
   }
 
-  const batchKey = `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate || 'NO_EXP'}`
+  const batchKey = [
+    line.itemCode.trim().toUpperCase(),
+    line.manufacturingDate,
+    line.expiryDate || 'NO_EXP',
+    line.docBatchSeparated ? line.docBatchReferenceKey ?? line.docBatchReference ?? '' : '',
+  ].join('|')
   const existingLineBatchNumber = batchNumberByKey.get(batchKey)
   if (existingLineBatchNumber) {
     return { batchNumber: existingLineBatchNumber, created: false }
   }
 
+  const shouldKeepLineBatchNumber = Boolean(line.docBatchSeparated)
+
   let existingBatchQuery = db
     .from('item_batches')
     .select('id, batch_number')
     .eq('item_code', line.itemCode)
-    .eq('manufacturing_date', line.manufacturingDate)
     .eq('void', '1')
 
-  existingBatchQuery = line.expiryDate
-    ? existingBatchQuery.eq('expiry_date', line.expiryDate)
-    : existingBatchQuery.is('expiry_date', null)
+  if (shouldKeepLineBatchNumber) {
+    existingBatchQuery = existingBatchQuery.eq('batch_number', batchNumber)
+  } else {
+    existingBatchQuery = existingBatchQuery.eq('manufacturing_date', line.manufacturingDate)
+
+    existingBatchQuery = line.expiryDate
+      ? existingBatchQuery.eq('expiry_date', line.expiryDate)
+      : existingBatchQuery.is('expiry_date', null)
+  }
 
   const { data: existingBatch, error: existingBatchError } = await existingBatchQuery.maybeSingle()
 
   if (existingBatchError) throw existingBatchError
   if (existingBatch) {
-    batchNumberByKey.set(batchKey, (existingBatch as ItemBatchRow).batch_number)
+    const resolvedBatchNumber = shouldKeepLineBatchNumber
+      ? batchNumber
+      : (existingBatch as ItemBatchRow).batch_number
+    batchNumberByKey.set(batchKey, resolvedBatchNumber)
     return {
-      batchNumber: (existingBatch as ItemBatchRow).batch_number,
+      batchNumber: resolvedBatchNumber,
       created: false,
     }
   }
@@ -266,18 +359,25 @@ async function getOrCreateItemBatch({
     .from('item_batches')
     .select('id, batch_number')
     .eq('item_code', line.itemCode)
-    .eq('manufacturing_date', line.manufacturingDate)
     .eq('void', '1')
 
-  racedBatchQuery = line.expiryDate
-    ? racedBatchQuery.eq('expiry_date', line.expiryDate)
-    : racedBatchQuery.is('expiry_date', null)
+  if (shouldKeepLineBatchNumber) {
+    racedBatchQuery = racedBatchQuery.eq('batch_number', batchNumber)
+  } else {
+    racedBatchQuery = racedBatchQuery.eq('manufacturing_date', line.manufacturingDate)
+
+    racedBatchQuery = line.expiryDate
+      ? racedBatchQuery.eq('expiry_date', line.expiryDate)
+      : racedBatchQuery.is('expiry_date', null)
+  }
 
   const { data: racedBatch, error: racedBatchError } = await racedBatchQuery.maybeSingle()
 
   if (racedBatchError) throw racedBatchError
 
-  const resolvedBatchNumber = racedBatch ? (racedBatch as ItemBatchRow).batch_number : batchNumber
+  const resolvedBatchNumber = racedBatch && !shouldKeepLineBatchNumber
+    ? (racedBatch as ItemBatchRow).batch_number
+    : batchNumber
   batchNumberByKey.set(batchKey, resolvedBatchNumber)
 
   return {
@@ -287,9 +387,14 @@ async function getOrCreateItemBatch({
 }
 
 export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
+  const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
+
+  if (docReceivingReceiptIds.length === 0) return []
+
   const { data: receiptRows, error: receiptError } = await db
     .from('goods_receipt')
     .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
+    .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -338,9 +443,19 @@ export async function getGoodsReceiptById(id: number): Promise<GoodsReceipt | nu
 
   if (itemError) throw itemError
 
+  const { data: docRows, error: docError } = await db
+    .from('goods_receipt_doc')
+    .select('*')
+    .eq('goods_reciept_id', id)
+    .eq('void', '1')
+    .order('line_no', { ascending: true })
+
+  if (docError) throw docError
+
   return toReceipt(
     receiptRow as GoodsReceiptRow,
     (itemRows ?? []) as GoodsReceiptItemRow[],
+    (docRows ?? []) as GoodsReceiptDocRow[],
   )
 }
 
@@ -437,6 +552,101 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
   if (headerError) throw headerError
 
   const header = savedHeader as GoodsReceiptRow
+
+  const { data: existingDocs, error: existingDocsError } = await db
+    .from('goods_receipt_doc')
+    .select('id')
+    .eq('goods_reciept_id', header.id)
+    .eq('void', '1')
+
+  if (existingDocsError) throw existingDocsError
+
+  for (const doc of existingDocs ?? []) {
+    const docId = Number(doc.id)
+    const { error: shiftDocError } = await db
+      .from('goods_receipt_doc')
+      .update({
+        line_no: -docId,
+        updated_by: userId,
+      })
+      .eq('id', docId)
+
+    if (shiftDocError) throw shiftDocError
+  }
+
+  const retainedDocIds = new Set(
+    receipt.docDetails
+      .map(line => line.id)
+      .filter((id): id is number => typeof id === 'number')
+  )
+  const removedDocIds = (existingDocs ?? [])
+    .map(doc => Number(doc.id))
+    .filter(id => !retainedDocIds.has(id))
+
+  if (removedDocIds.length > 0) {
+    const { error: removedDocsError } = await db
+      .from('goods_receipt_doc')
+      .update({
+        void: '0',
+        updated_by: userId,
+      })
+      .in('id', removedDocIds)
+
+    if (removedDocsError) throw removedDocsError
+  }
+
+  for (const [index, row] of receipt.docDetails.entries()) {
+    const docPayload = {
+      goods_reciept_id: header.id,
+      line_no: index + 1,
+      receive_date: row.receive_date || null,
+      mnf_date: row.mnf_date || null,
+      transfer_slip: row.transfer_slip.trim() || null,
+      average_doc_weight: numberValue(row.average_doc_weight),
+      quantity_received: numberValue(row.quantity_received),
+      actual_received: numberValue(row.actual_received),
+      short_count_remarks: row.short_count_remarks.trim() || null,
+      doa_quantity: numberValue(row.doa_quantity),
+      doa_count_remarks: row.doa_count_remarks.trim() || null,
+      reject_count: numberValue(row.reject_count),
+      reject_count_remarks: row.reject_count_remarks.trim() || null,
+      void: '1',
+      updated_by: userId,
+    }
+
+    if (typeof row.id === 'number') {
+      const { error: updateDocError } = await db
+        .from('goods_receipt_doc')
+        .update(docPayload)
+        .eq('id', row.id)
+
+      if (updateDocError) throw updateDocError
+    } else {
+      const { error: insertDocError } = await db
+        .from('goods_receipt_doc')
+        .insert({
+          ...docPayload,
+          created_by: userId,
+        })
+
+      if (insertDocError) throw insertDocError
+    }
+  }
+
+  const staleDocVoid = db
+    .from('goods_receipt_doc')
+    .update({
+      void: '0',
+      updated_by: userId,
+    })
+    .eq('goods_reciept_id', header.id)
+    .eq('void', '1')
+
+  const { error: staleDocError } = receipt.docDetails.length > 0
+    ? await staleDocVoid.gt('line_no', receipt.docDetails.length)
+    : await staleDocVoid
+
+  if (staleDocError) throw staleDocError
 
   const { data: existingItems, error: existingItemsError } = await db
     .from('goods_receipt_items')

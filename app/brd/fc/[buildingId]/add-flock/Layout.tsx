@@ -32,7 +32,10 @@ import {
   type FlockCardFarmInfo,
 } from "../../api";
 import { calculateFlockAgeFromStartDate } from "../../age";
-import { getFlockCardPlacement, saveFlockCardPlacement } from "./api";
+import {
+  getFlockCardPlacement,
+  saveFlockCardPlacement,
+} from "./api";
 
 type AddFlockRoutePayload = {
   farmId?: number;
@@ -46,6 +49,12 @@ type AddFlockRoutePayload = {
   buildingName?: string;
   cardId?: number | null;
 };
+
+type CompactAddFlockRoutePayload = [
+  farmId?: number,
+  buildingKey?: string,
+  cardId?: number | null,
+];
 
 type AddFlockForm = {
   age: string;
@@ -75,10 +84,12 @@ type FlockOriginRow = {
   warehouseName: string;
   grOrigin: string;
   nofAnimals: string;
+  savedAnimalQty: number;
   breed: string;
   onHandQty: number;
   manufacturingDate: string;
   expiryDate: string;
+  isSaved: boolean;
 };
 
 const broilerTypeOptions = [
@@ -173,10 +184,12 @@ const newOriginRow = (): FlockOriginRow => ({
   warehouseName: "",
   grOrigin: "",
   nofAnimals: "",
+  savedAnimalQty: 0,
   breed: "",
   onHandQty: 0,
   manufacturingDate: "",
   expiryDate: "",
+  isSaved: false,
 });
 
 const formatQuantity = (value: number) =>
@@ -186,18 +199,45 @@ const formatQuantity = (value: number) =>
 
 const formatDateValue = (value: string) => value || "-";
 
+const optionalNumberToInputValue = (value: number | string | null | undefined) =>
+  value == null || value === "" ? "" : String(value);
+
+const normalizeKey = (value: string | number | null | undefined) =>
+  String(value ?? "").trim().toUpperCase();
+
+const getBatchUsageId = (itemCode: string | null | undefined, batchNumber: string | null | undefined) =>
+  [itemCode, batchNumber].map(normalizeKey).join("|");
+
+const getOriginRowBatchId = (row: Pick<FlockOriginRow, "itemCode" | "batch">) =>
+  getBatchUsageId(row.itemCode, row.batch);
+
+function normalizeRoutePayload(value: unknown): AddFlockRoutePayload | null {
+  if (Array.isArray(value)) {
+    const [farmId, buildingKey, cardId] = value as CompactAddFlockRoutePayload;
+
+    return {
+      farmId: Number(farmId),
+      buildingKey,
+      cardId: cardId ?? null,
+    };
+  }
+
+  return value as AddFlockRoutePayload | null;
+}
+
 export default function Layout() {
   const router = useRouter();
   const params = useParams<{ buildingId: string }>();
   const routePayload = useMemo(
-    () => decryptData(params.buildingId) as AddFlockRoutePayload | null,
+    () => normalizeRoutePayload(decryptData(params.buildingId)),
     [params.buildingId],
   );
   const [form, setForm] = useState<AddFlockForm>(emptyFlockForm);
-  const [originRows, setOriginRows] = useState<FlockOriginRow[]>([newOriginRow()]);
+  const [originRows, setOriginRows] = useState<FlockOriginRow[]>([]);
   const [farmInfo, setFarmInfo] = useState<FlockCardFarmInfo | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<FarmBuildingListRow | null>(null);
   const [originBatchRows, setOriginBatchRows] = useState<FarmOriginBatchOption[]>([]);
+  const [originBatchAllocations, setOriginBatchAllocations] = useState<Record<string, string>>({});
   const [loadingOriginBatches, setLoadingOriginBatches] = useState(false);
   const [originBatchError, setOriginBatchError] = useState("");
   const [originBatchDialogOpen, setOriginBatchDialogOpen] = useState(false);
@@ -208,8 +248,23 @@ export default function Layout() {
   const [loadingFlockCard, setLoadingFlockCard] = useState(false);
 
   const selectedOriginRow = originRows.find(row => row.id === originBatchSelectionRowId) ?? null;
-const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQty, 0);
   const totalOriginAnimals = originRows.reduce((sum, row) => sum + (Number(row.nofAnimals) || 0), 0);
+  const getAllocatedQtyForBatch = (batch: FarmOriginBatchOption, excludeRowId?: string | null) => {
+    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
+
+    return originRows.reduce((sum, row) => {
+      if (row.id === excludeRowId || getOriginRowBatchId(row) !== batchId) return sum;
+      return sum + Math.max((Number(row.nofAnimals) || 0) - row.savedAnimalQty, 0);
+    }, 0);
+  };
+
+  const getAvailableOnHandForBatch = (batch: FarmOriginBatchOption, excludeRowId?: string | null) =>
+    Math.max(batch.onHandQty - getAllocatedQtyForBatch(batch, excludeRowId), 0);
+
+  const totalOriginOnHand = originBatchRows.reduce(
+    (sum, row) => sum + getAvailableOnHandForBatch(row),
+    0,
+  );
 
   useEffect(() => {
     if (!routePayload?.farmId) return;
@@ -300,10 +355,10 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
           flockId: card.flockCode ?? "",
           trialCode: card.trialCode ?? "",
           cycleNumber: card.cycleNumber ?? "",
-          nofAnimals: card.animalQty ? String(card.animalQty) : "",
+          nofAnimals: optionalNumberToInputValue(card.animalQty),
           feedMill: card.feedMill ?? "",
-          stockingDensity: card.stockingDensity ? String(card.stockingDensity) : "",
-          stockingDensityByWeight: card.stockingDensityByWeight ? String(card.stockingDensityByWeight) : "",
+          stockingDensity: optionalNumberToInputValue(card.stockingDensity),
+          stockingDensityByWeight: optionalNumberToInputValue(card.stockingDensityByWeight),
           sex: card.sex ?? "unknown",
         });
 
@@ -315,14 +370,16 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
           warehouse: origin.warehouseCode ?? "",
           warehouseName: origin.warehouseName ?? "",
           grOrigin: origin.grOrigin ?? "",
-          nofAnimals: origin.animalQty ? String(origin.animalQty) : "",
+          nofAnimals: optionalNumberToInputValue(origin.animalQty),
+          savedAnimalQty: Number(origin.animalQty ?? 0),
           breed: origin.breed ?? card.breed ?? "",
           onHandQty: Number(origin.onHandSnapshot ?? origin.animalQty ?? 0),
           manufacturingDate: origin.manufacturingDate ?? "",
           expiryDate: origin.expiryDate ?? "",
+          isSaved: true,
         }));
 
-        setOriginRows(rows.length > 0 ? rows : [newOriginRow()]);
+        setOriginRows(rows);
       })
       .catch(error => {
         console.error(error);
@@ -349,15 +406,14 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
     }));
   }
 
-  function updateOriginRow(id: string, changes: Partial<FlockOriginRow>) {
-    setOriginRows(current => current.map(row =>
-      row.id === id ? { ...row, ...changes } : row
-    ));
-  }
-
   function updateBreed(value: string) {
     updateForm("breed", value);
     setOriginRows(current => current.map(row => ({ ...row, breed: value })));
+  }
+
+  function addOriginRowAndSelectBatch() {
+    setOriginBatchSelectionRowId(null);
+    setOriginBatchDialogOpen(true);
   }
 
   function openOriginBatchSelection(rowId: string) {
@@ -365,34 +421,96 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
     setOriginBatchDialogOpen(true);
   }
 
-  function selectOriginBatch(batch: FarmOriginBatchOption) {
-    if (!originBatchSelectionRowId) return;
+  function getOriginBatchAllocation(batch: FarmOriginBatchOption, availableOnHand: number) {
+    const savedValue = originBatchAllocations[batch.id];
+    if (savedValue == null || savedValue === "") return savedValue ?? String(availableOnHand);
 
-    updateOriginRow(originBatchSelectionRowId, {
-      batch: batch.batchNumber,
-      itemCode: batch.itemCode,
-      itemName: batch.itemName,
-      warehouse: batch.warehouseCode,
-      warehouseName: batch.warehouseName,
-      grOrigin: batch.grOrigin,
-      nofAnimals: String(batch.onHandQty),
-      onHandQty: batch.onHandQty,
-      manufacturingDate: batch.manufacturingDate,
-      expiryDate: batch.expiryDate,
+    const numericValue = Number(savedValue);
+    return String(Math.min(Number.isFinite(numericValue) ? numericValue : 0, availableOnHand));
+  }
+
+  function updateOriginBatchAllocation(batch: FarmOriginBatchOption, value: string, availableOnHand: number) {
+    const numericValue = Number(value);
+    const nextValue = value === ""
+      ? ""
+      : String(Math.min(Math.max(Number.isFinite(numericValue) ? numericValue : 0, 0), availableOnHand));
+
+    setOriginBatchAllocations(current => ({
+      ...current,
+      [batch.id]: nextValue,
+    }));
+  }
+
+  function selectOriginBatch(batch: FarmOriginBatchOption) {
+    const availableOnHand = getAvailableOnHandForBatch(batch, originBatchSelectionRowId);
+    const allocation = Number(getOriginBatchAllocation(batch, availableOnHand));
+    const allocatedQty = Number.isFinite(allocation) && allocation > 0
+      ? Math.min(allocation, availableOnHand)
+      : 0;
+
+    if (allocatedQty <= 0) {
+      toast("Please enter a valid allocation quantity.");
+      return;
+    }
+
+    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
+
+    setOriginRows(current => {
+      const existingRow = current.find(row =>
+        row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
+      );
+
+      if (existingRow) {
+        return current.flatMap(row => {
+          if (row.id === existingRow.id) {
+            return [{
+              ...row,
+              nofAnimals: String((Number(row.nofAnimals) || 0) + allocatedQty),
+              onHandQty: batch.onHandQty,
+              isSaved: false,
+            }];
+          }
+
+          return originBatchSelectionRowId && row.id === originBatchSelectionRowId ? [] : [row];
+        });
+      }
+
+      const selectedRowPayload: FlockOriginRow = {
+        ...newOriginRow(),
+        batch: batch.batchNumber,
+        itemCode: batch.itemCode,
+        itemName: batch.itemName,
+        warehouse: batch.warehouseCode,
+        warehouseName: batch.warehouseName,
+        grOrigin: batch.grOrigin,
+        nofAnimals: String(allocatedQty),
+        savedAnimalQty: 0,
+        onHandQty: batch.onHandQty,
+        manufacturingDate: batch.manufacturingDate,
+        expiryDate: batch.expiryDate,
+        isSaved: false,
+      };
+
+      if (!originBatchSelectionRowId) return [...current, selectedRowPayload];
+
+      return current.map(row =>
+        row.id === originBatchSelectionRowId
+          ? { ...selectedRowPayload, id: row.id }
+          : row
+      );
     });
+
     setOriginBatchDialogOpen(false);
     setOriginBatchSelectionRowId(null);
   }
 
   async function handleSave() {
-    const firstOrigin = originRows[0];
-
     if (!routePayload?.farmId || !routePayload.buildingKey) {
       toast("Unable to read selected building.");
       return;
     }
 
-    if (!form.flockStartDate || !form.broilerType || !form.breed || !firstOrigin?.batch.trim()) {
+    if (!form.flockStartDate || !form.broilerType || !form.breed || !originRows.some(row => row.batch.trim())) {
       toast("Please complete required flock fields.");
       return;
     }
@@ -424,7 +542,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
         flockCode: form.flockId,
         trialCode: form.trialCode,
         cycleNumber: form.cycleNumber,
-        animalQty: Number(form.nofAnimals || 0) || totalOriginAnimals,
+        animalQty: form.nofAnimals.trim() === "" ? totalOriginAnimals : Number(form.nofAnimals),
         feedMill: form.feedMill,
         stockingDensity: Number(form.stockingDensity || 0) || null,
         stockingDensityByWeight: Number(form.stockingDensityByWeight || 0) || null,
@@ -669,7 +787,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
           <section className="rounded-lg border">
             <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
               <h2 className="text-sm font-semibold">Placement</h2>
-              <Button type="button" size="sm" variant="outline" onClick={() => setOriginRows(current => [...current, newOriginRow()])}>
+              <Button type="button" size="sm" variant="outline" onClick={addOriginRowAndSelectBatch}>
                 <Plus className="size-4" />
                 Add
               </Button>
@@ -687,6 +805,13 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                   </tr>
                 </thead>
                 <tbody>
+                  {originRows.length === 0 && (
+                    <tr className="border-t">
+                      <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                        Click Add to select an origin batch.
+                      </td>
+                    </tr>
+                  )}
                   {originRows.map(row => (
                     <tr key={row.id} className="border-t">
                       <td className="border-r p-1 align-middle">
@@ -709,7 +834,7 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                         <Input value={row.grOrigin} readOnly className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1" />
                       </td>
                       <td className="border-r p-1 align-middle">
-                        <Input type="number" min={0} value={row.nofAnimals} onChange={event => updateOriginRow(row.id, { nofAnimals: event.target.value })} className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1" />
+                        <Input type="number" min={0} value={row.nofAnimals} readOnly className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1" />
                       </td>
                       <td className="border-r p-1 align-middle">
                         <Input value={form.breed || row.breed} readOnly className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1" />
@@ -720,7 +845,6 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
                           size="icon"
                           variant="ghost"
                           className="size-8"
-                          disabled={originRows.length === 1}
                           onClick={() => setOriginRows(current => current.filter(item => item.id !== row.id))}
                         >
                           <Minus className="size-4" />
@@ -800,48 +924,79 @@ const totalOriginOnHand = originBatchRows.reduce((sum, row) => sum + row.onHandQ
           ) : (
             <div className="w-full max-w-full overflow-hidden rounded-md border">
               <div className="w-full">
-                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_88px_76px_76px_minmax(0,1fr)_76px] gap-2 bg-muted px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_96px_88px_104px_76px_minmax(0,0.9fr)_76px] gap-2 bg-muted px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
                   <div>Batch</div>
                   <div>Item</div>
                   <div>Warehouse</div>
+                  <div className="text-right">Batch qty</div>
                   <div className="text-right">On hand</div>
+                  <div className="text-right">To transfer</div>
                   <div>MFG</div>
-                  <div>EXP</div>
                   <div>GR Origin</div>
                   <div />
                 </div>
 
                 <div className="max-h-[50vh] overflow-y-auto">
-                  {originBatchRows.map(batch => (
-                    <div
-                      key={batch.id}
-                      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_88px_76px_76px_minmax(0,1fr)_76px] gap-2 border-t px-3 py-2 text-sm"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-foreground">{batch.batchNumber}</div>
-                        <div className="truncate text-xs text-muted-foreground">{batch.id}</div>
+                  {originBatchRows.map(batch => {
+                    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
+                    const availableOnHand = getAvailableOnHandForBatch(batch, originBatchSelectionRowId);
+                    const isAlreadyInPlacement = originRows.some(row =>
+                      row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
+                    );
+                    const disabled = availableOnHand <= 0;
+
+                    return (
+                      <div
+                        key={batch.id}
+                        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_96px_88px_104px_76px_minmax(0,0.9fr)_76px] gap-2 border-t px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-foreground">{batch.batchNumber}</div>
+                          <div className="truncate text-xs text-muted-foreground">{batch.id}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{batch.itemName || batch.itemCode}</div>
+                          <div className="truncate text-xs text-muted-foreground">{batch.itemCode}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{batch.warehouseName || batch.warehouseCode}</div>
+                          <div className="truncate text-xs text-muted-foreground">{batch.warehouseCode}</div>
+                        </div>
+                        <div className="text-right font-semibold tabular-nums text-foreground">
+                          {formatQuantity(batch.batchQuantity)}
+                        </div>
+                        <div className="text-right font-semibold tabular-nums text-foreground">
+                          {formatQuantity(availableOnHand)}
+                        </div>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={availableOnHand}
+                          value={getOriginBatchAllocation(batch, availableOnHand)}
+                          disabled={disabled}
+                          onChange={event => updateOriginBatchAllocation(batch, event.target.value, availableOnHand)}
+                          onKeyDown={event => {
+                            if (event.key !== "Enter" || disabled) return;
+                            event.preventDefault();
+                            selectOriginBatch(batch);
+                          }}
+                          className="h-8 rounded-sm text-right font-semibold tabular-nums"
+                        />
+                        <div className="text-muted-foreground">{formatDateValue(batch.manufacturingDate)}</div>
+                        <div className="min-w-0 truncate text-muted-foreground">{batch.grOrigin || "-"}</div>
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={disabled}
+                            onClick={() => selectOriginBatch(batch)}
+                          >
+                            {isAlreadyInPlacement ? "Add" : "Select"}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{batch.itemName || batch.itemCode}</div>
-                        <div className="truncate text-xs text-muted-foreground">{batch.itemCode}</div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{batch.warehouseName || batch.warehouseCode}</div>
-                        <div className="truncate text-xs text-muted-foreground">{batch.warehouseCode}</div>
-                      </div>
-                      <div className="text-right font-semibold tabular-nums text-foreground">
-                        {formatQuantity(batch.onHandQty)}
-                      </div>
-                      <div className="text-muted-foreground">{formatDateValue(batch.manufacturingDate)}</div>
-                      <div className="text-muted-foreground">{formatDateValue(batch.expiryDate)}</div>
-                      <div className="min-w-0 truncate text-muted-foreground">{batch.grOrigin || "-"}</div>
-                      <div className="flex justify-end">
-                        <Button type="button" size="sm" onClick={() => selectOriginBatch(batch)}>
-                          Select
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

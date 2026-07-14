@@ -187,6 +187,23 @@ async function getSessionUserId() {
   return data.session?.user.id ?? null
 }
 
+async function getReceiptIdsWithDocReceiving() {
+  const { data, error } = await db
+    .from('goods_receipt_doc')
+    .select('goods_reciept_id')
+    .eq('void', '1')
+
+  if (error) throw error
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map(row => Number(row.goods_reciept_id))
+        .filter(id => Number.isFinite(id))
+    )
+  )
+}
+
 async function getOrCreateItemBatch({
   line,
   goodsReceiptId,
@@ -287,11 +304,19 @@ async function getOrCreateItemBatch({
 }
 
 export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
-  const { data: receiptRows, error: receiptError } = await db
+  const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
+
+  let receiptQuery = db
     .from('goods_receipt')
     .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (docReceivingReceiptIds.length > 0) {
+    receiptQuery = receiptQuery.not('id', 'in', `(${docReceivingReceiptIds.join(',')})`)
+  }
+
+  const { data: receiptRows, error: receiptError } = await receiptQuery
 
   if (receiptError) throw receiptError
 

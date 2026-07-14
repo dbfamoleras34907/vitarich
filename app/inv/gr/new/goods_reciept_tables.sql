@@ -59,6 +59,42 @@ create table if not exists public.goods_receipt_items (
   constraint goods_reciept_items_updated_by_fkey foreign key (updated_by) references auth.users (id)
 );
 
+create table if not exists public.goods_receipt_doc (
+  id bigint generated always as identity not null,
+  created_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_by uuid null,
+  updated_at timestamp with time zone null,
+  goods_reciept_id bigint not null,
+  line_no integer not null,
+  receive_date date null,
+  mnf_date date null,
+  transfer_slip text null,
+  average_doc_weight numeric(18, 6) null,
+  quantity_received numeric(18, 6) not null default 0,
+  actual_received numeric(18, 6) not null default 0,
+  short_count numeric(18, 6) generated always as (greatest(quantity_received - actual_received, 0)) stored,
+  short_count_remarks text null,
+  doa_quantity numeric(18, 6) not null default 0,
+  doa_count_remarks text null,
+  reject_count numeric(18, 6) not null default 0,
+  reject_count_remarks text null,
+  void text not null default '1',
+  constraint goods_receipt_doc_pkey primary key (id),
+  constraint goods_receipt_doc_receipt_line_key unique (goods_reciept_id, line_no),
+  constraint goods_receipt_doc_goods_reciept_id_fkey foreign key (goods_reciept_id) references public.goods_receipt (id) on delete cascade,
+  constraint goods_receipt_doc_created_by_fkey foreign key (created_by) references auth.users (id),
+  constraint goods_receipt_doc_updated_by_fkey foreign key (updated_by) references auth.users (id),
+  constraint goods_receipt_doc_void_check check (void in ('0', '1')),
+  constraint goods_receipt_doc_qty_check check (
+    coalesce(average_doc_weight, 0) >= 0
+    and quantity_received >= 0
+    and actual_received >= 0
+    and doa_quantity >= 0
+    and reject_count >= 0
+  )
+);
+
 create index if not exists goods_reciept_receive_date_idx
   on public.goods_receipt (receive_date desc);
 
@@ -105,6 +141,21 @@ create index if not exists goods_reciept_items_warehouse_id_idx
 create index if not exists goods_reciept_items_void_idx
   on public.goods_receipt_items (void);
 
+create index if not exists goods_receipt_doc_goods_reciept_id_idx
+  on public.goods_receipt_doc (goods_reciept_id);
+
+create index if not exists goods_receipt_doc_transfer_slip_idx
+  on public.goods_receipt_doc (transfer_slip);
+
+create index if not exists goods_receipt_doc_receive_date_idx
+  on public.goods_receipt_doc (receive_date);
+
+create index if not exists goods_receipt_doc_mnf_date_idx
+  on public.goods_receipt_doc (mnf_date);
+
+create index if not exists goods_receipt_doc_void_idx
+  on public.goods_receipt_doc (void);
+
 create table if not exists public.item_batches (
   id bigint generated always as identity not null,
   created_by uuid null,
@@ -131,8 +182,10 @@ create table if not exists public.item_batches (
   constraint item_batches_dates_check check (expiry_date >= manufacturing_date)
 );
 
-create unique index if not exists item_batches_item_dates_active_key
-  on public.item_batches (item_code, manufacturing_date, expiry_date)
+drop index if exists public.item_batches_item_dates_active_key;
+
+create unique index if not exists item_batches_item_dates_batch_active_key
+  on public.item_batches (item_code, manufacturing_date, expiry_date, batch_number)
   where void = '1';
 
 create index if not exists item_batches_batch_number_idx
@@ -218,6 +271,17 @@ begin
   ) then
     create trigger set_goods_reciept_items_updated_at
     before update on public.goods_receipt_items
+    for each row
+    execute function public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'set_goods_receipt_doc_updated_at'
+  ) then
+    create trigger set_goods_receipt_doc_updated_at
+    before update on public.goods_receipt_doc
     for each row
     execute function public.set_updated_at();
   end if;

@@ -50,6 +50,7 @@ export function computeGridValues({
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
   feedGuidelineColumnIndex,
+  cumulativeTotalColumnIndex = 6,
   breed,
 }: {
   gridValues: GridValues;
@@ -57,6 +58,7 @@ export function computeGridValues({
   feedDailyKgColumnIndex: number;
   feedDailyPerBirdColumnIndex: number;
   feedGuidelineColumnIndex: number;
+  cumulativeTotalColumnIndex?: number;
   breed: string;
 }) {
   let cumulativeTotal = 0;
@@ -67,25 +69,28 @@ export function computeGridValues({
     const mortalityTotal = getNumericValue(row[0]) + getNumericValue(row[1]);
     const selectionTotal = getNumericValue(row[3]) + getNumericValue(row[4]);
     const rowTotal = mortalityTotal + selectionTotal;
+    const hasMortalityTotal = [0, 1].some(
+      (colIndex) => (row[colIndex] ?? "").trim() !== ""
+    );
     const hasRowTotal = [0, 1, 3, 4].some(
-      (colIndex) => row[colIndex].trim() !== ""
+      (colIndex) => (row[colIndex] ?? "").trim() !== ""
     );
 
-    computedRow[2] = formatComputedValue(mortalityTotal);
-    computedRow[5] = formatComputedValue(rowTotal);
+    computedRow[2] = hasMortalityTotal ? formatTotal(mortalityTotal) : "";
+    computedRow[5] = hasRowTotal ? formatTotal(rowTotal) : "";
 
     if (hasRowTotal) {
       cumulativeTotal += rowTotal;
-      computedRow[6] = formatComputedValue(cumulativeTotal);
+      computedRow[cumulativeTotalColumnIndex] = formatTotal(cumulativeTotal);
     } else {
-      computedRow[6] = "";
+      computedRow[cumulativeTotalColumnIndex] = "";
     }
 
     computedRow[feedGuidelineColumnIndex] = formatComputedValue(
       getFeedGuidelineGramsPerBird(rowIndex, breed)
     );
 
-    if (row[feedDailyKgColumnIndex].trim() !== "") {
+    if ((row[feedDailyKgColumnIndex] ?? "").trim() !== "") {
       computedRow[feedDailyPerBirdColumnIndex] = formatComputedValue(
         calculateFeedDailyPerBird({
           numberOfAnimals,
@@ -113,14 +118,15 @@ export function computeColumnTotals({
   const excludedColumns = new Set(excludedColumnIndexes);
 
   return Array.from({ length: dataColumnCount }, (_, colIndex) => {
-    if (colIndex === 6 || excludedColumns.has(colIndex)) return "";
+    if (excludedColumns.has(colIndex)) return "";
 
     let hasValue = false;
 
     const total = computedGridValues.reduce((sum, row) => {
-      const numericValue = Number(row[colIndex].replaceAll(",", ""));
+      const cellValue = row[colIndex] ?? "";
+      const numericValue = Number(cellValue.replaceAll(",", ""));
 
-      if (Number.isNaN(numericValue) || row[colIndex].trim() === "") {
+      if (Number.isNaN(numericValue) || cellValue.trim() === "") {
         return sum;
       }
 

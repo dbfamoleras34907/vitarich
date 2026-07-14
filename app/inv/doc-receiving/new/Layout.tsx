@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FormTable } from '@/components/ui/form-table'
 import SearchableCombobox from '@/components/SearchableCombobox'
@@ -40,6 +41,7 @@ import {
   createGoodsReceiptNumber,
   getGoodsReceiptById,
   GoodsReceipt,
+  GoodsReceiptDocLine,
   GoodsReceiptLine,
   saveGoodsReceipt,
 } from '../api'
@@ -100,8 +102,12 @@ const DOC_RECEIVING_DATE_DETAIL_CODES = new Set([
   'mnf_date',
 ])
 
-type DocDetailRow = {
-  id: string
+const DOC_RECEIVING_BATCH_REFERENCE_COLUMNS = [
+  { code: 'transfer_slip', name: 'Transfer Slip' },
+]
+
+type DocDetailRow = GoodsReceiptDocLine & {
+  id: number | string
   receive_date: string
   mnf_date: string
   transfer_slip: string
@@ -115,20 +121,38 @@ type DocDetailRow = {
   reject_count_remarks: string
 }
 
-const newDocDetailRow = (receiveDate = ''): DocDetailRow => ({
-  id: crypto.randomUUID(),
-  receive_date: receiveDate,
-  mnf_date: '',
-  transfer_slip: '',
-  average_doc_weight: '',
-  quantity_received: '',
-  actual_received: '',
-  short_count_remarks: '',
-  doa_quantity: '',
-  doa_count_remarks: '',
-  reject_count: '',
-  reject_count_remarks: '',
+type DerivedGoodsReceiptLine = GoodsReceiptLine & {
+  docBatchSeparated?: boolean
+  docBatchReference?: string
+  docBatchReferenceKey?: string
+  docBatchReferenceColumn?: string
+}
+
+const defaultNumericDetailValue = (value: string | number | null | undefined) => {
+  const text = String(value ?? '').trim()
+  return text === '' ? '0' : text
+}
+
+const normalizeDocDetailRow = (
+  row: Partial<DocDetailRow>,
+  receiveDate = '',
+): DocDetailRow => ({
+  id: row.id ?? crypto.randomUUID(),
+  receive_date: row.receive_date || receiveDate,
+  mnf_date: row.mnf_date ?? '',
+  transfer_slip: row.transfer_slip ?? '',
+  average_doc_weight: defaultNumericDetailValue(row.average_doc_weight),
+  quantity_received: defaultNumericDetailValue(row.quantity_received),
+  actual_received: defaultNumericDetailValue(row.actual_received),
+  short_count_remarks: row.short_count_remarks ?? '',
+  doa_quantity: defaultNumericDetailValue(row.doa_quantity),
+  doa_count_remarks: row.doa_count_remarks ?? '',
+  reject_count: defaultNumericDetailValue(row.reject_count),
+  reject_count_remarks: row.reject_count_remarks ?? '',
 })
+
+const newDocDetailRow = (receiveDate = ''): DocDetailRow =>
+  normalizeDocDetailRow({ receive_date: receiveDate }, receiveDate)
 
 const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
   BE: 'breeder',
@@ -177,6 +201,7 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   defaultWarehouseId: null,
   status: 'Draft',
   lines: Array.from({ length: 1 }, newLine),
+  docDetails: [newDocDetailRow()],
   createdAt: new Date().toISOString(),
 })
 
@@ -190,6 +215,10 @@ const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => (
     id: crypto.randomUUID(),
     returnedQty: 0,
   })),
+  docDetails: source.docDetails.map(row => normalizeDocDetailRow({
+    ...row,
+    id: crypto.randomUUID(),
+  }, source.receiveDate)),
   createdAt: new Date().toISOString(),
 })
 
@@ -432,6 +461,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [docDetailRows, setDocDetailRows] = useState(() => [newDocDetailRow()])
+  const [separateBatchByReference, setSeparateBatchByReference] = useState(true)
+  const [batchReferenceColumn, setBatchReferenceColumn] = useState('transfer_slip')
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -489,9 +520,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
         if (cancelled) return
 
-        setReceipt(duplicateId && savedReceipt
+        const nextReceipt = duplicateId && savedReceipt
           ? duplicateReceipt(savedReceipt, grNo)
-          : savedReceipt ?? emptyReceipt(grNo))
+          : savedReceipt ?? emptyReceipt(grNo)
+
+        setReceipt(nextReceipt)
+        setDocDetailRows(nextReceipt.docDetails.length > 0
+          ? nextReceipt.docDetails.map(row => normalizeDocDetailRow(row, nextReceipt.receiveDate))
+          : [newDocDetailRow(nextReceipt.receiveDate)])
         setItems(references.items)
         setWarehouses(references.warehouses)
         setFarms(references.farms)
@@ -562,50 +598,74 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return map
   }, [itemGroups])
 
+  const getDocDetailReferenceValue = (row: DocDetailRow, code: string) =>
+    String(row[code as keyof DocDetailRow] ?? '').trim()
+
   const derivedReceiptLines = useMemo(() => {
     if (!receipt || !hasDocReceivingSettings(docReceivingSettings)) return []
 
     const defaultWarehouse = receipt.defaultWarehouseId == null
       ? null
       : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
-    const existingLineByKey = new Map<string, GoodsReceiptLine>()
+    const existingLineByKey = new Map<string, DerivedGoodsReceiptLine>()
 
     receipt.lines.forEach(line => {
       if (!line.itemId || !line.manufacturingDate) return
-      existingLineByKey.set(`${line.itemId}|${line.manufacturingDate}`, line)
+      const derivedLine = line as DerivedGoodsReceiptLine
+      if (Boolean(derivedLine.docBatchSeparated) !== separateBatchByReference) return
+      if (separateBatchByReference && derivedLine.docBatchReferenceColumn !== batchReferenceColumn) return
+
+      const referenceKey = separateBatchByReference
+        ? derivedLine.docBatchReferenceKey || derivedLine.docBatchReference || ''
+        : ''
+      existingLineByKey.set(`${line.itemId}|${line.manufacturingDate}|${referenceKey}`, derivedLine)
     })
 
     const quantities = new Map<string, {
       itemId: number
       manufacturingDate: string
+      referenceValue: string
+      referenceKey: string
       quantity: number
     }>()
 
-    const addQuantity = (itemId: number | null | undefined, manufacturingDate: string, quantity: number) => {
+    const addQuantity = (
+      itemId: number | null | undefined,
+      manufacturingDate: string,
+      referenceValue: string,
+      sourceRowId: number | string,
+      quantity: number,
+    ) => {
       if (!itemId || !manufacturingDate || quantity <= 0) return
 
-      const key = `${itemId}|${manufacturingDate}`
+      const referenceKey = separateBatchByReference
+        ? `${referenceValue || 'NO_REFERENCE'}|${String(sourceRowId)}`
+        : ''
+      const key = `${itemId}|${manufacturingDate}|${referenceKey}`
       const current = quantities.get(key)
       quantities.set(key, {
         itemId,
         manufacturingDate,
+        referenceValue,
+        referenceKey,
         quantity: (current?.quantity ?? 0) + quantity,
       })
     }
 
     docDetailRows.forEach(row => {
       const manufacturingDate = row.mnf_date
+      const referenceValue = getDocDetailReferenceValue(row, batchReferenceColumn) || String(row.id)
       const actualReceived = numberValue(row.actual_received)
       const daoQuantity = numberValue(row.doa_quantity)
       const rejectCount = numberValue(row.reject_count)
       const goodQuantity = actualReceived - (daoQuantity + rejectCount)
 
-      addQuantity(docReceivingSettings.good_doc, manufacturingDate, goodQuantity)
-      addQuantity(docReceivingSettings.bad_doc, manufacturingDate, daoQuantity)
-      addQuantity(docReceivingSettings.reject_doc, manufacturingDate, rejectCount)
+      addQuantity(docReceivingSettings.good_doc, manufacturingDate, referenceValue, row.id, goodQuantity)
+      addQuantity(docReceivingSettings.bad_doc, manufacturingDate, referenceValue, row.id, daoQuantity)
+      addQuantity(docReceivingSettings.reject_doc, manufacturingDate, referenceValue, row.id, rejectCount)
     })
 
-    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, quantity }) => {
+    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, referenceValue, referenceKey, quantity }) => {
       const item = itemById.get(itemId)
       if (!item) return []
 
@@ -624,7 +684,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const baseQty = selectedGroupCode && uom
         ? quantity * (conversion?.baseQty ?? 0)
         : 0
-      const existingLine = existingLineByKey.get(`${itemId}|${manufacturingDate}`)
+      const existingLine = existingLineByKey.get(`${itemId}|${manufacturingDate}|${referenceKey}`)
       const expiryDate = typeof item.default_expiration_months === 'number'
         ? addMonthsToDate(manufacturingDate, item.default_expiration_months)
         : ''
@@ -647,9 +707,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         warehouseCode: defaultWarehouse?.whse_code ?? '',
         warehouseName: defaultWarehouse?.whse_name ?? '',
         returnedQty: existingLine?.returnedQty ?? 0,
+        docBatchSeparated: separateBatchByReference,
+        docBatchReference: referenceValue,
+        docBatchReferenceKey: referenceKey,
+        docBatchReferenceColumn: separateBatchByReference ? batchReferenceColumn : '',
       }]
     })
-  }, [conversions, docDetailRows, docReceivingSettings, farmWarehouses, itemById, receipt, uomGroups])
+  }, [batchReferenceColumn, conversions, docDetailRows, docReceivingSettings, farmWarehouses, itemById, receipt, separateBatchByReference, uomGroups])
 
   const shouldDeriveReceiptLines = Boolean(
     receipt &&
@@ -682,6 +746,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       line.warehouseCode,
       line.warehouseName,
       line.returnedQty,
+      (line as DerivedGoodsReceiptLine).docBatchSeparated,
+      (line as DerivedGoodsReceiptLine).docBatchReference,
+      (line as DerivedGoodsReceiptLine).docBatchReferenceKey,
+      (line as DerivedGoodsReceiptLine).docBatchReferenceColumn,
     ].join('|')
 
     const currentSignature = receipt.lines.map(lineSignature).join('||')
@@ -808,7 +876,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     } : current)
   }, [availableItems, receipt?.fmsType, receipt?.lines, shouldDeriveReceiptLines])
 
-  const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
+  const batchLineForLookup = displayReceiptLines.find(line => line.id === activeBatchLineId) ?? null
   const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
   const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
 
@@ -840,7 +908,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           [lineKey]: existingBatch,
         }))
 
-        if (existingBatch?.batch_number) {
+        if (existingBatch?.batch_number && !separateBatchByReference) {
           setReceipt(current => current ? {
             ...current,
             lines: current.lines.map(line =>
@@ -851,8 +919,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           } : current)
         }
       })
-      .catch(error => {
-        console.error(error)
+      .catch(() => {
         if (!cancelled) {
           setBatchMatches(current => ({
             ...current,
@@ -869,6 +936,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     batchLineForLookup?.itemCode,
     batchLineForLookup?.manufacturingDate,
     batchLineForLookup?.expiryDate,
+    separateBatchByReference,
   ])
 
   useEffect(() => {
@@ -907,6 +975,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   if (!receipt) return <GoodsReceiveLoadingShell />
 
+  const canEditDraft = receipt.status === 'Draft'
+  const canPostDocument = isPostMode && receipt.status === 'Draft'
+  const canEditDocDetails = receipt.status !== 'Posted'
+
+  const toggleSeparateBatchByReference = (checked: boolean) => {
+    setSeparateBatchByReference(checked)
+    setBatchMatches({})
+    setActiveBatchLineId(null)
+  }
+
   const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
     setReceipt(current => current
       ? { ...current, lines: current.lines.map(line => line.id === id ? { ...line, ...changes } : line) }
@@ -914,7 +992,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     )
   }
 
-  const updateDocDetailRow = (rowId: string, code: string, value: string) => {
+  const updateDocDetailRow = (rowId: number | string, code: string, value: string) => {
+    if (!canEditDocDetails) return
+
     setDocDetailRows(current => current.map(row => {
       if (row.id !== rowId) return row
 
@@ -929,7 +1009,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
-  const removeDocDetailRow = (rowId: string) => {
+  const removeDocDetailRow = (rowId: number | string) => {
+    if (!canEditDocDetails) return
+
     setDocDetailRows(current => {
       const nextRows = current.filter(row => row.id !== rowId)
       return nextRows.length > 0 ? nextRows : [newDocDetailRow(receipt.receiveDate)]
@@ -1038,14 +1120,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const getBatchKey = (line: GoodsReceiptLine) =>
     line.itemCode && line.manufacturingDate
-      ? `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate || 'NO_EXP'}`
+      ? [
+          line.itemCode.trim().toUpperCase(),
+          line.manufacturingDate,
+          line.expiryDate || 'NO_EXP',
+          separateBatchByReference
+            ? (line as DerivedGoodsReceiptLine).docBatchReferenceKey ?? (line as DerivedGoodsReceiptLine).docBatchReference ?? ''
+            : '',
+        ].join('|')
       : ''
 
   const getExistingLineBatch = (line: GoodsReceiptLine) => {
     const batchKey = getBatchKey(line)
     if (!batchKey) return null
 
-    return receipt.lines.find(candidate =>
+    return displayReceiptLines.find(candidate =>
       candidate.id !== line.id &&
       getBatchKey(candidate) === batchKey &&
       candidate.batchNumber.trim()
@@ -1058,9 +1147,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const item = getSelectedItem(line)
     const existingLineBatch = getExistingLineBatch(line)
 
-    const lineIndex = receipt.lines.findIndex(candidate => candidate.id === line.id)
+    const lineIndex = displayReceiptLines.findIndex(candidate => candidate.id === line.id)
     const usedBatchKeys = new Set<string>()
-    receipt.lines
+    displayReceiptLines
       .slice(0, Math.max(0, lineIndex))
       .forEach(candidate => {
         const candidateBatchKey = getBatchKey(candidate)
@@ -1267,12 +1356,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     } : current)
   }
 
-  const canEditDraft = receipt.status === 'Draft'
-  const canPostDocument = isPostMode && receipt.status === 'Draft'
-
   const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
     if (!hasDocReceivingSettings(docReceivingSettings)) {
-      toast('Please configure DOC Receiving Settings first.')
       return
     }
 
@@ -1339,6 +1424,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const savedReceipt = await saveGoodsReceipt({
         ...receipt,
         status: targetStatus,
+        docDetails: docDetailRows.map(row => normalizeDocDetailRow(row, receipt.receiveDate)),
         lines: (posting ? completedLines : completeLines).map(line => ({
           ...line,
           batchRuleId: getBatchRuleForLine(line)?.id ?? null,
@@ -1357,7 +1443,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         return
       }
 
-      if (savedReceipt) setReceipt(savedReceipt)
+      if (savedReceipt) {
+        setReceipt(savedReceipt)
+        setDocDetailRows(savedReceipt.docDetails.length > 0
+          ? savedReceipt.docDetails.map(row => normalizeDocDetailRow(row, savedReceipt.receiveDate))
+          : [newDocDetailRow(savedReceipt.receiveDate)])
+      }
     } catch (error) {
       console.log({ error })
       toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save DOC receiving document'))
@@ -1366,18 +1457,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
-  const activeBatchLine = receipt.lines.find(line => line.id === activeBatchLineId) ?? null
+  const activeBatchLine = displayReceiptLines.find(line => line.id === activeBatchLineId) ?? null
   const activeBatchRequirement = activeBatchLine ? getBatchRequirement(activeBatchLine) : null
   const activeBatchSeries = getBatchSeriesForRule(activeBatchRequirement?.rule)
   const activeBatchParts = activeBatchLine ? getBatchNumberParts(activeBatchLine) : null
   const activeBatchMatch = activeBatchLine ? batchMatches[String(activeBatchLine.id)] ?? null : null
   const activeLineBatchMatch = activeBatchParts?.reusedFromLine ?? null
-  const activeBatchDateText = activeBatchRequirement?.needsExpiryDate ? 'MFG and EXP dates' : 'MFG date'
+  const activeBatchReadOnly = Boolean(activeBatchLine && (shouldDeriveReceiptLines || !canEditDraft))
+  const activeBatchNumber = activeBatchLine?.batchNumber || activeBatchParts?.batchNumber || ''
   const activeBatchStatus = activeBatchMatch
     ? 'Existing database batch'
     : activeLineBatchMatch
       ? 'Reusing current DOC Receiving batch'
-      : activeBatchLine?.batchNumber
+      : activeBatchNumber
         ? 'New batch to create'
         : activeBatchRequirement?.needsExpiryDate
           ? 'Waiting for dates'
@@ -1479,24 +1571,42 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </div>
 
         <div className="border-t">
-          {!loadingReferences && !hasDocReceivingSettings(docReceivingSettings) && (
-            <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-900">
-              Please configure DOC Receiving Settings first.
-            </div>
-          )}
-
           <FormTable
             title="DOC Details"
             description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
             actions={(
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDocDetailRows(current => [...current, newDocDetailRow(receipt.receiveDate)])}
-              >
-                <Plus className="size-4" />
-                Add Row
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+                  <Switch
+                    checked={separateBatchByReference}
+                    disabled={!canEditDocDetails}
+                    onCheckedChange={toggleSeparateBatchByReference}
+                  />
+                  Separate batch per reference
+                </label>
+                <select
+                  value={batchReferenceColumn}
+                  disabled={!canEditDocDetails || !separateBatchByReference}
+                  onChange={event => setBatchReferenceColumn(event.target.value)}
+                  className="h-9 rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500"
+                  aria-label="Batch reference column"
+                >
+                  {DOC_RECEIVING_BATCH_REFERENCE_COLUMNS.map(column => (
+                    <option key={column.code} value={column.code}>
+                      {column.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDocDetails}
+                  onClick={() => setDocDetailRows(current => [...current, newDocDetailRow(receipt.receiveDate)])}
+                >
+                  <Plus className="size-4" />
+                  Add Row
+                </Button>
+              </div>
             )}
             className="rounded-none border-0 border-b shadow-none"
           >
@@ -1523,7 +1633,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       <button
                         type="button"
                         onClick={() => removeDocDetailRow(row.id)}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                        disabled={!canEditDocDetails}
+                        className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label="Remove DOC detail row"
                       >
                         <Trash2 className="size-4" />
@@ -1541,9 +1652,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           }
                           value={getDocDetailValue(row, column.code)}
                           readOnly={column.code === 'short_count'}
+                          disabled={!canEditDocDetails}
                           onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
                           step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
-                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'short_count' ? 'bg-stone-100' : 'bg-white'}`}
+                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'short_count' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
                           aria-label={column.name}
                         />
                       </td>
@@ -1600,8 +1712,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           {batchRequirement ? (
                             <button
                               type="button"
-                              disabled
-                              className="flex min-h-10 w-full cursor-not-allowed items-center justify-between gap-3 rounded-md border border-stone-300 bg-stone-100 px-3 py-2 text-left text-sm shadow-none text-stone-600"
+                              onClick={() => setActiveBatchLineId(line.id)}
+                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-stone-100 px-3 py-2 text-left text-sm shadow-none text-stone-600 transition hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-300"
                             >
                               <span className="min-w-0">
                                 <span className="flex items-center gap-2 font-medium text-stone-900">
@@ -1755,8 +1867,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           className={
                             activeBatchMatch || activeLineBatchMatch
                               ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
-                              : activeBatchLine?.batchNumber
-                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                              : activeBatchNumber
+                                ? 'bg-stone-100 text-stone-700 hover:bg-stone-100'
                                 : 'bg-stone-100 text-stone-700 hover:bg-stone-100'
                           }
                         >
@@ -1770,20 +1882,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       </div>
                     </div>
 
-                    {activeBatchMatch && (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        This item already has a batch for the selected {activeBatchDateText}. DOC Receiving will use batch{' '}
-                        <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
-                      </div>
-                    )}
-
-                    {!activeBatchMatch && activeLineBatchMatch && (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        Another line in this DOC Receiving already uses the same item and {activeBatchDateText}. This line will use batch{' '}
-                        <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
-                      </div>
-                    )}
-
                     <div className="grid gap-4 sm:grid-cols-2">
                       {activeBatchRequirement.needsManufacturingDate && (
                         <div className="space-y-2">
@@ -1792,8 +1890,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             id="gr-manufacturing-date"
                             type="date"
                             value={activeBatchLine.manufacturingDate}
+                            disabled={activeBatchReadOnly}
                             onChange={event => updateBatchLine(activeBatchLine, { manufacturingDate: event.target.value })}
-                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-100"
                           />
                         </div>
                       )}
@@ -1805,8 +1904,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             id="gr-expiry-date"
                             type="date"
                             value={activeBatchLine.expiryDate}
+                            disabled={activeBatchReadOnly}
                             onChange={event => updateBatchLine(activeBatchLine, { expiryDate: event.target.value })}
-                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-100"
                           />
                         </div>
                       )}
@@ -1817,9 +1917,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           <Input
                             id="gr-supplier-batch"
                             value={activeBatchLine.supplierBatchNumber}
+                            disabled={activeBatchReadOnly}
                             onChange={event => updateLine(activeBatchLine.id, { supplierBatchNumber: event.target.value })}
                             placeholder="Supplier batch no."
-                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-100"
                           />
                         </div>
                       )}
@@ -1829,15 +1930,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         <div className="flex gap-2">
                           <Input
                             id="gr-batch-number"
-                            value={activeBatchLine.batchNumber}
+                            value={activeBatchReadOnly ? activeBatchNumber : activeBatchLine.batchNumber}
+                            disabled={activeBatchReadOnly}
                             readOnly={!activeBatchRequirement.rule?.manual_entry && Boolean(activeBatchRequirement.rule)}
                             onChange={event => updateLine(activeBatchLine.id, { batchNumber: event.target.value })}
                             placeholder={activeBatchRequirement.needsExpiryDate ? 'Enter MFG and EXP dates to generate' : 'Enter MFG date to generate'}
-                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-100"
                           />
                           <Button
                             type="button"
                             variant="outline"
+                            disabled={activeBatchReadOnly}
                             onClick={() => refreshGeneratedBatchNumber(activeBatchLine)}
                           >
                             <Hash className="size-4" />
@@ -1940,21 +2043,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   </TabsContent>
 
                   <TabsContent value="trail" className="space-y-4">
-                    <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
+                    <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-3 text-sm sm:grid-cols-4">
                       <div>
-                        <div className="text-xs font-medium text-amber-700">Batch</div>
-                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.batchNumber || '-'}</div>
+                        <div className="text-xs font-medium text-stone-600">Batch</div>
+                        <div className="truncate font-semibold text-stone-950">{activeBatchNumber || '-'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-amber-700">Item</div>
+                        <div className="text-xs font-medium text-stone-600">Item</div>
                         <div className="truncate font-semibold text-stone-950">{activeBatchLine.itemCode || '-'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-amber-700">Warehouse</div>
+                        <div className="text-xs font-medium text-stone-600">Warehouse</div>
                         <div className="font-semibold text-stone-950">{activeBatchLine.warehouseCode || '-'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-amber-700">Line Quantity</div>
+                        <div className="text-xs font-medium text-stone-600">Line Quantity</div>
                         <div className="font-semibold tabular-nums text-stone-950">{formatQuantity(activeBatchLine.baseQty)}</div>
                       </div>
                     </div>
@@ -1966,21 +2069,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       </div>
                     )}
 
-                    {!loadingBatchTrail && (!activeBatchLine.batchNumber || !activeBatchLine.itemCode) && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                        Enter an item and batch number to view the transaction trail.
-                      </div>
-                    )}
-
-                    {!loadingBatchTrail && activeBatchLine.batchNumber && activeBatchLine.itemCode && batchTrailRows.length === 0 && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                        No inventory postings were found for this batch.
-                      </div>
-                    )}
-
                     {!loadingBatchTrail && batchTrailRows.length > 0 && (
                       <div className="relative space-y-3 pl-5">
-                        <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
+                        <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-stone-200" />
                         {batchTrailRows.map(row => {
                           const isOut = row.signedQty < 0
                           const movementLabel = isOut ? 'OUT' : 'IN'
@@ -2050,7 +2141,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </DialogContent>
           </Dialog>
 
-          <div className="mt-6 flex flex-col items-end gap-4">
+          <div className="mx-4 mb-4 mt-6 flex flex-col items-end gap-4">
             <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
               <h3 className="text-sm font-semibold">Receiving Summary</h3>
               <div className="mt-3 flex justify-between text-sm">

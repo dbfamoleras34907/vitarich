@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCcw, Tractor } from "lucide-react";
 import { getWarehouses } from "@/app/a_dean/warehouse/api";
 import { getGoodsReceiptPrefetchReferences } from "@/app/inv/gr/new/api";
+import { getFlockCardSettings } from "@/app/brd/fc/settings/api";
 
 /* =======================================================
    HOOK
@@ -101,6 +102,16 @@ export function useGlobalDefaults() {
     }
   };
 
+  const setFlockCardSettings = async () => {
+    try {
+      const data = await getFlockCardSettings();
+      setValue("FlockCardSettings", data);
+      return data;
+    } catch (error) {
+      console.error("FlockCardSettings error:", error);
+    }
+  };
+
   const getUserInfoWithFarm = async () => {
     try {
       const data = await getUserInfoAuthSession();
@@ -149,6 +160,7 @@ export function useGlobalDefaults() {
         setFarms_breeder(),
         getUserInfoWithFarm(),
         setGoodsReceiptReferences(),
+        setFlockCardSettings(),
       ]);
     } catch (error) {
       console.error("setGlobals error:", error);
@@ -169,6 +181,7 @@ export function useGlobalDefaults() {
     setFarms_breeder,
     getUserInfoWithFarm,
     setGoodsReceiptReferences,
+    setFlockCardSettings,
   };
 }
 

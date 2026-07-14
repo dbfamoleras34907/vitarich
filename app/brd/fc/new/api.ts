@@ -53,12 +53,25 @@ export type FlockCardBatchAllocationPayload = {
   source?: "MANUAL" | "FIFO";
 };
 
+export type FlockCardMortalityBatchAllocationPayload = {
+  lineNo: number;
+  itemCode: string;
+  itemName?: string | null;
+  batchNumber: string;
+  warehouseCode: string;
+  allocatedQty: number;
+  onHandSnapshot: number;
+  source?: "MANUAL" | "FIFO";
+};
+
 export type FlockCardLinePayload = {
   id?: number | null;
   age: number;
   values: string[];
   allocations: FlockCardBatchAllocationPayload[];
+  mortalityAllocations?: FlockCardMortalityBatchAllocationPayload[];
   feedIntakeLocked?: boolean;
+  mortalityThinningLocked?: boolean;
 };
 
 export type FlockCardPayload = {
@@ -111,6 +124,16 @@ export type FlockCardSheetLine = {
     selectedQty: number;
     source: "MANUAL" | "FIFO";
   }>;
+  mortalityAllocations: Array<{
+    batchId: string;
+    batchNumber: string;
+    itemCode: string;
+    itemName: string;
+    warehouseCode: string;
+    availableQty: number;
+    selectedQty: number;
+    source: "MANUAL" | "FIFO";
+  }>;
 };
 
 export type FlockCardSheet = {
@@ -140,6 +163,21 @@ type ItemBatchRow = {
   batch_number: string;
   manufacturing_date: string | null;
   expiry_date: string | null;
+};
+
+type FlockOriginBatchRow = {
+  item_code: string | null;
+  item_name: string | null;
+  batch_no: string | null;
+  whse_code: string | null;
+  animal_qty: number | null;
+  onhand_snapshot: number | null;
+};
+
+type FlockOriginCardRow = {
+  id: number;
+  building_code: string | null;
+  building_whse_id: number | null;
 };
 
 type SupabaseErrorLike = {
@@ -196,6 +234,33 @@ function getFeedBatchAllocationId(itemCode: string, batchNumber: string, warehou
     batchNumber.trim().toUpperCase(),
     warehouseCode.trim().toUpperCase(),
   ].join("|");
+}
+
+function getMortalityBatchAllocationId(itemCode: string, batchNumber: string, warehouseCode: string) {
+  return getFeedBatchAllocationId(itemCode, batchNumber, warehouseCode);
+}
+
+function normalizeMortalityAllocations(line: FlockCardLinePayload) {
+  return (line.mortalityAllocations ?? []).filter(allocation => Number(allocation.allocatedQty || 0) > 0);
+}
+
+function getLineExtra(line: FlockCardLinePayload) {
+  const mortalityAllocations = normalizeMortalityAllocations(line);
+
+  return mortalityAllocations.length > 0
+    ? {
+      mortalityBatchAllocations: mortalityAllocations.map(allocation => ({
+        lineNo: allocation.lineNo,
+        itemCode: allocation.itemCode,
+        itemName: allocation.itemName ?? null,
+        batchNumber: allocation.batchNumber,
+        warehouseCode: allocation.warehouseCode,
+        allocatedQty: allocation.allocatedQty,
+        onHandSnapshot: allocation.onHandSnapshot,
+        source: allocation.source ?? "MANUAL",
+      })),
+    }
+    : {};
 }
 
 function nextFlockCardNo() {
@@ -296,23 +361,24 @@ function linePayloadToRow(line: FlockCardLinePayload, fcId: number, userId: stri
     thin_am: parseNumberOrNull(values[3]),
     thin_pm: parseNumberOrNull(values[4]),
     row_total: parseNumberOrNull(values[5]),
-    cum_total: parseNumberOrNull(values[6]),
-    feed_kg: parseNumberOrNull(values[7]),
-    feed_bird: parseNumberOrNull(values[8]),
-    feed_guideline: parseNumberOrNull(values[9]),
-    feed_batch_text: values[10]?.trim() || null,
-    water_l: parseNumberOrNull(values[11]),
-    water_bird: parseNumberOrNull(values[12]),
-    body_wt: parseNumberOrNull(values[13]),
-    body_guideline: parseNumberOrNull(values[14]),
-    temp_min: parseNumberOrNull(values[15]),
-    temp_max: parseNumberOrNull(values[16]),
-    hum_min: parseNumberOrNull(values[17]),
-    hum_max: parseNumberOrNull(values[18]),
-    nh3_max: parseNumberOrNull(values[19]),
-    skin_b: parseNumberOrNull(values[20]),
-    skin_a: parseNumberOrNull(values[21]),
-    skin_l: parseNumberOrNull(values[22]),
+    cum_total: parseNumberOrNull(values[7]),
+    feed_kg: parseNumberOrNull(values[8]),
+    feed_bird: parseNumberOrNull(values[9]),
+    feed_guideline: parseNumberOrNull(values[10]),
+    feed_batch_text: values[11]?.trim() || null,
+    water_l: parseNumberOrNull(values[12]),
+    water_bird: parseNumberOrNull(values[13]),
+    body_wt: parseNumberOrNull(values[14]),
+    body_guideline: parseNumberOrNull(values[15]),
+    temp_min: parseNumberOrNull(values[16]),
+    temp_max: parseNumberOrNull(values[17]),
+    hum_min: parseNumberOrNull(values[18]),
+    hum_max: parseNumberOrNull(values[19]),
+    nh3_max: parseNumberOrNull(values[20]),
+    skin_b: parseNumberOrNull(values[21]),
+    skin_a: parseNumberOrNull(values[22]),
+    skin_l: parseNumberOrNull(values[23]),
+    extra: getLineExtra(line),
     is_locked: true,
     void: "1",
   };
@@ -339,6 +405,10 @@ function lineNeedsFeedIntakeRpc(line: FlockCardLinePayload) {
   return !line.feedIntakeLocked && line.allocations.length > 0;
 }
 
+function lineHasMortalityThinningAllocations(line: FlockCardLinePayload) {
+  return normalizeMortalityAllocations(line).length > 0;
+}
+
 function omitFeedIntakeColumns<T extends Record<string, unknown>>(row: T) {
   const {
     feed_kg,
@@ -358,6 +428,31 @@ function omitFeedIntakeColumns<T extends Record<string, unknown>>(row: T) {
   return nonFeedRow;
 }
 
+function omitMortalityThinningColumns<T extends Record<string, unknown>>(row: T) {
+  const {
+    mort_am,
+    mort_pm,
+    mort_total,
+    thin_am,
+    thin_pm,
+    row_total,
+    cum_total,
+    extra,
+    ...nonMortalityRow
+  } = row;
+
+  void mort_am;
+  void mort_pm;
+  void mort_total;
+  void thin_am;
+  void thin_pm;
+  void row_total;
+  void cum_total;
+  void extra;
+
+  return nonMortalityRow;
+}
+
 function linePayloadToBaseInsertRow(line: FlockCardLinePayload, fcId: number, userId: string | null) {
   const row = linePayloadToRow(line, fcId, userId);
 
@@ -367,7 +462,11 @@ function linePayloadToBaseInsertRow(line: FlockCardLinePayload, fcId: number, us
 }
 
 function linePayloadToBaseUpdateRow(line: FlockCardLinePayload, userId: string | null) {
-  const row = linePayloadToUpdateRow(line, userId);
+  let row: Record<string, unknown> = linePayloadToUpdateRow(line, userId);
+
+  if (line.mortalityThinningLocked) {
+    row = omitMortalityThinningColumns(row);
+  }
 
   return line.feedIntakeLocked || lineNeedsFeedIntakeRpc(line)
     ? omitFeedIntakeColumns(row)
@@ -376,18 +475,19 @@ function linePayloadToBaseUpdateRow(line: FlockCardLinePayload, userId: string |
 
 function hasLineData(line: FlockCardLinePayload) {
   return line.values.some((value, index) =>
-    index !== 9 && String(value ?? "").trim() !== ""
+    index !== 10 && String(value ?? "").trim() !== ""
   ) ||
-    line.allocations.length > 0;
+    line.allocations.length > 0 ||
+    lineHasMortalityThinningAllocations(line);
 }
 
 async function saveFlockCardLineFeedIntake(lineId: number, line: FlockCardLinePayload) {
   const result = await db.rpc("save_brd_fc_feed_intake", {
     p_line_id: lineId,
-    p_feed_kg: parseNumberOrNull(line.values[7]),
-    p_feed_bird: parseNumberOrNull(line.values[8]),
-    p_feed_guideline: parseNumberOrNull(line.values[9]),
-    p_feed_batch_text: line.values[10]?.trim() || null,
+    p_feed_kg: parseNumberOrNull(line.values[8]),
+    p_feed_bird: parseNumberOrNull(line.values[9]),
+    p_feed_guideline: parseNumberOrNull(line.values[10]),
+    p_feed_batch_text: line.values[11]?.trim() || null,
     p_allocations: line.allocations.map(allocation => ({
       itemId: allocation.itemId ?? null,
       itemCode: allocation.itemCode,
@@ -549,6 +649,27 @@ export async function reverseFlockCardFeedIntake(lineId: number, reason?: string
   };
 }
 
+export async function reverseFlockCardMortalityThinning(lineId: number, reason?: string | null) {
+  const reversalReason = reason?.trim() || null;
+
+  const lineResult = await db.rpc("reverse_brd_fc_mortality_thinning", {
+    p_line_id: lineId,
+    p_reason: reversalReason,
+  });
+
+  if (lineResult.error) throwDbError(lineResult.error, "Unable to reverse flock card mortality/thinning");
+  const reversedLine = Array.isArray(lineResult.data) ? lineResult.data[0] : lineResult.data;
+
+  if (!reversedLine) {
+    throw new Error("Unable to reverse mortality/thinning: no line was returned");
+  }
+
+  return {
+    id: Number(reversedLine.id),
+    age: Number(reversedLine.age),
+  };
+}
+
 export async function getFlockCardSheet(params: { id?: number | null; cardNo?: string | null }): Promise<FlockCardSheet | null> {
   const id = Number(params.id ?? 0);
   const cardNo = params.cardNo?.trim() ?? "";
@@ -574,7 +695,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
   const headerId = Number(headerResult.data.id);
   const lineResult = await db
     .from("brd_fc_line")
-    .select("id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l")
+    .select("id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l, extra")
     .eq("fc_id", headerId)
     .eq("void", "1")
     .order("age", { ascending: true });
@@ -632,6 +753,11 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
     lines: lines.map(line => {
       const lineId = Number(line.id);
 
+      const rawExtra = line.extra && typeof line.extra === "object" ? line.extra as Record<string, unknown> : {};
+      const rawMortalityAllocations = Array.isArray(rawExtra.mortalityBatchAllocations)
+        ? rawExtra.mortalityBatchAllocations
+        : [];
+
       return {
         id: lineId,
         age: Number(line.age),
@@ -642,6 +768,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           line.thin_am,
           line.thin_pm,
           line.row_total,
+          null,
           line.cum_total,
           line.feed_kg,
           line.feed_bird,
@@ -662,12 +789,95 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           null,
           null,
           null,
-          null,
         ].map(formatDbValue),
         allocations: allocationsByLineId.get(lineId) ?? [],
+        mortalityAllocations: rawMortalityAllocations.flatMap((allocation) => {
+          if (!allocation || typeof allocation !== "object") return [];
+
+          const row = allocation as Record<string, unknown>;
+          const itemCode = String(row.itemCode ?? "").trim();
+          const batchNumber = String(row.batchNumber ?? "").trim();
+          const warehouseCode = String(row.warehouseCode ?? "").trim();
+          const selectedQty = Number(row.allocatedQty ?? 0);
+          if (!itemCode || !batchNumber || !warehouseCode || selectedQty <= 0) return [];
+
+          return [{
+            batchId: getMortalityBatchAllocationId(itemCode, batchNumber, warehouseCode),
+            batchNumber,
+            itemCode,
+            itemName: String(row.itemName ?? "").trim(),
+            warehouseCode,
+            availableQty: Number(row.onHandSnapshot ?? selectedQty),
+            selectedQty,
+            source: row.source === "FIFO" ? "FIFO" as const : "MANUAL" as const,
+          }];
+        }),
       };
     }),
   };
+}
+
+export async function getFlockOriginBatchesByCardNo(cardNo: string): Promise<FeedBatchOnHand[]> {
+  const normalizedCardNo = cardNo.trim();
+  if (!normalizedCardNo) return [];
+
+  const cardResult = await db
+    .from("flock_card")
+    .select("id, building_code, building_whse_id")
+    .eq("card_no", normalizedCardNo)
+    .eq("void", "1")
+    .eq("status", "Saved")
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (cardResult.error) throwDbError(cardResult.error, "Unable to load linked placement card");
+  const card = cardResult.data as FlockOriginCardRow | null;
+  const placementId = Number(card?.id ?? 0);
+  if (!Number.isFinite(placementId) || placementId <= 0) return [];
+
+  let destinationWarehouseCode = String(card?.building_code ?? "").trim();
+  const buildingWarehouseId = Number(card?.building_whse_id ?? 0);
+
+  if (!destinationWarehouseCode && Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
+    const warehouseResult = await db
+      .from("i_warehouse")
+      .select("whse_code")
+      .eq("id", buildingWarehouseId)
+      .maybeSingle();
+
+    if (warehouseResult.error) throwDbError(warehouseResult.error, "Unable to load building warehouse");
+    destinationWarehouseCode = String(warehouseResult.data?.whse_code ?? "").trim();
+  }
+
+  const originResult = await db
+    .from("flock_card_origin")
+    .select("item_code, item_name, batch_no, whse_code, animal_qty, onhand_snapshot")
+    .eq("fc_id", placementId)
+    .eq("void", "1")
+    .order("line_no", { ascending: true });
+
+  if (originResult.error) throwDbError(originResult.error, "Unable to load flock origin batches");
+
+  return ((originResult.data ?? []) as FlockOriginBatchRow[]).flatMap(row => {
+    const itemCode = String(row.item_code ?? "").trim();
+    const batchNumber = String(row.batch_no ?? "").trim();
+    const sourceWarehouseCode = String(row.whse_code ?? "").trim();
+    const warehouseCode = destinationWarehouseCode || sourceWarehouseCode;
+    const onHandQty = Number(row.animal_qty ?? row.onhand_snapshot ?? 0);
+    if (!itemCode || !batchNumber || !warehouseCode || onHandQty <= 0) return [];
+
+    return [{
+      id: getMortalityBatchAllocationId(itemCode, batchNumber, warehouseCode),
+      itemCode,
+      itemName: String(row.item_name ?? "").trim(),
+      batchNumber,
+      manufacturingDate: "",
+      expiryDate: "",
+      warehouseCode,
+      onHandQty,
+    }];
+  });
 }
 
 export async function getFarmBuildings(farmId: number): Promise<FarmBuildingOption[]> {

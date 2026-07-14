@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
+  BarChart3,
   CalendarDays,
   FileSpreadsheet,
   Hash,
@@ -15,6 +16,15 @@ import {
 } from "lucide-react";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { usePermission } from "@/hooks/usePermission";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { getUserFarms } from "@/app/admin/user/new/api";
@@ -84,6 +94,10 @@ function getBuildingStatusClass(status: string) {
   return "border-slate-200 bg-slate-50 text-slate-700 dark:border-border dark:bg-background dark:text-muted-foreground";
 }
 
+function isActiveBuildingStatus(status: string) {
+  return status.trim().toLowerCase() === "active";
+}
+
 function formatDateValue(value: string) {
   if (!value) return "-";
 
@@ -101,9 +115,22 @@ function formatNumber(value: number) {
   return value.toLocaleString("en-PH");
 }
 
+const buildingCodeCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function compareBuildingsByCode(left: FarmBuildingListRow, right: FarmBuildingListRow) {
+  return buildingCodeCollator.compare(left.code, right.code) ||
+    buildingCodeCollator.compare(left.name, right.name);
+}
+
 export default function Layout() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
+  const flockCardViewBlocked = usePermission("/brd/fc/view");
+  const reportViewBlocked = usePermission("/brd/fc/report/view");
+  const cannotViewReport = flockCardViewBlocked && reportViewBlocked;
   const [selectedFarmId, setSelectedFarmId] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
@@ -168,9 +195,7 @@ export default function Layout() {
   );
 
   const visibleBuildings = useMemo(() => {
-    return [...buildings].sort((left, right) =>
-      left.code.localeCompare(right.code) || left.name.localeCompare(right.name)
-    );
+    return [...buildings].sort(compareBuildingsByCode);
   }, [buildings]);
 
   const occupiedCount = useMemo(
@@ -245,18 +270,11 @@ export default function Layout() {
   function openFlockForm(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
 
-    const encryptedBuildingId = encryptData({
-      farmId: selectedFarm.id,
-      farmCode: selectedFarm.code,
-      farmName: selectedFarm.name,
-      farmAddress: selectedFarm.address,
-      farmType: selectedFarm.farm_type,
-      farmContact: selectedFarm.contact_person,
-      buildingKey: building.key,
-      buildingCode: building.code,
-      buildingName: building.name,
-      cardId: building.flockCard?.id ?? null,
-    });
+    const encryptedBuildingId = encryptData([
+      selectedFarm.id,
+      building.key,
+      building.flockCard?.id ?? null,
+    ]);
 
     router.push(`/brd/fc/${encryptedBuildingId}/add-flock`);
   }
@@ -285,6 +303,13 @@ export default function Layout() {
     });
 
     router.push("/brd/fc/new");
+  }
+
+  function openFlockCardReport(building: FarmBuildingListRow) {
+    const cardNo = building.flockCard?.cardNo?.trim();
+    if (!cardNo) return;
+
+    router.push(`/brd/fc/report?cardNo=${encodeURIComponent(cardNo)}`);
   }
 
   return (
@@ -371,16 +396,6 @@ export default function Layout() {
           </div>
         </div>
 
-        <div className="grid min-w-[1040px] grid-cols-[minmax(150px,1fr)_100px_140px_minmax(140px,1fr)_130px_150px_180px] border-b bg-muted/50 px-4 py-2 text-xs font-semibold uppercase text-muted-foreground">
-          <div>Building</div>
-          <div>Age</div>
-          <div>Start date</div>
-          <div>Code</div>
-          <div className="pr-5 text-right">Count</div>
-          <div className="border-l pl-5">Status</div>
-          <div className="text-right">Action</div>
-        </div>
-
         {loadingBuildings ? (
           <div className="flex items-center justify-center gap-2 bg-white px-4 py-10 text-sm text-muted-foreground dark:bg-card">
             <Loader2 className="size-4 animate-spin" />
@@ -403,62 +418,93 @@ export default function Layout() {
             No buildings found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="min-w-[1040px] divide-y bg-white dark:bg-card">
-              {visibleBuildings.map((building, index) => {
-                const flockCard = building.flockCard;
-                const hasFlockCard = Boolean(flockCard);
+          <>
+            <Table className="min-w-[1040px] bg-white dark:bg-card">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[220px]">Building</TableHead>
+                  <TableHead className="w-[90px]">Age</TableHead>
+                  <TableHead className="w-[140px]">Start date</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead className="w-[130px] text-right">Count</TableHead>
+                  <TableHead className="w-[150px]">Status</TableHead>
+                  <TableHead className="w-[260px] text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleBuildings.map((building, index) => {
+                  const flockCard = building.flockCard;
+                  const hasFlockCard = Boolean(flockCard);
+                  const displayStatus = flockCard ? "Occupied" : building.status;
+                  const canOpenCard = hasFlockCard && !isActiveBuildingStatus(displayStatus);
 
-                return (
-                <div
-                  key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
-                  className="grid grid-cols-[minmax(150px,1fr)_100px_140px_minmax(140px,1fr)_130px_150px_180px] items-center px-4 py-3 text-sm transition-colors hover:bg-muted/30"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-lg font-semibold">{building.code || index + 1}</div>
-                    <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
-                  </div>
-                  <div className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</div>
-                  <div className="tabular-nums">{flockCard ? formatDateValue(flockCard.startDate) : "-"}</div>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{flockCard?.flockCode || flockCard?.cardNo || "-"}</div>
-                  </div>
-                  <div className="pr-5 text-right font-medium tabular-nums">
-                    {flockCard ? flockCard.animalQty.toLocaleString("en-PH") : "-"}
-                  </div>
-                  <div className="min-w-0 border-l pl-5">
-                    <span className={`inline-flex max-w-full rounded border px-2 py-0.5 text-xs font-semibold ${getBuildingStatusClass(flockCard ? "occupied" : building.status)}`}>
-                      <span className="truncate">{flockCard ? "Occupied" : building.status || "No status"}</span>
-                    </span>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openFlockCardSheet(building)}
+                  return (
+                    <TableRow
+                      key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
-                      <FileSpreadsheet className="size-4" />
-                      Card
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openFlockForm(building)}
-                    >
-                      {hasFlockCard ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                      {hasFlockCard ? "Edit" : "Add Flock"}
-                    </Button>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
+                      <TableCell className="min-w-0">
+                        <div className="truncate text-base font-semibold">{building.code || index + 1}</div>
+                        <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
+                      </TableCell>
+                      <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
+                      <TableCell className="tabular-nums">{flockCard ? formatDateValue(flockCard.startDate) : "-"}</TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="max-w-[220px] truncate font-medium">
+                          {flockCard?.flockCode || flockCard?.cardNo || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {flockCard ? flockCard.animalQty.toLocaleString("en-PH") : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex max-w-full rounded border px-2 py-0.5 text-xs font-semibold ${getBuildingStatusClass(displayStatus)}`}>
+                          <span className="truncate">{displayStatus || "No status"}</span>
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          {hasFlockCard && !cannotViewReport ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openFlockCardReport(building)}
+                            >
+                              <BarChart3 className="size-4" />
+                              Report
+                            </Button>
+                          ) : null}
+                          {canOpenCard ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openFlockCardSheet(building)}
+                            >
+                              <FileSpreadsheet className="size-4" />
+                              Card
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openFlockForm(building)}
+                          >
+                            {hasFlockCard ? <Pencil className="size-4" /> : <Plus className="size-4" />}
+                            {hasFlockCard ? "Edit" : "Add Flock"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
             <div className="py-6 text-center text-sm font-medium">
               Showing {visibleBuildings.length} of {buildings.length}
             </div>
-          </div>
+          </>
         )}
       </section>
 

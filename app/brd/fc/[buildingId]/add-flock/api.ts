@@ -61,6 +61,18 @@ export type FlockCardPlacementRecord = FlockCardPlacementPayload & {
   cardNo: string;
 };
 
+export type UsedFlockOriginBatch = {
+  id: string;
+  itemCode: string;
+  batchNo: string;
+  warehouseCode: string;
+  cardId: number;
+  buildingId: number | null;
+  buildingWarehouseId: number | null;
+  buildingKey: string | null;
+  buildingCode: string | null;
+};
+
 type FlockCardHeaderRow = {
   id: number;
   card_no: string | null;
@@ -109,6 +121,21 @@ type FlockCardOriginRow = {
   mfg_date: string | null;
   exp_date: string | null;
   extra: Record<string, unknown> | null;
+};
+
+type FlockCardBatchUsageHeaderRow = {
+  id: number;
+  building_id: number | null;
+  building_whse_id: number | null;
+  building_key: string | null;
+  building_code: string | null;
+};
+
+type FlockCardBatchUsageOriginRow = {
+  fc_id: number | null;
+  item_code: string | null;
+  batch_no: string | null;
+  whse_code: string | null;
 };
 
 type SupabaseErrorLike = {
@@ -243,6 +270,76 @@ function originPayloadToRow(
 
 function hasOriginData(origin: FlockCardOriginPayload) {
   return origin.batchNo.trim() !== "" && (toNumberOrNull(origin.animalQty) ?? 0) > 0;
+}
+
+function makeBatchUsageId(itemCode: string, batchNo: string) {
+  return [
+    itemCode.trim().toUpperCase(),
+    batchNo.trim().toUpperCase(),
+  ].join("|");
+}
+
+export async function getUsedFlockOriginBatches(
+  farmId: number,
+  currentCardId?: number | null,
+): Promise<UsedFlockOriginBatch[]> {
+  if (!Number.isFinite(farmId) || farmId <= 0) return [];
+
+  let cardQuery = db
+    .from("flock_card")
+    .select("id, building_id, building_whse_id, building_key, building_code")
+    .eq("farm_id", farmId)
+    .eq("void", "1")
+    .eq("status", "Saved");
+
+  const currentId = Number(currentCardId ?? 0);
+  if (Number.isFinite(currentId) && currentId > 0) {
+    cardQuery = cardQuery.neq("id", currentId);
+  }
+
+  const cardResult = await cardQuery;
+
+  if (cardResult.error) throwDbError(cardResult.error, "Unable to load used flock cards");
+
+  const cards = (cardResult.data ?? []) as FlockCardBatchUsageHeaderRow[];
+  const cardsById = new Map(
+    cards
+      .map(card => [Number(card.id), card] as const)
+      .filter(([id]) => Number.isFinite(id) && id > 0),
+  );
+  const cardIds = Array.from(cardsById.keys());
+
+  if (cardIds.length === 0) return [];
+
+  const originResult = await db
+    .from("flock_card_origin")
+    .select("fc_id, item_code, batch_no, whse_code")
+    .in("fc_id", cardIds)
+    .eq("void", "1");
+
+  if (originResult.error) throwDbError(originResult.error, "Unable to load used flock origins");
+
+  return ((originResult.data ?? []) as FlockCardBatchUsageOriginRow[]).flatMap(origin => {
+    const cardId = Number(origin.fc_id ?? 0);
+    const card = cardsById.get(cardId);
+    const itemCode = String(origin.item_code ?? "").trim();
+    const batchNo = String(origin.batch_no ?? "").trim();
+    const warehouseCode = String(origin.whse_code ?? "").trim();
+
+    if (!card || !itemCode || !batchNo || !warehouseCode) return [];
+
+    return [{
+      id: makeBatchUsageId(itemCode, batchNo),
+      itemCode,
+      batchNo,
+      warehouseCode,
+      cardId,
+      buildingId: card.building_id,
+      buildingWarehouseId: card.building_whse_id,
+      buildingKey: card.building_key,
+      buildingCode: card.building_code,
+    }];
+  });
 }
 
 export async function getFlockCardPlacement(
