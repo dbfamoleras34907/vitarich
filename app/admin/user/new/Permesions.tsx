@@ -258,7 +258,8 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                         insert: child.insert,
                         edit: child.edit,
                         view: child.view,
-                        void: child.void
+                        void: child.void,
+                        approval: child.approval
                     })
                 })
             })
@@ -277,13 +278,14 @@ export default function Permissions({ userId }: RuleAndPermProps) {
 
     const toggleColumnPermissions = async (
         rows: Record<string, any>[],
-        type: 'list' | 'view' | 'insert' | 'edit' | 'void'
+        type: 'list' | 'view' | 'insert' | 'edit' | 'void' | 'approval'
     ) => {
         const validRows = rows.filter((row) => {
             if (type === 'view') return row.view
             if (type === 'insert') return row.insert
             if (type === 'edit') return row.edit
             if (type === 'void') return row.void
+            if (type === 'approval') return row.approval
             return true
         })
 
@@ -590,6 +592,18 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                                                     Void
                                                 </Button>
                                             </th>
+
+                                            <th className="text-center px-4 py-2 font-medium w-22.5">
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    onClick={() =>
+                                                        toggleColumnPermissions(folderRows, 'approval')
+                                                    }
+                                                >
+                                                    Approval
+                                                </Button>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -734,6 +748,29 @@ export default function Permissions({ userId }: RuleAndPermProps) {
                                                                     e ? true : false,
                                                                     `${row.url}/void`,
                                                                     'void'
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                </td>
+                                                {/* approval */}
+                                                <td className="px-4 py-2 text-center">
+                                                    <div className="flex justify-center">
+                                                        <Checkbox
+                                                            disabled={!row.approval}
+                                                            className='h-4 w-4 rounded-lg border-2 border-black/50'
+                                                            checked={
+                                                                permissions[
+                                                                `${row.group}|${row.title}/approval`
+                                                                ] ?? false
+                                                            }
+                                                            onCheckedChange={(e) =>
+                                                                EnabledonCheckChange(
+                                                                    row.group,
+                                                                    `${row.title}/approval`,
+                                                                    e ? true : false,
+                                                                    `${row.url}/approval`,
+                                                                    'approval'
                                                                 )
                                                             }
                                                         />

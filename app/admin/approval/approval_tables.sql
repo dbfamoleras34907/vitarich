@@ -65,6 +65,66 @@ create table if not exists public.approval_stage_approvers (
   constraint approval_stage_approvers_void_check check (void in ('0', '1'))
 );
 
+create table if not exists public.approval_template_triggers (
+  id bigint generated always as identity not null,
+  created_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_by uuid null,
+  updated_at timestamp with time zone null,
+  template_id bigint not null,
+  name text not null,
+  users jsonb not null default '[]'::jsonb,
+  is_active boolean not null default true,
+  void text not null default '1',
+  constraint approval_template_triggers_pkey primary key (id),
+  constraint approval_template_triggers_template_id_fkey foreign key (template_id) references public.approval_templates (id) on delete cascade,
+  constraint approval_template_triggers_created_by_fkey foreign key (created_by) references auth.users (id),
+  constraint approval_template_triggers_updated_by_fkey foreign key (updated_by) references auth.users (id),
+  constraint approval_template_triggers_users_array_check check (jsonb_typeof(users) = 'array'),
+  constraint approval_template_triggers_void_check check (void in ('0', '1'))
+);
+
+create table if not exists public.approval_template_approvers (
+  id bigint generated always as identity not null,
+  created_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_by uuid null,
+  updated_at timestamp with time zone null,
+  template_id bigint not null,
+  name text not null,
+  users jsonb not null default '[]'::jsonb,
+  approval_mode text not null default 'any',
+  required_count integer not null default 1,
+  is_active boolean not null default true,
+  void text not null default '1',
+  constraint approval_template_approvers_pkey primary key (id),
+  constraint approval_template_approvers_template_id_fkey foreign key (template_id) references public.approval_templates (id) on delete cascade,
+  constraint approval_template_approvers_created_by_fkey foreign key (created_by) references auth.users (id),
+  constraint approval_template_approvers_updated_by_fkey foreign key (updated_by) references auth.users (id),
+  constraint approval_template_approvers_users_array_check check (jsonb_typeof(users) = 'array'),
+  constraint approval_template_approvers_mode_check check (approval_mode in ('any', 'count')),
+  constraint approval_template_approvers_required_count_check check (required_count >= 1),
+  constraint approval_template_approvers_void_check check (void in ('0', '1'))
+);
+
+create table if not exists public.approval_document_targets (
+  id bigint generated always as identity not null,
+  created_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_by uuid null,
+  updated_at timestamp with time zone null,
+  document_type text not null,
+  table_name text not null,
+  id_column text not null default 'id',
+  status_column text not null default 'approval_status',
+  request_column text not null default 'approval_request_id',
+  is_active boolean not null default true,
+  void text not null default '1',
+  constraint approval_document_targets_pkey primary key (id),
+  constraint approval_document_targets_document_type_key unique (document_type),
+  constraint approval_document_targets_void_check check (void in ('0', '1'))
+);
+
 create table if not exists public.approval_requests (
   id bigint generated always as identity not null,
   created_by text null,
@@ -148,6 +208,9 @@ begin
         'approval_templates',
         'approval_stages',
         'approval_stage_approvers',
+        'approval_template_triggers',
+        'approval_template_approvers',
+        'approval_document_targets',
         'approval_requests',
         'approval_request_steps'
       )
@@ -169,6 +232,37 @@ alter table public.approval_stages
   add column if not exists void text not null default '1';
 
 alter table public.approval_stage_approvers
+  add column if not exists void text not null default '1';
+
+alter table public.approval_template_triggers
+  drop constraint if exists approval_template_triggers_template_key;
+
+alter table public.approval_template_triggers
+  add column if not exists updated_by uuid null,
+  add column if not exists updated_at timestamp with time zone null,
+  add column if not exists users jsonb not null default '[]'::jsonb,
+  add column if not exists is_active boolean not null default true,
+  add column if not exists void text not null default '1';
+
+alter table public.approval_template_approvers
+  drop constraint if exists approval_template_approvers_template_key;
+
+alter table public.approval_template_approvers
+  add column if not exists updated_by uuid null,
+  add column if not exists updated_at timestamp with time zone null,
+  add column if not exists users jsonb not null default '[]'::jsonb,
+  add column if not exists approval_mode text not null default 'any',
+  add column if not exists required_count integer not null default 1,
+  add column if not exists is_active boolean not null default true,
+  add column if not exists void text not null default '1';
+
+alter table public.approval_document_targets
+  add column if not exists updated_by uuid null,
+  add column if not exists updated_at timestamp with time zone null,
+  add column if not exists id_column text not null default 'id',
+  add column if not exists status_column text not null default 'approval_status',
+  add column if not exists request_column text not null default 'approval_request_id',
+  add column if not exists is_active boolean not null default true,
   add column if not exists void text not null default '1';
 
 alter table public.approval_requests
@@ -220,6 +314,38 @@ create index if not exists approval_stage_approvers_auth_id_idx
 
 create index if not exists approval_stage_approvers_void_idx
   on public.approval_stage_approvers (void);
+
+create index if not exists approval_template_triggers_template_id_idx
+  on public.approval_template_triggers (template_id);
+
+create unique index if not exists approval_template_triggers_active_template_uidx
+  on public.approval_template_triggers (template_id)
+  where void = '1';
+
+create index if not exists approval_template_triggers_active_idx
+  on public.approval_template_triggers (is_active);
+
+create index if not exists approval_template_triggers_void_idx
+  on public.approval_template_triggers (void);
+
+create index if not exists approval_template_approvers_template_id_idx
+  on public.approval_template_approvers (template_id);
+
+create unique index if not exists approval_template_approvers_active_template_uidx
+  on public.approval_template_approvers (template_id)
+  where void = '1';
+
+create index if not exists approval_template_approvers_active_idx
+  on public.approval_template_approvers (is_active);
+
+create index if not exists approval_template_approvers_void_idx
+  on public.approval_template_approvers (void);
+
+create index if not exists approval_document_targets_document_type_idx
+  on public.approval_document_targets (document_type);
+
+create index if not exists approval_document_targets_void_idx
+  on public.approval_document_targets (void);
 
 create index if not exists approval_requests_status_idx
   on public.approval_requests (status);
@@ -311,6 +437,39 @@ begin
   if not exists (
     select 1
     from pg_trigger
+    where tgname = 'set_approval_template_triggers_updated_at'
+  ) then
+    create trigger set_approval_template_triggers_updated_at
+    before update on public.approval_template_triggers
+    for each row
+    execute function public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'set_approval_template_approvers_updated_at'
+  ) then
+    create trigger set_approval_template_approvers_updated_at
+    before update on public.approval_template_approvers
+    for each row
+    execute function public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'set_approval_document_targets_updated_at'
+  ) then
+    create trigger set_approval_document_targets_updated_at
+    before update on public.approval_document_targets
+    for each row
+    execute function public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
     where tgname = 'set_approval_requests_updated_at'
   ) then
     create trigger set_approval_requests_updated_at
@@ -390,6 +549,9 @@ $$;
 alter table public.approval_templates enable row level security;
 alter table public.approval_stages enable row level security;
 alter table public.approval_stage_approvers enable row level security;
+alter table public.approval_template_triggers enable row level security;
+alter table public.approval_template_approvers enable row level security;
+alter table public.approval_document_targets enable row level security;
 alter table public.approval_requests enable row level security;
 alter table public.approval_request_steps enable row level security;
 
@@ -458,6 +620,98 @@ create policy approval_stage_approvers_update_admin
   to authenticated
   using (public.is_approval_admin())
   with check (public.is_approval_admin());
+
+drop policy if exists approval_template_triggers_select_authenticated on public.approval_template_triggers;
+create policy approval_template_triggers_select_authenticated
+  on public.approval_template_triggers
+  for select
+  to authenticated
+  using (void = '1');
+
+drop policy if exists approval_template_triggers_insert_admin on public.approval_template_triggers;
+create policy approval_template_triggers_insert_admin
+  on public.approval_template_triggers
+  for insert
+  to authenticated
+  with check (public.is_approval_admin());
+
+drop policy if exists approval_template_triggers_update_admin on public.approval_template_triggers;
+create policy approval_template_triggers_update_admin
+  on public.approval_template_triggers
+  for update
+  to authenticated
+  using (public.is_approval_admin())
+  with check (public.is_approval_admin());
+
+drop policy if exists approval_template_approvers_select_authenticated on public.approval_template_approvers;
+create policy approval_template_approvers_select_authenticated
+  on public.approval_template_approvers
+  for select
+  to authenticated
+  using (void = '1');
+
+drop policy if exists approval_template_approvers_insert_admin on public.approval_template_approvers;
+create policy approval_template_approvers_insert_admin
+  on public.approval_template_approvers
+  for insert
+  to authenticated
+  with check (public.is_approval_admin());
+
+drop policy if exists approval_template_approvers_update_admin on public.approval_template_approvers;
+create policy approval_template_approvers_update_admin
+  on public.approval_template_approvers
+  for update
+  to authenticated
+  using (public.is_approval_admin())
+  with check (public.is_approval_admin());
+
+drop policy if exists approval_document_targets_select_authenticated on public.approval_document_targets;
+create policy approval_document_targets_select_authenticated
+  on public.approval_document_targets
+  for select
+  to authenticated
+  using (void = '1');
+
+drop policy if exists approval_document_targets_insert_admin on public.approval_document_targets;
+create policy approval_document_targets_insert_admin
+  on public.approval_document_targets
+  for insert
+  to authenticated
+  with check (public.is_approval_admin());
+
+drop policy if exists approval_document_targets_update_admin on public.approval_document_targets;
+create policy approval_document_targets_update_admin
+  on public.approval_document_targets
+  for update
+  to authenticated
+  using (public.is_approval_admin())
+  with check (public.is_approval_admin());
+
+insert into public.approval_document_targets (
+  document_type,
+  table_name,
+  id_column,
+  status_column,
+  request_column,
+  is_active,
+  void
+)
+values (
+  'farm_setup_wizard',
+  'farms',
+  'id',
+  'approval_status',
+  'approval_request_id',
+  true,
+  '1'
+)
+on conflict (document_type) do update
+set table_name = excluded.table_name,
+    id_column = excluded.id_column,
+    status_column = excluded.status_column,
+    request_column = excluded.request_column,
+    is_active = excluded.is_active,
+    void = excluded.void;
 
 drop policy if exists approval_requests_select_actor on public.approval_requests;
 create policy approval_requests_select_actor

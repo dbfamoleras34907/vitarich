@@ -53,15 +53,60 @@ export type ApprovalStageApproverRow = {
   void: string
 }
 
-export async function getApprovalRequests() {
-  const { data, error } = await db
+export type ApprovalTriggerUser = {
+  user_id: number
+  auth_id: string | null
+  fullname: string
+  email: string | null
+  users_group_id: string | number | null
+  isactive: string | null
+  issuper: string | null
+}
+
+export type ApprovalTemplateTriggerRow = {
+  id: number
+  template_id: number
+  name: string
+  users: ApprovalTriggerUser[]
+  is_active: boolean
+  void: string
+}
+
+export type ApprovalTemplateApproverRow = {
+  id: number
+  template_id: number
+  name: string
+  users: ApprovalTriggerUser[]
+  approval_mode: "any" | "count"
+  required_count: number
+  is_active: boolean
+  void: string
+}
+
+export async function getApprovalRequests(params?: {
+  dateFrom?: string
+  dateTo?: string
+}) {
+  let query = db
     .from("approval_requests")
     .select("*")
     .eq("void", "1")
+
+  if (params?.dateFrom) {
+    query = query.gte("created_at", `${params.dateFrom}T00:00:00`)
+  }
+
+  if (params?.dateTo) {
+    query = query.lte("created_at", `${params.dateTo}T23:59:59.999`)
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return (data ?? []) as ApprovalRequestRow[]
+  return ((data ?? []) as ApprovalRequestRow[]).filter(
+    (request) => request.request_type !== "user_activation"
+  )
 }
 
 export async function getApprovalTemplates() {
@@ -100,14 +145,104 @@ export async function getApprovalStageApprovers() {
   return (data ?? []) as ApprovalStageApproverRow[]
 }
 
+export async function getApprovalTemplateTriggers() {
+  const { data, error } = await db
+    .from("approval_template_triggers")
+    .select("*")
+    .eq("void", "1")
+    .order("template_id", { ascending: true })
+    .order("id", { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as ApprovalTemplateTriggerRow[]
+}
+
+export async function getApprovalTemplateApprovers() {
+  const { data, error } = await db
+    .from("approval_template_approvers")
+    .select("*")
+    .eq("void", "1")
+    .order("template_id", { ascending: true })
+    .order("id", { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as ApprovalTemplateApproverRow[]
+}
+
 export async function getApprovalUsers() {
   const { data, error } = await db
     .from("users")
-    .select("id, email, firstname, middlename, lastname, auth_id, issuper, supervisor, isactive")
+    .select("id, email, firstname, middlename, lastname, auth_id, issuper, supervisor, isactive, users_group_id")
     .order("email", { ascending: true })
 
   if (error) throw error
   return (data ?? []) as UserRow[]
+}
+
+export async function upsertApprovalTemplateTrigger(payload: {
+  id?: number | null
+  template_id: number
+  name: string
+  users: ApprovalTriggerUser[]
+}) {
+  const { data: sessionData } = await db.auth.getSession()
+  const row = {
+    updated_by: sessionData.session?.user.id ?? null,
+    template_id: payload.template_id,
+    name: payload.name,
+    users: payload.users,
+    is_active: true,
+    void: "1",
+  }
+
+  const query = payload.id
+    ? db
+        .from("approval_template_triggers")
+        .update(row)
+        .eq("id", payload.id)
+    : db.from("approval_template_triggers").insert({
+        ...row,
+        created_by: sessionData.session?.user.id ?? null,
+      })
+
+  const { error } = await query
+
+  if (error) throw error
+}
+
+export async function upsertApprovalTemplateApprover(payload: {
+  id?: number | null
+  template_id: number
+  name: string
+  users: ApprovalTriggerUser[]
+  approval_mode: "any" | "count"
+  required_count: number
+}) {
+  const { data: sessionData } = await db.auth.getSession()
+  const row = {
+    updated_by: sessionData.session?.user.id ?? null,
+    template_id: payload.template_id,
+    name: payload.name,
+    users: payload.users,
+    approval_mode: payload.approval_mode,
+    required_count: payload.approval_mode === "count" ? payload.required_count : 1,
+    is_active: true,
+    void: "1",
+  }
+
+  const query = payload.id
+    ? db
+        .from("approval_template_approvers")
+        .update(row)
+        .eq("id", payload.id)
+    : db.from("approval_template_approvers").insert({
+        ...row,
+        created_by: sessionData.session?.user.id ?? null,
+      })
+
+  const { error } = await query
+
+  if (error) throw error
 }
 
 export async function createApprovalTemplate(payload: {
@@ -183,6 +318,16 @@ export async function voidApprovalStage(id: number) {
 
 export async function voidApprovalStageApprover(id: number) {
   const { error } = await db.from("approval_stage_approvers").update({ void: "0" }).eq("id", id)
+  if (error) throw error
+}
+
+export async function voidApprovalTemplateTrigger(id: number) {
+  const { error } = await db.from("approval_template_triggers").update({ void: "0" }).eq("id", id)
+  if (error) throw error
+}
+
+export async function voidApprovalTemplateApprover(id: number) {
+  const { error } = await db.from("approval_template_approvers").update({ void: "0" }).eq("id", id)
   if (error) throw error
 }
 

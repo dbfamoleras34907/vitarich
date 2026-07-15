@@ -5,7 +5,7 @@ import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { RowDataKey } from '@/lib/Defaults/DefaultTypes'
-import { Edit, Plus, RefreshCcw, WandSparkles } from 'lucide-react'
+import { Edit, RefreshCcw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -15,6 +15,13 @@ const farmTypeLabels: Record<string, string> = {
   BE: 'Breeder Farm',
   HA: 'Hatcher',
   BR: 'Broiler',
+}
+
+const approvalStatusLabels: Record<string, string> = {
+  approved: 'Approved',
+  pending: 'Pending',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
 }
 
 export default function FarmMasterPage() {
@@ -75,6 +82,26 @@ export default function FarmMasterPage() {
           )
         },
       },
+      {
+        key: 'approval_status',
+        label: 'Approval',
+        render: row => {
+          const status = String(row.approval_status || 'approved')
+          const label = approvalStatusLabels[status] ?? status
+          const className =
+            status === 'approved'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : status === 'rejected'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-amber-200 bg-amber-50 text-amber-700'
+
+          return (
+            <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${className}`}>
+              {label}
+            </span>
+          )
+        },
+      },
       { key: 'contact_person', label: 'Contact Person', render: row => row.contact_person || '-' },
       { key: 'contact_number', label: 'Contact No.', render: row => row.contact_number || '-' },
       { key: 'remarks', label: 'Remarks', render: row => row.remarks || '-' },
@@ -91,6 +118,12 @@ export default function FarmMasterPage() {
               variant="outline"
               size="sm"
               onClick={() => router.push(`/a_dean/farm/${row.id}/edit`)}
+              disabled={String(row.approval_status || 'approved') !== 'approved'}
+              title={
+                String(row.approval_status || 'approved') === 'approved'
+                  ? 'Edit farm'
+                  : 'Pending or rejected farms cannot be edited'
+              }
             >
               <Edit className="h-4 w-4" />
               Edit
@@ -103,8 +136,6 @@ export default function FarmMasterPage() {
   )
 
   useEffect(() => {
-    router.prefetch('/a_dean/farm/new')
-    router.prefetch('/a_dean/farm/setup')
     getData()
   }, [getData, router])
 
@@ -119,14 +150,6 @@ export default function FarmMasterPage() {
         <div className="flex flex-wrap gap-2 sm:justify-end">
           <Button variant="secondary" onClick={getData} disabled={loading}>
             <RefreshCcw className={loading ? 'animate-spin' : ''} />
-          </Button>
-          <Button variant="outline" onClick={() => router.push('/a_dean/farm/setup')}>
-            <WandSparkles className="h-4 w-4" />
-            Setup Wizard
-          </Button>
-          <Button onClick={() => router.push('/a_dean/farm/new')}>
-            <Plus className="h-4 w-4" />
-            New Farm
           </Button>
         </div>
       </div>

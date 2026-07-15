@@ -363,7 +363,12 @@ export default function ApprovalDecisionForm() {
         setloading(false)
 
         if (res.success) {
-            alert(`Saved! DocEntry: ${res.docentry}`)
+            const approvalRequired = Boolean(res.approval?.required)
+            alert(
+                approvalRequired
+                    ? `Submitted for approval! DocEntry: ${res.docentry}`
+                    : `Saved! DocEntry: ${res.docentry}`
+            )
             router.push("/a_dean/receiving/")
         } else {
             alert(res.error)

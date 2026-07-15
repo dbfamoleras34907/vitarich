@@ -531,6 +531,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: false,
+            approval: true,
           },
 
           {
@@ -542,6 +543,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
 
           {
@@ -555,6 +557,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -566,6 +569,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -577,6 +581,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -588,6 +593,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -599,6 +605,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -610,6 +617,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -623,6 +631,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
 
           {
@@ -636,6 +645,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -649,6 +659,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
         ],
       },
@@ -697,6 +708,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           // {
@@ -717,6 +729,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           // {
@@ -736,6 +749,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            approval: false,
             void: true,
           },
           {
@@ -746,6 +760,7 @@ export const NavFolders: NavFolder[] = [
             // view: true,
             insert: true,
             edit: true,
+            approval: false,
             void: true,
           },
           {
@@ -756,6 +771,7 @@ export const NavFolders: NavFolder[] = [
             // view: true,
             insert: true,
             edit: true,
+            approval: false,
             void: true,
           },
           {
@@ -766,6 +782,7 @@ export const NavFolders: NavFolder[] = [
             // view: true,
             insert: true,
             edit: true,
+            approval: false,
             void: false,
           },
         ],
@@ -790,6 +807,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
           {
             id: 57,
@@ -801,6 +819,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
           {
             id: 52,
@@ -812,6 +831,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            approval: false,
           },
           {
             id: 56,
@@ -823,6 +843,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            approval: false,
           },
         ],
       },
@@ -940,6 +961,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -950,6 +972,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -970,6 +993,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -980,6 +1004,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
         ],
       },
@@ -1003,6 +1028,29 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 70,
+            type: "Module",
+            title: "User Group",
+            url: "/admin/user-group",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 69,
+            type: "Module",
+            title: "User Activation",
+            url: "/admin/user-activation",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
           },
 
           {
@@ -1013,6 +1061,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: false,
             edit: true,
+            approval: false,
           },
 
           {
@@ -1023,6 +1072,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: false,
             edit: true,
+            approval: false,
           },
 
           {
@@ -1033,6 +1083,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -1043,6 +1094,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: true,
             edit: false,
+            approval: true,
           },
 
           {
@@ -1053,6 +1105,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -1063,6 +1116,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: true,
+            approval: false,
           },
 
           {
@@ -1073,6 +1127,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -1083,6 +1138,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           // {
@@ -1104,6 +1160,7 @@ export const NavFolders: NavFolder[] = [
             void: false,
             insert: false,
             edit: false,
+            approval: false,
           },
         ],
       },

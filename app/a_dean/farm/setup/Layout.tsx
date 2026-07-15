@@ -17,6 +17,7 @@ import {
   ArrowRight,
   Check,
   Circle,
+  Clock,
   Plus,
   Save,
   Trash2,
@@ -258,7 +259,7 @@ function WizardActions({
           className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800"
         >
           <Save className="size-4" />
-          {loading ? 'Saving...' : 'Complete Setup'}
+          {loading ? 'Submitting...' : 'Submit Setup'}
         </Button>
       )}
     </div>
@@ -320,6 +321,22 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-neutral-200 bg-white px-4 py-3 dark:border-border dark:bg-card">
       <div className="text-xs font-medium uppercase text-neutral-400 dark:text-muted-foreground">{label}</div>
       <div className="mt-1 text-sm font-medium text-neutral-950 dark:text-foreground">{value}</div>
+    </div>
+  )
+}
+
+function ApprovalNotice() {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+      <div className="flex items-start gap-3">
+        <Clock className="mt-0.5 size-4 shrink-0" />
+        <div>
+          <div className="font-medium">Approval may be required</div>
+          <p className="mt-1 text-xs leading-5">
+            If your user is included in the Farm Setup Wizard trigger, this setup will be created as pending first. It becomes approved only after the approval request is completed.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -501,9 +518,20 @@ export default function Layout() {
         machines: [],
       }
 
-      const farmId = await createFarmSetup(payload)
+      const result = await createFarmSetup(payload)
+
+      if (result.approval?.required) {
+        toast.success(`Farm setup created as pending approval. Request #${result.approval.request_id ?? ''}`)
+        router.push('/a_dean/farm')
+        return
+      }
+
+      if (!result.farmId) {
+        throw new Error('Farm setup did not return a farm id.')
+      }
+
       toast.success('Farm setup completed.')
-      router.push(`/a_dean/farm/${farmId}/edit`)
+      router.push(`/a_dean/farm/${result.farmId}/edit`)
     } catch (error) {
       toast.error('Error: ' + (error instanceof Error ? error.message : 'Unable to complete farm setup'))
     } finally {
@@ -696,6 +724,7 @@ export default function Layout() {
               />
               <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
                 <SectionIntro title="Default Warehouses" description={STEPS[2].description} />
+                <ApprovalNotice />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <InlineSelect
                     label="Default Feed"

@@ -131,6 +131,7 @@ export default function Layout() {
     const [defaultFeedWarehouse, setDefaultFeedWarehouse] = useState('')
     const [defaultReceivingWarehouse, setDefaultReceivingWarehouse] = useState('')
     const [loadingWarehouses, setLoadingWarehouses] = useState(false)
+    const isLocked = String(farmData.approval_status || 'approved') !== 'approved'
     const showBuildingSection = false
 
     const [buildingCounter, setBuildingCounter] = useState<number | null>(null)
@@ -383,6 +384,11 @@ export default function Layout() {
     // ================= SUBMIT =================
 
     const handleUpdateFarm = async () => {
+        if (isLocked) {
+            toast('Pending or rejected farms cannot be edited.', { position: 'top-center' })
+            return
+        }
+
         // if (farmData.ref && !farmData.ref_type) {
         //     toast("Reference Type is required when Reference is filled", {
         //         position: "top-center"
@@ -545,7 +551,7 @@ export default function Layout() {
                             <ArrowLeft className="size-4" />
                             Back
                         </Button>
-                        <Button type="button" onClick={handleUpdateFarm}>
+                        <Button type="button" onClick={handleUpdateFarm} disabled={isLocked}>
                             <Save className="size-4" />
                             Update Farm
                         </Button>
@@ -554,6 +560,11 @@ export default function Layout() {
             </div>
 
             <main className="mx-auto grid w-full max-w-7xl gap-3 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:px-8">
+                {isLocked ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 lg:col-span-2">
+                        This farm is {String(farmData.approval_status || '').replace('_', ' ')} and cannot be edited.
+                    </div>
+                ) : null}
                 <div className="space-y-3">
                 <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
                     <div className="flex items-start gap-4 border-b border-stone-200 pb-5">

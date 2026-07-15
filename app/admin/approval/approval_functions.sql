@@ -11,6 +11,10 @@ set search_path = public
 as $$
 declare
   v_template public.approval_templates%rowtype;
+  v_trigger public.approval_template_triggers%rowtype;
+  v_approver_config public.approval_template_approvers%rowtype;
+  v_requester public.users%rowtype;
+  v_can_trigger boolean;
 begin
   select *
   into v_template
@@ -26,6 +30,70 @@ begin
     return jsonb_build_object(
       'required', false,
       'document_type', p_document_type
+    );
+  end if;
+
+  select *
+  into v_requester
+  from public.users
+  where auth_id = p_requested_by_auth_id
+  limit 1;
+
+  select *
+  into v_trigger
+  from public.approval_template_triggers
+  where template_id = v_template.id
+    and is_active = true
+    and void = '1'
+  order by id asc
+  limit 1;
+
+  if not found then
+    return jsonb_build_object(
+      'required', false,
+      'template_id', v_template.id,
+      'template_name', v_template.name,
+      'document_type', p_document_type,
+      'message', 'No active approval trigger found.'
+    );
+  end if;
+
+  select exists (
+    select 1
+    from jsonb_array_elements(v_trigger.users) trigger_user
+    where nullif(trigger_user ->> 'auth_id', '')::uuid = p_requested_by_auth_id
+       or nullif(trigger_user ->> 'user_id', '')::bigint = v_requester.id
+  )
+  into v_can_trigger;
+
+  if not coalesce(v_can_trigger, false) then
+    return jsonb_build_object(
+      'required', false,
+      'template_id', v_template.id,
+      'template_name', v_template.name,
+      'trigger_id', v_trigger.id,
+      'document_type', p_document_type,
+      'message', 'Requester is not included in the approval trigger.'
+    );
+  end if;
+
+  select *
+  into v_approver_config
+  from public.approval_template_approvers
+  where template_id = v_template.id
+    and is_active = true
+    and void = '1'
+  order by id asc
+  limit 1;
+
+  if not found then
+    return jsonb_build_object(
+      'required', false,
+      'template_id', v_template.id,
+      'template_name', v_template.name,
+      'trigger_id', v_trigger.id,
+      'document_type', p_document_type,
+      'message', 'No active approval approver setup found.'
     );
   end if;
 
@@ -109,10 +177,13 @@ set search_path = public
 as $$
 declare
   v_template public.approval_templates%rowtype;
+  v_trigger public.approval_template_triggers%rowtype;
+  v_approver_config public.approval_template_approvers%rowtype;
   v_stage public.approval_stages%rowtype;
   v_requester public.users%rowtype;
   v_request_id bigint;
   v_step_count integer;
+  v_can_trigger boolean;
 begin
   select *
   into v_template
@@ -133,6 +204,61 @@ begin
   end if;
 
   select *
+  into v_requester
+  from public.users
+  where auth_id = p_requested_by_auth_id
+  limit 1;
+
+  select *
+  into v_trigger
+  from public.approval_template_triggers
+  where template_id = v_template.id
+    and is_active = true
+    and void = '1'
+  order by id asc
+  limit 1;
+
+  if not found then
+    return jsonb_build_object(
+      'success', true,
+      'required', false,
+      'template_id', v_template.id,
+      'message', 'No active approval trigger found.'
+    );
+  end if;
+
+  select exists (
+    select 1
+    from jsonb_array_elements(v_trigger.users) trigger_user
+    where nullif(trigger_user ->> 'auth_id', '')::uuid = p_requested_by_auth_id
+       or nullif(trigger_user ->> 'user_id', '')::bigint = v_requester.id
+  )
+  into v_can_trigger;
+
+  if not coalesce(v_can_trigger, false) then
+    return jsonb_build_object(
+      'success', true,
+      'required', false,
+      'template_id', v_template.id,
+      'trigger_id', v_trigger.id,
+      'message', 'Requester is not included in the approval trigger.'
+    );
+  end if;
+
+  select *
+  into v_approver_config
+  from public.approval_template_approvers
+  where template_id = v_template.id
+    and is_active = true
+    and void = '1'
+  order by id asc
+  limit 1;
+
+  if not found then
+    raise exception 'Approval template % has no active approver setup.', v_template.id;
+  end if;
+
+  select *
   into v_stage
   from public.approval_stages
   where template_id = v_template.id
@@ -142,14 +268,26 @@ begin
   limit 1;
 
   if not found then
-    raise exception 'Approval template % has no active stages.', v_template.id;
+    insert into public.approval_stages (
+      created_by,
+      template_id,
+      stage_no,
+      name,
+      approval_mode,
+      is_active,
+      void
+    )
+    values (
+      p_requested_by_auth_id,
+      v_template.id,
+      1,
+      'Template Approval',
+      case when v_approver_config.approval_mode = 'any' then 'any' else 'all' end,
+      true,
+      '1'
+    )
+    returning * into v_stage;
   end if;
-
-  select *
-  into v_requester
-  from public.users
-  where auth_id = p_requested_by_auth_id
-  limit 1;
 
   insert into public.approval_requests (
     created_by,
@@ -191,14 +329,16 @@ begin
     approver_auth_id,
     status
   )
-  select
+  select distinct
     v_request_id,
     v_stage.id,
     v_stage.stage_no,
-    approver_user_id,
-    approver_auth_id,
+    nullif(approver_user ->> 'user_id', '')::bigint,
+    nullif(approver_user ->> 'auth_id', '')::uuid,
     'pending'
-  from public.resolve_approval_stage_approvers(v_stage.id, p_requested_by_auth_id);
+  from jsonb_array_elements(v_approver_config.users) approver_user
+  where nullif(approver_user ->> 'user_id', '') is not null
+     or nullif(approver_user ->> 'auth_id', '') is not null;
 
   get diagnostics v_step_count = row_count;
 
@@ -216,10 +356,94 @@ begin
     'required', true,
     'request_id', v_request_id,
     'template_id', v_template.id,
+    'trigger_id', v_trigger.id,
+    'approver_id', v_approver_config.id,
     'stage_id', v_stage.id,
     'stage_no', v_stage.stage_no,
     'status', 'pending'
   );
+end;
+$$;
+
+create or replace function public.set_approval_document_status(
+  p_document_type text,
+  p_document_id bigint,
+  p_status text,
+  p_request_id bigint
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_target public.approval_document_targets%rowtype;
+  v_updated_count integer;
+  v_has_approved_at boolean;
+  v_has_rejected_at boolean;
+begin
+  if p_document_type is null or p_document_id is null then
+    return false;
+  end if;
+
+  select *
+  into v_target
+  from public.approval_document_targets
+  where document_type = p_document_type
+    and is_active = true
+    and void = '1'
+  limit 1;
+
+  if not found then
+    return false;
+  end if;
+
+  execute format(
+    'update public.%I set %I = $1, %I = $2 where %I = $3',
+    v_target.table_name,
+    v_target.status_column,
+    v_target.request_column,
+    v_target.id_column
+  )
+  using p_status, p_request_id, p_document_id;
+
+  get diagnostics v_updated_count = row_count;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = v_target.table_name
+      and column_name = 'approval_approved_at'
+  )
+  into v_has_approved_at;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = v_target.table_name
+      and column_name = 'approval_rejected_at'
+  )
+  into v_has_rejected_at;
+
+  if p_status = 'approved' and v_has_approved_at then
+    execute format(
+      'update public.%I set approval_approved_at = now() where %I = $1',
+      v_target.table_name,
+      v_target.id_column
+    )
+    using p_document_id;
+  elsif p_status = 'rejected' and v_has_rejected_at then
+    execute format(
+      'update public.%I set approval_rejected_at = now() where %I = $1',
+      v_target.table_name,
+      v_target.id_column
+    )
+    using p_document_id;
+  end if;
+
+  return v_updated_count > 0;
 end;
 $$;
 
@@ -236,8 +460,12 @@ as $$
 declare
   v_request public.approval_requests%rowtype;
   v_stage public.approval_stages%rowtype;
+  v_approver_config public.approval_template_approvers%rowtype;
   v_approver public.users%rowtype;
   v_pending_count integer;
+  v_approved_count integer;
+  v_required_count integer;
+  v_has_approver_config boolean := false;
   v_next_stage public.approval_stages%rowtype;
   v_next_step_count integer;
 begin
@@ -268,6 +496,16 @@ begin
   from public.users
   where auth_id = p_approver_auth_id
   limit 1;
+
+  select *
+  into v_approver_config
+  from public.approval_template_approvers
+  where template_id = v_request.template_id
+    and is_active = true
+    and void = '1'
+  order by id asc
+  limit 1;
+  v_has_approver_config := found;
 
   if not public.is_approval_admin() and not exists (
     select 1
@@ -300,7 +538,38 @@ begin
       or ars.approver_user_id = v_approver.id
     );
 
-  if v_stage.approval_mode = 'any' then
+  if v_has_approver_config and v_approver_config.approval_mode = 'any' then
+    update public.approval_request_steps
+    set status = 'skipped',
+        decided_at = now()
+    where request_id = p_request_id
+      and stage_id = v_stage.id
+      and status = 'pending'
+      and void = '1';
+  elsif v_has_approver_config and v_approver_config.approval_mode = 'count' then
+    select count(*)
+    into v_approved_count
+    from public.approval_request_steps
+    where request_id = p_request_id
+      and stage_id = v_stage.id
+      and status = 'approved'
+      and void = '1';
+
+    v_required_count := least(
+      greatest(v_approver_config.required_count, 1),
+      jsonb_array_length(v_approver_config.users)
+    );
+
+    if v_approved_count >= v_required_count then
+      update public.approval_request_steps
+      set status = 'skipped',
+          decided_at = now()
+      where request_id = p_request_id
+        and stage_id = v_stage.id
+        and status = 'pending'
+        and void = '1';
+    end if;
+  elsif v_stage.approval_mode = 'any' then
     update public.approval_request_steps
     set status = 'skipped',
         decided_at = now()
@@ -382,6 +651,13 @@ begin
       approved_by_auth_id = p_approver_auth_id,
       approved_at = now()
   where id = p_request_id;
+
+  perform public.set_approval_document_status(
+    v_request.document_type,
+    v_request.document_id,
+    'approved',
+    p_request_id
+  );
 
   return jsonb_build_object(
     'success', true,
@@ -482,6 +758,13 @@ begin
       rejected_at = now(),
       remarks = coalesce(p_remarks, remarks)
   where id = p_request_id;
+
+  perform public.set_approval_document_status(
+    v_request.document_type,
+    v_request.document_id,
+    'rejected',
+    p_request_id
+  );
 
   return jsonb_build_object(
     'success', true,

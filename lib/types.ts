@@ -95,9 +95,11 @@ export interface UserInsert {
   location?: string | null;
   remarks?: string | null;
   supervisor?: string | null;
+  issuper?: string | null;
   default_farm?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  users_group_id?: string | number | null;
 }
 
 
@@ -128,6 +130,7 @@ export interface UserRow {
   isactive?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  users_group_id?: string | number | null;
 
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';
@@ -575,6 +578,7 @@ export interface NavPermission {
   insert?: boolean;
   edit?: boolean;
   void?: boolean;
+  approval?: boolean;
 }
 
 export interface NavChild extends NavPermission {

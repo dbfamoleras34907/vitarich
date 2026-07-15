@@ -195,7 +195,7 @@ export default function SearchableCombobox(props: Props) {
 
           {props.multiple && (
             <span className="text-xs text-muted-foreground ">
-              {selectedCodes.length} selecteda
+              {selectedCodes.length} selected
             </span>
           )}
         </div>

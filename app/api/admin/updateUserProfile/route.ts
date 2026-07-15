@@ -17,8 +17,10 @@ type UserProfilePayload = {
   remarks?: string | null;
   default_farm?: string | null;
   supervisor?: string | null;
+  issuper?: string | null;
   archipelago?: string | null;
   region?: string | null;
+  users_group_id?: string | number | null;
 };
 
 type RequestBody = {
@@ -69,8 +71,10 @@ export async function POST(req: Request) {
       remarks: normalizeText(userProfileData.remarks),
       default_farm: normalizeText(userProfileData.default_farm),
       supervisor: normalizeNumber(userProfileData.supervisor),
+      issuper: userProfileData.issuper === "1" ? "1" : "0",
       archipelago: normalizeText(userProfileData.archipelago),
       region: normalizeText(userProfileData.region),
+      users_group_id: normalizeNumber(userProfileData.users_group_id),
       updated_at: new Date().toISOString(),
       updated_by: userProfileData.created_by,
     };

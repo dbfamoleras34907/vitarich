@@ -1,3 +1,10 @@
+alter table public.farms
+  add column if not exists approval_status text not null default 'approved',
+  add column if not exists approval_request_id bigint null,
+  add column if not exists approval_submitted_at timestamp with time zone null,
+  add column if not exists approval_approved_at timestamp with time zone null,
+  add column if not exists approval_rejected_at timestamp with time zone null;
+
 create or replace function public.insert_farm_setup_wizard(payload jsonb)
 returns bigint
 language plpgsql
@@ -13,6 +20,7 @@ declare
   warehouse_ids bigint[] := array[]::bigint[];
   farm_address text;
   farm_region text;
+  farm_approval_status text;
 begin
   farm_address := nullif(
     concat_ws(
@@ -29,6 +37,8 @@ begin
     nullif(payload->'farm'->>'region', ''),
     nullif(payload->'address'->>'province', '')
   );
+
+  farm_approval_status := coalesce(nullif(payload->'farm'->>'approval_status', ''), 'approved');
 
   for warehouse_item in
     select * from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
@@ -93,7 +103,9 @@ begin
     farm_type,
     address,
     region,
-    associated_warehouses
+    associated_warehouses,
+    approval_status,
+    approval_submitted_at
   )
   values (
     payload->'farm'->>'code',
@@ -108,7 +120,9 @@ begin
     case
       when cardinality(associated_warehouse_items) = 0 then null
       else associated_warehouse_items
-    end
+    end,
+    farm_approval_status,
+    case when farm_approval_status = 'pending' then now() else null end
   )
   returning id into new_farm_id;
 
