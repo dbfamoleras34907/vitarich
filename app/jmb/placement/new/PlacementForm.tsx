@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,12 +15,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Plus } from "lucide-react";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
+  createFarmPen,
   createPlacement,
   createPlacementBatch,
   getPlacementById,
@@ -165,6 +167,8 @@ export default function PlacementForm() {
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [addingPen, setAddingPen] = useState(false);
+  const [newPenNo, setNewPenNo] = useState("");
   const [form, setForm] = useState<FormState>({
     placement_date: getToday(),
     dr_no: "",
@@ -417,6 +421,23 @@ export default function PlacementForm() {
     }));
   }
 
+  function getSelectedBuildingPens(source = locations) {
+    return source.filter(
+      (location) =>
+        String(location.building_id) === form.building_id ||
+        location.building_no === form.building_no,
+    );
+  }
+
+  function getNextPenNo(pens: FarmLocationLookup[] = getSelectedBuildingPens()) {
+    const highestNumericPen = pens.reduce((highest, pen) => {
+      const parsed = Number(pen.pen_no);
+      return Number.isFinite(parsed) ? Math.max(highest, parsed) : highest;
+    }, 0);
+
+    return String(highestNumericPen ? highestNumericPen + 1 : pens.length + 1);
+  }
+
   function handleFarmChange(farmId: string) {
     const farm = locations.find(
       (location) => String(location.farm_id) === farmId,
@@ -431,6 +452,7 @@ export default function PlacementForm() {
       pen_count: "",
     }));
     setRows([]);
+    setNewPenNo("");
   }
 
   function handleBuildingChange(buildingId: string) {
@@ -449,6 +471,54 @@ export default function PlacementForm() {
       pen_count: String(nextRows.length),
     }));
     setRows(nextRows);
+    setNewPenNo(getNextPenNo(buildingLocations));
+  }
+
+  async function handleAddPen() {
+    if (!form.building_id) {
+      alert("Please select a building before adding a pen.");
+      return;
+    }
+
+    const penNo = newPenNo.trim();
+    if (!penNo) {
+      alert("Additional pen number is required.");
+      return;
+    }
+
+    const existingPens = getSelectedBuildingPens();
+    const isDuplicate = existingPens.some(
+      (pen) => pen.pen_no.trim().toLowerCase() === penNo.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      alert(`Pen ${penNo} already exists for this building.`);
+      return;
+    }
+
+    setAddingPen(true);
+    try {
+      await createFarmPen({
+        buildingId: asNumber(form.building_id),
+        penNo,
+      });
+
+      const lookup = await listFarmLocationLookup();
+      const refreshedBuildingPens = getSelectedBuildingPens(lookup);
+      const nextRows = buildRowsFromPens(refreshedBuildingPens);
+
+      setLocations(lookup);
+      setRows(nextRows);
+      setForm((prev) => ({
+        ...prev,
+        pen_count: String(nextRows.length),
+      }));
+      setNewPenNo(getNextPenNo(refreshedBuildingPens));
+    } catch (error: unknown) {
+      alert(getErrorMessage(error, "Failed to add pen."));
+    } finally {
+      setAddingPen(false);
+    }
   }
 
   function handleRowChange(
@@ -731,6 +801,37 @@ export default function PlacementForm() {
                   placeholder="Generated from building"
                   disabled
                 />
+                {!isEdit ? (
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      value={newPenNo}
+                      onChange={(e) => setNewPenNo(e.target.value)}
+                      placeholder="Additional pen #"
+                      disabled={
+                        disabledAll ||
+                        addingPen ||
+                        loadingLocations ||
+                        !form.building_id
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddPen}
+                      disabled={
+                        disabledAll ||
+                        addingPen ||
+                        loadingLocations ||
+                        !form.building_id
+                      }
+                      className="shrink-0 gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {addingPen ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                ) : null}
                 <p className="text-xs text-muted-foreground">
                   Selecting a building creates placement rows from active pens.
                 </p>
