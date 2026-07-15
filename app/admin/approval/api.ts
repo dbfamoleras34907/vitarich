@@ -1,115 +1,237 @@
-import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import { db } from "@/lib/Supabase/supabaseClient"
-import { decryptValue } from "@/lib/decrypt"
+import { UserRow } from "@/lib/types"
 
+export type ApprovalRequestRow = {
+  id: number
+  created_at: string
+  template_id: number | null
+  current_stage_id: number | null
+  document_type: string | null
+  document_id: number | null
+  document_no: string | null
+  requested_by_user_id: number | null
+  requested_by_auth_id: string | null
+  user_email: string | null
+  request_type: string | null
+  status: string
+  remarks: string | null
+  approved_by: number | null
+  approved_at: string | null
+  rejected_by: number | null
+  rejected_at: string | null
+  void: string
+}
 
-// export async function getApprovalRequests() {
-//   const { data, error } = await db
-//     .from("approval_requests")
-//     .select(`
-//       id,
-//       created_at,
-//       user_email,
-//       request_type,
-//       remarks,
-//       status
-//     `)
-//     .eq("status", "pending")
-//     .order("created_at", { ascending: false })
+export type ApprovalTemplateRow = {
+  id: number
+  name: string
+  document_type: string
+  description: string | null
+  is_active: boolean
+  priority: number
+  rule_json: Record<string, unknown>
+  void: string
+}
 
-//   if (error) throw error
+export type ApprovalStageRow = {
+  id: number
+  template_id: number
+  stage_no: number
+  name: string
+  approval_mode: "any" | "all"
+  is_active: boolean
+  void: string
+}
 
-//   return data
-// }
-
-
+export type ApprovalStageApproverRow = {
+  id: number
+  stage_id: number
+  approver_user_id: number | null
+  approver_auth_id: string | null
+  approver_type: "user" | "supervisor" | "role"
+  is_active: boolean
+  void: string
+}
 
 export async function getApprovalRequests() {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await db.auth.getSession()
+  const { data, error } = await db
+    .from("approval_requests")
+    .select("*")
+    .eq("void", "1")
+    .order("created_at", { ascending: false })
 
-  if (sessionError || !session) {
-    console.error("No active session")
-    return []
-  }
+  if (error) throw error
+  return (data ?? []) as ApprovalRequestRow[]
+}
 
-  const authId = session.user.id
+export async function getApprovalTemplates() {
+  const { data, error } = await db
+    .from("approval_templates")
+    .select("*")
+    .eq("void", "1")
+    .order("priority", { ascending: true })
+    .order("id", { ascending: true })
 
-  const { data, error } = await db.rpc(
-    "dmffn_get_subordinate_approval_requests",
-    {
-      auth_uuid: authId,
-    }
-  )
+  if (error) throw error
+  return (data ?? []) as ApprovalTemplateRow[]
+}
 
-  if (error) {
-    console.error({ error })
-    return []
-  }
+export async function getApprovalStages() {
+  const { data, error } = await db
+    .from("approval_stages")
+    .select("*")
+    .eq("void", "1")
+    .order("template_id", { ascending: true })
+    .order("stage_no", { ascending: true })
 
+  if (error) throw error
+  return (data ?? []) as ApprovalStageRow[]
+}
+
+export async function getApprovalStageApprovers() {
+  const { data, error } = await db
+    .from("approval_stage_approvers")
+    .select("*")
+    .eq("void", "1")
+    .order("stage_id", { ascending: true })
+    .order("id", { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as ApprovalStageApproverRow[]
+}
+
+export async function getApprovalUsers() {
+  const { data, error } = await db
+    .from("users")
+    .select("id, email, firstname, middlename, lastname, auth_id, issuper, supervisor, isactive")
+    .order("email", { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as UserRow[]
+}
+
+export async function createApprovalTemplate(payload: {
+  name: string
+  document_type: string
+  description?: string
+  priority: number
+}) {
+  const { data: sessionData } = await db.auth.getSession()
+  const { error } = await db.from("approval_templates").insert({
+    created_by: sessionData.session?.user.id ?? null,
+    name: payload.name,
+    document_type: payload.document_type,
+    description: payload.description || null,
+    priority: payload.priority,
+    rule_json: { enabled: true },
+    is_active: true,
+    void: "1",
+  })
+
+  if (error) throw error
+}
+
+export async function createApprovalStage(payload: {
+  template_id: number
+  stage_no: number
+  name: string
+  approval_mode: "any" | "all"
+}) {
+  const { data: sessionData } = await db.auth.getSession()
+  const { error } = await db.from("approval_stages").insert({
+    created_by: sessionData.session?.user.id ?? null,
+    template_id: payload.template_id,
+    stage_no: payload.stage_no,
+    name: payload.name,
+    approval_mode: payload.approval_mode,
+    is_active: true,
+    void: "1",
+  })
+
+  if (error) throw error
+}
+
+export async function createApprovalStageApprover(payload: {
+  stage_id: number
+  approver_type: "user" | "supervisor"
+  approver_user_id?: number | null
+  approver_auth_id?: string | null
+}) {
+  const { data: sessionData } = await db.auth.getSession()
+  const { error } = await db.from("approval_stage_approvers").insert({
+    created_by: sessionData.session?.user.id ?? null,
+    stage_id: payload.stage_id,
+    approver_type: payload.approver_type,
+    approver_user_id: payload.approver_type === "user" ? payload.approver_user_id : null,
+    approver_auth_id: payload.approver_type === "user" ? payload.approver_auth_id : null,
+    is_active: true,
+    void: "1",
+  })
+
+  if (error) throw error
+}
+
+export async function voidApprovalTemplate(id: number) {
+  const { error } = await db.from("approval_templates").update({ void: "0" }).eq("id", id)
+  if (error) throw error
+}
+
+export async function voidApprovalStage(id: number) {
+  const { error } = await db.from("approval_stages").update({ void: "0" }).eq("id", id)
+  if (error) throw error
+}
+
+export async function voidApprovalStageApprover(id: number) {
+  const { error } = await db.from("approval_stage_approvers").update({ void: "0" }).eq("id", id)
+  if (error) throw error
+}
+
+export async function approveDocumentApproval(requestId: number, remarks?: string) {
+  const { data, error } = await db.rpc("approve_approval_request", {
+    p_request_id: requestId,
+    p_remarks: remarks || null,
+  })
+
+  if (error) throw error
   return data
 }
 
+export async function rejectDocumentApproval(requestId: number, remarks?: string) {
+  const { data, error } = await db.rpc("reject_approval_request", {
+    p_request_id: requestId,
+    p_remarks: remarks || null,
+  })
 
+  if (error) throw error
+  return data
+}
 
-// export async function approvePasswordReset(requestId: number, approvedBy: number) {
+export async function approveLegacyApprovalRequest(requestId: number, approvedBy: number) {
+  const response = await fetch("/api/approval/approve", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requestId,
+      approvedBy,
+    }),
+  })
 
-//   const { data: request, error } = await db
-//     .from("approval_requests")
-//     .select("*")
-//     .eq("id", requestId)
-//     .single()
-
-//   if (error) throw error
-//   if (!request) throw new Error("Request not found")
-//   console.log(request.value_encrypted)
-//   const password = decryptValue(request.value_encrypted)
-//   console.log({ password })
-//   const { data: userRow, error: userError } = await db
-//     .from("users")
-//     .select("auth_id")
-//     .eq("email", request.user_email)
-//     .single()
-
-//   if (userError) throw userError
-//   if (!userRow) throw new Error("User not found")
-//   console.log(48)
-//   const authId = userRow.auth_id
-
-//   await admin_db.auth.admin.updateUserById(authId, {
-//     password
-//   })
-//   console.log(54)
-
-//   const { error: updateError } = await db
-//     .from("approval_requests")
-//     .update({
-//       status: "approved",
-//       approved_by: approvedBy,
-//       approved_at: new Date()
-//     })
-//     .eq("id", requestId)
-
-//   if (updateError) throw updateError
-
-//   return true
-// }
-
+  if (!response.ok) {
+    throw new Error("Unable to approve legacy approval request.")
+  }
+}
 
 export async function rejectApproval(requestId: number, approvedBy: number) {
-
   const { error } = await db
     .from("approval_requests")
     .update({
       status: "rejected",
       approved_by: approvedBy,
-      approved_at: new Date()
+      approved_at: new Date().toISOString(),
     })
     .eq("id", requestId)
 
   if (error) throw error
-
-  return true
 }

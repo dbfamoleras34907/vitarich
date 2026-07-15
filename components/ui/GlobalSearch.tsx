@@ -182,6 +182,12 @@ export default function GlobalSearch({ collapsed }: collapsed) {
           icon: Settings,
           action: () => setFarmModalOpen(true),
         },
+        {
+          title: "Approval",
+          description: "Manage approval templates, stages, approvers, and requests",
+          icon: Settings,
+          action: () => router.push("/admin/approval"),
+        },
       ],
     },
   ]

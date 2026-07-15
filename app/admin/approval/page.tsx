@@ -8,7 +8,7 @@ import Layout from './Layout'
 export default function page() {
     return (
         <div>
-            <NavigationBar currentLabel='User' fatherLabel='Administrator' fatherLink='/a_dean/admin' >
+            <NavigationBar currentLabel='Approval' fatherLabel='Settings' fatherLink='/admin' >
                 <Layout />
             </NavigationBar>
         </div>

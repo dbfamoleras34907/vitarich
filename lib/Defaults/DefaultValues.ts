@@ -1010,9 +1010,19 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Approval",
             url: "/admin/approval",
-            view: false,
+            view: true,
             insert: false,
-            edit: false,
+            edit: true,
+          },
+
+          {
+            id: 68,
+            type: "Module",
+            title: "Approval Management",
+            url: "/admin/approval/management",
+            view: true,
+            insert: false,
+            edit: true,
           },
 
           {
