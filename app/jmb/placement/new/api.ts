@@ -6,6 +6,8 @@ const GROWING_TABLE = "tbl_growing";
 const EGG_LAYING_TABLE = "tbl_egglaying";
 const BREEDER_SOURCE_TABLE = "tbl_breeder_source";
 const FARM_LOCATION_LOOKUP_VIEW = "view_farm_location_lookup";
+const FARM_PEN_TABLE = "farm_pens";
+const LAST_PEN_CODE_VIEW = "v_last_pen_code";
 
 export type FarmLocationLookup = {
   pen_id: number;
@@ -21,6 +23,11 @@ export type FarmLocationLookup = {
   region: string | null;
   assigned_ta: string | null;
   full_location: string;
+};
+
+export type CreateFarmPenInput = {
+  buildingId: number;
+  penNo: string;
 };
 
 export type Placement = {
@@ -197,6 +204,38 @@ export async function listFarmLocationLookup() {
 
   if (error) throw error;
   return (data ?? []) as FarmLocationLookup[];
+}
+
+function formatCode(prefix: string, number: number, pad: number = 6) {
+  return `${prefix}${number.toString().padStart(pad, "0")}`;
+}
+
+async function getLastPenCodeNumber() {
+  const { data, error } = await db
+    .from(LAST_PEN_CODE_VIEW)
+    .select("last_number")
+    .single();
+
+  if (error) throw error;
+  return Number(data?.last_number ?? 0);
+}
+
+export async function createFarmPen({ buildingId, penNo }: CreateFarmPenInput) {
+  const nextCode = formatCode("PEN", (await getLastPenCodeNumber()) + 1);
+
+  const { data, error } = await db
+    .from(FARM_PEN_TABLE)
+    .insert({
+      building_id: buildingId,
+      code: nextCode,
+      name: penNo,
+      status: "Active",
+    })
+    .select("id, building_id, code, name, status")
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function getUserInfo() {

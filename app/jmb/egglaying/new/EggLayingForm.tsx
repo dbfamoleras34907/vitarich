@@ -114,6 +114,12 @@ function getEggTotal(
   );
 }
 
+function getMissingRequiredNumberFields(form: FormState) {
+  return [
+    form.tep_collection ? null : "TEP Collection",
+  ].filter(Boolean) as string[];
+}
+
 function getNetPlacement(placement: LayingPlacement | null) {
   if (!placement) return 0;
   return (
@@ -351,6 +357,23 @@ export default function EggLayingForm() {
       return;
     }
 
+    const missingNumberFields = getMissingRequiredNumberFields(form);
+    if (missingNumberFields.length) {
+      const fields = missingNumberFields.join(", ");
+      alert(
+        `${fields} ${missingNumberFields.length === 1 ? "is" : "are"} required.`,
+      );
+      return;
+    }
+
+    const tepCollection = asNumber(form.tep_collection);
+    if (eggTotal !== tepCollection) {
+      alert(
+        `Total Egg Classification must equal TEP Collection. TEP Collection is ${tepCollection.toLocaleString("en-US")} and Total Egg Classification is ${eggTotal.toLocaleString("en-US")}.`,
+      );
+      return;
+    }
+
     const payload: EggLayingInsert = {
       placement_id: asNumber(form.placement_id),
       date_laying: form.date_laying,
@@ -442,11 +465,7 @@ export default function EggLayingForm() {
                   disabled
                 />
               </div>
-            </div>
 
-            <Separator />
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
                 <NumberInput
                   id="tep_collection"
@@ -454,9 +473,14 @@ export default function EggLayingForm() {
                   value={form.tep_collection}
                   onChange={handleNumberChange}
                   disabled={disabledAll}
+                  required
                 />
               </div>
+            </div>
 
+            <Separator />
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
                 <NumberInput
                   id="hatching_egg"
@@ -514,7 +538,7 @@ export default function EggLayingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>Total Egg Classification</Label>
+                <RequiredLabel>Total Egg Classification</RequiredLabel>
                 <Input
                   value={eggTotal.toLocaleString("en-US")}
                   readOnly

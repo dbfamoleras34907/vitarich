@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,12 +15,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Plus } from "lucide-react";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
+  createFarmPen,
   createPlacement,
   createPlacementBatch,
   getPlacementById,
@@ -34,12 +36,10 @@ import {
 
 type PlacementRow = {
   pen_no: string;
-  f_source: string;
   f_beg: string;
   f_doa: string;
   f_reject: string;
   f_shortcount: string;
-  m_source: string;
   m_beg: string;
   m_doa: string;
   m_reject: string;
@@ -52,8 +52,10 @@ type FormState = {
   file_attached: string;
   farm_id: string;
   farm_name: string;
+  building_id: string;
   building_no: string;
   pen_count: string;
+  source: string;
   remarks: string;
 };
 
@@ -66,12 +68,10 @@ function getToday() {
 function createEmptyRow(index: number): PlacementRow {
   return {
     pen_no: String(index + 1),
-    f_source: "",
     f_beg: "0",
     f_doa: "0",
     f_reject: "0",
     f_shortcount: "0",
-    m_source: "",
     m_beg: "0",
     m_doa: "0",
     m_reject: "0",
@@ -89,6 +89,27 @@ function clampInteger(raw: string) {
 function asNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeLookupValue(value: string | number | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isSelectedFarmLocation(
+  location: FarmLocationLookup,
+  farmId: string,
+  farmName: string,
+) {
+  const selectedFarmId = normalizeLookupValue(farmId);
+  const selectedFarmName = normalizeLookupValue(farmName);
+
+  return (
+    (selectedFarmId &&
+      (normalizeLookupValue(location.farm_id) === selectedFarmId ||
+        normalizeLookupValue(location.farm_code) === selectedFarmId)) ||
+    (selectedFarmName &&
+      normalizeLookupValue(location.farm_name) === selectedFarmName)
+  );
 }
 
 function getEndingBalance(
@@ -114,12 +135,23 @@ function withoutPlacementDate(payload: PlacementInsert) {
 }
 
 const TableWidths = {
-  tableMin: "min-w-[344px]",
-  pen: "w-8",
-  source: "w-24 min-w-24 max-w-24",
-  count: "w-[1.52rem]",
-  shortCount: "w-[2.8rem]",
-  ending: "w-[3.2rem]",
+  tableMin: "min-w-[1080px]",
+  pen: "w-[72px] min-w-[72px]",
+  count: "w-[112px] min-w-[112px]",
+  shortCount: "w-[128px] min-w-[128px]",
+  ending: "w-[104px] min-w-[104px]",
+} as const;
+
+const SheetClasses = {
+  cell: "border border-slate-200 p-0 align-middle",
+  header:
+    "border border-slate-300 bg-slate-50 px-2 py-2 text-center text-sm font-medium text-slate-700",
+  group:
+    "border border-slate-300 bg-slate-100 px-2 py-2 text-left text-sm font-medium text-slate-700",
+  input:
+    "h-10 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-1 focus-visible:ring-emerald-700 focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-100",
+  readOnlyInput:
+    "h-10 rounded-none border-0 bg-slate-50 text-center text-slate-600 shadow-none disabled:cursor-default disabled:opacity-100",
 } as const;
 
 export default function PlacementForm() {
@@ -135,14 +167,18 @@ export default function PlacementForm() {
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [addingPen, setAddingPen] = useState(false);
+  const [newPenNo, setNewPenNo] = useState("");
   const [form, setForm] = useState<FormState>({
     placement_date: getToday(),
     dr_no: "",
     file_attached: "",
     farm_id: "",
     farm_name: "",
+    building_id: "",
     building_no: "",
     pen_count: "",
+    source: "",
     remarks: "",
   });
   const [rows, setRows] = useState<PlacementRow[]>([]);
@@ -282,20 +318,20 @@ export default function PlacementForm() {
           file_attached: record.file_attached ?? "",
           farm_id: record.farm_id != null ? String(record.farm_id) : "",
           farm_name: record.farm_name ?? "",
+          building_id: "",
           building_no: record.building_no ?? "",
           pen_count: "1",
+          source: record.f_source ?? record.m_source ?? "",
           remarks: record.remarks ?? "",
         });
 
         setRows([
           {
             pen_no: record.pen_no ?? "1",
-            f_source: record.f_source ?? "",
             f_beg: String(record.f_beg ?? 0),
             f_doa: String(record.f_doa ?? 0),
             f_reject: String(record.f_reject ?? 0),
             f_shortcount: String(record.f_shortcount ?? 0),
-            m_source: record.m_source ?? "",
             m_beg: String(record.m_beg ?? 0),
             m_doa: String(record.m_doa ?? 0),
             m_reject: String(record.m_reject ?? 0),
@@ -318,6 +354,13 @@ export default function PlacementForm() {
   const totalPens = useMemo(() => rows.length, [rows]);
   const disabledAll = saving || loadingRecord;
   const disablePlacementDate = disabledAll || (isEdit && hasDependentRecords);
+  const selectedFarmLocations = useMemo(
+    () =>
+      locations.filter((location) =>
+        isSelectedFarmLocation(location, form.farm_id, form.farm_name),
+      ),
+    [form.farm_id, form.farm_name, locations],
+  );
   const farmOptions = useMemo(() => {
     const values = new Map<string, string>();
     locations.forEach((location) => {
@@ -329,31 +372,70 @@ export default function PlacementForm() {
     return Array.from(values, ([id, name]) => ({ id, name }));
   }, [form.farm_id, form.farm_name, locations]);
   const buildingOptions = useMemo(() => {
-    const values = new Set<string>();
-    if (form.farm_id) {
-      locations
-        .filter((location) => String(location.farm_id) === form.farm_id)
-        .map((location) => location.building_no)
-        .filter(Boolean)
-        .forEach((buildingNo) => values.add(buildingNo));
+    const values = new Map<string, string>();
+
+    selectedFarmLocations.forEach((location) => {
+      if (!location.building_id || !location.building_no) return;
+      values.set(String(location.building_id), location.building_no);
+    });
+
+    if (form.building_id && form.building_no.trim()) {
+      values.set(form.building_id, form.building_no.trim());
+    } else if (form.building_no.trim()) {
+      values.set(form.building_no.trim(), form.building_no.trim());
     }
-    if (form.building_no.trim()) values.add(form.building_no.trim());
-    return Array.from(values);
-  }, [form.building_no, form.farm_id, locations]);
+
+    return Array.from(values, ([id, label]) => ({ id, label }));
+  }, [form.building_id, form.building_no, selectedFarmLocations]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
-    rows.forEach((row) => {
-      if (row.f_source.trim()) values.add(row.f_source.trim());
-      if (row.m_source.trim()) values.add(row.m_source.trim());
-    });
+    if (form.source.trim()) values.add(form.source.trim());
     return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [rows, sourceOptions]);
+  }, [form.source, sourceOptions]);
+
+  useEffect(() => {
+    if (form.building_id || !form.building_no || !selectedFarmLocations.length) {
+      return;
+    }
+
+    const match = selectedFarmLocations.find(
+      (location) => location.building_no === form.building_no,
+    );
+
+    if (!match) return;
+
+    setForm((prev) => ({
+      ...prev,
+      building_id: prev.building_id || String(match.building_id),
+    }));
+  }, [form.building_id, form.building_no, selectedFarmLocations]);
 
   function buildRowsFromPens(pens: FarmLocationLookup[]) {
-    return pens.map((pen, index) => ({
+    const uniquePens = Array.from(
+      new Map(pens.map((pen) => [pen.pen_id, pen])).values(),
+    );
+
+    return uniquePens.map((pen, index) => ({
       ...createEmptyRow(index),
       pen_no: pen.pen_no,
     }));
+  }
+
+  function getSelectedBuildingPens(source = locations) {
+    return source.filter(
+      (location) =>
+        String(location.building_id) === form.building_id ||
+        location.building_no === form.building_no,
+    );
+  }
+
+  function getNextPenNo(pens: FarmLocationLookup[] = getSelectedBuildingPens()) {
+    const highestNumericPen = pens.reduce((highest, pen) => {
+      const parsed = Number(pen.pen_no);
+      return Number.isFinite(parsed) ? Math.max(highest, parsed) : highest;
+    }, 0);
+
+    return String(highestNumericPen ? highestNumericPen + 1 : pens.length + 1);
   }
 
   function handleFarmChange(farmId: string) {
@@ -365,27 +447,78 @@ export default function PlacementForm() {
       ...prev,
       farm_id: farmId,
       farm_name: farm?.farm_name ?? "",
+      building_id: "",
       building_no: "",
       pen_count: "",
     }));
     setRows([]);
+    setNewPenNo("");
   }
 
-  function handleBuildingChange(buildingNo: string) {
-    const nextRows = buildRowsFromPens(
-      locations.filter(
-        (location) =>
-          String(location.farm_id) === form.farm_id &&
-          location.building_no === buildingNo,
-      ),
+  function handleBuildingChange(buildingId: string) {
+    const buildingLocations = selectedFarmLocations.filter(
+      (location) =>
+        String(location.building_id) === buildingId ||
+        location.building_no === buildingId,
     );
+    const buildingNo = buildingLocations[0]?.building_no ?? buildingId;
+    const nextRows = buildRowsFromPens(buildingLocations);
 
     setForm((prev) => ({
       ...prev,
+      building_id: buildingId,
       building_no: buildingNo,
       pen_count: String(nextRows.length),
     }));
     setRows(nextRows);
+    setNewPenNo(getNextPenNo(buildingLocations));
+  }
+
+  async function handleAddPen() {
+    if (!form.building_id) {
+      alert("Please select a building before adding a pen.");
+      return;
+    }
+
+    const penNo = newPenNo.trim();
+    if (!penNo) {
+      alert("Additional pen number is required.");
+      return;
+    }
+
+    const existingPens = getSelectedBuildingPens();
+    const isDuplicate = existingPens.some(
+      (pen) => pen.pen_no.trim().toLowerCase() === penNo.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      alert(`Pen ${penNo} already exists for this building.`);
+      return;
+    }
+
+    setAddingPen(true);
+    try {
+      await createFarmPen({
+        buildingId: asNumber(form.building_id),
+        penNo,
+      });
+
+      const lookup = await listFarmLocationLookup();
+      const refreshedBuildingPens = getSelectedBuildingPens(lookup);
+      const nextRows = buildRowsFromPens(refreshedBuildingPens);
+
+      setLocations(lookup);
+      setRows(nextRows);
+      setForm((prev) => ({
+        ...prev,
+        pen_count: String(nextRows.length),
+      }));
+      setNewPenNo(getNextPenNo(refreshedBuildingPens));
+    } catch (error: unknown) {
+      alert(getErrorMessage(error, "Failed to add pen."));
+    } finally {
+      setAddingPen(false);
+    }
   }
 
   function handleRowChange(
@@ -412,15 +545,11 @@ export default function PlacementForm() {
   }
 
   function renderSourceSelect(
-    index: number,
-    field: "f_source" | "m_source",
     value: string,
+    onValueChange: (nextValue: string) => void,
   ) {
     return (
-      <Select
-        value={value}
-        onValueChange={(nextValue) => handleRowChange(index, field, nextValue)}
-      >
+      <Select value={value} onValueChange={onValueChange} disabled={disabledAll}>
         <SelectTrigger className="w-full min-w-0 max-w-full overflow-hidden">
           <SelectValue
             className="truncate"
@@ -482,7 +611,7 @@ export default function PlacementForm() {
       farm_name: form.farm_name.trim(),
       building_no: form.building_no.trim(),
       pen_no: row.pen_no.trim(),
-      f_source: row.f_source.trim() || null,
+      f_source: form.source.trim() || null,
       f_beg: asNumber(row.f_beg),
       f_doa: asNumber(row.f_doa),
       f_reject: asNumber(row.f_reject),
@@ -493,7 +622,7 @@ export default function PlacementForm() {
         row.f_reject,
         row.f_shortcount,
       ),
-      m_source: row.m_source.trim() || null,
+      m_source: form.source.trim() || null,
       m_beg: asNumber(row.m_beg),
       m_doa: asNumber(row.m_doa),
       m_reject: asNumber(row.m_reject),
@@ -631,7 +760,7 @@ export default function PlacementForm() {
               <div className="space-y-2">
                 <RequiredLabel>Building #</RequiredLabel>
                 <Select
-                  value={form.building_no}
+                  value={form.building_id || form.building_no}
                   onValueChange={handleBuildingChange}
                   disabled={
                     disabledAll || loadingLocations || !form.farm_id || isEdit
@@ -646,9 +775,9 @@ export default function PlacementForm() {
                   </SelectTrigger>
                   <SelectContent>
                     {buildingOptions.length ? (
-                      buildingOptions.map((buildingNo) => (
-                        <SelectItem key={buildingNo} value={buildingNo}>
-                          {buildingNo}
+                      buildingOptions.map((building) => (
+                        <SelectItem key={building.id} value={building.id}>
+                          {building.label}
                         </SelectItem>
                       ))
                     ) : (
@@ -672,9 +801,50 @@ export default function PlacementForm() {
                   placeholder="Generated from building"
                   disabled
                 />
+                {!isEdit ? (
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      value={newPenNo}
+                      onChange={(e) => setNewPenNo(e.target.value)}
+                      placeholder="Additional pen #"
+                      disabled={
+                        disabledAll ||
+                        addingPen ||
+                        loadingLocations ||
+                        !form.building_id
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddPen}
+                      disabled={
+                        disabledAll ||
+                        addingPen ||
+                        loadingLocations ||
+                        !form.building_id
+                      }
+                      className="shrink-0 gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {addingPen ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                ) : null}
                 <p className="text-xs text-muted-foreground">
                   Selecting a building creates placement rows from active pens.
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Source</Label>
+                {renderSourceSelect(form.source, (nextValue) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    source: nextValue,
+                  })),
+                )}
               </div>
 
               <div className="space-y-2 md:col-span-2 xl:col-span-3">
@@ -705,87 +875,79 @@ export default function PlacementForm() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-md border">
-                <table className={`w-full ${TableWidths.tableMin} text-sm`}>
-                  <thead className="bg-green-50">
-                    <tr className="border-b">
+              <div className="overflow-x-auto border border-slate-300 bg-white">
+                <table
+                  className={`w-full ${TableWidths.tableMin} border-collapse table-fixed text-sm`}
+                >
+                  <thead>
+                    <tr>
                       <th
                         rowSpan={2}
-                        className={`px-2 py-2 text-left font-medium ${TableWidths.pen}`}
+                        className={`${SheetClasses.header} ${TableWidths.pen}`}
                       >
                         Pen #
                       </th>
                       <th
-                        colSpan={6}
-                        className="px-2 py-2 text-center font-medium bg-pink-100 text-pink-800"
+                        colSpan={5}
+                        className={`${SheetClasses.group} text-pink-800`}
                       >
                         Female
                       </th>
                       <th
-                        colSpan={6}
-                        className="px-2 py-2 text-center font-medium bg-sky-100 text-sky-800"
+                        colSpan={5}
+                        className={`${SheetClasses.group} text-sky-800`}
                       >
                         Male
                       </th>
                     </tr>
-                    <tr className="border-b">
+                    <tr>
                       <th
-                        className={`${TableWidths.source} px-1 py-1 text-left font-medium bg-pink-50`}
-                      >
-                        Source
-                      </th>
-                      <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${TableWidths.shortCount} px-1 text-left font-medium bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount}`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${TableWidths.ending} px-1 text-left font-medium bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.ending}`}
                       >
                         Ending
                       </th>
                       <th
-                        className={`${TableWidths.source} px-1 text-left font-medium bg-sky-50`}
-                      >
-                        Source
-                      </th>
-                      <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${TableWidths.count} px-1 text-left font-medium bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count}`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${TableWidths.shortCount} px-1 text-left font-medium bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount}`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${TableWidths.ending} px-1 text-left font-medium bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.ending}`}
                       >
                         Ending
                       </th>
@@ -810,9 +972,11 @@ export default function PlacementForm() {
                         return (
                           <tr
                             key={`${row.pen_no}-${index}`}
-                            className="border-b last:border-0"
+                            className="even:bg-white odd:bg-emerald-50/40"
                           >
-                            <td className={`${TableWidths.pen} px-1 py-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.pen} bg-slate-50`}
+                            >
                               <Input
                                 value={row.pen_no}
                                 onChange={(e) =>
@@ -822,18 +986,13 @@ export default function PlacementForm() {
                                     e.target.value,
                                   )
                                 }
-                                disabled
-                                className="w-full"
+                                readOnly
+                                className={SheetClasses.readOnlyInput}
                               />
                             </td>
-                            <td className={`${TableWidths.source} px-1`}>
-                              {renderSourceSelect(
-                                index,
-                                "f_source",
-                                row.f_source,
-                              )}
-                            </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -848,10 +1007,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -866,10 +1027,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -884,10 +1047,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.shortCount} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.shortCount}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -902,25 +1067,22 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.ending} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.ending}`}
+                            >
                               <Input
                                 value={femaleEnding.toLocaleString("en-US")}
                                 readOnly
                                 disabled
-                                className="bg-slate-100 w-full"
+                                className={SheetClasses.readOnlyInput}
                               />
                             </td>
-                            <td className={`${TableWidths.source} px-1`}>
-                              {renderSourceSelect(
-                                index,
-                                "m_source",
-                                row.m_source,
-                              )}
-                            </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -935,10 +1097,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -953,10 +1117,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.count} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -971,10 +1137,12 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.shortCount} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.shortCount}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -989,15 +1157,17 @@ export default function PlacementForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="w-full"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className={`${TableWidths.ending} px-1`}>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.ending}`}
+                            >
                               <Input
                                 value={maleEnding.toLocaleString("en-US")}
                                 readOnly
                                 disabled
-                                className="bg-slate-100 w-full"
+                                className={SheetClasses.readOnlyInput}
                               />
                             </td>
                           </tr>
@@ -1006,7 +1176,7 @@ export default function PlacementForm() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={13}
+                          colSpan={11}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
                           Select a farm and building above to generate placement
