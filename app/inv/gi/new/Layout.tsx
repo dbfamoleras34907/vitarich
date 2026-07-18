@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,6 +21,8 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
+import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
+import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
@@ -39,8 +41,11 @@ import {
   saveGoodsIssue,
 } from '../api'
 import {
+  getDeliveryFlockCardInfo,
+  getDeliveryFlockCardPlacementBatches,
   getAssociatedWarehouseCode,
   getGoodsIssueReferences,
+  GoodsIssueFlockCardInfo,
 } from './api'
 import {
   GoodsReceiptBatchRule,
@@ -49,12 +54,17 @@ import {
   UomConversionOption,
   UomGroupOption,
 } from '@/app/inv/gr/new/api'
+import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
 const MAX_LINES_TO_ADD = 50
 const QUANTITY_LOCALE = 'en-PH'
 const QUANTITY_FORMAT_OPTIONS: Intl.NumberFormatOptions = { maximumFractionDigits: 6 }
+
+type DeliveryPlacementBatch = GoodsIssueOnHandBatch & {
+  itemName?: string
+}
 
 const today = () => {
   const date = new Date()
@@ -84,6 +94,7 @@ const newLine = (): GoodsIssueLine => ({
 const emptyIssue = (giNo: string): GoodsIssue => ({
   id: null,
   giNo,
+  triggeredBy: 'GI',
   issueDate: today(),
   farmId: null,
   farmCode: '',
@@ -139,6 +150,17 @@ const batchOptionKey = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCo
 const canSearchLineInventory = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode'>) =>
   Boolean(line.itemCode.trim() && line.fromWarehouseCode.trim())
 
+const getLineFlockCardLookupKey = (
+  farmId: number | null | undefined,
+  line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode'>,
+) => {
+  const normalizedFarmId = Number(farmId ?? 0)
+  const buildingCode = line.fromWarehouseCode.trim().toUpperCase()
+  if (!Number.isFinite(normalizedFarmId) || normalizedFarmId <= 0 || !buildingCode) return ''
+
+  return `${normalizedFarmId}|${line.fromWarehouseId ?? ''}|${buildingCode}`
+}
+
 const getFarmWarehouseCodes = (farm?: GoodsReceiptFarm | null) => {
   const associations = farm?.associated_warehouses
   if (!Array.isArray(associations)) return new Set<string>()
@@ -149,13 +171,27 @@ const getFarmWarehouseCodes = (farm?: GoodsReceiptFarm | null) => {
 const getWarehousesForFarm = (
   farm: GoodsReceiptFarm | null | undefined,
   warehouses: WarehouseData[],
+  warehouseTypeFilter?: string,
 ) => {
   const warehouseCodes = getFarmWarehouseCodes(farm)
-  if (!warehouseCodes.size) return []
+  const farmId = farm?.id == null ? '' : String(farm.id)
+  const farmCode = String(farm?.code ?? '').trim()
+  if (!warehouseCodes.size && (!warehouseTypeFilter || (!farmId && !farmCode))) return []
 
-  return warehouses.filter(warehouse =>
-    warehouseCodes.has(String(warehouse.whse_code ?? '').trim()),
-  )
+  const normalizedTypeFilter = warehouseTypeFilter?.trim().toLowerCase()
+
+  return warehouses.filter(warehouse => {
+    const warehouseCode = String(warehouse.whse_code ?? '').trim()
+    const matchesAssociation = warehouseCodes.has(warehouseCode)
+    const matchesDirectFarm =
+      Boolean(normalizedTypeFilter) &&
+      ((farmId && String(warehouse.farm_id ?? '') === farmId) ||
+        (farmCode && String(warehouse.farm_code ?? '').trim() === farmCode))
+    const matchesType = !normalizedTypeFilter ||
+      String(warehouse.warehouse_type ?? '').trim().toLowerCase() === normalizedTypeFilter
+
+    return (matchesAssociation || matchesDirectFarm) && matchesType
+  })
 }
 
 const formatDateValue = (value: string) => value || '-'
@@ -193,13 +229,19 @@ type GoodsIssueFormMode = 'draft' | 'post'
 
 type NewGoodsIssueProps = {
   mode?: GoodsIssueFormMode
-}
-
-type HeaderField = {
-  key: string
-  label: string
-  className?: string
-  content: ReactNode
+  triggeredBy?: string
+  documentPrefix?: string
+  basePath?: string
+  permissionPath?: string
+  parentLabel?: string
+  parentLink?: string
+  listLabel?: string
+  formLabel?: string
+  useDefaultFarm?: boolean
+  warehouseLabel?: string
+  warehouseTypeFilter?: string
+  showFlockCardInformation?: boolean
+  warehouseScope?: 'header' | 'line'
 }
 
 function GoodsIssueLoadingShell() {
@@ -223,15 +265,30 @@ function GoodsIssueLoadingShell() {
   )
 }
 
-export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
+export default function NewGoodsIssue({
+  mode = 'draft',
+  triggeredBy = 'GI',
+  documentPrefix = 'GI',
+  basePath = '/inv/gi',
+  permissionPath = '/inv/gi',
+  parentLabel = 'Inventory',
+  parentLink = '/inv',
+  listLabel = 'Item Stock Out',
+  formLabel,
+  useDefaultFarm = false,
+  warehouseLabel = 'Warehouse',
+  warehouseTypeFilter,
+  showFlockCardInformation = false,
+  warehouseScope = 'header',
+}: NewGoodsIssueProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const issueId = searchParams.get('id')
   const isPostMode = mode === 'post'
-  const cannotInsert = usePermission('/inv/gi/insert')
-  const cannotEdit = usePermission('/inv/gi/edit')
+  const cannotInsert = usePermission(`${permissionPath}/insert`)
+  const cannotEdit = usePermission(`${permissionPath}/edit`)
   const [issue, setIssue] = useState<GoodsIssue | null>(null)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
@@ -242,11 +299,30 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchOptions, setBatchOptions] = useState<Record<string, GoodsIssueOnHandBatch[]>>({})
   const [loadingBatchOptions, setLoadingBatchOptions] = useState<Record<string, boolean>>({})
+  const [flockCardInfo, setFlockCardInfo] = useState<GoodsIssueFlockCardInfo | null>(null)
+  const [loadingFlockCardInfo, setLoadingFlockCardInfo] = useState(false)
+  const [lineFlockCardInfo, setLineFlockCardInfo] = useState<Record<string, {
+    loading: boolean
+    info: GoodsIssueFlockCardInfo | null
+  }>>({})
+  const [linePlacementBatches, setLinePlacementBatches] = useState<Record<string, DeliveryPlacementBatch[]>>({})
+  const [loadingLinePlacementBatches, setLoadingLinePlacementBatches] = useState<Record<string, boolean>>({})
+  const lineFlockCardCacheRef = useRef<Record<string, {
+    info: GoodsIssueFlockCardInfo | null
+    placementBatches: DeliveryPlacementBatch[]
+  }>>({})
+  const batchSelectionActionsRef = useRef<{
+    getBatchOptionsForLine?: (line: GoodsIssueLine) => GoodsIssueOnHandBatch[]
+    selectBatch?: (line: GoodsIssueLine, batchNumber: string) => Promise<void>
+  }>({})
+  const handledAutoBatchSelectionRef = useRef<Record<string, string>>({})
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsIssueLine['id'] | null>(null)
+  const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const usesLineWarehouse = warehouseScope === 'line'
 
   useEffect(() => {
     setCollapsed(true)
@@ -258,8 +334,8 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
     async function loadPageData() {
       try {
         if (isPostMode && !issueId) {
-          toast('Select a draft item stock out transaction to post.')
-          router.push('/inv/gi')
+          toast(`Select a draft ${listLabel.toLowerCase()} transaction to post.`)
+          router.push(basePath)
           return
         }
 
@@ -267,8 +343,10 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
           .filter(item => item.void === 1 || item.void == null)
         const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
           .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
+        const canUseCachedWarehouses = !warehouseTypeFilter ||
+          cachedWarehouses.some(warehouse => 'warehouse_type' in warehouse)
 
-        const referencesPromise = cachedItems.length > 0 && cachedWarehouses.length > 0
+        const referencesPromise = cachedItems.length > 0 && cachedWarehouses.length > 0 && canUseCachedWarehouses
           ? getGoodsIssueReferences().then(references => ({
             ...references,
             items: cachedItems,
@@ -279,12 +357,43 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         const [references, savedIssue, giNo] = await Promise.all([
           referencesPromise,
           issueId ? getGoodsIssueById(Number(issueId)) : Promise.resolve(null),
-          issueId ? Promise.resolve('') : createGoodsIssueNumber(),
+          issueId ? Promise.resolve('') : createGoodsIssueNumber(documentPrefix),
         ])
 
         if (cancelled) return
 
-        setIssue(savedIssue ?? emptyIssue(giNo))
+        if (savedIssue && savedIssue.triggeredBy !== triggeredBy) {
+          toast(`This document belongs to ${savedIssue.triggeredBy}.`)
+          router.push(basePath)
+          return
+        }
+
+        const nextIssue = savedIssue
+          ? { ...savedIssue, triggeredBy: savedIssue.triggeredBy || triggeredBy }
+          : { ...emptyIssue(giNo), triggeredBy }
+
+        if (!savedIssue && useDefaultFarm) {
+          const defaultFarmId = getValue('DefaultFarmId')
+          const defaultFarm = references.farms.find(farm => String(farm.id) === String(defaultFarmId))
+          const farmToAutoSelect = defaultFarm ?? (references.farms.length === 1 ? references.farms[0] : null)
+
+          if (farmToAutoSelect) {
+            const availableWarehouses = getWarehousesForFarm(farmToAutoSelect, references.warehouses, warehouseTypeFilter)
+            const autoSelectedWarehouse = !usesLineWarehouse && availableWarehouses.length === 1
+              ? availableWarehouses[0]
+              : null
+
+            nextIssue.farmId = farmToAutoSelect.id
+            nextIssue.farmCode = farmToAutoSelect.code ?? ''
+            nextIssue.farmName = farmToAutoSelect.name ?? ''
+            nextIssue.fromWarehouseId = autoSelectedWarehouse?.id ?? null
+            nextIssue.fromWarehouseCode = autoSelectedWarehouse?.whse_code ?? ''
+            nextIssue.fromWarehouseName = autoSelectedWarehouse?.whse_name ?? ''
+            nextIssue.lines = nextIssue.lines.map(line => clearWarehouseSensitiveLineData(line, autoSelectedWarehouse))
+          }
+        }
+
+        setIssue(nextIssue)
         setItems(references.items)
         setWarehouses(references.warehouses)
         setFarms(references.farms)
@@ -306,7 +415,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
     return () => {
       cancelled = true
     }
-  }, [getValue, isPostMode, issueId, router])
+  }, [basePath, documentPrefix, getValue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === issue?.farmId),
@@ -314,9 +423,285 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
   )
 
   const farmWarehouses = useMemo(
-    () => getWarehousesForFarm(selectedFarm, warehouses),
-    [selectedFarm, warehouses],
+    () => getWarehousesForFarm(selectedFarm, warehouses, warehouseTypeFilter),
+    [selectedFarm, warehouses, warehouseTypeFilter],
   )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDeliverySettings() {
+      if (triggeredBy !== 'BR-DR' || !issue?.farmId) {
+        setDeliveryBatchAutoSelection(false)
+        return
+      }
+
+      try {
+        const settings = await getBrDeliverySettings(Number(issue.farmId))
+        if (!cancelled) {
+          setDeliveryBatchAutoSelection(Boolean(settings?.batch_auto_selection))
+        }
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) setDeliveryBatchAutoSelection(false)
+      }
+    }
+
+    handledAutoBatchSelectionRef.current = {}
+    loadDeliverySettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [issue?.farmId, triggeredBy])
+
+  const lineWarehouseSignature = useMemo(
+    () => issue?.lines
+      .map(line => `${line.id}:${line.fromWarehouseId ?? ''}:${line.fromWarehouseCode}`)
+      .join('|') ?? '',
+    [issue?.lines],
+  )
+
+  const lineWarehouseLookups = useMemo(
+    () => lineWarehouseSignature
+      .split('|')
+      .filter(Boolean)
+      .map(value => {
+        const [id, rawWarehouseId, ...warehouseCodeParts] = value.split(':')
+        const warehouseId = Number(rawWarehouseId)
+
+        return {
+          id,
+          fromWarehouseId: Number.isFinite(warehouseId) && warehouseId > 0 ? warehouseId : null,
+          fromWarehouseCode: warehouseCodeParts.join(':'),
+        }
+      }),
+    [lineWarehouseSignature],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadFlockCardInfo() {
+      if (usesLineWarehouse || !showFlockCardInformation || !issue?.farmId || !issue.fromWarehouseCode) {
+        setFlockCardInfo(null)
+        return
+      }
+
+      setLoadingFlockCardInfo(true)
+      try {
+        const info = await getDeliveryFlockCardInfo({
+          farmId: issue.farmId,
+          buildingWarehouseId: issue.fromWarehouseId,
+          buildingCode: issue.fromWarehouseCode,
+        })
+
+        if (!cancelled) setFlockCardInfo(info)
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) {
+          setFlockCardInfo(null)
+          toast('Flock card information could not be loaded.')
+        }
+      } finally {
+        if (!cancelled) setLoadingFlockCardInfo(false)
+      }
+    }
+
+    loadFlockCardInfo()
+
+    return () => {
+      cancelled = true
+    }
+  }, [issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLineFlockCardInfo() {
+      if (!usesLineWarehouse || !showFlockCardInformation || !issue?.farmId) {
+        setLineFlockCardInfo({})
+        setLinePlacementBatches({})
+        setLoadingLinePlacementBatches({})
+        lineFlockCardCacheRef.current = {}
+        return
+      }
+
+      const linesWithBuildings = lineWarehouseLookups.filter(line => line.fromWarehouseCode)
+      const activeLineIds = new Set(lineWarehouseLookups.map(line => String(line.id)))
+      const missingLookups = new Map<string, {
+        farmId: number
+        buildingWarehouseId: number | null
+        buildingCode: string
+      }>()
+
+      lineWarehouseLookups.forEach(line => {
+        const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+        const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+
+        if (lookupKey && !cached) {
+          missingLookups.set(lookupKey, {
+            farmId: Number(issue.farmId),
+            buildingWarehouseId: line.fromWarehouseId,
+            buildingCode: line.fromWarehouseCode,
+          })
+        }
+      })
+
+      setLineFlockCardInfo(current => {
+        const nextState: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
+
+        lineWarehouseLookups.forEach(line => {
+          const id = String(line.id)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+
+          nextState[id] = cached
+            ? { loading: false, info: cached.info }
+            : {
+                loading: Boolean(lookupKey),
+                info: current[id]?.info ?? null,
+              }
+        })
+
+        return nextState
+      })
+
+      setLinePlacementBatches(current => {
+        const nextBatches: Record<string, DeliveryPlacementBatch[]> = {}
+
+        lineWarehouseLookups.forEach(line => {
+          const id = String(line.id)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+          nextBatches[id] = cached?.placementBatches ?? current[id] ?? []
+        })
+
+        Object.keys(nextBatches).forEach(id => {
+          if (!activeLineIds.has(id)) delete nextBatches[id]
+        })
+
+        return nextBatches
+      })
+      setLoadingLinePlacementBatches(() => {
+        const nextLoading: Record<string, boolean> = {}
+
+        lineWarehouseLookups.forEach(line => {
+          const id = String(line.id)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+          nextLoading[id] = Boolean(lookupKey && !cached)
+        })
+
+        Object.keys(nextLoading).forEach(id => {
+          if (!activeLineIds.has(id)) delete nextLoading[id]
+        })
+
+        return nextLoading
+      })
+
+      if (missingLookups.size === 0) return
+
+      const infoResults = await Promise.all(
+        Array.from(missingLookups.entries()).map(async ([lookupKey, params]) => {
+          try {
+            const info = await getDeliveryFlockCardInfo({
+              farmId: params.farmId,
+              buildingWarehouseId: params.buildingWarehouseId,
+              buildingCode: params.buildingCode,
+            })
+            return { lookupKey, info }
+          } catch (error) {
+            console.error(error)
+            return { lookupKey, info: null }
+          }
+        }),
+      )
+
+      if (cancelled) return
+
+      infoResults.forEach(result => {
+        lineFlockCardCacheRef.current[result.lookupKey] = {
+          info: result.info,
+          placementBatches: lineFlockCardCacheRef.current[result.lookupKey]?.placementBatches ?? [],
+        }
+      })
+
+      setLineFlockCardInfo(() => {
+        const updated: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
+        lineWarehouseLookups.forEach(line => {
+          const id = String(line.id)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+          updated[id] = { loading: false, info: cached?.info ?? null }
+        })
+        infoResults.forEach(result => {
+          const matchingLines = linesWithBuildings.filter(line =>
+            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+          )
+          matchingLines.forEach(line => {
+            updated[String(line.id)] = { loading: false, info: result.info }
+          })
+        })
+        return updated
+      })
+
+      const placementResults = await Promise.all(
+        infoResults.map(async result => {
+          try {
+            const placementBatches = result.info?.cardNo
+              ? await getDeliveryFlockCardPlacementBatches({
+                  flockCardId: result.info.id,
+                  buildingCode: result.info.buildingCode,
+                })
+              : []
+            return { lookupKey: result.lookupKey, placementBatches }
+          } catch (error) {
+            console.error(error)
+            return { lookupKey: result.lookupKey, placementBatches: [] }
+          }
+        }),
+      )
+
+      if (cancelled) return
+
+      placementResults.forEach(result => {
+        const cached = lineFlockCardCacheRef.current[result.lookupKey]
+        lineFlockCardCacheRef.current[result.lookupKey] = {
+          info: cached?.info ?? null,
+          placementBatches: result.placementBatches,
+        }
+      })
+
+      setLinePlacementBatches(() => {
+        const updated: Record<string, DeliveryPlacementBatch[]> = {}
+        lineWarehouseLookups.forEach(line => {
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
+          updated[String(line.id)] = cached?.placementBatches ?? []
+        })
+        return updated
+      })
+      setLoadingLinePlacementBatches(current => {
+        const updated = { ...current }
+        placementResults.forEach(result => {
+          const matchingLines = linesWithBuildings.filter(line =>
+            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+          )
+          matchingLines.forEach(line => {
+            updated[String(line.id)] = false
+          })
+        })
+        return updated
+      })
+    }
+
+    loadLineFlockCardInfo()
+
+    return () => {
+      cancelled = true
+    }
+  }, [issue?.farmId, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -428,6 +813,9 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         conversion.uomCode.toUpperCase() === uomCode.toUpperCase(),
     )
 
+  const getDefaultAltUom = (groupCode: string) =>
+    getGroupUoms(groupCode)[0]?.uomCode ?? ''
+
   const refreshLineOnHand = async (line: GoodsIssueLine) => {
     if (!canSearchLineInventory(line)) return
 
@@ -460,8 +848,8 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
   const selectFarm = (value: string) => {
     const farm = farms.find(candidate => String(candidate.id) === value)
     const autoSelectedWarehouse = (() => {
-      const availableWarehouses = getWarehousesForFarm(farm, warehouses)
-      return availableWarehouses.length === 1 ? availableWarehouses[0] : null
+      const availableWarehouses = getWarehousesForFarm(farm, warehouses, warehouseTypeFilter)
+      return !usesLineWarehouse && availableWarehouses.length === 1 ? availableWarehouses[0] : null
     })()
     const updatedLines = issue?.lines.map(line =>
       clearWarehouseSensitiveLineData(line, autoSelectedWarehouse),
@@ -508,13 +896,21 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       })
   }
 
+  const selectLineWarehouse = async (line: GoodsIssueLine, value: string) => {
+    const warehouse = farmWarehouses.find(candidate => candidate.whse_code === value) ?? null
+    const updatedLine = clearWarehouseSensitiveLineData(line, warehouse)
+
+    updateLine(line.id, updatedLine)
+
+    if (canSearchLineInventory(updatedLine)) {
+      await refreshLineOnHand(updatedLine)
+    }
+  }
+
   const selectItem = async (line: GoodsIssueLine, value: string) => {
     const item = items.find(candidate => candidate.item_code === value)
     const baseUom = item?.inventory_uom || item?.unit_measure || ''
-    const groupUoms = getGroupUoms(baseUom)
-    const altUom = groupUoms.some(option => option.uomCode === baseUom)
-      ? baseUom
-      : groupUoms[0]?.uomCode ?? ''
+    const altUom = getDefaultAltUom(baseUom)
     const updatedLine = {
       ...line,
       itemId: item?.id ?? null,
@@ -528,9 +924,9 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       altUom,
       baseQty: calculateBaseQty(line.altQty || 1, altUom, baseUom),
       baseUom,
-      fromWarehouseId: issue?.fromWarehouseId ?? line.fromWarehouseId,
-      fromWarehouseCode: issue?.fromWarehouseCode ?? line.fromWarehouseCode,
-      fromWarehouseName: issue?.fromWarehouseName ?? line.fromWarehouseName,
+      fromWarehouseId: usesLineWarehouse ? line.fromWarehouseId : issue?.fromWarehouseId ?? line.fromWarehouseId,
+      fromWarehouseCode: usesLineWarehouse ? line.fromWarehouseCode : issue?.fromWarehouseCode ?? line.fromWarehouseCode,
+      fromWarehouseName: usesLineWarehouse ? line.fromWarehouseName : issue?.fromWarehouseName ?? line.fromWarehouseName,
       onHandQty: 0,
     }
 
@@ -540,34 +936,134 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       batchRuleId: batchRule?.id ?? null,
     })
 
-    await refreshLineOnHand({
+    const lineForRefresh = {
       ...updatedLine,
       batchRuleId: batchRule?.id ?? null,
-    })
+    }
+
+    if (!lineHasPlacementBatchOptions(lineForRefresh)) {
+      await refreshLineOnHand(lineForRefresh)
+    }
   }
+
+  const getBatchOptionsForLine = (line: GoodsIssueLine) => {
+    const placementBatches = linePlacementBatches[String(line.id)] ?? []
+    if (usesLineWarehouse && placementBatches.length > 0) {
+      const selectedItemCode = line.itemCode.trim().toUpperCase()
+      return selectedItemCode
+        ? placementBatches.filter(batch => batch.itemCode.trim().toUpperCase() === selectedItemCode)
+        : placementBatches
+    }
+
+    return batchOptions[batchOptionKey(line)] ?? []
+  }
+
+  const lineHasPlacementBatchOptions = (line: GoodsIssueLine) =>
+    usesLineWarehouse && (linePlacementBatches[String(line.id)]?.length ?? 0) > 0
+
+  const getItemsForLine = (line: GoodsIssueLine) => {
+    if (!usesLineWarehouse) return items
+
+    const placementItemCodes = new Set(
+      (linePlacementBatches[String(line.id)] ?? [])
+        .map(batch => batch.itemCode.trim().toUpperCase())
+        .filter(Boolean),
+    )
+
+    return items.filter(item => placementItemCodes.has(String(item.item_code ?? '').trim().toUpperCase()))
+  }
+
+  const canOpenBatchSelector = (line: Pick<GoodsIssueLine, 'id' | 'itemCode' | 'fromWarehouseCode'>) =>
+    lineHasPlacementBatchOptions(line as GoodsIssueLine) || canSearchLineInventory(line)
 
   const selectBatch = async (line: GoodsIssueLine, batchNumber: string) => {
     if (issue?.status !== 'Draft') return
 
-    const options = batchOptions[batchOptionKey(line)] ?? []
+    const options = getBatchOptionsForLine(line)
     const batch = options.find(option => option.batchNumber === batchNumber)
-    updateLine(line.id, {
+    const batchItem = batch?.itemCode
+      ? items.find(item => item.item_code === batch.itemCode) ?? null
+      : null
+    const batchItemName = batch && 'itemName' in batch ? String(batch.itemName ?? '') : ''
+    const selectedItem = batchItem ?? getSelectedItem(line)
+    const baseUom = selectedItem?.inventory_uom || selectedItem?.unit_measure || line.baseUom || ''
+    const availableAltUoms = getGroupUoms(baseUom)
+    const lineAltUomIsAvailable = availableAltUoms.some(option => option.uomCode === line.altUom)
+    const altUom = lineAltUomIsAvailable ? line.altUom : getDefaultAltUom(baseUom)
+    const altQty = line.altQty || 1
+    const updatedLine = {
+      ...line,
+      itemId: selectedItem?.id ?? line.itemId,
+      itemCode: selectedItem?.item_code ?? batch?.itemCode ?? line.itemCode,
+      description: selectedItem?.item_name || selectedItem?.description || batchItemName || line.description,
+      batchRuleId: null,
       batchNumber: batch?.batchNumber ?? '',
       manufacturingDate: batch?.manufacturingDate ?? '',
       expiryDate: batch?.expiryDate ?? '',
+      altQty,
+      altUom,
+      baseQty: calculateBaseQty(altQty, altUom, baseUom),
+      baseUom,
       onHandQty: batch?.onHandQty ?? 0,
+    }
+    const batchRule = selectedItem ? getBatchRuleForLine(updatedLine) : null
+    updateLine(line.id, {
+      ...updatedLine,
+      batchRuleId: batchRule?.id ?? null,
     })
     setActiveBatchLineId(null)
   }
 
   const openBatchSelector = (line: GoodsIssueLine) => {
-    if (!canSearchLineInventory(line)) return
+    if (!canOpenBatchSelector(line)) return
 
     setActiveBatchLineId(line.id)
-    if (issue?.status !== 'Posted') {
+    if (issue?.status !== 'Posted' && canSearchLineInventory(line) && !lineHasPlacementBatchOptions(line)) {
       refreshLineOnHand(line).catch(console.error)
     }
   }
+
+  batchSelectionActionsRef.current = {
+    getBatchOptionsForLine,
+    selectBatch,
+  }
+
+  useEffect(() => {
+    if (!issue || issue.status !== 'Draft' || !deliveryBatchAutoSelection || !usesLineWarehouse) return
+
+    issue.lines.forEach(line => {
+      if (!line.fromWarehouseCode || line.batchNumber) return
+
+      const options = batchSelectionActionsRef.current.getBatchOptionsForLine?.(line) ?? []
+      if (options.length === 0 || loadingLinePlacementBatches[String(line.id)]) return
+
+      const signature = [
+        issue.farmId ?? '',
+        line.fromWarehouseCode,
+        line.itemCode,
+        options.map(option => `${option.itemCode}:${option.batchNumber}`).join('|'),
+      ].join('::')
+
+      if (handledAutoBatchSelectionRef.current[String(line.id)] === signature) return
+      handledAutoBatchSelectionRef.current[String(line.id)] = signature
+
+      if (options.length === 1) {
+        batchSelectionActionsRef.current.selectBatch?.(line, options[0].batchNumber).catch(console.error)
+        return
+      }
+
+      if (!activeBatchLineId) {
+        setActiveBatchLineId(line.id)
+      }
+    })
+  }, [
+    activeBatchLineId,
+    deliveryBatchAutoSelection,
+    issue,
+    linePlacementBatches,
+    loadingLinePlacementBatches,
+    usesLineWarehouse,
+  ])
 
   const completedLines = issue?.lines
     .filter(lineHasEnteredItem)
@@ -591,8 +1087,8 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       toast('Please select a farm.')
       return
     }
-    if (!issue.fromWarehouseId || !issue.fromWarehouseCode) {
-      toast('Please select a warehouse.')
+    if (!usesLineWarehouse && (!issue.fromWarehouseId || !issue.fromWarehouseCode)) {
+      toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
     }
     const linesToSave = completedLines
@@ -601,8 +1097,33 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
       toast('Please select at least one item.')
       return
     }
+    if (usesLineWarehouse) {
+      const invalidLine = linesToSave.find(line =>
+        !line.itemCode ||
+        !line.fromWarehouseCode ||
+        lineHasInvalidQuantity(line) ||
+        (line.onHandQty > 0 && line.baseQty > line.onHandQty),
+      )
+
+      if (invalidLine) {
+        if (!invalidLine.fromWarehouseCode) {
+          toast(`Please select a ${warehouseLabel.toLowerCase()} for each line.`)
+          return
+        }
+
+        toast(`Please complete the line for ${invalidLine.itemCode || warehouseLabel.toLowerCase()}.`)
+        return
+      }
+    }
     if (linesToSave.some(lineHasInvalidQuantity)) {
       toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
+      return
+    }
+    const missingWarehouseLine = usesLineWarehouse
+      ? linesToSave.find(line => !line.fromWarehouseId || !line.fromWarehouseCode)
+      : null
+    if (missingWarehouseLine) {
+      toast(`Please select a ${warehouseLabel.toLowerCase()} for ${missingWarehouseLine.itemCode || 'each line'}.`)
       return
     }
 
@@ -624,26 +1145,37 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         }
       }
 
+      const firstLine = linesToSave[0]
+      const issueToSave = usesLineWarehouse
+        ? {
+            ...issue,
+            fromWarehouseId: firstLine?.fromWarehouseId ?? null,
+            fromWarehouseCode: firstLine?.fromWarehouseCode ?? '',
+            fromWarehouseName: firstLine?.fromWarehouseName ?? '',
+          }
+        : issue
+
       const savedIssue = await saveGoodsIssue({
-        ...issue,
+        ...issueToSave,
+        triggeredBy,
         status: targetStatus,
         lines: linesToSave,
       })
 
-      toast(posting ? 'Item stock out posted successfully.' : 'Item stock out draft saved.')
+      toast(posting ? `${listLabel} posted successfully.` : `${listLabel} draft saved.`)
 
       if (posting) {
-        router.push('/inv/gi')
+        router.push(basePath)
         return
       }
       if (!isPostMode && savedIssue?.id) {
-        router.push(`/inv/gi/post?id=${savedIssue.id}`)
+        router.push(`${basePath}/post?id=${savedIssue.id}`)
         return
       }
       if (savedIssue) setIssue(savedIssue)
     } catch (error) {
       console.error(error)
-      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save item stock out'))
+      toast('Error: ' + (error instanceof Error ? error.message : `Unable to save ${listLabel.toLowerCase()}`))
     } finally {
       setSaving(false)
     }
@@ -653,7 +1185,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
 
   const activeBatchLine = issue.lines.find(line => line.id === activeBatchLineId) ?? null
   const activeBatchKey = activeBatchLine ? batchOptionKey(activeBatchLine) : ''
-  const activeBatchOptions = activeBatchKey ? batchOptions[activeBatchKey] ?? [] : []
+  const activeBatchOptions = activeBatchLine ? getBatchOptionsForLine(activeBatchLine) : []
   const activeBatchLoading = activeBatchKey ? Boolean(loadingBatchOptions[activeBatchKey]) : false
   const activeBatchHasSearched = activeBatchKey
     ? Object.prototype.hasOwnProperty.call(batchOptions, activeBatchKey)
@@ -661,14 +1193,62 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
   const activeDocumentIsPosted = issue.status === 'Posted'
 
   const canSave = !saving && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
-  const headerComponentList: HeaderField[] = [
+  const renderFlockCardInformation = (
+    info: GoodsIssueFlockCardInfo | null,
+    loading: boolean,
+    hasBuilding: boolean,
+    compact = false,
+  ) => (
+    <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+      {loading ? (
+        <span className="text-stone-500">Loading flock card information...</span>
+      ) : info ? (
+        <div className={`grid gap-2 ${compact ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Flock Card</div>
+            <div className="font-semibold text-stone-950">{info.cardNo || '-'}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Flock Code</div>
+            <div className="font-semibold text-stone-950">{info.flockCode || '-'}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Breed / Age</div>
+            <div className="font-semibold text-stone-950">
+              {info.breed || '-'} / {info.age}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Start Date</div>
+            <div className="font-semibold text-stone-950">{formatDateValue(info.startDate)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Animal Qty</div>
+            <div className="font-semibold text-stone-950">{formatQuantity(info.animalQty)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-stone-500">Broiler Type</div>
+            <div className="font-semibold text-stone-950">{info.broilerType || '-'}</div>
+          </div>
+        </div>
+      ) : (
+        <span className="text-stone-500">
+          {hasBuilding ? 'No saved flock card found for this farm and building.' : 'Select a building to load flock card information.'}
+        </span>
+      )}
+    </div>
+  )
+  const flockCardInformationContent = showFlockCardInformation
+    ? renderFlockCardInformation(flockCardInfo, loadingFlockCardInfo, Boolean(issue.fromWarehouseCode))
+    : null
+  const headerComponentList: GoodsIssueHeaderField[] = [
     {
       key: 'gi-no',
-      label: 'GI No.',
+      label: `${documentPrefix} No.`,
       content:
         (
           <div className='flex items-center gap-1'>
-            <Input value={issue.giNo} readOnly className="bg-stone-50" />,
+            <Input value={issue.giNo} readOnly className="bg-stone-50" />
             <span className={getInventoryStatusBadgeClass(issue.status)}>
               {issue.status}
             </span>
@@ -715,21 +1295,31 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
         </div>
       ),
     },
-    {
-      key: 'warehouse',
-      label: 'Warehouse',
-      content: (
-        <SearchableDropdown
-          list={farmWarehouses}
-          codeLabel="whse_code"
-          nameLabel="whse_name"
-          value={issue.fromWarehouseCode}
-          placeholder={issue.farmId ? 'Select warehouse...' : 'Select farm first'}
-          width={360}
-          onChange={(value) => selectHeaderWarehouse(value)}
-        />
-      ),
-    },
+    ...(!usesLineWarehouse
+      ? [{
+          key: 'warehouse',
+          label: warehouseLabel,
+          content: (
+            <SearchableDropdown
+              list={farmWarehouses}
+              codeLabel="whse_code"
+              nameLabel="whse_name"
+              value={issue.fromWarehouseCode}
+              placeholder={issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
+              width={360}
+              onChange={(value) => selectHeaderWarehouse(value)}
+            />
+          ),
+        }]
+      : []),
+    ...(!usesLineWarehouse && showFlockCardInformation
+      ? [{
+          key: 'flock-card-information',
+          label: 'Flock card information',
+          className: 'sm:col-span-2 sm:grid-cols-[112px_minmax(0,1fr)]',
+          content: flockCardInformationContent,
+        }]
+      : []),
     {
       key: 'remarks',
       label: 'Remarks',
@@ -748,43 +1338,74 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
     <main className="min-h-[calc(100vh-4rem)]  text-stone-950">
       <div className="flex items-center justify-between gap-3 px-4 mt-4">
         <Breadcrumb
-          SecondPreviewPageName="Inventory"
-          SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="Item Stock Out"
-          FirstPreviewsPageLink="/inv/gi"
-          CurrentPageName={isPostMode ? 'Post GI' : 'New GI'}
+          SecondPreviewPageName={parentLabel}
+          SecondPreviewPageLink={parentLink}
+          FirstPreviewsPageName={listLabel}
+          FirstPreviewsPageLink={basePath}
+          CurrentPageName={formLabel ?? (isPostMode ? `Post ${documentPrefix}` : `New ${documentPrefix}`)}
         />
-        <Button type="button" variant="outline" onClick={() => router.push('/inv/gi')}>
+        <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
           <List className="size-4" />
-          Item Stock Out List
+          {listLabel} List
         </Button>
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
-          {headerComponentList.map(item => (
-            <div
-              key={item.key}
-              className={`grid items-center gap-2 ${item.className ?? 'sm:grid-cols-[112px_minmax(0,300px)]'}`}
-            >
-              <label className="text-sm font-semibold">{item.label}</label>
-              {item.content}
-            </div>
-          ))}
-        </div>
+        <GoodsIssueHeaderSection fields={headerComponentList} />
 
         <div className="border-t p-5">
           <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="border-b border-stone-200 bg-white px-3 py-3">
-              <h2 className="text-base font-semibold">Issue Lines</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 className="text-base font-semibold">Issue Lines</h2>
+                {usesLineWarehouse && showFlockCardInformation && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    Flock card information: select building to load flock card.
+                  </span>
+                )}
+              </div>
             </div>
 
+            {usesLineWarehouse ? (
+              <DeliveryIssueLinesTable
+                issue={issue}
+                warehouseLabel={warehouseLabel}
+                farmWarehouses={farmWarehouses}
+                loadingBatchOptions={loadingBatchOptions}
+                batchOptions={batchOptions}
+                lineFlockCardInfo={lineFlockCardInfo}
+                loadingLinePlacementBatches={loadingLinePlacementBatches}
+                activeDocumentIsPosted={activeDocumentIsPosted}
+                canPostDocument={canPostDocument}
+                getItemsForLine={getItemsForLine}
+                itemNeedsBatch={itemNeedsBatch}
+                lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
+                batchOptionKey={batchOptionKey}
+                getBatchOptionsForLine={getBatchOptionsForLine}
+                canOpenBatchSelector={canOpenBatchSelector}
+                selectLineWarehouse={selectLineWarehouse}
+                selectItem={selectItem}
+                openBatchSelector={openBatchSelector}
+                updateLine={updateLine}
+                setIssue={setIssue}
+                newLine={newLine}
+                calculateBaseQty={calculateBaseQty}
+                getGroupUoms={getGroupUoms}
+                getSelectedGroup={getSelectedGroup}
+                numberValue={numberValue}
+                formatQuantity={formatQuantity}
+                formatDateValue={formatDateValue}
+              />
+            ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1200px] w-full border-collapse text-sm">
+              <table className="min-w-[1500px] w-full border-collapse text-sm">
                 <thead className="bg-stone-100 text-left text-xs uppercase tracking-wide text-stone-600">
                   <tr>
                     <th className="w-12 px-3 py-3 text-center">#</th>
                     <th className="w-[280px] px-3 py-3">Item</th>
+                    {usesLineWarehouse && (
+                      <th className="w-[340px] px-3 py-3">{warehouseLabel}</th>
+                    )}
                     <th className="w-[240px] px-3 py-3">Batch</th>
                     <th className="w-[160px] px-3 py-3">UoM Group</th>
                     <th className="w-[120px] px-3 py-3">Qty</th>
@@ -818,6 +1439,32 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                             onChange={(value) => selectItem(line, value)}
                           />
                         </td>
+                        {usesLineWarehouse && (
+                          <td className="px-3 py-2 align-top">
+                            <div className="space-y-2">
+                              <SearchableDropdown
+                                list={farmWarehouses}
+                                codeLabel="whse_code"
+                                nameLabel="whse_name"
+                                value={line.fromWarehouseCode}
+                                placeholder={issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
+                                width={360}
+                                onChange={(value) => {
+                                  selectLineWarehouse(line, value).catch(console.error)
+                                }}
+                              />
+                              {showFlockCardInformation && (() => {
+                                const state = lineFlockCardInfo[String(line.id)]
+                                return renderFlockCardInformation(
+                                  state?.info ?? null,
+                                  Boolean(state?.loading),
+                                  Boolean(line.fromWarehouseCode),
+                                  true,
+                                )
+                              })()}
+                            </div>
+                          </td>
+                        )}
                         <td className="px-3 py-2 align-middle">
                           {needsBatch ? (
                             <div className="space-y-1.5">
@@ -844,14 +1491,14 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                                           {activeDocumentIsPosted ? 'Issued' : 'On hand'}:{' '}
                                           {formatQuantity(activeDocumentIsPosted ? line.baseQty : line.onHandQty)}
                                         </span>
-                                        <span>Warehouse: {line.fromWarehouseCode || '-'}</span>
+                                        <span>{warehouseLabel}: {line.fromWarehouseCode || '-'}</span>
                                         <span>MFG: {formatDateValue(line.manufacturingDate)}</span>
                                         <span>EXP: {formatDateValue(line.expiryDate)}</span>
                                       </span>
                                     </span>
                                   ) : (
                                     <span className="truncate">
-                                      {canSearchBatches ? 'Select on-hand batch' : 'Select item and warehouse first'}
+                                      {canSearchBatches ? 'Select on-hand batch' : `Select item and ${warehouseLabel.toLowerCase()} first`}
                                     </span>
                                   )}
                                 </span>
@@ -863,7 +1510,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                               {isLoadingBatches && (
                                 <div className="flex items-center gap-1.5 text-xs text-stone-500">
                                   <Loader2 className="size-3.5 animate-spin" />
-                                  <span>Searching on-hand batches for this item and warehouse.</span>
+                                  <span>Searching on-hand batches for this item and {warehouseLabel.toLowerCase()}.</span>
                                 </div>
                               )}
 
@@ -985,6 +1632,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                 </tbody>
               </table>
             </div>
+            )}
 
             <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
               <Input
@@ -1017,7 +1665,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                 <DialogDescription>
                   {activeDocumentIsPosted
                     ? 'This is the batch used by the posted item stock out transaction.'
-                    : `${activeBatchLine?.itemCode || 'Selected item'} batches in ${activeBatchLine?.fromWarehouseCode || 'selected warehouse'}.`}
+                    : `${activeBatchLine?.itemCode || 'Selected item'} batches in ${activeBatchLine?.fromWarehouseCode || `selected ${warehouseLabel.toLowerCase()}`}.`}
                 </DialogDescription>
               </DialogHeader>
 
@@ -1045,7 +1693,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                     <p className="mt-2 text-xs text-stone-500">
                       {activeDocumentIsPosted
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
-                        : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity, manufacturing date, and expiry date back to the row.'}
+                        : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
                     </p>
                   </div>
 
@@ -1065,7 +1713,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                             </Badge>
                           </div>
 
-                          <div className="mt-3 grid gap-2 text-xs text-stone-700 sm:grid-cols-4">
+                          <div className="mt-3 grid gap-2 text-xs text-stone-700 sm:grid-cols-3">
                             <div className="rounded-md bg-white/70 px-2 py-1">
                               <span className="block font-medium text-stone-500">Issued Quantity</span>
                               <span className="font-semibold text-stone-950">
@@ -1073,16 +1721,12 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                               </span>
                             </div>
                             <div className="rounded-md bg-white/70 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Warehouse</span>
+                              <span className="block font-medium text-stone-500">{warehouseLabel}</span>
                               <span className="font-semibold text-stone-950">{activeBatchLine.fromWarehouseCode || '-'}</span>
                             </div>
                             <div className="rounded-md bg-white/70 px-2 py-1">
                               <span className="block font-medium text-stone-500">Manufacturing Date</span>
                               <span className="font-semibold text-stone-950">{formatDateValue(activeBatchLine.manufacturingDate)}</span>
-                            </div>
-                            <div className="rounded-md bg-white/70 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Expiry Date</span>
-                              <span className="font-semibold text-stone-950">{formatDateValue(activeBatchLine.expiryDate)}</span>
                             </div>
                           </div>
                         </div>
@@ -1102,7 +1746,7 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
 
                         {!activeBatchLoading && activeBatchHasSearched && activeBatchOptions.length === 0 && (
                           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                            No on-hand batches found for this item and warehouse.
+                            No on-hand batches found for this item and {warehouseLabel.toLowerCase()}.
                           </div>
                         )}
 
@@ -1141,17 +1785,13 @@ export default function NewGoodsIssue({ mode = 'draft' }: NewGoodsIssueProps) {
                                     </div>
                                   </div>
 
-                                  <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-3">
+                                  <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-2">
                                     <div className="rounded-md bg-stone-50 px-2 py-1">
                                       <span className="block font-medium text-stone-500">Manufacturing Date</span>
                                       <span className="text-stone-900">{formatDateValue(batch.manufacturingDate)}</span>
                                     </div>
                                     <div className="rounded-md bg-stone-50 px-2 py-1">
-                                      <span className="block font-medium text-stone-500">Expiry Date</span>
-                                      <span className="text-stone-900">{formatDateValue(batch.expiryDate)}</span>
-                                    </div>
-                                    <div className="rounded-md bg-stone-50 px-2 py-1">
-                                      <span className="block font-medium text-stone-500">Warehouse</span>
+                                      <span className="block font-medium text-stone-500">{warehouseLabel}</span>
                                       <span className="text-stone-900">{batch.warehouseCode}</span>
                                     </div>
                                   </div>

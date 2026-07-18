@@ -1,6 +1,7 @@
 'use client'
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 
 export type BatchResetType = 'Never' | 'Daily' | 'Monthly' | 'Yearly'
 export type BatchDateFormat = 'NONE' | 'YYYYMMDD' | 'YYMMDD' | 'YYYYMM' | 'YYMM' | 'YYYY' | 'YY'
@@ -423,7 +424,7 @@ export async function getBatchReferences(): Promise<BatchReferences> {
     db.from('item_groups').select('id, code, name').eq('void', '1').order('code'),
     db.from('items').select('id, item_code, item_name, description').eq('void', 1).order('item_code'),
     db.from('i_warehouse').select('id, whse_code, whse_name').eq('is_active', true).order('whse_code'),
-    db.from('farms').select('id, code, name').eq('void', 1).order('code'),
+    activeApprovedFarmsQuery(db.from('farms').select('id, code, name')).order('code'),
   ])
 
   if (itemGroupsResult.error) throw itemGroupsResult.error

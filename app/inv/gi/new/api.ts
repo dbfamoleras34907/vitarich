@@ -1,6 +1,8 @@
 'use client'
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { calculateFlockAgeFromStartDate } from '@/app/brd/fc/age'
+import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 import { Items, WarehouseData } from '@/lib/types'
 import {
   AssociatedWarehouse,
@@ -20,6 +22,35 @@ export type GoodsIssueReferences = {
   conversions: UomConversionOption[]
   itemGroups: GoodsReceiptItemGroup[]
   batchRules: GoodsReceiptBatchRule[]
+}
+
+export type GoodsIssueFlockCardInfo = {
+  id: number
+  cardNo: string
+  farmId: number | null
+  farmCode: string
+  farmName: string
+  buildingWarehouseId: number | null
+  buildingCode: string
+  buildingName: string
+  age: number
+  startDate: string
+  broilerType: string
+  breed: string
+  flockCode: string
+  animalQty: number
+  status: string
+}
+
+export type GoodsIssuePlacementBatch = {
+  id: string
+  itemCode: string
+  itemName: string
+  batchNumber: string
+  manufacturingDate: string
+  expiryDate: string
+  warehouseCode: string
+  onHandQty: number
 }
 
 function throwReferenceError(label: string, error: unknown): never {
@@ -119,7 +150,7 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
       .order('item_code'),
     db
       .from('i_warehouse')
-      .select('id, whse_code, whse_name')
+      .select('id, whse_code, whse_name, warehouse_type, farm_id, farm_code')
       .eq('is_active', true)
       .order('whse_code'),
     assignedFarmCodesQuery,
@@ -158,10 +189,7 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
   if (batchRulesResult.error) throwReferenceError('Batch rules', batchRulesResult.error)
 
   const farmsResult = assignedFarmCodes.length
-    ? await db
-        .from('farms')
-        .select('id, code, name, associated_warehouses')
-        .eq('void', 1)
+    ? await activeApprovedFarmsQuery(db.from('farms').select('id, code, name, associated_warehouses'))
         .in('code', assignedFarmCodes)
         .order('code')
     : { data: [], error: null }
@@ -179,4 +207,183 @@ export async function getGoodsIssueReferences(): Promise<GoodsIssueReferences> {
     itemGroups: (itemGroupsResult.data ?? []) as GoodsReceiptItemGroup[],
     batchRules: (batchRulesResult.data ?? []) as GoodsReceiptBatchRule[],
   }
+}
+
+type FlockCardInfoRow = {
+  id: number
+  card_no: string | null
+  farm_id: number | null
+  farm_code: string | null
+  farm_name: string | null
+  building_whse_id: number | null
+  building_code: string | null
+  building_name: string | null
+  age: number | null
+  start_date: string | null
+  broiler_type: string | null
+  breed: string | null
+  flock_code: string | null
+  animal_qty: number | null
+  status: string | null
+}
+
+const toFlockCardInfo = (row: FlockCardInfoRow): GoodsIssueFlockCardInfo => ({
+  id: Number(row.id),
+  cardNo: row.card_no ?? '',
+  farmId: row.farm_id,
+  farmCode: row.farm_code ?? '',
+  farmName: row.farm_name ?? '',
+  buildingWarehouseId: row.building_whse_id,
+  buildingCode: row.building_code ?? '',
+  buildingName: row.building_name ?? '',
+  age: row.start_date ? calculateFlockAgeFromStartDate(row.start_date) : Number(row.age ?? 0),
+  startDate: row.start_date ?? '',
+  broilerType: row.broiler_type ?? '',
+  breed: row.breed ?? '',
+  flockCode: row.flock_code ?? '',
+  animalQty: Number(row.animal_qty ?? 0),
+  status: row.status ?? '',
+})
+
+type FlockCardOriginBatchRow = {
+  item_code: string | null
+  item_name: string | null
+  batch_no: string | null
+  whse_code: string | null
+  animal_qty: number | null
+  onhand_snapshot: number | null
+  mfg_date?: string | null
+}
+
+type ItemBatchDateRow = {
+  item_code: string | null
+  batch_number: string | null
+  manufacturing_date: string | null
+}
+
+const getPlacementBatchId = (itemCode: string, batchNumber: string, warehouseCode: string) =>
+  [
+    itemCode.trim().toUpperCase(),
+    batchNumber.trim().toUpperCase(),
+    warehouseCode.trim().toUpperCase(),
+  ].join('|')
+
+export async function getDeliveryFlockCardInfo(params: {
+  farmId: number | null
+  buildingWarehouseId: number | null
+  buildingCode: string
+}): Promise<GoodsIssueFlockCardInfo | null> {
+  const farmId = Number(params.farmId ?? 0)
+  const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
+  const buildingCode = params.buildingCode.trim()
+
+  if (!Number.isFinite(farmId) || farmId <= 0) return null
+  if ((!Number.isFinite(buildingWarehouseId) || buildingWarehouseId <= 0) && !buildingCode) return null
+
+  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, animal_qty, status'
+
+  if (Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
+    const { data, error } = await db
+      .from('flock_card')
+      .select(selectFields)
+      .eq('farm_id', farmId)
+      .eq('building_whse_id', buildingWarehouseId)
+      .eq('void', '1')
+      .eq('status', 'Saved')
+      .order('start_date', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throwReferenceError('Flock card information', error)
+    if (data) return toFlockCardInfo(data as FlockCardInfoRow)
+  }
+
+  if (!buildingCode) return null
+
+  const { data, error } = await db
+    .from('flock_card')
+    .select(selectFields)
+    .eq('farm_id', farmId)
+    .eq('building_code', buildingCode)
+    .eq('void', '1')
+    .eq('status', 'Saved')
+    .order('start_date', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throwReferenceError('Flock card information', error)
+  return data ? toFlockCardInfo(data as FlockCardInfoRow) : null
+}
+
+export async function getDeliveryFlockCardPlacementBatches(params: {
+  flockCardId: number | null
+  buildingCode: string
+}): Promise<GoodsIssuePlacementBatch[]> {
+  const flockCardId = Number(params.flockCardId ?? 0)
+  const destinationWarehouseCode = params.buildingCode.trim()
+  if (!Number.isFinite(flockCardId) || flockCardId <= 0) return []
+
+  const { data, error } = await db
+    .from('flock_card_origin')
+    .select('item_code, item_name, batch_no, whse_code, animal_qty, onhand_snapshot, mfg_date')
+    .eq('fc_id', flockCardId)
+    .eq('void', '1')
+    .order('line_no', { ascending: true })
+
+  if (error) throwReferenceError('Flock card placement', error)
+
+  const originRows = (data ?? []) as FlockCardOriginBatchRow[]
+  const batchNumbers = Array.from(new Set(
+    originRows
+      .map(row => String(row.batch_no ?? '').trim())
+      .filter(Boolean),
+  ))
+  const itemCodes = Array.from(new Set(
+    originRows
+      .map(row => String(row.item_code ?? '').trim())
+      .filter(Boolean),
+  ))
+  const batchDateByKey = new Map<string, ItemBatchDateRow>()
+
+  if (batchNumbers.length > 0 && itemCodes.length > 0) {
+    const batchResult = await db
+      .from('item_batches')
+      .select('item_code, batch_number, manufacturing_date')
+      .eq('void', '1')
+      .in('batch_number', batchNumbers)
+
+    if (batchResult.error) throwReferenceError('Batch manufacturing dates', batchResult.error)
+
+    ;((batchResult.data ?? []) as ItemBatchDateRow[]).forEach(row => {
+      const itemCode = String(row.item_code ?? '').trim().toUpperCase()
+      const batchNumber = String(row.batch_number ?? '').trim().toUpperCase()
+      if (itemCode && batchNumber) batchDateByKey.set(`${itemCode}|${batchNumber}`, row)
+      if (batchNumber && !batchDateByKey.has(batchNumber)) batchDateByKey.set(batchNumber, row)
+    })
+  }
+
+  return originRows.flatMap(row => {
+    const itemCode = String(row.item_code ?? '').trim()
+    const batchNumber = String(row.batch_no ?? '').trim()
+    const sourceWarehouseCode = String(row.whse_code ?? '').trim()
+    const warehouseCode = destinationWarehouseCode || sourceWarehouseCode
+    const onHandQty = Number(row.animal_qty ?? row.onhand_snapshot ?? 0)
+    if (!itemCode || !batchNumber || !warehouseCode || onHandQty <= 0) return []
+    const batchDate =
+      batchDateByKey.get(`${itemCode.toUpperCase()}|${batchNumber.toUpperCase()}`) ??
+      batchDateByKey.get(batchNumber.toUpperCase())
+
+    return [{
+      id: getPlacementBatchId(itemCode, batchNumber, warehouseCode),
+      itemCode,
+      itemName: String(row.item_name ?? '').trim(),
+      batchNumber,
+      manufacturingDate: row.mfg_date ?? batchDate?.manufacturing_date ?? '',
+      expiryDate: '',
+      warehouseCode,
+      onHandQty,
+    }]
+  })
 }

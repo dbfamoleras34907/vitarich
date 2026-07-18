@@ -26,6 +26,7 @@ export type GoodsIssueLine = {
 export type GoodsIssue = {
   id: number | null
   giNo: string
+  triggeredBy: string
   issueDate: string
   farmId: number | null
   farmCode: string
@@ -49,6 +50,7 @@ type GoodsIssueRow = {
   from_warehouse_id: number | null
   from_warehouse_code: string | null
   from_warehouse_name: string | null
+  triggered_by: string | null
   remarks: string | null
   status: GoodsIssueStatus
   created_at: string
@@ -141,6 +143,7 @@ const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
 const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
   id: row.id,
   giNo: row.gi_no,
+  triggeredBy: row.triggered_by ?? 'GI',
   issueDate: row.issue_date,
   farmId: row.farm_id,
   farmCode: row.farm_code ?? '',
@@ -333,12 +336,23 @@ export async function getGoodsIssueOnHandShortages(
   )
 }
 
-export async function getGoodsIssues(limit = 50): Promise<GoodsIssue[]> {
-  const { data: issueRows, error: issueError } = await db
+export async function getGoodsIssues(
+  limit = 50,
+  triggeredBy = 'GI',
+  farmId?: number | string | null,
+): Promise<GoodsIssue[]> {
+  let query = db
     .from('goods_issue')
-    .select('id, gi_no, issue_date, farm_id, farm_code, farm_name, from_warehouse_id, from_warehouse_code, from_warehouse_name, remarks, status, created_at')
+    .select('id, gi_no, triggered_by, issue_date, farm_id, farm_code, farm_name, from_warehouse_id, from_warehouse_code, from_warehouse_name, remarks, status, created_at')
+    .eq('triggered_by', triggeredBy)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (farmId !== null && farmId !== undefined && String(farmId).trim() !== '') {
+    query = query.eq('farm_id', farmId)
+  }
+
+  const { data: issueRows, error: issueError } = await query
 
   if (issueError) throw issueError
 
@@ -422,6 +436,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     from_warehouse_id: issue.fromWarehouseId,
     from_warehouse_code: issue.fromWarehouseCode || null,
     from_warehouse_name: issue.fromWarehouseName || null,
+    triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
     status: saveStatus,
     ...(issue.id ? { updated_by: userId } : { created_by: userId }),
@@ -532,13 +547,14 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   return getGoodsIssueById(header.id)
 }
 
-export async function createGoodsIssueNumber() {
+export async function createGoodsIssueNumber(prefix = 'GI') {
   const yearSuffix = String(new Date().getFullYear()).slice(-2)
+  const documentPrefix = prefix.trim() || 'GI'
 
   const { data, error } = await db
     .from('goods_issue')
     .select('gi_no')
-    .ilike('gi_no', `GI-${yearSuffix}-%`)
+    .ilike('gi_no', `${documentPrefix}-${yearSuffix}-%`)
     .order('gi_no', { ascending: false })
     .limit(1)
 
@@ -548,7 +564,7 @@ export async function createGoodsIssueNumber() {
   const latestSequence = Number(latestNo.match(/(\d+)$/)?.[1] ?? 0)
   const sequence = Number.isFinite(latestSequence) ? latestSequence + 1 : 1
 
-  return `GI-${yearSuffix}-${String(sequence).padStart(6, '0')}`
+  return `${documentPrefix}-${yearSuffix}-${String(sequence).padStart(6, '0')}`
 }
 
 export function getIssueItemSummary(issue: GoodsIssue) {

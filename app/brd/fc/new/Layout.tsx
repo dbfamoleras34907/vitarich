@@ -621,7 +621,7 @@ export default function StickyTablePage() {
   const activeFeedBatchRowLocked =
     feedBatchSelectionRowIndex != null &&
     (isRowAgeLocked(feedBatchSelectionRowIndex) ||
-      (Boolean(savedLineByRowIndex[feedBatchSelectionRowIndex]) && !allowAdvancePosting));
+      Boolean(savedLineByRowIndex[feedBatchSelectionRowIndex]));
 
   const activeFeedRequiredQty = feedBatchSelectionRowIndex == null
     ? 0
@@ -655,7 +655,7 @@ export default function StickyTablePage() {
   const activeMortalityBatchRowLocked =
     mortalityBatchSelectionRowIndex != null &&
     (isRowAgeLocked(mortalityBatchSelectionRowIndex) ||
-      (Boolean(savedMortalityLineByRowIndex[mortalityBatchSelectionRowIndex]) && !allowAdvancePosting));
+      Boolean(savedMortalityLineByRowIndex[mortalityBatchSelectionRowIndex]));
 
   const activeMortalityAllocatedQty = activeMortalityBatchAllocations.reduce(
     (total, allocation) => total + Number(allocation.selectedQty || 0),
@@ -1018,11 +1018,11 @@ export default function StickyTablePage() {
   // inside buildFlockCardLines instead.
 
   function isFeedIntakeLocked(rowIndex: number) {
-    return Boolean(savedLineByRowIndex[rowIndex]) && !allowAdvancePosting;
+    return Boolean(savedLineByRowIndex[rowIndex]);
   }
 
   function isMortalityThinningLocked(rowIndex: number) {
-    return Boolean(savedMortalityLineByRowIndex[rowIndex]) && !allowAdvancePosting;
+    return Boolean(savedMortalityLineByRowIndex[rowIndex]);
   }
 
   function isRowAgeLocked(rowIndex: number) {
@@ -2064,8 +2064,8 @@ export default function StickyTablePage() {
         id: savedLine?.id ?? null,
         age: row.age,
         values: computedValuesForSave[rowIndex],
-        feedIntakeLocked: Boolean(savedLine) && !allowAdvancePosting,
-        mortalityThinningLocked: Boolean(savedMortalityLineByRowIndex[rowIndex]) && !allowAdvancePosting,
+        feedIntakeLocked: Boolean(savedLine),
+        mortalityThinningLocked: Boolean(savedMortalityLineByRowIndex[rowIndex]),
         mortalityAllocations: mortalityBatchAllocationsForSave.map((allocation, allocationIndex) => ({
           lineNo: allocationIndex + 1,
           itemCode: allocation.itemCode,

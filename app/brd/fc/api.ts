@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { calculateFlockAgeFromStartDate } from "./age";
 
 export type FarmBuildingListRow = {
@@ -168,9 +169,7 @@ export async function getFarmInfoForFlockCard(
 ): Promise<FlockCardFarmInfo | null> {
   if (!Number.isFinite(farmId)) return null;
 
-  const { data, error } = await db
-    .from("farms")
-    .select("id, code, name, address, farm_type, contact_person")
+  const { data, error } = await activeApprovedFarmsQuery(db.from("farms").select("id, code, name, address, farm_type, contact_person"))
     .eq("id", farmId)
     .single();
 
@@ -192,9 +191,7 @@ export async function getFarmBuildingsForFlockCard(
 ): Promise<FarmBuildingListRow[]> {
   if (!Number.isFinite(farmId)) return [];
 
-  const farmResult = await db
-    .from("farms")
-    .select("id, code, associated_warehouses")
+  const farmResult = await activeApprovedFarmsQuery(db.from("farms").select("id, code, associated_warehouses"))
     .eq("id", farmId)
     .single();
 
@@ -417,9 +414,7 @@ export async function getFarmBuildingsForFlockCard(
 async function getAssociatedWarehouseRows(farmId: number) {
   if (!Number.isFinite(farmId)) return [];
 
-  const { data, error } = await db
-    .from("farms")
-    .select("associated_warehouses")
+  const { data, error } = await activeApprovedFarmsQuery(db.from("farms").select("associated_warehouses"))
     .eq("id", farmId)
     .single();
 

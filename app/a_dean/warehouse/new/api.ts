@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient"
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms"
 import { WarehouseData } from "@/lib/types"
 
 type SupabaseErrorLike = {
@@ -50,10 +51,8 @@ export async function createWarehouse(data: WarehouseData) {
 
 export async function getWarehouseFarmOptions() {
     try {
-        const { data, error } = await db
-            .from('farms')
-            .select('id, code, name, farm_type')
-            .eq('void', 1)
+        const farmQuery = db.from('farms').select('id, code, name, farm_type')
+        const { data, error } = await activeApprovedFarmsQuery(farmQuery)
             .order('code')
 
         if (error) throw error

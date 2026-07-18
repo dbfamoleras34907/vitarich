@@ -134,7 +134,7 @@ export default function FlockCardSettingsLayout() {
                     </Label>
                   </div>
                   <p className="pl-7 text-sm leading-relaxed text-muted-foreground">
-                    Allows Flock Card feed intake rows with existing postings to be edited and posted again.
+                    Allows users to post Flock Card rows ahead of the current flock age.
                   </p>
                 </div>
 

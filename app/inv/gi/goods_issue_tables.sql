@@ -12,7 +12,8 @@ create table if not exists public.goods_issue (
   from_warehouse_id bigint null,
   from_warehouse_code text null,
   from_warehouse_name text null,
-  status text not null default 'Draft',
+  triggered_by text not null default 'GI',
+  status text not null default 'Posted',
   remarks text null,
   constraint goods_issue_pkey primary key (id),
   constraint goods_issue_gi_no_key unique (gi_no),
@@ -82,10 +83,24 @@ create index if not exists goods_issue_items_void_idx
   on public.goods_issue_items (void);
 
 alter table public.goods_issue
+  add column if not exists triggered_by text not null default 'GI',
   drop constraint if exists goods_issue_to_warehouse_id_fkey,
   drop column if exists to_warehouse_id,
   drop column if exists to_warehouse_code,
   drop column if exists to_warehouse_name;
+
+alter table public.goods_issue
+  alter column triggered_by set default 'GI';
+
+update public.goods_issue
+set triggered_by = 'GI'
+where triggered_by is null or btrim(triggered_by) = '';
+
+alter table public.goods_issue
+  alter column triggered_by set not null;
+
+create index if not exists goods_issue_triggered_by_idx
+  on public.goods_issue (triggered_by);
 
 create or replace function public.set_updated_at()
 returns trigger
