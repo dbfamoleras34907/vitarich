@@ -147,6 +147,13 @@ const formatShortageMessage = (shortage: {
 const batchOptionKey = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode'>) =>
   `${line.itemCode.trim().toUpperCase()}|${line.fromWarehouseCode.trim().toUpperCase()}`
 
+const allocatedBatchKey = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode' | 'batchNumber'>) =>
+  [
+    line.itemCode.trim().toUpperCase(),
+    line.fromWarehouseCode.trim().toUpperCase(),
+    line.batchNumber.trim().toUpperCase(),
+  ].join('|')
+
 const canSearchLineInventory = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode'>) =>
   Boolean(line.itemCode.trim() && line.fromWarehouseCode.trim())
 
@@ -946,7 +953,7 @@ export default function NewGoodsIssue({
     }
   }
 
-  const getBatchOptionsForLine = (line: GoodsIssueLine) => {
+  const getRawBatchOptionsForLine = (line: GoodsIssueLine) => {
     const placementBatches = linePlacementBatches[String(line.id)] ?? []
     if (usesLineWarehouse && placementBatches.length > 0) {
       const selectedItemCode = line.itemCode.trim().toUpperCase()
@@ -957,6 +964,45 @@ export default function NewGoodsIssue({
 
     return batchOptions[batchOptionKey(line)] ?? []
   }
+
+  const getAllocatedBaseQtyForBatch = (line: GoodsIssueLine) => {
+    if (!issue || !line.itemCode || !line.fromWarehouseCode || !line.batchNumber) return 0
+
+    const key = allocatedBatchKey(line)
+
+    return issue.lines.reduce((total, candidate) => {
+      if (candidate.id === line.id || allocatedBatchKey(candidate) !== key) return total
+      return total + Number(candidate.baseQty || 0)
+    }, 0)
+  }
+
+  const getAvailableOnHandForLine = (line: GoodsIssueLine) => {
+    if (!line.batchNumber) return line.onHandQty
+
+    const rawBatch = getRawBatchOptionsForLine(line)
+      .find(option => option.batchNumber.trim().toUpperCase() === line.batchNumber.trim().toUpperCase())
+    const originalOnHandQty = rawBatch?.onHandQty ?? line.onHandQty
+
+    return Math.max(0, originalOnHandQty - getAllocatedBaseQtyForBatch(line))
+  }
+
+  const getBatchOptionsForLine = (line: GoodsIssueLine) =>
+    getRawBatchOptionsForLine(line)
+      .map(batch => {
+        const optionLine = {
+          ...line,
+          itemCode: batch.itemCode || line.itemCode,
+          fromWarehouseCode: batch.warehouseCode || line.fromWarehouseCode,
+          batchNumber: batch.batchNumber,
+        }
+        const remainingOnHandQty = Math.max(0, batch.onHandQty - getAllocatedBaseQtyForBatch(optionLine))
+
+        return {
+          ...batch,
+          onHandQty: remainingOnHandQty,
+        }
+      })
+      .filter(batch => batch.onHandQty > 0 || batch.batchNumber === line.batchNumber)
 
   const lineHasPlacementBatchOptions = (line: GoodsIssueLine) =>
     usesLineWarehouse && (linePlacementBatches[String(line.id)]?.length ?? 0) > 0
@@ -1093,7 +1139,7 @@ export default function NewGoodsIssue({
     }
     const linesToSave = completedLines
 
-    if (posting && linesToSave.length === 0) {
+    if (linesToSave.length === 0) {
       toast('Please select at least one item.')
       return
     }
@@ -1101,8 +1147,7 @@ export default function NewGoodsIssue({
       const invalidLine = linesToSave.find(line =>
         !line.itemCode ||
         !line.fromWarehouseCode ||
-        lineHasInvalidQuantity(line) ||
-        (line.onHandQty > 0 && line.baseQty > line.onHandQty),
+        lineHasInvalidQuantity(line),
       )
 
       if (invalidLine) {
@@ -1119,6 +1164,11 @@ export default function NewGoodsIssue({
       toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
       return
     }
+    const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
+    if (overOnHandLine) {
+      toast(`To Transfer Qty for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
+      return
+    }
     const missingWarehouseLine = usesLineWarehouse
       ? linesToSave.find(line => !line.fromWarehouseId || !line.fromWarehouseCode)
       : null
@@ -1127,9 +1177,10 @@ export default function NewGoodsIssue({
       return
     }
 
-    const missingBatchLine = posting
-      ? linesToSave.find(line => itemNeedsBatch(line) && !line.batchNumber.trim())
-      : null
+    const missingBatchLine = linesToSave.find(line =>
+      (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || usesLineWarehouse) &&
+      !line.batchNumber.trim(),
+    )
     if (missingBatchLine) {
       toast(`Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
       return
@@ -1376,12 +1427,12 @@ export default function NewGoodsIssue({
                 lineFlockCardInfo={lineFlockCardInfo}
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
-                canPostDocument={canPostDocument}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}
                 lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
                 batchOptionKey={batchOptionKey}
                 getBatchOptionsForLine={getBatchOptionsForLine}
+                getAvailableOnHandForLine={getAvailableOnHandForLine}
                 canOpenBatchSelector={canOpenBatchSelector}
                 selectLineWarehouse={selectLineWarehouse}
                 selectItem={selectItem}

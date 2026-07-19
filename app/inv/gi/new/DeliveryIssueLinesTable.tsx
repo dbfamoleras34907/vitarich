@@ -1,5 +1,6 @@
 import { type Dispatch, type SetStateAction } from 'react'
 import { Loader2, PackageCheck, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Button } from '@/components/ui/button'
@@ -23,12 +24,12 @@ type DeliveryIssueLinesTableProps = {
   lineFlockCardInfo: Record<string, LineFlockCardState>
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
-  canPostDocument: boolean
   getItemsForLine: (line: GoodsIssueLine) => Items[]
   itemNeedsBatch: (line: GoodsIssueLine) => boolean
   lineHasPlacementBatchOptions: (line: GoodsIssueLine) => boolean
   batchOptionKey: (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode'>) => string
   getBatchOptionsForLine: (line: GoodsIssueLine) => GoodsIssueOnHandBatch[]
+  getAvailableOnHandForLine: (line: GoodsIssueLine) => number
   canOpenBatchSelector: (line: Pick<GoodsIssueLine, 'id' | 'itemCode' | 'fromWarehouseCode'>) => boolean
   selectLineWarehouse: (line: GoodsIssueLine, value: string) => Promise<void>
   selectItem: (line: GoodsIssueLine, value: string) => Promise<void>
@@ -53,12 +54,12 @@ export default function DeliveryIssueLinesTable({
   lineFlockCardInfo,
   loadingLinePlacementBatches,
   activeDocumentIsPosted,
-  canPostDocument,
   getItemsForLine,
   itemNeedsBatch,
   lineHasPlacementBatchOptions,
   batchOptionKey,
   getBatchOptionsForLine,
+  getAvailableOnHandForLine,
   canOpenBatchSelector,
   selectLineWarehouse,
   selectItem,
@@ -84,6 +85,7 @@ export default function DeliveryIssueLinesTable({
             <th className="w-[10%] border-r px-3 py-2">Flock Code</th>
             <th className="w-[7%] border-r px-3 py-2">Age</th>
             <th className="w-[10%] border-r px-3 py-2">Birds</th>
+            <th className="w-[8%] border-r px-3 py-2">Weight g</th>
             <th className="w-[16%] border-r px-3 py-2">Item</th>
             <th className="w-[16%] border-r px-3 py-2">Batch</th>
             <th className="w-[10%] border-r px-3 py-2">MFG Date</th>
@@ -104,8 +106,33 @@ export default function DeliveryIssueLinesTable({
             const flockState = lineFlockCardInfo[String(line.id)]
             const loadingPlacementItems = Boolean(loadingLinePlacementBatches[String(line.id)])
             const lineItems = getItemsForLine(line)
-            const isOver = canPostDocument && line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
+            const availableOnHandQty = getAvailableOnHandForLine(line)
+            const isOver = Boolean(line.itemCode && line.batchNumber && line.baseQty > availableOnHandQty)
             const onHandClass = isOver ? 'text-red-600' : 'text-stone-800'
+            const baseQtyPerAltQty = calculateBaseQty(1, line.altUom, line.baseUom)
+            const maxAltQty = availableOnHandQty > 0 && baseQtyPerAltQty > 0
+              ? availableOnHandQty / baseQtyPerAltQty
+              : undefined
+            const clampTransferQuantity = () => {
+              if (!line.itemCode || !line.altUom || !line.baseUom || !maxAltQty) return
+
+              if (line.altQty <= 0) {
+                updateLine(line.id, {
+                  altQty: 0,
+                  baseQty: 0,
+                })
+                toast('To Transfer Qty must be greater than 0.')
+                return
+              }
+
+              if (line.baseQty > availableOnHandQty) {
+                updateLine(line.id, {
+                  altQty: maxAltQty,
+                  baseQty: availableOnHandQty,
+                })
+                toast(`To Transfer Qty cannot exceed the selected batch remaining on-hand quantity of ${formatQuantity(availableOnHandQty)} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}.`.trim())
+              }
+            }
 
             return (
               <tr key={line.id} className="border-t odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
@@ -157,6 +184,13 @@ export default function DeliveryIssueLinesTable({
                 <td className="border-r p-1 align-middle">
                   <Input
                     value={flockState?.info ? formatQuantity(flockState.info.animalQty) : ''}
+                    readOnly
+                    className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
+                  />
+                </td>
+                <td className="border-r p-1 align-middle">
+                  <Input
+                    value={flockState?.info?.bodyWeight ? formatQuantity(flockState.info.bodyWeight) : ''}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />
@@ -244,7 +278,7 @@ export default function DeliveryIssueLinesTable({
                     value={
                       isLoadingBatches
                         ? 'Loading...'
-                        : `${formatQuantity(activeDocumentIsPosted ? line.baseQty : line.onHandQty)} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}`.trim()
+                        : `${formatQuantity(activeDocumentIsPosted ? line.baseQty : availableOnHandQty)} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}`.trim()
                     }
                     readOnly
                     className={`h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1 ${onHandClass}`}
@@ -257,6 +291,7 @@ export default function DeliveryIssueLinesTable({
                   <Input
                     type="number"
                     min="0"
+                    max={maxAltQty}
                     step="any"
                     value={line.altQty}
                     onChange={event => {
@@ -266,8 +301,14 @@ export default function DeliveryIssueLinesTable({
                         baseQty: calculateBaseQty(altQty, line.altUom, line.baseUom),
                       })
                     }}
-                    className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
+                    onBlur={clampTransferQuantity}
+                    className={`h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1 ${isOver ? 'text-red-600 focus-visible:ring-red-200' : ''}`}
                   />
+                  {isOver && (
+                    <div className="truncate px-2 text-[11px] font-medium text-red-600">
+                      Qty must be &lt;= on hand.
+                    </div>
+                  )}
                 </td>
                 <td className="p-1 text-center align-middle">
                   <Button

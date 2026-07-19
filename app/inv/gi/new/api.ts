@@ -39,6 +39,7 @@ export type GoodsIssueFlockCardInfo = {
   breed: string
   flockCode: string
   animalQty: number
+  bodyWeight: number | null
   status: string
 }
 
@@ -227,7 +228,14 @@ type FlockCardInfoRow = {
   status: string | null
 }
 
-const toFlockCardInfo = (row: FlockCardInfoRow): GoodsIssueFlockCardInfo => ({
+type FlockCardBodyWeightLineRow = {
+  body_wt: number | null
+}
+
+const toFlockCardInfo = (
+  row: FlockCardInfoRow,
+  bodyWeight: number | null,
+): GoodsIssueFlockCardInfo => ({
   id: Number(row.id),
   cardNo: row.card_no ?? '',
   farmId: row.farm_id,
@@ -242,8 +250,52 @@ const toFlockCardInfo = (row: FlockCardInfoRow): GoodsIssueFlockCardInfo => ({
   breed: row.breed ?? '',
   flockCode: row.flock_code ?? '',
   animalQty: Number(row.animal_qty ?? 0),
+  bodyWeight,
   status: row.status ?? '',
 })
+
+async function getLatestFlockCardBodyWeight(row: FlockCardInfoRow) {
+  const cardNo = String(row.card_no ?? '').trim()
+  if (!cardNo) return null
+
+  let headerQuery = db
+    .from('brd_fc')
+    .select('id')
+    .eq('card_no', cardNo)
+    .eq('void', '1')
+    .order('id', { ascending: false })
+    .limit(1)
+
+  if (row.farm_id) headerQuery = headerQuery.eq('farm_id', row.farm_id)
+  if (row.building_whse_id) headerQuery = headerQuery.eq('building_whse_id', row.building_whse_id)
+  else if (row.building_code) headerQuery = headerQuery.eq('building_code', row.building_code)
+
+  const headerResult = await headerQuery.maybeSingle()
+  if (headerResult.error) throwReferenceError('Flock card body weight', headerResult.error)
+  const headerId = Number(headerResult.data?.id ?? 0)
+  if (!Number.isFinite(headerId) || headerId <= 0) return null
+
+  const lineResult = await db
+    .from('brd_fc_line')
+    .select('body_wt')
+    .eq('fc_id', headerId)
+    .eq('void', '1')
+    .not('body_wt', 'is', null)
+    .order('age', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (lineResult.error) throwReferenceError('Flock card body weight', lineResult.error)
+
+  const line = lineResult.data as FlockCardBodyWeightLineRow | null
+  const bodyWeight = Number(line?.body_wt ?? 0)
+  return Number.isFinite(bodyWeight) && bodyWeight > 0 ? bodyWeight : null
+}
+
+async function toFlockCardInfoWithBodyWeight(row: FlockCardInfoRow) {
+  return toFlockCardInfo(row, await getLatestFlockCardBodyWeight(row))
+}
 
 type FlockCardOriginBatchRow = {
   item_code: string | null
@@ -296,7 +348,7 @@ export async function getDeliveryFlockCardInfo(params: {
       .maybeSingle()
 
     if (error) throwReferenceError('Flock card information', error)
-    if (data) return toFlockCardInfo(data as FlockCardInfoRow)
+    if (data) return toFlockCardInfoWithBodyWeight(data as FlockCardInfoRow)
   }
 
   if (!buildingCode) return null
@@ -314,7 +366,7 @@ export async function getDeliveryFlockCardInfo(params: {
     .maybeSingle()
 
   if (error) throwReferenceError('Flock card information', error)
-  return data ? toFlockCardInfo(data as FlockCardInfoRow) : null
+  return data ? toFlockCardInfoWithBodyWeight(data as FlockCardInfoRow) : null
 }
 
 export async function getDeliveryFlockCardPlacementBatches(params: {
