@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/components/ui/UserFarmSearchCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
@@ -29,8 +30,13 @@ const errorMessage = (error: unknown, fallback: string) => {
 
 export default function FlockCardSettingsLayout() {
   const canEdit = usePermission("/brd/fc/settings/edit");
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
+  const session = getValue("UserInfoAuthSession");
+  const rawFarmDB = getValue("getFarmDB");
+  const rawUserFarms = session?.[0]?.users_farms;
   const [settings, setSettings] = useState<FlockCardSettings | null>(null);
+  const [selectedFarm, setSelectedFarm] = useState<UserFarm | null>(null);
+  const [selectedFarmId, setSelectedFarmId] = useState("");
   const [allowAdvancePosting, setAllowAdvancePosting] = useState(false);
   const [autoFeedBatchSelection, setAutoFeedBatchSelection] = useState(false);
   const [autoFeedBatchSelectionMode, setAutoFeedBatchSelectionMode] =
@@ -39,15 +45,37 @@ export default function FlockCardSettingsLayout() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const singleAllowedFarm = useMemo(() => {
+    const allowedFarms = getAllowedUserFarms(
+      (rawFarmDB || []) as UserFarm[],
+      (rawUserFarms || []) as unknown[],
+    );
+    return allowedFarms.length === 1 ? allowedFarms[0] : null;
+  }, [rawFarmDB, rawUserFarms]);
+
+  const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
+  const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+
   const canSave = useMemo(
-    () => !saving && !loading && !canEdit,
-    [canEdit, loading, saving],
+    () => !saving && !loading && !canEdit && Boolean(activeFarmId),
+    [activeFarmId, canEdit, loading, saving],
   );
 
   const fetchSettings = useCallback(async () => {
+    const farmId = Number(activeFarmId);
+    if (!Number.isFinite(farmId) || farmId <= 0) {
+      setSettings(null);
+      setAllowAdvancePosting(false);
+      setAutoFeedBatchSelection(false);
+      setAutoFeedBatchSelectionMode("USER_SELECTED");
+      setAutoMortalityRateBatchSelection(false);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const nextSettings = await getFlockCardSettings();
+      const nextSettings = await getFlockCardSettings(farmId);
       setSettings(nextSettings);
       setValue("FlockCardSettings", nextSettings);
       setAllowAdvancePosting(Boolean(nextSettings?.allow_advance_posting));
@@ -64,7 +92,7 @@ export default function FlockCardSettingsLayout() {
     } finally {
       setLoading(false);
     }
-  }, [setValue]);
+  }, [activeFarmId, setValue]);
 
   useEffect(() => {
     fetchSettings();
@@ -72,6 +100,11 @@ export default function FlockCardSettingsLayout() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+
+    if (!activeFarmId) {
+      toast("Please select a farm.");
+      return;
+    }
 
     if (!canSave) {
       toast("You do not have permission to edit this setting.");
@@ -82,6 +115,9 @@ export default function FlockCardSettingsLayout() {
     try {
       const saved = await saveFlockCardSettings({
         id: settings?.id,
+        farm_id: Number(activeFarmId),
+        farm_code: activeFarm?.code ?? settings?.farm_code ?? null,
+        farm_name: activeFarm?.name ?? settings?.farm_name ?? null,
         allow_advance_posting: allowAdvancePosting,
         auto_feed_batch_selection: autoFeedBatchSelection,
         auto_feed_batch_selection_mode: autoFeedBatchSelectionMode,
@@ -108,7 +144,7 @@ export default function FlockCardSettingsLayout() {
           FirstPreviewsPageName="Settings"
           CurrentPageName="Flock Card Settings"
         />
-        <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving}>
+        <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving || !activeFarmId}>
           <RefreshCcw className={loading ? "size-4 animate-spin" : "size-4"} />
         </Button>
       </div>
@@ -121,12 +157,22 @@ export default function FlockCardSettingsLayout() {
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="grid gap-x-12 gap-y-6 lg:grid-cols-2">
               <div className="space-y-6">
+                <UserFarmSearchCombobox
+                  label="Farm"
+                  required
+                  value={activeFarmId}
+                  onValueChange={(farmId, farm) => {
+                    setSelectedFarmId(farmId);
+                    setSelectedFarm(farm ?? null);
+                  }}
+                />
+
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="allow-advance-posting"
                       checked={allowAdvancePosting}
-                      disabled={loading || saving || canEdit}
+                      disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAllowAdvancePosting(checked === true)}
                     />
                     <Label htmlFor="allow-advance-posting" className="text-sm font-medium">
@@ -143,7 +189,7 @@ export default function FlockCardSettingsLayout() {
                     <Checkbox
                       id="auto-mortality-rate-batch-selection"
                       checked={autoMortalityRateBatchSelection}
-                      disabled={loading || saving || canEdit}
+                      disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAutoMortalityRateBatchSelection(checked === true)}
                     />
                     <Label htmlFor="auto-mortality-rate-batch-selection" className="text-sm font-medium">
@@ -162,7 +208,7 @@ export default function FlockCardSettingsLayout() {
                     <Checkbox
                       id="auto-feed-batch-selection"
                       checked={autoFeedBatchSelection}
-                      disabled={loading || saving || canEdit}
+                      disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAutoFeedBatchSelection(checked === true)}
                     />
                     <Label htmlFor="auto-feed-batch-selection" className="text-sm font-medium">

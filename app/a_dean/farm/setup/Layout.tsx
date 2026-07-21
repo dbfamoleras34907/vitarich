@@ -59,6 +59,8 @@ const WAREHOUSE_TYPES = [
   { value: 'Building', label: 'Building' },
 ]
 
+const isPenDraft = (draft: WarehouseDraft) => draft.data.warehouse_type === 'Pen'
+
 const STEPS = [
   {
     id: 0,
@@ -269,6 +271,7 @@ function WizardActions({
 function InlineSelect({
   label,
   required,
+  disabled,
   value,
   placeholder,
   onValueChange,
@@ -276,6 +279,7 @@ function InlineSelect({
 }: {
   label: string
   required?: boolean
+  disabled?: boolean
   value: string
   placeholder: string
   onValueChange: (value: string) => void
@@ -286,7 +290,7 @@ function InlineSelect({
       <Label required={required} className="text-xs font-semibold text-neutral-950 dark:text-foreground">
         {label}
       </Label>
-      <Select value={value} onValueChange={onValueChange}>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
         <SelectTrigger className="h-12 w-full border-neutral-200 bg-white text-sm shadow-none dark:border-border dark:bg-input/30">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -406,6 +410,25 @@ export default function Layout() {
     ])
   }
 
+  const addPenDraft = (buildingClientKey: string) => {
+    const penCount = warehouseDrafts.filter(
+      (draft) => isPenDraft(draft) && draft.data.father_client_key === buildingClientKey
+    ).length
+
+    setWarehouseDrafts((prev) => [
+      ...prev,
+      {
+        clientKey: `pen-${Date.now()}`,
+        data: {
+          whse_name: `Pen ${penCount + 1}`,
+          fms_type: selectedFarmType?.warehouseType ?? 'Broiler',
+          warehouse_type: 'Pen',
+          father_client_key: buildingClientKey,
+        },
+      },
+    ])
+  }
+
   const updateFarm = (code: string, value: string) => {
     setFarmData((prev) => ({ ...prev, [code]: value }))
 
@@ -426,7 +449,11 @@ export default function Layout() {
   }
 
   const removeWarehouse = (clientKey: string) => {
-    setWarehouseDrafts((prev) => prev.filter((draft) => draft.clientKey !== clientKey))
+    setWarehouseDrafts((prev) =>
+      prev.filter(
+        (draft) => draft.clientKey !== clientKey && draft.data.father_client_key !== clientKey
+      )
+    )
 
     if (defaultFeedKey === clientKey) setDefaultFeedKey('')
     if (defaultReceivingKey === clientKey) setDefaultReceivingKey('')
@@ -452,6 +479,20 @@ export default function Layout() {
 
     if (warehouseDrafts.some((draft) => !compact(draft.data.whse_name))) {
       toast.error('Every warehouse or building needs a name.')
+      return false
+    }
+    if (
+      warehouseDrafts.some(
+        (draft) =>
+          isPenDraft(draft) &&
+          !warehouseDrafts.some(
+            (building) =>
+              building.clientKey === draft.data.father_client_key &&
+              building.data.warehouse_type === 'Building'
+          )
+      )
+    ) {
+      toast.error('Every pen must belong to a building.')
       return false
     }
 
@@ -482,6 +523,7 @@ export default function Layout() {
 
     return {
       client_key: draft.clientKey,
+      father_client_key: nullable(draft.data.father_client_key),
       whse_name: nullable(draft.data.whse_name),
       fms_type: nullable(draft.data.fms_type),
       warehouse_type: nullable(draft.data.warehouse_type),
@@ -514,7 +556,10 @@ export default function Layout() {
       const payload: FarmSetupPayload = {
         farm: farmData,
         address: addressData,
-        warehouses: warehouseDrafts.map(buildWarehousePayload),
+        warehouses: [
+          ...warehouseDrafts.filter((draft) => !isPenDraft(draft)),
+          ...warehouseDrafts.filter(isPenDraft),
+        ].map(buildWarehousePayload),
         machines: [],
       }
 
@@ -632,7 +677,7 @@ export default function Layout() {
                 ) : null}
 
                 <div className="mt-5 space-y-4">
-                  {warehouseDrafts.map((draft, index) => (
+                  {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft, index) => (
                     <div key={draft.clientKey} className="rounded-md border border-neutral-200 bg-white p-4 dark:border-border dark:bg-card">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
@@ -654,6 +699,9 @@ export default function Layout() {
                         <InlineSelect
                           label="Warehouse Type"
                           required
+                          disabled={warehouseDrafts.some(
+                            (pen) => isPenDraft(pen) && pen.data.father_client_key === draft.clientKey
+                          )}
                           value={draft.data.warehouse_type ?? 'Warehouse'}
                           placeholder="select warehouse type"
                           onValueChange={(value) => updateWarehouse(draft.clientKey, 'warehouse_type', value)}
@@ -693,6 +741,62 @@ export default function Layout() {
                           />
                         </div>
                       </div>
+
+                      {draft.data.warehouse_type === 'Building' ? (
+                        <div className="mt-5 border-t border-neutral-100 pt-4 dark:border-border">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-neutral-950 dark:text-foreground">Pens</div>
+                              <div className="mt-1 text-xs text-neutral-500 dark:text-muted-foreground">
+                                Pen codes are generated from this building code when the setup is saved.
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => addPenDraft(draft.clientKey)}
+                            >
+                              <Plus className="size-4" />
+                              Add Pen
+                            </Button>
+                          </div>
+
+                          <div className="space-y-3">
+                            {warehouseDrafts
+                              .filter(
+                                (pen) =>
+                                  isPenDraft(pen) && pen.data.father_client_key === draft.clientKey
+                              )
+                              .map((pen, penIndex) => (
+                                <div
+                                  key={pen.clientKey}
+                                  className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 dark:border-border dark:bg-secondary sm:grid-cols-[180px_1fr_auto] sm:items-end"
+                                >
+                                  <TextField
+                                    field={{ code: 'whse_code', label: 'Pen Code', readOnly: true }}
+                                    value={`${draft.data.whse_code || 'Building code'}-P${penIndex + 1}`}
+                                    onChange={() => undefined}
+                                  />
+                                  <TextField
+                                    field={{ code: 'whse_name', label: 'Pen Name', required: true }}
+                                    value={pen.data.whse_name ?? ''}
+                                    onChange={(code, value) => updateWarehouse(pen.clientKey, code, value)}
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    onClick={() => removeWarehouse(pen.clientKey)}
+                                    aria-label={`Remove pen ${penIndex + 1}`}
+                                  >
+                                    <Trash2 className="size-4 text-red-600" />
+                                  </Button>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -733,7 +837,7 @@ export default function Layout() {
                     placeholder="select feed warehouse"
                     onValueChange={setDefaultFeedKey}
                   >
-                    {warehouseDrafts.map((draft) => (
+                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
                       <SelectItem key={draft.clientKey} value={draft.clientKey}>
                         {draft.data.whse_name || 'Unnamed draft'}
                       </SelectItem>
@@ -746,7 +850,7 @@ export default function Layout() {
                     placeholder="select receiving warehouse"
                     onValueChange={setDefaultReceivingKey}
                   >
-                    {warehouseDrafts.map((draft) => (
+                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
                       <SelectItem key={draft.clientKey} value={draft.clientKey}>
                         {draft.data.whse_name || 'Unnamed draft'}
                       </SelectItem>
@@ -769,7 +873,14 @@ export default function Layout() {
                   <SummaryRow label="Farm" value={farmData.name || 'Not set'} />
                   <SummaryRow label="Farm Code" value={farmData.code || 'Not set'} />
                   <SummaryRow label="Farm Type" value={selectedFarmType?.label || 'Not selected'} />
-                  <SummaryRow label="Warehouses / Buildings" value={String(warehouseDrafts.length)} />
+                  <SummaryRow
+                    label="Warehouses / Buildings"
+                    value={String(warehouseDrafts.filter((draft) => !isPenDraft(draft)).length)}
+                  />
+                  <SummaryRow
+                    label="Pens"
+                    value={String(warehouseDrafts.filter(isPenDraft).length)}
+                  />
                   <SummaryRow
                     label="Default Feed"
                     value={

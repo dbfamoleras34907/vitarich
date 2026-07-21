@@ -62,6 +62,7 @@ import {
 import Help from "./Help";
 import FlockCardExportMenu from "./FlockCardExportMenu";
 import { calculateFlockAgeFromStartDate } from "../age";
+import { getFlockCardSettings } from "../settings/api";
 import { CellInput, HeaderCells } from "./FlockCardGridCells";
 import {
   ageColumnWidth,
@@ -272,11 +273,33 @@ export default function StickyTablePage() {
   const displayFlockCode = requestedFlockCode || linkedCardNo || "-";
   const selectedBreed = String(flockCardNavigationContext?.breed ?? "").trim();
   const hasLockedFlockContext = Boolean(flockCardNavigationContext?.buildingKey);
-  const flockCardSettings = getValue("FlockCardSettings") as FlockCardSettingsState | null | undefined;
+  const [flockCardSettings, setFlockCardSettings] = useState<FlockCardSettingsState | null>(null);
   const allowAdvancePosting = Boolean(flockCardSettings?.allow_advance_posting);
   const autoFeedBatchSelection = Boolean(flockCardSettings?.auto_feed_batch_selection);
   const autoFeedBatchSelectionMode = flockCardSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED";
   const autoMortalityRateBatchSelection = Boolean(flockCardSettings?.auto_mortality_rate_batch_selection);
+
+  useEffect(() => {
+    const farmId = Number(selectedFarmId);
+    if (!Number.isFinite(farmId) || farmId <= 0) {
+      setFlockCardSettings(null);
+      return;
+    }
+
+    let cancelled = false;
+    getFlockCardSettings(farmId)
+      .then((nextSettings) => {
+        if (!cancelled) setFlockCardSettings(nextSettings);
+      })
+      .catch((error) => {
+        console.error("FlockCardSettings error:", error);
+        if (!cancelled) setFlockCardSettings(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFarmId]);
   const currentFlockAge = requestedFlockStartDate
     ? calculateFlockAgeFromStartDate(requestedFlockStartDate)
     : rawRequestedFlockAge != null && String(rawRequestedFlockAge).trim() !== "" && Number.isFinite(requestedFlockAge)

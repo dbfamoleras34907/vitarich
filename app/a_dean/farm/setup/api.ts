@@ -20,6 +20,7 @@ export type FarmSetupWarehouseDraft = Pick<
   | 'is_active'
 > & {
   client_key: string
+  father_client_key?: string | null
   is_default_feed?: boolean
   is_default_receiving?: boolean
 }

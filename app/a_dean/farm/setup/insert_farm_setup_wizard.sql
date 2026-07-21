@@ -18,6 +18,8 @@ declare
   new_warehouse_name text;
   associated_warehouse_items jsonb[] := array[]::jsonb[];
   warehouse_ids bigint[] := array[]::bigint[];
+  warehouse_id_by_client_key jsonb := '{}'::jsonb;
+  father_warehouse_id bigint;
   farm_address text;
   farm_region text;
   farm_approval_status text;
@@ -41,7 +43,9 @@ begin
   farm_approval_status := coalesce(nullif(payload->'farm'->>'approval_status', ''), 'approved');
 
   for warehouse_item in
-    select * from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
+    select value
+    from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
+    where coalesce(value->>'warehouse_type', '') <> 'Pen'
   loop
     insert into public.i_warehouse (
       whse_name,
@@ -81,6 +85,10 @@ begin
     into new_warehouse_id, new_warehouse_code, new_warehouse_name;
 
     warehouse_ids := array_append(warehouse_ids, new_warehouse_id);
+    warehouse_id_by_client_key := warehouse_id_by_client_key || jsonb_build_object(
+      warehouse_item->>'client_key',
+      new_warehouse_id
+    );
     associated_warehouse_items := array_append(
       associated_warehouse_items,
       jsonb_build_object(
@@ -89,6 +97,55 @@ begin
         'whse_name', new_warehouse_name,
         'is_default_feed', coalesce((warehouse_item->>'is_default_feed')::boolean, false),
         'is_default_receiving', coalesce((warehouse_item->>'is_default_receiving')::boolean, false)
+      )
+    );
+  end loop;
+
+  for warehouse_item in
+    select value
+    from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
+    where value->>'warehouse_type' = 'Pen'
+  loop
+    father_warehouse_id := nullif(
+      warehouse_id_by_client_key->>(warehouse_item->>'father_client_key'),
+      ''
+    )::bigint;
+
+    if father_warehouse_id is null then
+      raise exception 'Pen % does not reference a Building in this setup.', warehouse_item->>'whse_name';
+    end if;
+
+    insert into public.i_warehouse (
+      whse_name,
+      fms_type,
+      warehouse_type,
+      father_id,
+      is_active,
+      is_default_feed_warehouse,
+      is_default_receiving_warehouse
+    )
+    values (
+      warehouse_item->>'whse_name',
+      warehouse_item->>'fms_type',
+      'Pen',
+      father_warehouse_id,
+      coalesce((warehouse_item->>'is_active')::boolean, true),
+      false,
+      false
+    )
+    returning id, whse_code, whse_name
+    into new_warehouse_id, new_warehouse_code, new_warehouse_name;
+
+    warehouse_ids := array_append(warehouse_ids, new_warehouse_id);
+    associated_warehouse_items := array_append(
+      associated_warehouse_items,
+      jsonb_build_object(
+        'id', new_warehouse_id,
+        'whse_code', new_warehouse_code,
+        'whse_name', new_warehouse_name,
+        'father_id', father_warehouse_id,
+        'is_default_feed', false,
+        'is_default_receiving', false
       )
     );
   end loop;

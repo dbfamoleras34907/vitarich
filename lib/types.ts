@@ -195,6 +195,7 @@ export interface WarehouseData {
   farm_id?: number | null;
   farm_code?: string | null;
   farm_name?: string | null;
+  father_id?: number | null;
   is_default_feed_warehouse?: boolean | null;
   is_default_receiving_warehouse?: boolean | null;
   full_location_code?: string | null;

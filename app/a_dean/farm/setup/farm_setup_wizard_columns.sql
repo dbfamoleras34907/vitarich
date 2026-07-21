@@ -2,6 +2,7 @@ alter table public.i_warehouse
   add column if not exists farm_id bigint null,
   add column if not exists farm_code text null,
   add column if not exists farm_name text null,
+  add column if not exists father_id bigint null,
   add column if not exists is_default_feed_warehouse boolean not null default false,
   add column if not exists is_default_receiving_warehouse boolean not null default false;
 
@@ -26,8 +27,19 @@ alter table public.i_warehouse
   foreign key (farm_id)
   references public.farms (id);
 
+alter table public.i_warehouse
+  drop constraint if exists i_warehouse_father_id_fkey;
+
+alter table public.i_warehouse
+  add constraint i_warehouse_father_id_fkey
+  foreign key (father_id)
+  references public.i_warehouse (id);
+
 create index if not exists i_warehouse_farm_id_idx
   on public.i_warehouse (farm_id);
+
+create index if not exists i_warehouse_father_id_idx
+  on public.i_warehouse (father_id);
 
 create unique index if not exists i_warehouse_default_feed_per_farm_uidx
   on public.i_warehouse (farm_id)

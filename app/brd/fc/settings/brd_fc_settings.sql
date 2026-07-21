@@ -4,6 +4,9 @@ create table if not exists public.brd_fc_settings (
   created_by uuid null references auth.users(id),
   updated_at timestamp with time zone null,
   updated_by uuid null references auth.users(id),
+  farm_id integer not null,
+  farm_code text null,
+  farm_name text null,
   allow_advance_posting boolean not null default false,
   auto_feed_batch_selection boolean not null default false,
   auto_feed_batch_selection_mode text not null default 'USER_SELECTED',
@@ -13,6 +16,15 @@ create table if not exists public.brd_fc_settings (
     check (auto_feed_batch_selection_mode in ('USER_SELECTED', 'FIFO')),
   constraint brd_fc_settings_void_check check (void in ('0', '1'))
 );
+
+alter table public.brd_fc_settings
+  add column if not exists farm_id integer;
+
+alter table public.brd_fc_settings
+  add column if not exists farm_code text null;
+
+alter table public.brd_fc_settings
+  add column if not exists farm_name text null;
 
 alter table public.brd_fc_settings
   add column if not exists allow_advance_posting boolean not null default false;
@@ -35,3 +47,10 @@ alter table public.brd_fc_settings
 
 create index if not exists brd_fc_settings_void_idx
   on public.brd_fc_settings (void);
+
+create index if not exists brd_fc_settings_farm_idx
+  on public.brd_fc_settings (farm_id);
+
+create unique index if not exists brd_fc_settings_active_farm_uidx
+  on public.brd_fc_settings (farm_id)
+  where void = '1';
