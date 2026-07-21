@@ -21,6 +21,7 @@ export type FarmSetupWarehouseDraft = Pick<
 > & {
   client_key: string
   father_client_key?: string | null
+  capacity?: number | null
   is_default_feed?: boolean
   is_default_receiving?: boolean
 }

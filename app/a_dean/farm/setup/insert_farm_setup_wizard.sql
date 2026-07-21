@@ -42,6 +42,36 @@ begin
 
   farm_approval_status := coalesce(nullif(payload->'farm'->>'approval_status', ''), 'approved');
 
+  if exists (
+    select 1
+    from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb)) as buildings(building)
+    where building->>'warehouse_type' = 'Building'
+      and exists (
+        select 1
+        from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb)) as pens(pen)
+        where pen->>'warehouse_type' = 'Pen'
+          and pen->>'father_client_key' = building->>'client_key'
+      )
+      and (
+        nullif(building->>'capacity', '') is null
+        or exists (
+          select 1
+          from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb)) as pens(pen)
+          where pen->>'warehouse_type' = 'Pen'
+            and pen->>'father_client_key' = building->>'client_key'
+            and nullif(pen->>'capacity', '') is null
+        )
+        or (building->>'capacity')::numeric <> (
+          select sum((pen->>'capacity')::numeric)
+          from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb)) as pens(pen)
+          where pen->>'warehouse_type' = 'Pen'
+            and pen->>'father_client_key' = building->>'client_key'
+        )
+      )
+  ) then
+    raise exception 'For buildings with pens, the pen capacity total must equal the building capacity.';
+  end if;
+
   for warehouse_item in
     select value
     from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
@@ -51,6 +81,7 @@ begin
       whse_name,
       fms_type,
       warehouse_type,
+      capacity,
       full_location_code,
       addr1,
       addr2,
@@ -68,6 +99,7 @@ begin
       warehouse_item->>'whse_name',
       warehouse_item->>'fms_type',
       warehouse_item->>'warehouse_type',
+      nullif(warehouse_item->>'capacity', '')::numeric,
       warehouse_item->>'full_location_code',
       warehouse_item->>'addr1',
       warehouse_item->>'addr2',
@@ -119,6 +151,7 @@ begin
       whse_name,
       fms_type,
       warehouse_type,
+      capacity,
       father_id,
       is_active,
       is_default_feed_warehouse,
@@ -128,6 +161,7 @@ begin
       warehouse_item->>'whse_name',
       warehouse_item->>'fms_type',
       'Pen',
+      nullif(warehouse_item->>'capacity', '')::numeric,
       father_warehouse_id,
       coalesce((warehouse_item->>'is_active')::boolean, true),
       false,

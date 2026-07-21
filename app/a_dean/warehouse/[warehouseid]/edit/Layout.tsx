@@ -14,11 +14,18 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import Breadcrumb from '@/lib/Breadcrumb'
 import type { WarehouseData } from '@/lib/types'
-import { ArrowLeft, MapPin, PackageCheck, Phone, Save, Warehouse } from 'lucide-react'
+import { ArrowLeft, MapPin, PackageCheck, Phone, Plus, Save, Warehouse } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { getWarehouses, updateWarehouse } from '../../api'
+import {
+  getWarehouseBuildings,
+  getWarehousePens,
+  getWarehouses,
+  updateWarehouse,
+  type WarehouseBuildingOption,
+} from '../../api'
+import { createWarehouse } from '../../new/api'
 import { getWarehouseFarmOptions, type WarehouseFarmOption } from '../../new/api'
 
 type FieldCode = keyof Pick<
@@ -42,6 +49,7 @@ const FMS_TYPES = [
 const WAREHOUSE_TYPES = [
   { value: 'Warehouse', label: 'Warehouse' },
   { value: 'Building', label: 'Building' },
+  { value: 'Pen', label: 'Pen' },
 ]
 
 const FMS_TYPE_VALUES = new Set(FMS_TYPES.map((type) => type.value))
@@ -103,9 +111,16 @@ export default function Layout() {
   const warehouseId = String(params.warehouseid ?? '')
   const [formData, setFormData] = useState<Partial<WarehouseData>>({})
   const [farms, setFarms] = useState<WarehouseFarmOption[]>([])
+  const [buildings, setBuildings] = useState<WarehouseBuildingOption[]>([])
+  const [pens, setPens] = useState<WarehouseData[]>([])
+  const [newPenName, setNewPenName] = useState('')
+  const [newPenCapacity, setNewPenCapacity] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingPage, setLoadingPage] = useState(true)
   const [loadingFarms, setLoadingFarms] = useState(false)
+  const [loadingBuildings, setLoadingBuildings] = useState(false)
+  const [loadingPens, setLoadingPens] = useState(false)
+  const [addingPen, setAddingPen] = useState(false)
 
   const selectedFarm = useMemo(
     () => farms.find((farm) => farm.id === formData.farm_id) ?? null,
@@ -117,6 +132,11 @@ export default function Layout() {
     : formData.farm_id
       ? `Farm ID ${formData.farm_id}`
       : 'Not selected'
+
+  const selectedFatherBuilding = useMemo(
+    () => buildings.find((building) => building.id === formData.father_id) ?? null,
+    [buildings, formData.father_id]
+  )
 
   const addressPreview = useMemo(
     () =>
@@ -133,6 +153,53 @@ export default function Layout() {
 
   const updateFmsType = (value: string) => {
     setFormData((prev) => ({ ...prev, fms_type: value }))
+  }
+
+  const loadPens = async () => {
+    if (!warehouseId) return
+
+    setLoadingPens(true)
+    const result = await getWarehousePens(warehouseId)
+    if (result.success && Array.isArray(result.data)) {
+      setPens(result.data)
+    } else {
+      toast.error(result.error ?? 'Unable to load pens.')
+    }
+    setLoadingPens(false)
+  }
+
+  const addPen = async () => {
+    if (!compact(newPenName)) {
+      toast.error('Pen name is required.')
+      return
+    }
+
+    const capacity = newPenCapacity === '' ? null : Number(newPenCapacity)
+    if (capacity == null || !Number.isFinite(capacity) || capacity < 0) {
+      toast.error('Enter a valid non-negative Pen capacity.')
+      return
+    }
+
+    setAddingPen(true)
+    const result = await createWarehouse({
+      whse_name: compact(newPenName),
+      fms_type: nullable(formData.fms_type),
+      warehouse_type: 'Pen',
+      father_id: Number(warehouseId),
+      capacity,
+      is_active: true,
+    })
+    setAddingPen(false)
+
+    if (!result.success) {
+      toast.error(result.error ?? 'Unable to add Pen.')
+      return
+    }
+
+    toast.success('Pen added successfully.')
+    setNewPenName('')
+    setNewPenCapacity('')
+    await loadPens()
   }
 
   const saveWarehouse = async (event: React.FormEvent) => {
@@ -153,11 +220,25 @@ export default function Layout() {
       return
     }
 
+    if (formData.warehouse_type === 'Pen' && !formData.father_id) {
+      toast.error('Select a father Building for this Pen.')
+      return
+    }
+
+    const capacityText = compact(formData.capacity)
+    const capacity = capacityText === '' ? null : Number(capacityText)
+    if (capacity != null && (!Number.isFinite(capacity) || capacity < 0)) {
+      toast.error('Capacity must be a valid non-negative number.')
+      return
+    }
+
     setLoading(true)
     const payload: WarehouseData = {
       whse_name: nullable(formData.whse_name),
       fms_type: nullable(formData.fms_type),
       warehouse_type: nullable(formData.warehouse_type),
+      father_id: formData.warehouse_type === 'Pen' ? formData.father_id ?? null : null,
+      capacity,
       full_location_code: nullable(formData.full_location_code),
       addr1: nullable(formData.addr1),
       addr2: nullable(formData.addr2),
@@ -219,6 +300,29 @@ export default function Layout() {
 
     loadFarms()
   }, [])
+
+  useEffect(() => {
+    async function loadBuildings() {
+      setLoadingBuildings(true)
+      const result = await getWarehouseBuildings(warehouseId)
+
+      if (result.success && Array.isArray(result.data)) {
+        setBuildings(result.data)
+      } else {
+        toast.error(result.error ?? 'Unable to load buildings.')
+      }
+
+      setLoadingBuildings(false)
+    }
+
+    if (warehouseId) loadBuildings()
+  }, [warehouseId])
+
+  useEffect(() => {
+    if (formData.warehouse_type === 'Building') loadPens()
+    // The warehouse type is loaded asynchronously and is immutable afterward.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.warehouse_type, warehouseId])
 
   return (
     <div className="min-h-screen bg-[#f7f5f1]">
@@ -303,24 +407,99 @@ export default function Layout() {
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label required>Warehouse Type</Label>
-                  <Select
-                    value={formData.warehouse_type ?? ''}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, warehouse_type: value }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select warehouse type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WAREHOUSE_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input value={formData.warehouse_type ?? ''} readOnly className="bg-stone-100 text-stone-600" />
+                  <p className="text-xs leading-5 text-stone-500">Warehouse type cannot be changed after creation.</p>
                 </div>
+                {formData.warehouse_type === 'Pen' ? (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label required>Father Building</Label>
+                    <Select
+                      value={formData.father_id == null ? '' : String(formData.father_id)}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, father_id: Number(value) }))}
+                      disabled={loadingBuildings}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={loadingBuildings ? 'Loading buildings...' : 'Select father building'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {buildings.map((building) => (
+                          <SelectItem key={building.id} value={String(building.id)}>
+                            {building.whse_code || `Building ${building.id}`} - {building.whse_name || 'Unnamed building'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {formData.warehouse_type === 'Building' || formData.warehouse_type === 'Pen' ? (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Capacity</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={formData.capacity ?? ''}
+                      onChange={(event) => setFormData((prev) => ({ ...prev, capacity: event.target.value === '' ? null : Number(event.target.value) }))}
+                    />
+                    <p className="text-xs leading-5 text-stone-500">
+                      When a building has pens, the total pen capacity must equal its capacity.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </section>
+
+            {formData.warehouse_type === 'Building' ? (
+              <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+                <SectionHeader
+                  icon={Warehouse}
+                  title="Pens"
+                  description="Pens assigned to this Building. Their combined capacity must equal the Building capacity."
+                />
+
+                <div className="mt-5 space-y-3">
+                  {loadingPens ? <p className="text-sm text-stone-500">Loading pens...</p> : null}
+                  {!loadingPens && pens.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-500">
+                      No Pens have been added to this Building.
+                    </p>
+                  ) : null}
+                  {pens.map((pen) => (
+                    <div key={pen.id} className="grid gap-3 rounded-md border border-stone-200 bg-stone-50 px-4 py-3 sm:grid-cols-[1fr_160px]">
+                      <div>
+                        <div className="text-sm font-medium text-stone-950">{pen.whse_name || 'Unnamed Pen'}</div>
+                        <div className="mt-1 font-mono text-xs text-stone-500">{pen.whse_code || 'Code pending'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium uppercase text-stone-500">Capacity</div>
+                        <div className="mt-1 text-sm font-semibold text-stone-950">{pen.capacity ?? 'Not set'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 grid gap-4 border-t border-stone-200 pt-5 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+                  <div className="space-y-2">
+                    <Label required>Pen Name</Label>
+                    <Input value={newPenName} placeholder="Pen name" onChange={(event) => setNewPenName(event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label required>Pen Capacity</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={newPenCapacity}
+                      onChange={(event) => setNewPenCapacity(event.target.value)}
+                    />
+                  </div>
+                  <Button type="button" onClick={addPen} disabled={addingPen || loadingPens}>
+                    <Plus className="size-4" />
+                    {addingPen ? 'Adding...' : 'Add Pen'}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
 
             <section className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
               <SectionHeader
@@ -395,6 +574,17 @@ export default function Layout() {
                 <SummaryRow label="Warehouse Code" value={formData.whse_code || 'Not assigned'} />
                 <SummaryRow label="FMS Type" value={formData.fms_type || 'Not selected'} />
                 <SummaryRow label="Warehouse Type" value={formData.warehouse_type || 'Not selected'} />
+                {formData.warehouse_type === 'Pen' ? (
+                  <SummaryRow
+                    label="Father Building"
+                    value={selectedFatherBuilding
+                      ? `${selectedFatherBuilding.whse_code || ''} - ${selectedFatherBuilding.whse_name || 'Unnamed building'}`
+                      : 'Not selected'}
+                  />
+                ) : null}
+                {formData.warehouse_type === 'Building' || formData.warehouse_type === 'Pen' ? (
+                  <SummaryRow label="Capacity" value={formData.capacity ?? 'Not set'} />
+                ) : null}
                 <SummaryRow label="Farm" value={selectedFarmLabel} />
               </div>
             </section>

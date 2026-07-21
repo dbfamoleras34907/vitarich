@@ -38,6 +38,7 @@ export type GoodsIssueFlockCardInfo = {
   broilerType: string
   breed: string
   flockCode: string
+  cycleNumber: string
   animalQty: number
   bodyWeight: number | null
   status: string
@@ -224,6 +225,7 @@ type FlockCardInfoRow = {
   broiler_type: string | null
   breed: string | null
   flock_code: string | null
+  cycle_no: string | null
   animal_qty: number | null
   status: string | null
 }
@@ -249,6 +251,7 @@ const toFlockCardInfo = (
   broilerType: row.broiler_type ?? '',
   breed: row.breed ?? '',
   flockCode: row.flock_code ?? '',
+  cycleNumber: row.cycle_no ?? '',
   animalQty: Number(row.animal_qty ?? 0),
   bodyWeight,
   status: row.status ?? '',
@@ -332,7 +335,7 @@ export async function getDeliveryFlockCardInfo(params: {
   if (!Number.isFinite(farmId) || farmId <= 0) return null
   if ((!Number.isFinite(buildingWarehouseId) || buildingWarehouseId <= 0) && !buildingCode) return null
 
-  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, animal_qty, status'
+  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status'
 
   if (Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
     const { data, error } = await db
@@ -422,7 +425,7 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
     const sourceWarehouseCode = String(row.whse_code ?? '').trim()
     const warehouseCode = destinationWarehouseCode || sourceWarehouseCode
     const onHandQty = Number(row.animal_qty ?? row.onhand_snapshot ?? 0)
-    if (!itemCode || !batchNumber || !warehouseCode || onHandQty <= 0) return []
+    if (!itemCode || !batchNumber || !warehouseCode) return []
     const batchDate =
       batchDateByKey.get(`${itemCode.toUpperCase()}|${batchNumber.toUpperCase()}`) ??
       batchDateByKey.get(batchNumber.toUpperCase())

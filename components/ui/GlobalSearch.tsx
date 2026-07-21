@@ -28,6 +28,8 @@ type NavCommandChild = {
   title: string
   url: string
   type?: string
+  insert?: boolean
+  newDocumentUrl?: string
 }
 
 type NavCommandGroup = {
@@ -164,10 +166,33 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const navtype = ["All", "Settings", "Navigation"]
   const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
+  const rawPermissions = getValue("UserPermission")
+  let userPermissions: Array<{
+    group_name: string
+    title: string
+    ilink?: string
+    is_visible: boolean
+  }> = []
+
+  try {
+    userPermissions = typeof rawPermissions === "string"
+      ? JSON.parse(rawPermissions)
+      : rawPermissions || []
+  } catch {
+    userPermissions = []
+  }
+
   const filteredFolders = filterNavFolders(
     NavFolders,
-    getValue("UserPermission") || []
+    userPermissions
   ) as NavCommandFolder[]
+
+  const canInsertDocument = (child: NavCommandChild) =>
+    child.insert === true &&
+    Boolean(child.newDocumentUrl) &&
+    userPermissions.some(
+      (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
+    )
 
   /**
    * INTERNAL COMMANDS
@@ -215,16 +240,39 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     ...(canShowNavigation
       ? filteredFolders.flatMap((folder, folderIndex) =>
           folder.items?.flatMap((group, groupIndex) =>
-            group.children.map((child, childIndex) => ({
-              kind: "navigation" as const,
-              key: `${child.url}-${child.title}`,
-              title: child.title,
-              description: `${folder.title} > ${group.group}`,
-              type: child.type,
-              url: child.url,
-              score: globalSearchFilter(child.title, searchQuery, [folder.title, group.group, child.type ?? ""]),
-              order: folderIndex * 10000 + groupIndex * 1000 + childIndex,
-            }))
+            group.children.flatMap((child, childIndex) => {
+              const navigationItem: RankedSearchItem = {
+                kind: "navigation",
+                key: `${child.url}-${child.title}`,
+                title: child.title,
+                description: `${folder.title} > ${group.group}`,
+                type: child.type,
+                url: child.url,
+                score: globalSearchFilter(child.title, searchQuery, [folder.title, group.group, child.type ?? ""]),
+                order: folderIndex * 10000 + groupIndex * 1000 + childIndex * 2,
+              }
+
+              if (!canInsertDocument(child)) return [navigationItem]
+
+              const newDocumentTitle = `${child.title} New Document`
+              const newDocumentItem: RankedSearchItem = {
+                kind: "navigation",
+                key: `${child.newDocumentUrl}-${newDocumentTitle}`,
+                title: newDocumentTitle,
+                description: `${folder.title} > ${group.group} > New Document`,
+                type: child.type,
+                url: child.newDocumentUrl!,
+                score: globalSearchFilter(newDocumentTitle, searchQuery, [
+                  folder.title,
+                  group.group,
+                  child.type ?? "",
+                  "new insert create add",
+                ]),
+                order: folderIndex * 10000 + groupIndex * 1000 + childIndex * 2 + 1,
+              }
+
+              return [navigationItem, newDocumentItem]
+            })
           ) ?? []
         )
       : []),
@@ -397,10 +445,9 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             <React.Fragment key={folder.id}>
               <CommandGroup heading={folder.title}>
                 {folder.items?.map((group) =>
-                  group.children.map((child) => {
+                  group.children.flatMap((child) => {
                     const Icon = getModuleIcon(child.title, child.type)
-
-                    return (
+                    const items = [(
                     <CommandItem
                       key={child.url + child.title}
                       value={child.title}
@@ -422,7 +469,30 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                         </span>
                       </div>
                     </CommandItem>
-                    )
+                    )]
+
+                    if (canInsertDocument(child)) {
+                      const newDocumentTitle = `${child.title} New Document`
+                      items.push(
+                        <CommandItem
+                          key={`${child.newDocumentUrl}-${newDocumentTitle}`}
+                          value={newDocumentTitle}
+                          keywords={[folder.title, group.group, child.type ?? "", "new insert create add"]}
+                          onSelect={() => runCommand(() => router.push(child.newDocumentUrl!))}
+                        >
+                          <Icon className="mr-2 h-4 w-4 text-green-500" />
+
+                          <div className="flex flex-col">
+                            <span>{newDocumentTitle}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {folder.title} &gt; {group.group} &gt; New Document
+                            </span>
+                          </div>
+                        </CommandItem>
+                      )
+                    }
+
+                    return items
                   })
                 )}
               </CommandGroup>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2 } from 'lucide-react'
+import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import SearchableCombobox from '@/components/SearchableCombobox'
@@ -89,6 +89,7 @@ const newLine = (): GoodsIssueLine => ({
   fromWarehouseCode: '',
   fromWarehouseName: '',
   onHandQty: 0,
+  requestedAltQty: 1,
 })
 
 const emptyIssue = (giNo: string): GoodsIssue => ({
@@ -306,6 +307,7 @@ export default function NewGoodsIssue({
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchOptions, setBatchOptions] = useState<Record<string, GoodsIssueOnHandBatch[]>>({})
   const [loadingBatchOptions, setLoadingBatchOptions] = useState<Record<string, boolean>>({})
+  const [batchAllocationDrafts, setBatchAllocationDrafts] = useState<Record<string, number>>({})
   const [flockCardInfo, setFlockCardInfo] = useState<GoodsIssueFlockCardInfo | null>(null)
   const [loadingFlockCardInfo, setLoadingFlockCardInfo] = useState(false)
   const [lineFlockCardInfo, setLineFlockCardInfo] = useState<Record<string, {
@@ -321,6 +323,10 @@ export default function NewGoodsIssue({
   const batchSelectionActionsRef = useRef<{
     getBatchOptionsForLine?: (line: GoodsIssueLine) => GoodsIssueOnHandBatch[]
     selectBatch?: (line: GoodsIssueLine, batchNumber: string) => Promise<void>
+  }>({})
+  const itemSelectionActionsRef = useRef<{
+    getItemsForLine?: (line: GoodsIssueLine) => Items[]
+    selectItem?: (line: GoodsIssueLine, value: string) => Promise<void>
   }>({})
   const handledAutoBatchSelectionRef = useRef<Record<string, string>>({})
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsIssueLine['id'] | null>(null)
@@ -957,9 +963,10 @@ export default function NewGoodsIssue({
     const placementBatches = linePlacementBatches[String(line.id)] ?? []
     if (usesLineWarehouse && placementBatches.length > 0) {
       const selectedItemCode = line.itemCode.trim().toUpperCase()
-      return selectedItemCode
+      const matchingBatches = selectedItemCode
         ? placementBatches.filter(batch => batch.itemCode.trim().toUpperCase() === selectedItemCode)
         : placementBatches
+      return matchingBatches.filter(batch => batch.onHandQty > 0 || batch.batchNumber === line.batchNumber)
     }
 
     return batchOptions[batchOptionKey(line)] ?? []
@@ -985,6 +992,9 @@ export default function NewGoodsIssue({
 
     return Math.max(0, originalOnHandQty - getAllocatedBaseQtyForBatch(line))
   }
+
+  const getTotalBatchOnHandForLine = (line: GoodsIssueLine) =>
+    getRawBatchOptionsForLine(line).reduce((total, batch) => total + Number(batch.onHandQty || 0), 0)
 
   const getBatchOptionsForLine = (line: GoodsIssueLine) =>
     getRawBatchOptionsForLine(line)
@@ -1022,7 +1032,7 @@ export default function NewGoodsIssue({
   const canOpenBatchSelector = (line: Pick<GoodsIssueLine, 'id' | 'itemCode' | 'fromWarehouseCode'>) =>
     lineHasPlacementBatchOptions(line as GoodsIssueLine) || canSearchLineInventory(line)
 
-  const selectBatch = async (line: GoodsIssueLine, batchNumber: string) => {
+  const selectBatch = async (line: GoodsIssueLine, batchNumber: string, requestedAllocationQty?: number) => {
     if (issue?.status !== 'Draft') return
 
     const options = getBatchOptionsForLine(line)
@@ -1036,7 +1046,25 @@ export default function NewGoodsIssue({
     const availableAltUoms = getGroupUoms(baseUom)
     const lineAltUomIsAvailable = availableAltUoms.some(option => option.uomCode === line.altUom)
     const altUom = lineAltUomIsAvailable ? line.altUom : getDefaultAltUom(baseUom)
-    const altQty = line.altQty || 1
+    const allocationGroup = issue.lines.filter(candidate =>
+      candidate.fromWarehouseCode === line.fromWarehouseCode && candidate.itemCode === line.itemCode,
+    )
+    const requiredAltQty = line.requestedAltQty ?? allocationGroup.reduce(
+      (total, candidate) => total + Number(candidate.altQty || 0),
+      0,
+    )
+    const alreadyAllocatedAltQty = allocationGroup
+      .filter(candidate => candidate.batchNumber)
+      .reduce((total, candidate) => total + Number(candidate.altQty || 0), 0)
+    const remainingAltQty = Math.max(requiredAltQty - alreadyAllocatedAltQty, 0)
+    const baseQtyPerAltQty = calculateBaseQty(1, altUom, baseUom)
+    const availableAltQty = baseQtyPerAltQty > 0 ? Number(batch?.onHandQty || 0) / baseQtyPerAltQty : 0
+    const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
+    const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
+    if (altQty <= 0) {
+      toast(remainingAltQty <= 0 ? 'To Transfer is already fully allocated.' : 'This batch has no available quantity.')
+      return
+    }
     const updatedLine = {
       ...line,
       itemId: selectedItem?.id ?? line.itemId,
@@ -1053,11 +1081,116 @@ export default function NewGoodsIssue({
       onHandQty: batch?.onHandQty ?? 0,
     }
     const batchRule = selectedItem ? getBatchRuleForLine(updatedLine) : null
+
+    const duplicateBatchLine = usesLineWarehouse && issue.lines.some(candidate =>
+      candidate.id !== line.id &&
+      candidate.fromWarehouseCode === updatedLine.fromWarehouseCode &&
+      candidate.itemCode === updatedLine.itemCode &&
+      candidate.batchNumber === updatedLine.batchNumber,
+    )
+    if (duplicateBatchLine) {
+      toast(`Batch ${updatedLine.batchNumber} is already selected for this building.`)
+      return
+    }
+
+    if (usesLineWarehouse && line.batchNumber && line.batchNumber !== updatedLine.batchNumber) {
+      setIssue(current => current ? {
+        ...current,
+        lines: current.lines.flatMap(candidate => candidate.id === line.id
+          ? [
+              candidate,
+              {
+                ...updatedLine,
+                id: crypto.randomUUID(),
+                batchRuleId: batchRule?.id ?? null,
+              },
+            ]
+          : [candidate]),
+      } : current)
+      return
+    }
+
     updateLine(line.id, {
       ...updatedLine,
       batchRuleId: batchRule?.id ?? null,
     })
-    setActiveBatchLineId(null)
+    if (!usesLineWarehouse) setActiveBatchLineId(null)
+  }
+
+  const autoSelectDeliveryBatches = (line: GoodsIssueLine) => {
+    if (!issue || issue.status !== 'Draft') return
+
+    const groupLines = issue.lines.filter(candidate =>
+      candidate.fromWarehouseCode === line.fromWarehouseCode &&
+      candidate.itemCode === line.itemCode,
+    )
+    const requestedAltQty = line.requestedAltQty ?? groupLines.reduce(
+      (total, candidate) => total + Number(candidate.altQty || 0),
+      0,
+    )
+    if (requestedAltQty <= 0) {
+      toast('Enter To Transfer before using Auto Select.')
+      return
+    }
+
+    const rawOptions = getRawBatchOptionsForLine(line)
+    let remainingAltQty = requestedAltQty
+    const allocations: GoodsIssueLine[] = []
+
+    rawOptions.forEach(batch => {
+      if (remainingAltQty <= 0) return
+
+      const selectedItem = batch.itemCode
+        ? items.find(item => item.item_code === batch.itemCode) ?? getSelectedItem(line)
+        : getSelectedItem(line)
+      const baseUom = selectedItem?.inventory_uom || selectedItem?.unit_measure || line.baseUom || ''
+      const availableAltUoms = getGroupUoms(baseUom)
+      const altUom = availableAltUoms.some(option => option.uomCode === line.altUom)
+        ? line.altUom
+        : getDefaultAltUom(baseUom)
+      const baseQtyPerAltQty = calculateBaseQty(1, altUom, baseUom)
+      const availableAltQty = baseQtyPerAltQty > 0 ? batch.onHandQty / baseQtyPerAltQty : 0
+      const altQty = Math.min(remainingAltQty, availableAltQty)
+      if (altQty <= 0) return
+
+      const allocation: GoodsIssueLine = {
+        ...line,
+        id: allocations.length === 0 ? line.id : crypto.randomUUID(),
+        itemId: selectedItem?.id ?? line.itemId,
+        itemCode: selectedItem?.item_code ?? batch.itemCode ?? line.itemCode,
+        description: selectedItem?.item_name || selectedItem?.description || line.description,
+        batchNumber: batch.batchNumber,
+        manufacturingDate: batch.manufacturingDate,
+        expiryDate: batch.expiryDate,
+        altQty,
+        altUom,
+        baseQty: calculateBaseQty(altQty, altUom, baseUom),
+        baseUom,
+        onHandQty: batch.onHandQty,
+        requestedAltQty,
+      }
+      const batchRule = selectedItem ? getBatchRuleForLine(allocation) : null
+      allocations.push({ ...allocation, batchRuleId: batchRule?.id ?? null })
+      remainingAltQty -= altQty
+    })
+
+    if (allocations.length === 0) {
+      toast('No available batches can fulfill To Transfer.')
+      return
+    }
+    if (remainingAltQty > 0) {
+      toast(`Auto Select could not allocate the remaining ${formatQuantity(remainingAltQty)} ${line.altUom || ''}.`.trim())
+      return
+    }
+
+    const groupIds = new Set(groupLines.map(candidate => candidate.id))
+    setIssue(current => {
+      if (!current) return current
+      const firstGroupIndex = current.lines.findIndex(candidate => groupIds.has(candidate.id))
+      const remainingLines = current.lines.filter(candidate => !groupIds.has(candidate.id))
+      remainingLines.splice(Math.max(firstGroupIndex, 0), 0, ...allocations)
+      return { ...current, lines: remainingLines }
+    })
   }
 
   const openBatchSelector = (line: GoodsIssueLine) => {
@@ -1068,6 +1201,27 @@ export default function NewGoodsIssue({
       refreshLineOnHand(line).catch(console.error)
     }
   }
+
+  const handleTransferQuantityChange = (line: GoodsIssueLine) => {
+    if (!deliveryBatchAutoSelection || issue?.status !== 'Draft') return
+    if (getRawBatchOptionsForLine(line).length > 1) setActiveBatchLineId(line.id)
+  }
+
+  itemSelectionActionsRef.current = {
+    getItemsForLine,
+    selectItem,
+  }
+
+  useEffect(() => {
+    if (!issue || issue.status !== 'Draft' || !usesLineWarehouse) return
+
+    issue.lines.forEach(line => {
+      if (!line.fromWarehouseCode || line.itemCode || loadingLinePlacementBatches[String(line.id)]) return
+      const lineItems = itemSelectionActionsRef.current.getItemsForLine?.(line) ?? []
+      if (lineItems.length !== 1 || !lineItems[0]?.item_code) return
+      itemSelectionActionsRef.current.selectItem?.(line, lineItems[0].item_code).catch(console.error)
+    })
+  }, [issue, items, linePlacementBatches, loadingLinePlacementBatches, usesLineWarehouse])
 
   batchSelectionActionsRef.current = {
     getBatchOptionsForLine,
@@ -1098,9 +1252,6 @@ export default function NewGoodsIssue({
         return
       }
 
-      if (!activeBatchLineId) {
-        setActiveBatchLineId(line.id)
-      }
     })
   }, [
     activeBatchLineId,
@@ -1166,7 +1317,7 @@ export default function NewGoodsIssue({
     }
     const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
     if (overOnHandLine) {
-      toast(`To Transfer Qty for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
+      toast(`To Transfer for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
       return
     }
     const missingWarehouseLine = usesLineWarehouse
@@ -1184,6 +1335,29 @@ export default function NewGoodsIssue({
     if (missingBatchLine) {
       toast(`Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
       return
+    }
+
+    if (usesLineWarehouse) {
+      const allocationGroups = new Map<string, GoodsIssueLine[]>()
+      linesToSave.forEach(line => {
+        const key = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+        allocationGroups.set(key, [...(allocationGroups.get(key) ?? []), line])
+      })
+      const incompleteAllocation = Array.from(allocationGroups.values()).find(group => {
+        const requestedQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
+          ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
+        const selectedQty = group
+          .filter(line => line.batchNumber)
+          .reduce((total, line) => total + Number(line.altQty || 0), 0)
+        return Math.abs(requestedQty - selectedQty) > 0.000001
+      })
+      if (incompleteAllocation) {
+        const requestedQty = incompleteAllocation.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
+          ?? incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
+        const selectedQty = incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
+        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal To Transfer (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
+        return
+      }
     }
 
     setSaving(true)
@@ -1235,8 +1409,29 @@ export default function NewGoodsIssue({
   if (!issue) return <GoodsIssueLoadingShell />
 
   const activeBatchLine = issue.lines.find(line => line.id === activeBatchLineId) ?? null
+  const activeBatchAllocationLines = activeBatchLine
+    ? issue.lines.filter(line =>
+        line.fromWarehouseCode === activeBatchLine.fromWarehouseCode &&
+        line.itemCode === activeBatchLine.itemCode &&
+        Boolean(line.batchNumber),
+      )
+    : []
   const activeBatchKey = activeBatchLine ? batchOptionKey(activeBatchLine) : ''
   const activeBatchOptions = activeBatchLine ? getBatchOptionsForLine(activeBatchLine) : []
+  const activeRequiredAltQty = activeBatchLine
+    ? activeBatchLine.requestedAltQty ?? (activeBatchAllocationLines.reduce((total, line) => total + Number(line.altQty || 0), 0) || activeBatchLine.altQty)
+    : 0
+  const activeAllocatedAltQty = activeBatchAllocationLines.reduce((total, line) => total + Number(line.altQty || 0), 0)
+  const activeRemainingAltQty = Math.max(activeRequiredAltQty - activeAllocatedAltQty, 0)
+  const activeTotalBatchOnHand = activeBatchLine ? getTotalBatchOnHandForLine(activeBatchLine) : 0
+  const activeAvailableBatchOptions = activeBatchLine
+    ? getRawBatchOptionsForLine(activeBatchLine).map(batch => {
+        const selectedBaseQty = activeBatchAllocationLines
+          .filter(allocation => allocation.batchNumber === batch.batchNumber)
+          .reduce((total, allocation) => total + Number(allocation.baseQty || 0), 0)
+        return { ...batch, onHandQty: Math.max(batch.onHandQty - selectedBaseQty, 0) }
+      })
+    : []
   const activeBatchLoading = activeBatchKey ? Boolean(loadingBatchOptions[activeBatchKey]) : false
   const activeBatchHasSearched = activeBatchKey
     ? Object.prototype.hasOwnProperty.call(batchOptions, activeBatchKey)
@@ -1432,12 +1627,13 @@ export default function NewGoodsIssue({
                 lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
                 batchOptionKey={batchOptionKey}
                 getBatchOptionsForLine={getBatchOptionsForLine}
-                getAvailableOnHandForLine={getAvailableOnHandForLine}
+                getTotalBatchOnHandForLine={getTotalBatchOnHandForLine}
                 canOpenBatchSelector={canOpenBatchSelector}
                 selectLineWarehouse={selectLineWarehouse}
                 selectItem={selectItem}
                 openBatchSelector={openBatchSelector}
                 updateLine={updateLine}
+                onTransferQuantityChange={handleTransferQuantityChange}
                 setIssue={setIssue}
                 newLine={newLine}
                 calculateBaseQty={calculateBaseQty}
@@ -1445,7 +1641,6 @@ export default function NewGoodsIssue({
                 getSelectedGroup={getSelectedGroup}
                 numberValue={numberValue}
                 formatQuantity={formatQuantity}
-                formatDateValue={formatDateValue}
               />
             ) : (
             <div className="overflow-x-auto">
@@ -1710,9 +1905,9 @@ export default function NewGoodsIssue({
           </section>
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
               <DialogHeader>
-                <DialogTitle>{activeDocumentIsPosted ? 'Batch Information' : 'Select On-hand Batch'}</DialogTitle>
+                <DialogTitle>{activeDocumentIsPosted ? 'Batch Information' : 'Batch Selection'}</DialogTitle>
                 <DialogDescription>
                   {activeDocumentIsPosted
                     ? 'This is the batch used by the posted item stock out transaction.'
@@ -1730,9 +1925,9 @@ export default function NewGoodsIssue({
                         {activeDocumentIsPosted && (
                           <Badge className={getInventoryStatusBadgeClass(issue.status)}>Posted</Badge>
                         )}
-                        {activeBatchLine.batchNumber && (
+                        {activeBatchAllocationLines.length > 0 && (
                           <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                            Selected: {activeBatchLine.batchNumber}
+                            {activeBatchAllocationLines.length} selected
                           </Badge>
                         )}
                       </div>
@@ -1744,8 +1939,30 @@ export default function NewGoodsIssue({
                     <p className="mt-2 text-xs text-stone-500">
                       {activeDocumentIsPosted
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
-                        : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
+                        : usesLineWarehouse
+                          ? 'Choose one or more available batches. Additional selections are added to this building automatically.'
+                          : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
                     </p>
+                    {!activeDocumentIsPosted && (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                        <div className="rounded-md bg-white px-3 py-2 text-sm">
+                          <div className="text-xs font-medium text-muted-foreground">Total On Hand</div>
+                          <div className="font-semibold tabular-nums">{formatQuantity(activeTotalBatchOnHand)} {getSelectedGroup(activeBatchLine.baseUom)?.baseUomCode ?? activeBatchLine.altUom}</div>
+                        </div>
+                        <div className="rounded-md bg-white px-3 py-2 text-sm">
+                          <div className="text-xs font-medium text-muted-foreground">Total Needed</div>
+                          <div className="font-semibold tabular-nums">{formatQuantity(activeRequiredAltQty)} {activeBatchLine.altUom}</div>
+                        </div>
+                        <div className="rounded-md bg-white px-3 py-2 text-sm">
+                          <div className="text-xs font-medium text-muted-foreground">Total Selected</div>
+                          <div className="font-semibold tabular-nums">{formatQuantity(activeAllocatedAltQty)} {activeBatchLine.altUom}</div>
+                        </div>
+                        <div className="rounded-md bg-white px-3 py-2 text-sm">
+                          <div className="text-xs font-medium text-muted-foreground">Remaining</div>
+                          <div className={`font-semibold tabular-nums ${activeRemainingAltQty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{formatQuantity(activeRemainingAltQty)} {activeBatchLine.altUom}</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <TabsContent value="batches" className="space-y-4">
@@ -1795,60 +2012,151 @@ export default function NewGoodsIssue({
                           </div>
                         )}
 
-                        {!activeBatchLoading && activeBatchHasSearched && activeBatchOptions.length === 0 && (
+                        {!activeBatchLoading && activeBatchHasSearched && activeBatchOptions.length === 0 && activeBatchAllocationLines.length === 0 && (
                           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
                             No on-hand batches found for this item and {warehouseLabel.toLowerCase()}.
                           </div>
                         )}
 
-                        {!activeBatchLoading && activeBatchOptions.length > 0 && (
-                          <div className="grid gap-3">
-                            {activeBatchOptions.map(batch => {
-                              const selected = batch.batchNumber === activeBatchLine.batchNumber
-
-                              return (
-                                <button
-                                  key={batch.batchNumber}
-                                  type="button"
-                                  onClick={() => selectBatch(activeBatchLine, batch.batchNumber)}
-                                  className={`rounded-md border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-stone-200 ${
-                                    selected
-                                      ? 'border-emerald-300 bg-emerald-50'
-                                      : 'border-stone-200 bg-white hover:border-stone-400 hover:bg-stone-50'
-                                  }`}
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <PackageCheck className={selected ? 'size-4 text-emerald-700' : 'size-4 text-stone-500'} />
-                                      <span className="truncate font-semibold text-stone-900">
-                                        {batch.batchNumber}
-                                      </span>
+                        {!activeBatchLoading && (activeBatchOptions.length > 0 || activeBatchAllocationLines.length > 0) && (
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="min-w-0 overflow-hidden rounded-md border">
+                              <div className="border-b bg-muted px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">Available Batches</div>
+                              <div className="grid grid-cols-[36px_minmax(100px,1fr)_90px_100px_84px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                <div>#</div><div>Batch</div><div className="text-right">Remaining Qty</div><div className="text-right">Selected Qty</div><div className="text-right">Allocate</div>
+                              </div>
+                              <div className="max-h-[38vh] overflow-y-auto bg-white">
+                                {activeAvailableBatchOptions.length === 0 ? (
+                                  <div className="px-3 py-8 text-center text-sm text-muted-foreground">No available batches.</div>
+                                ) : activeAvailableBatchOptions.map((batch, index) => {
+                                  const existingAllocation = activeBatchAllocationLines.find(allocation => allocation.batchNumber === batch.batchNumber)
+                                  const baseQtyPerAltQty = calculateBaseQty(1, activeBatchLine.altUom, activeBatchLine.baseUom)
+                                  const remainingBatchAltQty = baseQtyPerAltQty > 0 ? batch.onHandQty / baseQtyPerAltQty : 0
+                                  const qtyToAllocate = Math.min(activeRemainingAltQty, remainingBatchAltQty)
+                                  const allocationDraftKey = `${activeBatchLine.fromWarehouseCode}|${activeBatchLine.itemCode}|${batch.batchNumber}`
+                                  const selectedQty = Math.min(batchAllocationDrafts[allocationDraftKey] ?? qtyToAllocate, qtyToAllocate)
+                                  return (
+                                  <div key={batch.batchNumber} className="grid grid-cols-[36px_minmax(100px,1fr)_90px_100px_84px] items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0">
+                                    <div className="text-muted-foreground">{index + 1}</div>
+                                    <div className="min-w-0">
+                                      <div className="truncate font-semibold">{batch.batchNumber}</div>
+                                      <div className="truncate text-xs text-muted-foreground">MFG: {formatDateValue(batch.manufacturingDate)}</div>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="secondary">
-                                        {formatQuantity(batch.onHandQty)} {getSelectedGroup(activeBatchLine.baseUom)?.baseUomCode ?? 'base'} on hand
-                                      </Badge>
-                                      {selected && (
-                                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                          Selected
-                                        </Badge>
-                                      )}
+                                    <div className="text-right font-semibold tabular-nums">{formatQuantity(batch.onHandQty)}</div>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max={qtyToAllocate}
+                                      step="any"
+                                      value={selectedQty}
+                                      disabled={qtyToAllocate <= 0}
+                                      onChange={event => {
+                                        const value = Math.min(Math.max(numberValue(event.target.value), 0), qtyToAllocate)
+                                        setBatchAllocationDrafts(current => ({ ...current, [allocationDraftKey]: value }))
+                                      }}
+                                      className="h-8 text-right tabular-nums"
+                                    />
+                                    <div className="text-right">
+                                      <Button
+                                        type="button"
+                                        size="xs"
+                                        disabled={selectedQty <= 0}
+                                        onClick={() => {
+                                          if (!existingAllocation) {
+                                            selectBatch(activeBatchLine, batch.batchNumber, selectedQty).catch(console.error)
+                                            setBatchAllocationDrafts(current => {
+                                              const next = { ...current }
+                                              delete next[allocationDraftKey]
+                                              return next
+                                            })
+                                            return
+                                          }
+                                          const altQty = existingAllocation.altQty + selectedQty
+                                          updateLine(existingAllocation.id, {
+                                            altQty,
+                                            baseQty: calculateBaseQty(altQty, existingAllocation.altUom, existingAllocation.baseUom),
+                                          })
+                                          setBatchAllocationDrafts(current => {
+                                            const next = { ...current }
+                                            delete next[allocationDraftKey]
+                                            return next
+                                          })
+                                        }}
+                                      >&gt;</Button>
                                     </div>
                                   </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
 
-                                  <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-2">
-                                    <div className="rounded-md bg-stone-50 px-2 py-1">
-                                      <span className="block font-medium text-stone-500">Manufacturing Date</span>
-                                      <span className="text-stone-900">{formatDateValue(batch.manufacturingDate)}</span>
+                            <div className="min-w-0 overflow-hidden rounded-md border">
+                              <div className="border-b bg-muted px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">Selected Batches</div>
+                              <div className="grid grid-cols-[36px_minmax(100px,1fr)_100px_100px_64px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                <div>#</div><div>Batch</div><div className="text-right">Selected Qty</div><div className="text-right">Remaining</div><div className="text-right">Remove</div>
+                              </div>
+                              <div className="max-h-[38vh] overflow-y-auto bg-white">
+                                {activeBatchAllocationLines.length === 0 ? (
+                                  <div className="px-3 py-8 text-center text-sm text-muted-foreground">No batches selected yet.</div>
+                                ) : activeBatchAllocationLines.map((allocation, index) => {
+                                  const otherSelectedQty = activeBatchAllocationLines.reduce(
+                                    (total, candidate) => candidate.id === allocation.id ? total : total + Number(candidate.altQty || 0),
+                                    0,
+                                  )
+                                  const baseQtyPerAltQty = calculateBaseQty(1, allocation.altUom, allocation.baseUom)
+                                  const batchMaxAltQty = baseQtyPerAltQty > 0 ? allocation.onHandQty / baseQtyPerAltQty : 0
+                                  const maxSelectedQty = Math.max(Math.min(activeRequiredAltQty - otherSelectedQty, batchMaxAltQty), 0)
+                                  const remainingBatchQty = Math.max(getAvailableOnHandForLine(allocation) - allocation.baseQty, 0)
+                                  return (
+                                  <div key={allocation.id} className="grid grid-cols-[36px_minmax(100px,1fr)_100px_100px_64px] items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0">
+                                    <div className="text-muted-foreground">{index + 1}</div>
+                                    <div className="min-w-0">
+                                      <div className="truncate font-semibold">{allocation.batchNumber}</div>
+                                      <div className="truncate text-xs text-muted-foreground">{allocation.itemCode}</div>
                                     </div>
-                                    <div className="rounded-md bg-stone-50 px-2 py-1">
-                                      <span className="block font-medium text-stone-500">{warehouseLabel}</span>
-                                      <span className="text-stone-900">{batch.warehouseCode}</span>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max={maxSelectedQty}
+                                      step="any"
+                                      value={allocation.altQty}
+                                      onChange={event => {
+                                        const altQty = Math.min(Math.max(numberValue(event.target.value), 0), maxSelectedQty)
+                                        updateLine(allocation.id, {
+                                          altQty,
+                                          baseQty: calculateBaseQty(altQty, allocation.altUom, allocation.baseUom),
+                                        })
+                                      }}
+                                      className="h-8 text-right tabular-nums"
+                                    />
+                                    <div className="text-right font-medium tabular-nums">
+                                      {formatQuantity(remainingBatchQty)}
+                                    </div>
+                                    <div className="text-right">
+                                      <Button
+                                        type="button"
+                                        size="icon-xs"
+                                        variant="outline"
+                                        onClick={() => {
+                                          if (activeBatchAllocationLines.length === 1) {
+                                            updateLine(allocation.id, {
+                                              batchNumber: '', manufacturingDate: '', expiryDate: '', onHandQty: 0,
+                                            })
+                                            return
+                                          }
+                                          setIssue(current => current ? {
+                                            ...current,
+                                            lines: current.lines.filter(candidate => candidate.id !== allocation.id),
+                                          } : current)
+                                        }}
+                                        aria-label={`Remove ${allocation.batchNumber}`}
+                                      ><X className="size-3.5" /></Button>
                                     </div>
                                   </div>
-                                </button>
-                              )
-                            })}
+                                  )
+                                })}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </>
@@ -1910,9 +2218,20 @@ export default function NewGoodsIssue({
                 </Tabs>
               )}
 
-              <DialogFooter>
+              <DialogFooter className="sm:justify-between">
+                {!activeDocumentIsPosted && activeBatchLine ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={activeBatchLoading || getRawBatchOptionsForLine(activeBatchLine).length === 0 || activeRequiredAltQty <= 0}
+                    onClick={() => autoSelectDeliveryBatches(activeBatchLine)}
+                  >
+                    <PackageCheck className="size-4" />
+                    Auto Select
+                  </Button>
+                ) : <span />}
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">Close</Button>
+                  <Button type="button" disabled={!activeDocumentIsPosted && Math.abs(activeRequiredAltQty - activeAllocatedAltQty) > 0.000001}>Done</Button>
                 </DialogClose>
               </DialogFooter>
             </DialogContent>

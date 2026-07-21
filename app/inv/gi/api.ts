@@ -21,6 +21,7 @@ export type GoodsIssueLine = {
   fromWarehouseCode: string
   fromWarehouseName: string
   onHandQty: number
+  requestedAltQty?: number
 }
 
 export type GoodsIssue = {

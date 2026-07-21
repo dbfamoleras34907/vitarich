@@ -35,6 +35,7 @@ import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
+import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
@@ -75,16 +76,17 @@ const FMS_TYPE_OPTIONS = [
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Receive Date' },
+  { code: 'receive_time', name: 'Receive Time' },
   { code: 'mnf_date', name: 'MNF Date' },
   { code: 'transfer_slip', name: 'Transfer Slip' },
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
-  { code: 'actual_received', name: 'Actual Received' },
-  { code: 'short_count', name: 'Short Count' },
-  { code: 'short_count_remarks', name: 'Short Count Remarks' },
   { code: 'doa_quantity', name: 'DOA Count' },
-  { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
   { code: 'reject_count', name: 'Reject Count' },
+  { code: 'short_count', name: 'Short Count' },
+  { code: 'actual_received', name: 'Actual Received' },
+  { code: 'short_count_remarks', name: 'Short Count Remarks' },
+  { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
   { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
 ]
 
@@ -109,11 +111,13 @@ const DOC_RECEIVING_BATCH_REFERENCE_COLUMNS = [
 type DocDetailRow = GoodsReceiptDocLine & {
   id: number | string
   receive_date: string
+  receive_time: string
   mnf_date: string
   transfer_slip: string
   average_doc_weight: string
   quantity_received: string
   actual_received: string
+  short_count: string
   short_count_remarks: string
   doa_quantity: string
   doa_count_remarks: string
@@ -133,23 +137,47 @@ const defaultNumericDetailValue = (value: string | number | null | undefined) =>
   return text === '' ? '0' : text
 }
 
+const calculateActualReceived = (row: Partial<DocDetailRow>) => Math.max(
+  numberValue(String(row.quantity_received ?? '')) -
+  numberValue(String(row.doa_quantity ?? '')) -
+  numberValue(String(row.reject_count ?? '')) -
+  numberValue(String(row.short_count ?? '')),
+  0,
+)
+
 const normalizeDocDetailRow = (
   row: Partial<DocDetailRow>,
   receiveDate = '',
-): DocDetailRow => ({
-  id: row.id ?? crypto.randomUUID(),
-  receive_date: row.receive_date || receiveDate,
-  mnf_date: row.mnf_date ?? '',
-  transfer_slip: row.transfer_slip ?? '',
-  average_doc_weight: defaultNumericDetailValue(row.average_doc_weight),
-  quantity_received: defaultNumericDetailValue(row.quantity_received),
-  actual_received: defaultNumericDetailValue(row.actual_received),
-  short_count_remarks: row.short_count_remarks ?? '',
-  doa_quantity: defaultNumericDetailValue(row.doa_quantity),
-  doa_count_remarks: row.doa_count_remarks ?? '',
-  reject_count: defaultNumericDetailValue(row.reject_count),
-  reject_count_remarks: row.reject_count_remarks ?? '',
-})
+): DocDetailRow => {
+  const shortCount = row.short_count ?? Math.max(
+    numberValue(String(row.quantity_received ?? '')) -
+    numberValue(String(row.actual_received ?? '')) -
+    numberValue(String(row.doa_quantity ?? '')) -
+    numberValue(String(row.reject_count ?? '')),
+    0,
+  )
+  const normalized = {
+    id: row.id ?? crypto.randomUUID(),
+    receive_date: row.receive_date || receiveDate,
+    receive_time: row.receive_time ?? '',
+    mnf_date: row.mnf_date ?? '',
+    transfer_slip: row.transfer_slip ?? '',
+    average_doc_weight: defaultNumericDetailValue(row.average_doc_weight),
+    quantity_received: defaultNumericDetailValue(row.quantity_received),
+    actual_received: defaultNumericDetailValue(row.actual_received),
+    short_count: defaultNumericDetailValue(shortCount),
+    short_count_remarks: row.short_count_remarks ?? '',
+    doa_quantity: defaultNumericDetailValue(row.doa_quantity),
+    doa_count_remarks: row.doa_count_remarks ?? '',
+    reject_count: defaultNumericDetailValue(row.reject_count),
+    reject_count_remarks: row.reject_count_remarks ?? '',
+  }
+
+  return {
+    ...normalized,
+    actual_received: String(calculateActualReceived(normalized)),
+  }
+}
 
 const newDocDetailRow = (receiveDate = ''): DocDetailRow =>
   normalizeDocDetailRow({ receive_date: receiveDate }, receiveDate)
@@ -368,6 +396,7 @@ const hasDocDetailValues = (rows: DocDetailRow[]) =>
     row.mnf_date ||
     numberValue(row.quantity_received) > 0 ||
     numberValue(row.actual_received) > 0 ||
+    numberValue(row.short_count) > 0 ||
     numberValue(row.doa_quantity) > 0 ||
     numberValue(row.reject_count) > 0
   )
@@ -442,6 +471,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
+  const canInsert = usePermission('/inv/doc-receiving/insert')
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
@@ -471,6 +501,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [setCollapsed])
 
   useEffect(() => {
+    if (!isPostMode && canInsert) {
+      router.replace('/inv/doc-receiving')
+    }
+  }, [canInsert, isPostMode, router])
+
+  useEffect(() => {
+    if (!isPostMode && canInsert) return
+
     let cancelled = false
 
     async function loadPageData() {
@@ -550,7 +588,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [duplicateId, getValue, isPostMode, receiptId, router])
+  }, [canInsert, duplicateId, getValue, isPostMode, receiptId, router])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === receipt?.farmId),
@@ -658,7 +696,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const actualReceived = numberValue(row.actual_received)
       const daoQuantity = numberValue(row.doa_quantity)
       const rejectCount = numberValue(row.reject_count)
-      const goodQuantity = actualReceived - (daoQuantity + rejectCount)
+      const goodQuantity = actualReceived
 
       addQuantity(docReceivingSettings.good_doc, manufacturingDate, referenceValue, row.id, goodQuantity)
       addQuantity(docReceivingSettings.bad_doc, manufacturingDate, referenceValue, row.id, daoQuantity)
@@ -998,10 +1036,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     setDocDetailRows(current => current.map(row => {
       if (row.id !== rowId) return row
 
-      return {
+      const nextRow = {
         ...row,
         [code]: value,
       }
+
+      return DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(code) && code !== 'actual_received'
+        ? { ...nextRow, actual_received: String(calculateActualReceived(nextRow)) }
+        : nextRow
     }))
 
     if (code === 'receive_date') {
@@ -1020,10 +1062,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const getDocDetailValue = (row: DocDetailRow, code: string) => {
     if (code === 'receive_date') return row.receive_date || receipt.receiveDate
-    if (code === 'short_count') {
-      const shortCount = numberValue(row.quantity_received) - numberValue(row.actual_received)
-      return Number.isFinite(shortCount) ? String(shortCount) : ''
-    }
+    if (code === 'actual_received') return String(calculateActualReceived(row))
 
     return String(row[code as keyof DocDetailRow] ?? '')
   }
@@ -1610,7 +1649,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
             className="rounded-none border-0 border-b shadow-none"
           >
-            <table className="min-w-[1710px] w-full text-sm">
+            <table className="min-w-[1840px] w-full text-sm">
               <thead className="bg-secondary">
                 <tr>
                   <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">
@@ -1646,16 +1685,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           type={
                             DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
                               ? 'date'
+                              : column.code === 'receive_time'
+                                ? 'time'
                               : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
                                 ? 'number'
                                 : 'text'
                           }
                           value={getDocDetailValue(row, column.code)}
-                          readOnly={column.code === 'short_count'}
+                          readOnly={column.code === 'actual_received'}
                           disabled={!canEditDocDetails}
                           onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
                           step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
-                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'short_count' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
+                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
                           aria-label={column.name}
                         />
                       </td>
@@ -1682,7 +1723,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   <tr>
                     <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
                     <th className="h-9 min-w-80 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
-                    <th className="h-9 min-w-72 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
+                    <th className="h-9 w-56 max-w-56 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
                     <th className="h-9 w-44 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
                     <th className="h-9 w-28 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
                     <th className="h-9 w-52 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
@@ -1708,7 +1749,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           onChange={(value) => selectItem(line, value)}
                         />
                         </td>
-                        <td className="px-1 py-1 align-top">
+                        <td className="w-56 max-w-56 px-1 py-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"

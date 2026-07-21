@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { usePermission } from '@/hooks/usePermission'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
@@ -35,8 +36,6 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
   vendor: string
   farmName: string
   receiveDate: string
-  returnedQty: number
-  balanceQty: number
   status: string
   receipt: GoodsReceipt
 }
@@ -44,6 +43,8 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
 export default function GoodsReceiveHistory() {
   const router = useRouter()
   const { setCollapsed } = useSidebar()
+  const canView = usePermission('/inv/doc-receiving/view')
+  const canInsert = usePermission('/inv/doc-receiving/insert')
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -67,9 +68,6 @@ export default function GoodsReceiveHistory() {
   const rows = useMemo<GoodsReceiptTableRow[]>(
     () =>
       receipts.map(receipt => {
-        const receivedQty = receipt.lines.reduce((sum, line) => sum + Number(line.baseQty || 0), 0)
-        const returnedQty = receipt.lines.reduce((sum, line) => sum + Number(line.returnedQty || 0), 0)
-
         return {
           id: receipt.id,
           grNo: receipt.grNo,
@@ -77,8 +75,6 @@ export default function GoodsReceiveHistory() {
           vendor: receipt.vendor || '-',
           farmName: receipt.farmName || '-',
           receiveDate: receipt.receiveDate,
-          returnedQty,
-          balanceQty: receivedQty - returnedQty,
           status: receipt.status,
           receipt,
         }
@@ -100,8 +96,6 @@ export default function GoodsReceiveHistory() {
       { key: 'vendor', label: 'Vendor' },
       { key: 'farmName', label: 'Farm' },
       { key: 'receiveDate', label: 'Date Received' },
-      // { key: 'returnedQty', label: 'Returned Qty', align: 'right' },
-      { key: 'balanceQty', label: 'Balance Qty', align: 'center' },
       {
         key: 'status',
         label: 'Status',
@@ -125,7 +119,7 @@ export default function GoodsReceiveHistory() {
                 type="button"
                 size="icon"
                 variant="outline"
-                disabled={row.id === null}
+                disabled={row.id === null || (canView && canInsert)}
                 aria-label={`Open actions for ${row.grNo}`}
                 onClick={event => event.stopPropagation()}
               >
@@ -134,9 +128,10 @@ export default function GoodsReceiveHistory() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40" onClick={event => event.stopPropagation()}>
               <DropdownMenuItem
+                disabled={canView}
                 onClick={event => {
                   event.stopPropagation()
-                  if (row.id === null) return
+                  if (row.id === null || canView) return
                   router.push(`/inv/doc-receiving/post?id=${row.id}`)
                 }}
               >
@@ -145,9 +140,10 @@ export default function GoodsReceiveHistory() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                disabled={canInsert}
                 onClick={event => {
                   event.stopPropagation()
-                  if (row.id === null) return
+                  if (row.id === null || canInsert) return
                   router.push(`/inv/doc-receiving/new?duplicateId=${row.id}`)
                 }}
               >
@@ -159,7 +155,7 @@ export default function GoodsReceiveHistory() {
         ),
       },
     ],
-    [router],
+    [canInsert, canView, router],
   )
 
   const openNewGoodsReceipt = () => {
@@ -183,7 +179,7 @@ export default function GoodsReceiveHistory() {
             </Button>
           </div>
 
-          <Button type="button" onClick={openNewGoodsReceipt}>
+          <Button type="button" onClick={openNewGoodsReceipt} disabled={canInsert}>
             <Plus className="size-4" />
             New DOC Receiving
           </Button>
@@ -204,7 +200,7 @@ export default function GoodsReceiveHistory() {
           emptyMessage="No DOC receiving documents found"
           noResultsMessage="No matching DOC receiving documents found"
           onRowClick={row => {
-            if (row.id !== null) router.push(`/inv/doc-receiving/post?id=${row.id}`)
+            if (row.id !== null && !canView) router.push(`/inv/doc-receiving/post?id=${row.id}`)
           }}
         />
       </div>

@@ -36,7 +36,7 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import type { Items, WarehouseData } from "@/lib/types";
 import { getUserFarms } from "@/app/admin/user/new/api";
-import { ArrowRightCircle, ChevronDown, ChevronUp, Copy, Eraser, Loader2, MousePointerClick, PackageCheck, RotateCcw, Save, X } from "lucide-react";
+import { ArrowRightCircle, ChevronDown, ChevronUp, Copy, Eraser, Loader2, MousePointerClick, PackageCheck, RotateCcw, Save, WandSparkles, X } from "lucide-react";
 import {
   getBatchTransactionTrail,
   type BatchTransactionTrail,
@@ -64,6 +64,7 @@ import FlockCardExportMenu from "./FlockCardExportMenu";
 import { calculateFlockAgeFromStartDate } from "../age";
 import { getFlockCardSettings } from "../settings/api";
 import { CellInput, HeaderCells } from "./FlockCardGridCells";
+import { populateSensibleSampleData } from "./developmentAutoPopulate";
 import {
   ageColumnWidth,
   bodyBorderClassesPlain,
@@ -94,7 +95,6 @@ import {
   mortalityBatchMaxColumnWidth,
   mortalityBatchMinColumnWidth,
   rows,
-  shouldInitializeRowToZero,
   topHeaderCells,
 } from "./flockCardGridConfig";
 import type {
@@ -203,7 +203,7 @@ function getMortalityThinningTotal(row: string[]) {
     getNumericValue(row[4] ?? "");
 }
 
-export default function StickyTablePage() {
+export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const searchParams = useSearchParams();
   const { getValue, setValue } = useGlobalContext();
   const flockCardNavigationContext = getValue("brdFcNewContext") as FlockCardNavigationContext | undefined;
@@ -211,7 +211,6 @@ export default function StickyTablePage() {
   const autoSelectFeedBatchRef = useRef<() => void>(() => undefined);
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
-  const initializedDefaultRowsRef = useRef(false);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
@@ -784,14 +783,7 @@ export default function StickyTablePage() {
           }
         }
 
-        const nextGridValuesWithDefaultRows = nextGridValues.map((gridRow, rowIndex) =>
-          shouldInitializeRowToZero(rowIndex, gridRow, nextAllocationsByRow[rowIndex], currentFlockAge)
-            ? getZeroInputRow()
-            : gridRow
-        );
-
-        initializedDefaultRowsRef.current = true;
-        setGridValues(nextGridValuesWithDefaultRows);
+        setGridValues(nextGridValues);
         setSavedLineByRowIndex(nextSavedLineByRowIndex);
         setSavedMortalityLineByRowIndex(nextSavedMortalityLineByRowIndex);
         setFeedBatchAllocationsByRow(nextAllocationsByRow);
@@ -811,22 +803,6 @@ export default function StickyTablePage() {
       cancelled = true;
     };
   }, [requestedCardNo, requestedFlockCardId, currentFlockAge]);
-
-  useEffect(() => {
-    const cardId = Number(requestedFlockCardId);
-    if (initializedDefaultRowsRef.current) return;
-    if ((Number.isFinite(cardId) && cardId > 0) || requestedCardNo) return;
-    if (currentFlockAge == null) return;
-
-    initializedDefaultRowsRef.current = true;
-    setGridValues(currentValues =>
-      currentValues.map((gridRow, rowIndex) =>
-        shouldInitializeRowToZero(rowIndex, gridRow, feedBatchAllocationsByRow[rowIndex], currentFlockAge)
-          ? getZeroInputRow()
-          : gridRow
-      )
-    );
-  }, [currentFlockAge, feedBatchAllocationsByRow, requestedCardNo, requestedFlockCardId]);
 
   useEffect(() => {
     if (selectedFarmId || farms.length === 0) return;
@@ -1226,6 +1202,22 @@ export default function StickyTablePage() {
       delete next[rowIndex];
       return next;
     });
+  }
+
+  function handlePopulateSampleData() {
+    if (currentFlockAge == null) {
+      toast("The current flock age is unavailable.");
+      return;
+    }
+
+    setGridValues(currentValues => populateSensibleSampleData({
+      gridValues: currentValues,
+      currentFlockAge,
+      numberOfAnimals,
+      lockedMortalityRowIndexes: Object.keys(savedMortalityLineByRowIndex).map(Number),
+      devMode,
+    }));
+    toast(`Sample data populated through age ${Math.min(currentFlockAge, rows.length - 1)}.`);
   }
 
   function formatFeedBatchAllocationCell(allocations: FeedBatchAllocation[]) {
@@ -2613,6 +2605,19 @@ export default function StickyTablePage() {
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
                   <Help />
+                  {devMode ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="default"
+                      onClick={handlePopulateSampleData}
+                      disabled={currentFlockAge == null}
+                      title="Populate blank cells with development sample data through the current flock age"
+                    >
+                      <WandSparkles className="size-4" />
+                      Populate sample data
+                    </Button>
+                  ) : null}
                   <div className="min-w-[120px] text-xs text-muted-foreground" aria-live="polite">
                     {saveStatusLabel}
                   </div>
@@ -2757,6 +2762,19 @@ export default function StickyTablePage() {
                 {saveStatusLabel}
               </div>
               <Help />
+              {devMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePopulateSampleData}
+                  disabled={currentFlockAge == null}
+                  title="Populate blank cells with development sample data through the current flock age"
+                >
+                  <WandSparkles className="size-4" />
+                  Sample data
+                </Button>
+              ) : null}
               <FlockCardExportMenu
                 farmLabel={selectedFarmLabel}
                 buildingLabel={selectedBuildingLabel}

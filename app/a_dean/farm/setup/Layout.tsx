@@ -107,6 +107,10 @@ const warehouseFields: FieldConfig[] = [
 ]
 
 const compact = (value: unknown) => String(value ?? '').trim()
+const numericCapacity = (value: unknown) => {
+  const text = compact(value)
+  return text === '' ? null : Number(text)
+}
 const nullable = (value: unknown) => {
   const valueText = compact(value)
   return valueText ? valueText : null
@@ -496,6 +500,44 @@ export default function Layout() {
       return false
     }
 
+    for (const building of warehouseDrafts.filter(
+      (draft) => draft.data.warehouse_type === 'Building'
+    )) {
+      const pens = warehouseDrafts.filter(
+        (draft) => isPenDraft(draft) && draft.data.father_client_key === building.clientKey
+      )
+
+      // A standalone building has no capacity-matching rule.
+      if (pens.length === 0) continue
+
+      const buildingCapacity = numericCapacity(building.data.capacity)
+      const penCapacities = pens.map((pen) => numericCapacity(pen.data.capacity))
+
+      if (
+        buildingCapacity === null ||
+        !Number.isFinite(buildingCapacity) ||
+        buildingCapacity < 0 ||
+        penCapacities.some(
+          (capacity) => capacity === null || !Number.isFinite(capacity) || capacity < 0
+        )
+      ) {
+        toast.error(`Enter valid capacities for ${building.data.whse_name || 'the building'} and all of its pens.`)
+        return false
+      }
+
+      const totalPenCapacity = penCapacities.reduce<number>(
+        (total, capacity) => total + (capacity ?? 0),
+        0
+      )
+
+      if (Math.abs(totalPenCapacity - buildingCapacity) > 0.000001) {
+        toast.error(
+          `Pen capacity total (${totalPenCapacity}) must equal the capacity of ${building.data.whse_name || 'the building'} (${buildingCapacity}).`
+        )
+        return false
+      }
+    }
+
     return true
   }
 
@@ -527,6 +569,7 @@ export default function Layout() {
       whse_name: nullable(draft.data.whse_name),
       fms_type: nullable(draft.data.fms_type),
       warehouse_type: nullable(draft.data.warehouse_type),
+      capacity: numericCapacity(draft.data.capacity),
       full_location_code: nullable(draft.data.full_location_code),
       addr1: nullable(draft.data.addr1),
       addr2: nullable(draft.data.addr2),
@@ -717,6 +760,13 @@ export default function Layout() {
                           value={draft.data.fms_type ?? ''}
                           onChange={(code, value) => updateWarehouse(draft.clientKey, code, value)}
                         />
+                        {draft.data.warehouse_type === 'Building' ? (
+                          <TextField
+                            field={{ code: 'capacity', label: 'Building Capacity', type: 'number' }}
+                            value={draft.data.capacity ?? ''}
+                            onChange={(code, value) => updateWarehouse(draft.clientKey, code, value)}
+                          />
+                        ) : null}
                         {warehouseFields.map((field) => (
                           <TextField
                             key={field.code}
@@ -771,7 +821,7 @@ export default function Layout() {
                               .map((pen, penIndex) => (
                                 <div
                                   key={pen.clientKey}
-                                  className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 dark:border-border dark:bg-secondary sm:grid-cols-[180px_1fr_auto] sm:items-end"
+                                  className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 dark:border-border dark:bg-secondary sm:grid-cols-[180px_1fr_160px_auto] sm:items-end"
                                 >
                                   <TextField
                                     field={{ code: 'whse_code', label: 'Pen Code', readOnly: true }}
@@ -781,6 +831,11 @@ export default function Layout() {
                                   <TextField
                                     field={{ code: 'whse_name', label: 'Pen Name', required: true }}
                                     value={pen.data.whse_name ?? ''}
+                                    onChange={(code, value) => updateWarehouse(pen.clientKey, code, value)}
+                                  />
+                                  <TextField
+                                    field={{ code: 'capacity', label: 'Pen Capacity', type: 'number', required: true }}
+                                    value={pen.data.capacity ?? ''}
                                     onChange={(code, value) => updateWarehouse(pen.clientKey, code, value)}
                                   />
                                   <Button

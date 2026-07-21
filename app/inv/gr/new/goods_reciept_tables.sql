@@ -68,6 +68,7 @@ create table if not exists public.goods_receipt_doc (
   goods_reciept_id bigint not null,
   line_no integer not null,
   receive_date date null,
+  receive_time time null,
   mnf_date date null,
   transfer_slip text null,
   average_doc_weight numeric(18, 6) null,
@@ -94,6 +95,9 @@ create table if not exists public.goods_receipt_doc (
     and reject_count >= 0
   )
 );
+
+alter table public.goods_receipt_doc
+  add column if not exists receive_time time null;
 
 create index if not exists goods_reciept_receive_date_idx
   on public.goods_receipt (receive_date desc);

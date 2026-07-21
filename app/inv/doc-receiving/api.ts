@@ -32,11 +32,13 @@ export type GoodsReceiptLine = {
 export type GoodsReceiptDocLine = {
   id: number | string
   receive_date: string
+  receive_time: string
   mnf_date: string
   transfer_slip: string
   average_doc_weight: string
   quantity_received: string
   actual_received: string
+  short_count?: string
   short_count_remarks: string
   doa_quantity: string
   doa_count_remarks: string
@@ -101,6 +103,7 @@ type GoodsReceiptDocRow = {
   goods_reciept_id: number
   line_no: number
   receive_date: string | null
+  receive_time: string | null
   mnf_date: string | null
   transfer_slip: string | null
   average_doc_weight: number | null
@@ -168,6 +171,7 @@ const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
 const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
   id: row.id,
   receive_date: row.receive_date ?? '',
+  receive_time: row.receive_time ?? '',
   mnf_date: row.mnf_date ?? '',
   transfer_slip: row.transfer_slip ?? '',
   average_doc_weight: row.average_doc_weight == null ? '' : String(row.average_doc_weight),
@@ -600,6 +604,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       goods_reciept_id: header.id,
       line_no: index + 1,
       receive_date: row.receive_date || null,
+      receive_time: row.receive_time || null,
       mnf_date: row.mnf_date || null,
       transfer_slip: row.transfer_slip.trim() || null,
       average_doc_weight: numberValue(row.average_doc_weight),

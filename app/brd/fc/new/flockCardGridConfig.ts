@@ -90,20 +90,6 @@ export function getZeroInputRow() {
   );
 }
 
-export function shouldInitializeRowToZero(
-  rowIndex: number,
-  gridRow: string[],
-  allocations: unknown[] = [],
-  currentFlockAge: number | null,
-) {
-  if (currentFlockAge == null) return false;
-
-  const rowAge = rows[rowIndex]?.age ?? rowIndex;
-  if (rowAge > currentFlockAge) return false;
-
-  return !gridRow.some(value => String(value ?? "").trim() !== "") && allocations.length === 0;
-}
-
 function getRightBorderClass(isGroupEnd: boolean) {
   return isGroupEnd
     ? "fc-grid-group-divider"

@@ -3,6 +3,7 @@ alter table public.i_warehouse
   add column if not exists farm_code text null,
   add column if not exists farm_name text null,
   add column if not exists father_id bigint null,
+  add column if not exists capacity numeric null,
   add column if not exists is_default_feed_warehouse boolean not null default false,
   add column if not exists is_default_receiving_warehouse boolean not null default false;
 
