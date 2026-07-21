@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, Plus, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
@@ -61,6 +62,33 @@ type GoodsIssueHistoryProps = {
   config?: Partial<GoodsIssueHistoryConfig>
 }
 
+function normalizeFarmId(value: unknown): number | string | null {
+  const candidate = typeof value === 'object' && value !== null
+    ? ('id' in value ? (value as { id?: unknown }).id : null)
+    : value
+
+  if (typeof candidate === 'number') {
+    return Number.isFinite(candidate) ? candidate : null
+  }
+
+  if (typeof candidate === 'string' && candidate.trim() !== '') {
+    return candidate.trim()
+  }
+
+  return null
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null) {
+    const details = error as { message?: unknown; details?: unknown; hint?: unknown }
+    const messages = [details.message, details.details, details.hint]
+      .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    if (messages.length > 0) return messages.join(' ')
+  }
+  return 'Delivery transactions could not be loaded.'
+}
+
 export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssueHistoryProps) {
   const config = { ...defaultConfig, ...configOverrides }
   const router = useRouter()
@@ -68,7 +96,9 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const { setCollapsed } = useSidebar()
   const cannotView = usePermission(`${config.permissionPath}/view`)
   const cannotInsert = usePermission(`${config.permissionPath}/insert`)
-  const defaultFarmId = config.useDefaultFarm ? getValue('DefaultFarmId') : null
+  const defaultFarmId = config.useDefaultFarm
+    ? normalizeFarmId(getValue('DefaultFarmId'))
+    : null
   const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -80,6 +110,9 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         config.triggeredBy,
         defaultFarmId,
       ))
+    } catch (error) {
+      console.error('Goods issue history load failed:', error)
+      toast.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
