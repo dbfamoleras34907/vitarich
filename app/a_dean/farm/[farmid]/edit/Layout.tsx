@@ -130,6 +130,7 @@ export default function Layout() {
     const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([])
     const [defaultFeedWarehouse, setDefaultFeedWarehouse] = useState('')
     const [defaultReceivingWarehouse, setDefaultReceivingWarehouse] = useState('')
+    const [defaultDisposalWarehouse, setDefaultDisposalWarehouse] = useState('')
     const [loadingWarehouses, setLoadingWarehouses] = useState(false)
     const isLocked = String(farmData.approval_status || 'approved') !== 'approved'
     const showBuildingSection = false
@@ -228,6 +229,7 @@ export default function Layout() {
             setSelectedWarehouses([])
             setDefaultFeedWarehouse('')
             setDefaultReceivingWarehouse('')
+            setDefaultDisposalWarehouse('')
         }
     }
 
@@ -363,6 +365,10 @@ export default function Layout() {
         if (defaultReceivingWarehouse && !codes.includes(defaultReceivingWarehouse)) {
             setDefaultReceivingWarehouse('')
         }
+
+        if (defaultDisposalWarehouse && !codes.includes(defaultDisposalWarehouse)) {
+            setDefaultDisposalWarehouse('')
+        }
     }
 
     const updateDefaultFeedWarehouse = (code: string) => {
@@ -375,6 +381,14 @@ export default function Layout() {
 
     const updateDefaultReceivingWarehouse = (code: string) => {
         setDefaultReceivingWarehouse(code)
+
+        if (code && !selectedWarehouses.includes(code)) {
+            setSelectedWarehouses(prev => [...prev, code])
+        }
+    }
+
+    const updateDefaultDisposalWarehouse = (code: string) => {
+        setDefaultDisposalWarehouse(code)
 
         if (code && !selectedWarehouses.includes(code)) {
             setSelectedWarehouses(prev => [...prev, code])
@@ -404,6 +418,7 @@ export default function Layout() {
                 whse_name: warehouse?.whse_name ?? null,
                 is_default_feed: code === defaultFeedWarehouse,
                 is_default_receiving: code === defaultReceivingWarehouse,
+                is_default_disposal: code === defaultDisposalWarehouse,
             }
         })
 
@@ -476,6 +491,22 @@ export default function Layout() {
             setDefaultReceivingWarehouse(
                 defaultReceiving && typeof defaultReceiving === 'object' && 'whse_code' in defaultReceiving
                     ? String((defaultReceiving as AssociatedWarehousePayload).whse_code || '')
+                    : ''
+            )
+
+            const defaultDisposal = Array.isArray(associatedWarehouses)
+                ? associatedWarehouses.find(
+                    (warehouse: unknown) =>
+                        warehouse &&
+                        typeof warehouse === 'object' &&
+                        'is_default_disposal' in warehouse &&
+                        Boolean((warehouse as AssociatedWarehousePayload).is_default_disposal)
+                )
+                : null
+
+            setDefaultDisposalWarehouse(
+                defaultDisposal && typeof defaultDisposal === 'object' && 'whse_code' in defaultDisposal
+                    ? String((defaultDisposal as AssociatedWarehousePayload).whse_code || '')
                     : ''
             )
 
@@ -668,6 +699,21 @@ export default function Layout() {
                                     ? 'Loading warehouses...'
                                     : farmData.farm_type
                                         ? 'Select default receiving warehouse...'
+                                        : 'Select farm type first'
+                            }
+                            className="w-full"
+                        />
+                        <SearchableCombobox
+                            label="Default Disposal Warehouse"
+                            items={warehouseOptions}
+                            value={defaultDisposalWarehouse}
+                            onValueChange={updateDefaultDisposalWarehouse}
+                            showCode
+                            placeholder={
+                                loadingWarehouses
+                                    ? 'Loading warehouses...'
+                                    : farmData.farm_type
+                                        ? 'Select default disposal warehouse...'
                                         : 'Select farm type first'
                             }
                             className="w-full"

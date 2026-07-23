@@ -24,6 +24,22 @@ export type FlockCardFarmInfo = {
   contactPerson: string;
 };
 
+export type FarmOriginDocDetail = {
+  receiveDate: string;
+  receiveTime: string;
+  manufacturingDate: string;
+  transferSlip: string;
+  averageDocWeight: number;
+  totalReceived: number;
+  doaCount: number;
+  rejectCount: number;
+  shortCount: number;
+  actualReceived: number;
+  shortCountRemarks: string;
+  doaCountRemarks: string;
+  rejectCountRemarks: string;
+};
+
 export type FlockCardListInfo = {
   id: number;
   cardNo: string;
@@ -47,6 +63,7 @@ export type FarmOriginBatchOption = {
   manufacturingDate: string;
   expiryDate: string;
   grOrigin: string;
+  docDetails: FarmOriginDocDetail[];
 };
 
 type AssociatedWarehouseRow = {
@@ -104,6 +121,104 @@ type ItemBatchOriginRow = {
   source_gr_id: number | null;
 };
 
+type GoodsReceiptDocOriginRow = {
+  goods_reciept_id: number;
+  receive_date: string | null;
+  mnf_date: string | null;
+  transfer_slip: string | null;
+  average_doc_weight: number | null;
+  quantity_received: number | null;
+  doa_quantity: number | null;
+  reject_count: number | null;
+  actual_received: number | null;
+  short_count_remarks: string | null;
+  doa_count_remarks: string | null;
+  reject_count_remarks: string | null;
+};
+
+const originDocDetailKey = (itemCode: string, batchNumber: string) =>
+  `${itemCode.trim().toUpperCase()}|${batchNumber.trim().toUpperCase()}`;
+
+const toFarmOriginDocDetail = (detail: GoodsReceiptDocOriginRow): FarmOriginDocDetail => ({
+  receiveDate: detail.receive_date ?? "",
+  receiveTime: "",
+  manufacturingDate: detail.mnf_date ?? "",
+  transferSlip: detail.transfer_slip ?? "",
+  averageDocWeight: Number(detail.average_doc_weight ?? 0),
+  totalReceived: Number(detail.quantity_received ?? 0),
+  doaCount: Number(detail.doa_quantity ?? 0),
+  rejectCount: Number(detail.reject_count ?? 0),
+  shortCount: Math.max(Number(detail.quantity_received ?? 0) - Number(detail.actual_received ?? 0), 0),
+  actualReceived: Number(detail.actual_received ?? 0),
+  shortCountRemarks: detail.short_count_remarks ?? "",
+  doaCountRemarks: detail.doa_count_remarks ?? "",
+  rejectCountRemarks: detail.reject_count_remarks ?? "",
+});
+
+export async function getOriginDocDetailsByBatch(
+  origins: Array<{ itemCode: string; batchNumber: string }>,
+): Promise<Record<string, FarmOriginDocDetail[]>> {
+  const itemCodes = Array.from(new Set(origins.map(origin => origin.itemCode.trim()).filter(Boolean)));
+  const batchNumbers = Array.from(new Set(origins.map(origin => origin.batchNumber.trim()).filter(Boolean)));
+  if (itemCodes.length === 0 || batchNumbers.length === 0) return {};
+
+  const batchResult = await db
+    .from("item_batches")
+    .select("item_code, batch_number, source_gr_id")
+    .in("item_code", itemCodes)
+    .in("batch_number", batchNumbers)
+    .eq("void", "1");
+
+  if (batchResult.error) throwDbError(batchResult.error, "Unable to trace DOC receiving batches");
+
+  const receiptIdByBatch = new Map<string, number>();
+  for (const batch of (batchResult.data ?? []) as ItemBatchOriginRow[]) {
+    const receiptId = Number(batch.source_gr_id ?? 0);
+    if (receiptId > 0) receiptIdByBatch.set(originDocDetailKey(batch.item_code, batch.batch_number), receiptId);
+  }
+
+  const receiptItemResult = await db
+    .from("goods_receipt_items")
+    .select("goods_reciept_id, item_code, batch_number")
+    .in("item_code", itemCodes)
+    .in("batch_number", batchNumbers)
+    .eq("void", "1");
+
+  if (receiptItemResult.error) throwDbError(receiptItemResult.error, "Unable to trace DOC receiving lines");
+
+  for (const receiptItem of (receiptItemResult.data ?? []) as GoodsReceiptItemOriginRow[]) {
+    const itemCode = String(receiptItem.item_code ?? "").trim();
+    const batchNumber = String(receiptItem.batch_number ?? "").trim();
+    const receiptId = Number(receiptItem.goods_reciept_id ?? 0);
+    const key = originDocDetailKey(itemCode, batchNumber);
+    if (!itemCode || !batchNumber || receiptId <= 0 || receiptIdByBatch.has(key)) continue;
+
+    receiptIdByBatch.set(key, receiptId);
+  }
+
+  const receiptIds = Array.from(new Set(receiptIdByBatch.values()));
+  if (receiptIds.length === 0) return {};
+
+  const detailResult = await db
+    .from("goods_receipt_doc")
+    .select("goods_reciept_id, receive_date, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
+    .in("goods_reciept_id", receiptIds)
+    .eq("void", "1")
+    .order("line_no", { ascending: true });
+
+  if (detailResult.error) throwDbError(detailResult.error, "Unable to load DOC details");
+
+  const detailsByReceipt = new Map<number, FarmOriginDocDetail[]>();
+  for (const detail of (detailResult.data ?? []) as GoodsReceiptDocOriginRow[]) {
+    const receiptId = Number(detail.goods_reciept_id);
+    detailsByReceipt.set(receiptId, [...(detailsByReceipt.get(receiptId) ?? []), toFarmOriginDocDetail(detail)]);
+  }
+
+  return Object.fromEntries(
+    Array.from(receiptIdByBatch.entries()).map(([key, receiptId]) => [key, detailsByReceipt.get(receiptId) ?? []]),
+  );
+}
+
 type ItemNameRow = {
   id: number | null;
   item_code: string | null;
@@ -158,7 +273,7 @@ function throwDbError(error: unknown, context: string): never {
       dbError.code ? `code: ${dbError.code}` : "",
     ].filter(Boolean).join(" ");
 
-    // throw new Error(details ? `${context}: ${details}` : context);
+    throw new Error(details ? `${context}: ${details}` : context);
   }
 
   throw new Error(`${context}: ${String(error ?? "Unknown error")}`);
@@ -462,6 +577,7 @@ function addFarmPostingQuantities(
       manufacturingDate: current?.manufacturingDate ?? "",
       expiryDate: current?.expiryDate ?? "",
       grOrigin: current?.grOrigin ?? "",
+      docDetails: current?.docDetails ?? [],
     });
   }
 }
@@ -582,24 +698,70 @@ export async function getFarmOriginBatchesForFlockCard(
       .filter(id => Number.isFinite(id) && id > 0),
   ));
   const grNoById = new Map<number, string>();
+  const receiptIdByItemBatch = new Map<string, number>();
   const batchQuantityByExactKey = new Map<string, number>();
   const batchQuantityByLooseKey = new Map<string, number>();
+  const docDetailsByReceiptId = new Map<number, FarmOriginDocDetail[]>();
 
-  if (sourceGrIds.length > 0) {
-    const [receiptResult, receiptItemResult] = await Promise.all([
+  const receiptItemResult = await db
+    .from("goods_receipt_items")
+    .select("goods_reciept_id, item_code, batch_number, warehouse_code, base_qty")
+    .in("item_code", itemCodes)
+    .in("batch_number", batchNumbers)
+    .eq("void", "1");
+
+  if (receiptItemResult.error) throwDbError(receiptItemResult.error, "Unable to load GR batch quantities");
+
+  for (const receiptItem of (receiptItemResult.data ?? []) as GoodsReceiptItemOriginRow[]) {
+    const grId = Number(receiptItem.goods_reciept_id ?? 0);
+    const itemCode = String(receiptItem.item_code ?? "").trim().toUpperCase();
+    const batchNumber = String(receiptItem.batch_number ?? "").trim().toUpperCase();
+    const warehouseCode = String(receiptItem.warehouse_code ?? "").trim().toUpperCase();
+    const quantity = Number(receiptItem.base_qty ?? 0);
+
+    if (!Number.isFinite(grId) || grId <= 0 || !itemCode || !batchNumber) continue;
+
+    const batchKey = [itemCode, batchNumber].join("|");
+    if (!receiptIdByItemBatch.has(batchKey)) receiptIdByItemBatch.set(batchKey, grId);
+
+    if (!Number.isFinite(quantity)) continue;
+
+    const looseKey = [grId, itemCode, batchNumber].join("|");
+    batchQuantityByLooseKey.set(looseKey, (batchQuantityByLooseKey.get(looseKey) ?? 0) + quantity);
+
+    if (warehouseCode) {
+      const exactKey = [grId, itemCode, batchNumber, warehouseCode].join("|");
+      batchQuantityByExactKey.set(exactKey, (batchQuantityByExactKey.get(exactKey) ?? 0) + quantity);
+    }
+  }
+
+  const receiptIds = Array.from(new Set([
+    ...sourceGrIds,
+    ...receiptIdByItemBatch.values(),
+  ]));
+
+  if (receiptIds.length > 0) {
+    const [receiptResult, receiptItemResult, receiptDocResult] = await Promise.all([
       db
         .from("goods_receipt")
         .select("id, gr_no")
-        .in("id", sourceGrIds),
+        .in("id", receiptIds),
       db
         .from("goods_receipt_items")
         .select("goods_reciept_id, item_code, batch_number, warehouse_code, base_qty")
-        .in("goods_reciept_id", sourceGrIds)
+        .in("goods_reciept_id", receiptIds)
         .eq("void", "1"),
+      db
+        .from("goods_receipt_doc")
+        .select("goods_reciept_id, receive_date, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
+        .in("goods_reciept_id", receiptIds)
+        .eq("void", "1")
+        .order("line_no", { ascending: true }),
     ]);
 
     if (receiptResult.error) throwDbError(receiptResult.error, "Unable to load GR origins");
     if (receiptItemResult.error) throwDbError(receiptItemResult.error, "Unable to load GR batch quantities");
+    if (receiptDocResult.error) throwDbError(receiptDocResult.error, "Unable to load DOC details");
 
     for (const receipt of (receiptResult.data ?? []) as GoodsReceiptOriginRow[]) {
       grNoById.set(receipt.id, String(receipt.gr_no ?? "").trim());
@@ -622,6 +784,15 @@ export async function getFarmOriginBatchesForFlockCard(
         batchQuantityByExactKey.set(exactKey, (batchQuantityByExactKey.get(exactKey) ?? 0) + quantity);
       }
     }
+
+    for (const detail of (receiptDocResult.data ?? []) as GoodsReceiptDocOriginRow[]) {
+      const receiptId = Number(detail.goods_reciept_id);
+      if (!Number.isFinite(receiptId) || receiptId <= 0) continue;
+
+      const rows = docDetailsByReceiptId.get(receiptId) ?? [];
+      rows.push(toFarmOriginDocDetail(detail));
+      docDetailsByReceiptId.set(receiptId, rows);
+    }
   }
 
   return rows
@@ -631,12 +802,15 @@ export async function getFarmOriginBatchesForFlockCard(
       const batch = batchByKey.get([row.itemCode.toUpperCase(), row.batchNumber.toUpperCase()].join("|"));
       if (!batch) return [];
 
-      const sourceGrId = Number(batch.source_gr_id ?? 0);
       const itemCodeKey = row.itemCode.toUpperCase();
       const batchNumberKey = row.batchNumber.toUpperCase();
       const warehouseCodeKey = row.warehouseCode.toUpperCase();
-      const exactQuantityKey = [sourceGrId, itemCodeKey, batchNumberKey, warehouseCodeKey].join("|");
-      const looseQuantityKey = [sourceGrId, itemCodeKey, batchNumberKey].join("|");
+      const sourceGrId = Number(batch.source_gr_id ?? 0);
+      const receiptId = sourceGrId > 0
+        ? sourceGrId
+        : receiptIdByItemBatch.get([itemCodeKey, batchNumberKey].join("|")) ?? 0;
+      const exactQuantityKey = [receiptId, itemCodeKey, batchNumberKey, warehouseCodeKey].join("|");
+      const looseQuantityKey = [receiptId, itemCodeKey, batchNumberKey].join("|");
 
       return [{
         ...row,
@@ -647,7 +821,8 @@ export async function getFarmOriginBatchesForFlockCard(
           0,
         manufacturingDate: batch.manufacturing_date ?? "",
         expiryDate: batch.expiry_date ?? "",
-        grOrigin: batch.source_gr_id ? grNoById.get(batch.source_gr_id) ?? "" : "",
+        grOrigin: receiptId > 0 ? grNoById.get(receiptId) ?? "" : "",
+        docDetails: receiptId > 0 ? docDetailsByReceiptId.get(receiptId) ?? [] : [],
       }];
     })
     .sort((left, right) => {

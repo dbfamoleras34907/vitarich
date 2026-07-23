@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { addDays, format } from 'date-fns'
 import {
   Copy,
   Eye,
@@ -19,14 +20,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
+import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
-import {
-  GoodsReceipt,
-  getGoodsReceipts,
-  getReceiptItemSummary,
-} from './api'
+import type { GoodsReceipt } from './api'
+import { getGoodsReceipts, getReceiptItemSummary } from './listApi'
 
 type GoodsReceiptTableRow = Record<string, unknown> & {
   id: number | null
@@ -46,15 +47,23 @@ export default function GoodsReceiveHistory() {
   const { setCollapsed } = useSidebar()
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [loading, setLoading] = useState(true)
+  const [farmId, setFarmId] = useState<string | number>('')
+  const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
+  const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setReceipts(await getGoodsReceipts(100))
+      setReceipts(await getGoodsReceipts({
+        limit: 100,
+        farmId: farmId || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      }))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dateFrom, dateTo, farmId])
 
   useEffect(() => {
     router.prefetch('/inv/gr/new')
@@ -191,6 +200,36 @@ export default function GoodsReceiveHistory() {
       </div>
 
       <div className=" mt-4 space-y-3">
+        <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+          <DefaultFarmComboBox
+            label="Farm"
+            value={farmId}
+            valueKey="id"
+            setValue={setFarmId}
+          />
+
+          <div className="space-y-2">
+            <Label htmlFor="gr-date-from">From Date</Label>
+            <Input
+              id="gr-date-from"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={event => setDateFrom(event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="gr-date-to">To Date</Label>
+            <Input
+              id="gr-date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={event => setDateTo(event.target.value)}
+            />
+          </div>
+        </div>
 
         <DynamicTable
           loading={loading}

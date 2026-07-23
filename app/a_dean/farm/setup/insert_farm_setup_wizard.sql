@@ -93,7 +93,8 @@ begin
       remarks,
       is_active,
       is_default_feed_warehouse,
-      is_default_receiving_warehouse
+      is_default_receiving_warehouse,
+      is_default_disposal_warehouse
     )
     values (
       warehouse_item->>'whse_name',
@@ -111,7 +112,8 @@ begin
       warehouse_item->>'remarks',
       coalesce((warehouse_item->>'is_active')::boolean, true),
       coalesce((warehouse_item->>'is_default_feed')::boolean, false),
-      coalesce((warehouse_item->>'is_default_receiving')::boolean, false)
+      coalesce((warehouse_item->>'is_default_receiving')::boolean, false),
+      coalesce((warehouse_item->>'is_default_disposal')::boolean, false)
     )
     returning id, whse_code, whse_name
     into new_warehouse_id, new_warehouse_code, new_warehouse_name;
@@ -128,7 +130,8 @@ begin
         'whse_code', new_warehouse_code,
         'whse_name', new_warehouse_name,
         'is_default_feed', coalesce((warehouse_item->>'is_default_feed')::boolean, false),
-        'is_default_receiving', coalesce((warehouse_item->>'is_default_receiving')::boolean, false)
+        'is_default_receiving', coalesce((warehouse_item->>'is_default_receiving')::boolean, false),
+        'is_default_disposal', coalesce((warehouse_item->>'is_default_disposal')::boolean, false)
       )
     );
   end loop;
@@ -155,7 +158,8 @@ begin
       father_id,
       is_active,
       is_default_feed_warehouse,
-      is_default_receiving_warehouse
+      is_default_receiving_warehouse,
+      is_default_disposal_warehouse
     )
     values (
       warehouse_item->>'whse_name',
@@ -164,6 +168,7 @@ begin
       nullif(warehouse_item->>'capacity', '')::numeric,
       father_warehouse_id,
       coalesce((warehouse_item->>'is_active')::boolean, true),
+      false,
       false,
       false
     )
@@ -179,7 +184,8 @@ begin
         'whse_name', new_warehouse_name,
         'father_id', father_warehouse_id,
         'is_default_feed', false,
-        'is_default_receiving', false
+        'is_default_receiving', false,
+        'is_default_disposal', false
       )
     );
   end loop;

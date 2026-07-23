@@ -199,6 +199,7 @@ export interface WarehouseData {
   capacity?: number | null;
   is_default_feed_warehouse?: boolean | null;
   is_default_receiving_warehouse?: boolean | null;
+  is_default_disposal_warehouse?: boolean | null;
   full_location_code?: string | null;
   fms_type?: string | null;
   warehouse_type?: string | null;

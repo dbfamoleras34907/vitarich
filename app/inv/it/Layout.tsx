@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, Plus, RefreshCw } from 'lucide-react'
+import { Copy, Eye, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -33,7 +40,7 @@ export default function InventoryTransferHistory() {
   const router = useRouter()
   const { setCollapsed } = useSidebar()
   const cannotView = usePermission('/inv/it/view')
-  const cannotInsert = usePermission('/inv/it/insert')
+  const canInsert = usePermission('/inv/it/insert')
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -105,24 +112,49 @@ export default function InventoryTransferHistory() {
         sortable: false,
         searchable: false,
         render: row => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={row.id === null || cannotView}
-            onClick={event => {
-              event.stopPropagation()
-              if (row.id === null || cannotView) return
-              router.push(`/inv/it/post?id=${row.id}`)
-            }}
-          >
-            <Eye className="size-4" />
-            View
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={row.id === null || (cannotView && canInsert)}
+                aria-label={`Open actions for ${row.itNo}`}
+                onClick={event => event.stopPropagation()}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40" onClick={event => event.stopPropagation()}>
+              <DropdownMenuItem
+                disabled={cannotView}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (row.id === null || cannotView) return
+                  router.push(`/inv/it/post?id=${row.id}`)
+                }}
+              >
+                <Eye className="size-4" />
+                View
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={canInsert}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (row.id === null || canInsert) return
+                  router.push(`/inv/it/new?duplicateId=${row.id}`)
+                }}
+              >
+                <Copy className="size-4" />
+                Duplicate
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ),
       },
     ],
-    [cannotView, router],
+    [canInsert, cannotView, router],
   )
 
   const openNewInventoryTransfer = () => {
@@ -144,7 +176,7 @@ export default function InventoryTransferHistory() {
             {loading ? 'Loading...' : 'Refresh'}
           </Button>
 
-          <Button type="button" onClick={openNewInventoryTransfer} disabled={cannotInsert}>
+          <Button type="button" onClick={openNewInventoryTransfer} disabled={canInsert}>
             <Plus className="size-4" />
             New IT
           </Button>

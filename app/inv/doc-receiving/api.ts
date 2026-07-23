@@ -125,6 +125,13 @@ type GoodsReceiptListItemRow = {
   returned_qty: number
 }
 
+export type GoodsReceiptListParams = {
+  limit?: number
+  farmId?: number | string
+  dateFrom?: string
+  dateTo?: string
+}
+
 type ItemBatchRow = {
   id: number
   batch_number: string
@@ -390,17 +397,28 @@ async function getOrCreateItemBatch({
   }
 }
 
-export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
+export async function getGoodsReceipts({
+  limit = 50,
+  farmId,
+  dateFrom,
+  dateTo,
+}: GoodsReceiptListParams = {}): Promise<GoodsReceipt[]> {
   const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
 
   if (docReceivingReceiptIds.length === 0) return []
 
-  const { data: receiptRows, error: receiptError } = await db
+  let receiptQuery = db
     .from('goods_receipt')
     .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
     .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (farmId !== undefined && farmId !== '') receiptQuery = receiptQuery.eq('farm_id', farmId)
+  if (dateFrom) receiptQuery = receiptQuery.gte('receive_date', dateFrom)
+  if (dateTo) receiptQuery = receiptQuery.lte('receive_date', dateTo)
+
+  const { data: receiptRows, error: receiptError } = await receiptQuery
 
   if (receiptError) throw receiptError
 
@@ -486,6 +504,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
 
   const headerPayload = {
     gr_no: receipt.grNo,
+    dr_reference: receipt.grNo,
     vendor: receipt.vendor,
     receive_date: receipt.receiveDate,
     fms_type: receipt.fmsType || null,

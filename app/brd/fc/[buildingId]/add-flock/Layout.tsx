@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Minus, MousePointerClick, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -27,13 +27,16 @@ import {
   getFarmOriginBatchesForFlockCard,
   getFarmBuildingsForFlockCard,
   getFarmInfoForFlockCard,
+  getOriginDocDetailsByBatch,
   type FarmBuildingListRow,
+  type FarmOriginDocDetail,
   type FarmOriginBatchOption,
   type FlockCardFarmInfo,
 } from "../../api";
 import { calculateFlockAgeFromStartDate } from "../../age";
 import {
   getFlockCardPlacement,
+  getNextFlockCardCycleCount,
   saveFlockCardPlacement,
 } from "./api";
 
@@ -65,7 +68,6 @@ type AddFlockForm = {
   coccidiostatProgramId: string;
   otherProgramId: string;
   vaccinationProgramId: string;
-  flockId: string;
   trialCode: string;
   cycleNumber: string;
   nofAnimals: string;
@@ -90,6 +92,7 @@ type FlockOriginRow = {
   manufacturingDate: string;
   expiryDate: string;
   isSaved: boolean;
+  docDetails: FarmOriginDocDetail[];
 };
 
 const broilerTypeOptions = [
@@ -165,9 +168,8 @@ const emptyFlockForm: AddFlockForm = {
   coccidiostatProgramId: "",
   otherProgramId: "",
   vaccinationProgramId: "",
-  flockId: "",
   trialCode: "",
-  cycleNumber: "",
+  cycleNumber: "1",
   nofAnimals: "",
   feedMill: "",
   stockingDensity: "",
@@ -190,7 +192,12 @@ const newOriginRow = (): FlockOriginRow => ({
   manufacturingDate: "",
   expiryDate: "",
   isSaved: false,
+  docDetails: [],
 });
+
+function getSavedDocDetails(extra: Record<string, unknown> | undefined): FarmOriginDocDetail[] {
+  return Array.isArray(extra?.docDetails) ? extra.docDetails as FarmOriginDocDetail[] : [];
+}
 
 const formatQuantity = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -338,8 +345,14 @@ export default function Layout() {
     setLoadingFlockCard(true);
 
     getFlockCardPlacement(cardId)
-      .then(card => {
+      .then(async card => {
         if (cancelled || !card) return;
+
+        const docDetailsByBatch = await getOriginDocDetailsByBatch(card.origins.map(origin => ({
+          itemCode: origin.itemCode ?? "",
+          batchNumber: origin.batchNo,
+        })));
+        if (cancelled) return;
 
         setEditingCardId(card.id);
         setEditingCardNo(card.cardNo);
@@ -352,9 +365,8 @@ export default function Layout() {
           coccidiostatProgramId: card.coccidiostatProgramId ?? "",
           otherProgramId: card.otherProgramId ?? "",
           vaccinationProgramId: card.vaccinationProgramId ?? "",
-          flockId: card.flockCode ?? "",
           trialCode: card.trialCode ?? "",
-          cycleNumber: card.cycleNumber ?? "",
+          cycleNumber: card.cycleNumber?.trim() || "1",
           nofAnimals: optionalNumberToInputValue(card.animalQty),
           feedMill: card.feedMill ?? "",
           stockingDensity: optionalNumberToInputValue(card.stockingDensity),
@@ -377,6 +389,8 @@ export default function Layout() {
           manufacturingDate: origin.manufacturingDate ?? "",
           expiryDate: origin.expiryDate ?? "",
           isSaved: true,
+          docDetails: docDetailsByBatch[getBatchUsageId(origin.itemCode, origin.batchNo)] ??
+            getSavedDocDetails(origin.extra),
         }));
 
         setOriginRows(rows);
@@ -394,6 +408,30 @@ export default function Layout() {
     };
   }, [routePayload?.cardId]);
 
+  useEffect(() => {
+    if (editingCardId || !routePayload?.farmId || !routePayload.buildingKey || !selectedBuilding) return;
+
+    let cancelled = false;
+
+    getNextFlockCardCycleCount({
+      farmId: routePayload.farmId,
+      buildingId: selectedBuilding.source === "BUILDING" ? selectedBuilding.id : null,
+      buildingWarehouseId: selectedBuilding.source === "WAREHOUSE" ? selectedBuilding.id : null,
+      buildingKey: routePayload.buildingKey,
+    })
+      .then(cycleCount => {
+        if (!cancelled) updateForm("cycleNumber", cycleCount);
+      })
+      .catch(error => {
+        console.error(error);
+        if (!cancelled) toast(`Unable to calculate cycle count: ${error instanceof Error ? error.message : "Unknown error"}`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingCardId, routePayload?.buildingKey, routePayload?.farmId, selectedBuilding]);
+
   function updateForm<K extends keyof AddFlockForm>(key: K, value: AddFlockForm[K]) {
     setForm(current => ({ ...current, [key]: value }));
   }
@@ -408,7 +446,7 @@ export default function Layout() {
 
   function updateBreed(value: string) {
     updateForm("breed", value);
-    setOriginRows(current => current.map(row => ({ ...row, breed: value })));
+    setOriginRows(current => current.map(row => row.isSaved ? row : { ...row, breed: value }));
   }
 
   function addOriginRowAndSelectBatch() {
@@ -457,7 +495,7 @@ export default function Layout() {
 
     setOriginRows(current => {
       const existingRow = current.find(row =>
-        row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
+        !row.isSaved && row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
       );
 
       if (existingRow) {
@@ -489,6 +527,7 @@ export default function Layout() {
         manufacturingDate: batch.manufacturingDate,
         expiryDate: batch.expiryDate,
         isSaved: false,
+        docDetails: batch.docDetails,
       };
 
       if (!originBatchSelectionRowId) return [...current, selectedRowPayload];
@@ -539,7 +578,6 @@ export default function Layout() {
         coccidiostatProgramId: form.coccidiostatProgramId,
         otherProgramId: form.otherProgramId,
         vaccinationProgramId: form.vaccinationProgramId,
-        flockCode: form.flockId,
         trialCode: form.trialCode,
         cycleNumber: form.cycleNumber,
         animalQty: form.nofAnimals.trim() === "" ? totalOriginAnimals : Number(form.nofAnimals),
@@ -557,13 +595,14 @@ export default function Layout() {
           grOrigin: row.grOrigin,
           animalQty: Number(row.nofAnimals || 0),
           onHandSnapshot: row.onHandQty,
-          breed: form.breed,
+          breed: row.isSaved ? row.breed : form.breed,
           manufacturingDate: row.manufacturingDate,
           expiryDate: row.expiryDate,
+          extra: { docDetails: row.docDetails },
         })),
       });
 
-      toast(`Cycle saved: ${savedCard.cardNo}`);
+      toast(`Cycle saved: ${savedCard.cardNo}.`);
       router.push("/brd/fc");
     } catch (error) {
       console.error(error);
@@ -684,6 +723,18 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
+                <label className="text-sm font-medium">Cycle Count</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.cycleNumber || "1"}
+                  placeholder="Calculated automatically"
+                  readOnly
+                  className="bg-stone-50"
+                />
+              </div>
+
+              <div className="grid gap-2">
                 <label className="text-sm font-medium">Cycle start date</label>
                 <Input
                   type="date"
@@ -749,9 +800,7 @@ export default function Layout() {
                 ["coccidiostatProgramId", "Cocci programs", "Add cocci program"],
                 ["otherProgramId", "Other programs", "Add other program"],
                 ["vaccinationProgramId", "Vaccination programs", "Add vaccination program"],
-                ["flockId", "Cycle ID", "Enter the flock ID"],
                 ["trialCode", "Trial code", "Enter the trial code"],
-                ["cycleNumber", "Cycle number", "Enter the cycle number"],
                 ["nofAnimals", "Number of animals (on start date)", "Enter the number of animals"],
                 ["feedMill", "Feedmill", "Enter the feedmill"],
                 ["stockingDensity", "Stocking density (Birds/m2)", "Stocking density"],
@@ -813,13 +862,15 @@ export default function Layout() {
                     </tr>
                   )}
                   {originRows.map(row => (
-                    <tr key={row.id} className="border-t">
+                    <Fragment key={row.id}>
+                    <tr className="border-t">
                       <td className="border-r p-1 align-middle">
                         <Button
                           type="button"
                           variant="outline"
                           className="h-8 w-full justify-between rounded-sm px-2 font-normal"
                           onClick={() => openOriginBatchSelection(row.id)}
+                          disabled={row.isSaved}
                         >
                           <span className={row.batch ? "truncate font-medium" : "truncate text-muted-foreground"}>
                             {row.batch || "Select batch"}
@@ -846,11 +897,52 @@ export default function Layout() {
                           variant="ghost"
                           className="size-8"
                           onClick={() => setOriginRows(current => current.filter(item => item.id !== row.id))}
+                          disabled={row.isSaved}
+                          title={row.isSaved ? "Saved placements cannot be removed" : "Remove placement"}
                         >
                           <Minus className="size-4" />
                         </Button>
                       </td>
                     </tr>
+                    <tr className="border-t bg-muted/20">
+                      <td colSpan={6} className="p-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          DOC Details — Batch {row.batch || "-"}
+                        </div>
+                        {row.docDetails.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No DOC Details found for this batch.</div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-md border bg-background">
+                            <table className="min-w-[1900px] w-full text-xs">
+                              <thead className="bg-muted/60 text-left uppercase text-muted-foreground">
+                                <tr>
+                                  {["Receive Date", "Receive Time", "MNF Date", "Transfer Slip", "Average DOC Weight", "Total Received", "DOA Count", "Reject Count", "Short Count", "Actual Received", "Short Count Remarks", "DOA Count Remarks", "Reject Count Remarks"].map(label => (
+                                    <th key={label} className="whitespace-nowrap border-r px-2 py-2 last:border-r-0">{label}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {row.docDetails.map((detail, index) => (
+                                  <tr key={`${row.id}-doc-${index}`} className="border-t">
+                                    <td className="whitespace-nowrap border-r px-2 py-2">{formatDateValue(detail.receiveDate)}</td>
+                                    <td className="whitespace-nowrap border-r px-2 py-2">{detail.receiveTime || "-"}</td>
+                                    <td className="whitespace-nowrap border-r px-2 py-2">{formatDateValue(detail.manufacturingDate)}</td>
+                                    <td className="whitespace-nowrap border-r px-2 py-2">{detail.transferSlip || "-"}</td>
+                                    {[detail.averageDocWeight, detail.totalReceived, detail.doaCount, detail.rejectCount, detail.shortCount, detail.actualReceived].map((value, valueIndex) => (
+                                      <td key={valueIndex} className="whitespace-nowrap border-r px-2 py-2 text-right tabular-nums">{formatQuantity(value)}</td>
+                                    ))}
+                                    <td className="min-w-44 border-r px-2 py-2">{detail.shortCountRemarks || "-"}</td>
+                                    <td className="min-w-44 border-r px-2 py-2">{detail.doaCountRemarks || "-"}</td>
+                                    <td className="min-w-44 px-2 py-2">{detail.rejectCountRemarks || "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

@@ -29,6 +29,7 @@ type AssociatedWarehouseRow = {
   whse_code?: string | null;
   whse_name?: string | null;
   is_default_feed?: boolean | null;
+  is_default_disposal?: boolean | null;
 };
 
 type WarehouseMasterRow = {

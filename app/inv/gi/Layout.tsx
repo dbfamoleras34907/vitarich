@@ -81,10 +81,20 @@ function normalizeFarmId(value: unknown): number | string | null {
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   if (typeof error === 'object' && error !== null) {
-    const details = error as { message?: unknown; details?: unknown; hint?: unknown }
+    const details = error as {
+      code?: unknown
+      message?: unknown
+      details?: unknown
+      hint?: unknown
+    }
     const messages = [details.message, details.details, details.hint]
       .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
-    if (messages.length > 0) return messages.join(' ')
+    if (messages.length > 0) {
+      const code = typeof details.code === 'string' && details.code.trim() !== ''
+        ? ` (${details.code})`
+        : ''
+      return `${messages.join(' ')}${code}`
+    }
   }
   return 'Delivery transactions could not be loaded.'
 }
@@ -111,8 +121,11 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         defaultFarmId,
       ))
     } catch (error) {
-      console.error('Goods issue history load failed:', error)
-      toast.error(getErrorMessage(error))
+      const message = getErrorMessage(error)
+      // This is handled by the toast. Using console.error here makes Next.js show
+      // its development error overlay and Supabase errors are rendered as `{}`.
+      console.warn(`Goods issue history load failed: ${message}`)
+      toast.error(message)
     } finally {
       setLoading(false)
     }

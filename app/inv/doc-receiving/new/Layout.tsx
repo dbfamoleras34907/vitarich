@@ -132,6 +132,14 @@ type DerivedGoodsReceiptLine = GoodsReceiptLine & {
   docBatchReferenceColumn?: string
 }
 
+const createClientId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
 const defaultNumericDetailValue = (value: string | number | null | undefined) => {
   const text = String(value ?? '').trim()
   return text === '' ? '0' : text
@@ -157,7 +165,7 @@ const normalizeDocDetailRow = (
     0,
   )
   const normalized = {
-    id: row.id ?? crypto.randomUUID(),
+    id: row.id ?? createClientId(),
     receive_date: row.receive_date || receiveDate,
     receive_time: row.receive_time ?? '',
     mnf_date: row.mnf_date ?? '',
@@ -198,7 +206,7 @@ const today = () => {
 }
 
 const newLine = (): GoodsReceiptLine => ({
-  id: crypto.randomUUID(),
+  id: createClientId(),
   itemId: null,
   itemCode: '',
   description: '',
@@ -240,12 +248,12 @@ const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => (
   status: 'Draft',
   lines: source.lines.map(line => ({
     ...line,
-    id: crypto.randomUUID(),
+    id: createClientId(),
     returnedQty: 0,
   })),
   docDetails: source.docDetails.map(row => normalizeDocDetailRow({
     ...row,
-    id: crypto.randomUUID(),
+    id: createClientId(),
   }, source.receiveDate)),
   createdAt: new Date().toISOString(),
 })
@@ -728,7 +736,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         : ''
 
       return [{
-        id: existingLine?.id ?? crypto.randomUUID(),
+        id: existingLine?.id ?? createClientId(),
         itemId,
         itemCode: item.item_code || '',
         description: getItemDescription(item),
@@ -1763,13 +1771,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                     {line.batchNumber || getGeneratedBatchNumber(line) || 'Batch details'}
                                   </span>
                                 </span>
-                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
+                                {/* <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
                                   {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
                                     <span>{batchRequirement.needsExpiryDate ? 'MFG/EXP required' : 'MFG required'}</span>
                                   )}
-                                </span>
+                                </span> */}
                               </span>
                               <Hash className="size-4 shrink-0 text-stone-400" />
                             </button>
@@ -2182,8 +2190,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </DialogContent>
           </Dialog>
 
-          <div className="mx-4 mb-4 mt-6 flex flex-col items-end gap-4">
-            <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
+          <div className="mx-4 mb-4 mt-6 flex flex-col items-end gap-4  ">
+            <div className="w-full rounded-xl border p-4 sm:w-[34rem] ">
               <h3 className="text-sm font-semibold">Receiving Summary</h3>
               <div className="mt-3 flex justify-between text-sm">
                 <span>Total Base Quantity</span>

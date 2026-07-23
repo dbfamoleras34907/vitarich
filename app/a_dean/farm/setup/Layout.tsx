@@ -353,10 +353,12 @@ function ReviewDraftRow({
   draft,
   isDefaultFeed,
   isDefaultReceiving,
+  isDefaultDisposal,
 }: {
   draft: WarehouseDraft
   isDefaultFeed: boolean
   isDefaultReceiving: boolean
+  isDefaultDisposal: boolean
 }) {
   return (
     <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 first:border-t-0 dark:border-border sm:flex-row sm:items-center sm:justify-between">
@@ -369,6 +371,7 @@ function ReviewDraftRow({
       <div className="flex flex-wrap gap-2">
         {isDefaultFeed ? <Badge className="bg-emerald-700 text-white">Feed</Badge> : null}
         {isDefaultReceiving ? <Badge className="bg-emerald-700 text-white">Receiving</Badge> : null}
+        {isDefaultDisposal ? <Badge className="bg-emerald-700 text-white">Disposal</Badge> : null}
       </div>
     </div>
   )
@@ -383,6 +386,7 @@ export default function Layout() {
   const [warehouseDrafts, setWarehouseDrafts] = useState<WarehouseDraft[]>([])
   const [defaultFeedKey, setDefaultFeedKey] = useState('')
   const [defaultReceivingKey, setDefaultReceivingKey] = useState('')
+  const [defaultDisposalKey, setDefaultDisposalKey] = useState('')
 
   const selectedFarmType = FARM_TYPES.find((type) => type.value === farmData.farm_type)
   const locationPreview = useMemo(
@@ -461,6 +465,7 @@ export default function Layout() {
 
     if (defaultFeedKey === clientKey) setDefaultFeedKey('')
     if (defaultReceivingKey === clientKey) setDefaultReceivingKey('')
+    if (defaultDisposalKey === clientKey) setDefaultDisposalKey('')
   }
 
   const validateFarmStep = () => {
@@ -582,14 +587,15 @@ export default function Layout() {
       is_active: true,
       is_default_feed: draft.clientKey === defaultFeedKey,
       is_default_receiving: draft.clientKey === defaultReceivingKey,
+      is_default_disposal: draft.clientKey === defaultDisposalKey,
     }
   }
 
   const handleSubmit = async () => {
     if (!validateFarmStep() || !validateWarehouseStep()) return
 
-    if (!defaultFeedKey || !defaultReceivingKey) {
-      toast.error('Select the default feed and default receiving warehouse before saving.')
+    if (!defaultFeedKey || !defaultReceivingKey || !defaultDisposalKey) {
+      toast.error('Select the default feed, receiving, and disposal warehouses before saving.')
       return
     }
 
@@ -884,7 +890,7 @@ export default function Layout() {
               <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
                 <SectionIntro title="Default Warehouses" description={STEPS[2].description} />
                 <ApprovalNotice />
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <InlineSelect
                     label="Default Feed"
                     required
@@ -911,6 +917,19 @@ export default function Layout() {
                       </SelectItem>
                     ))}
                   </InlineSelect>
+                  <InlineSelect
+                    label="Default Disposal"
+                    required
+                    value={defaultDisposalKey}
+                    placeholder="select disposal warehouse"
+                    onValueChange={setDefaultDisposalKey}
+                  >
+                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
+                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
+                        {draft.data.whse_name || 'Unnamed draft'}
+                      </SelectItem>
+                    ))}
+                  </InlineSelect>
                 </div>
 
                 <div className="rounded-md border border-neutral-200 dark:border-border">
@@ -920,6 +939,7 @@ export default function Layout() {
                       draft={draft}
                       isDefaultFeed={draft.clientKey === defaultFeedKey}
                       isDefaultReceiving={draft.clientKey === defaultReceivingKey}
+                      isDefaultDisposal={draft.clientKey === defaultDisposalKey}
                     />
                   ))}
                 </div>
@@ -949,6 +969,10 @@ export default function Layout() {
                       warehouseDrafts.find((draft) => draft.clientKey === defaultReceivingKey)?.data.whse_name ||
                       'Not selected'
                     }
+                  />
+                  <SummaryRow
+                    label="Default Disposal"
+                    value={warehouseDrafts.find((draft) => draft.clientKey === defaultDisposalKey)?.data.whse_name || 'Not selected'}
                   />
                 </div>
               </div>

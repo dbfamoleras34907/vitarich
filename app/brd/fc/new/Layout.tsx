@@ -158,6 +158,17 @@ function getDefaultFeedWarehouseCode(farm?: FeedFarm | null) {
   return defaultWarehouse ? getAssociatedWarehouseCode(defaultWarehouse) : "";
 }
 
+function getDefaultDisposalWarehouseCode(farm?: FeedFarm | null) {
+  const associations = farm?.associated_warehouses;
+  if (!Array.isArray(associations)) return "";
+
+  const defaultWarehouse = associations.find(warehouse =>
+    typeof warehouse === "object" && Boolean(warehouse?.is_default_disposal)
+  );
+
+  return defaultWarehouse ? getAssociatedWarehouseCode(defaultWarehouse) : "";
+}
+
 function isFeedItem(item: Items) {
   const groupTokens = [
     item.group,
@@ -235,6 +246,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [feedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
+  const [feedBatchRefreshKey, setFeedBatchRefreshKey] = useState(0);
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
   const [feedBatchDialogMode, setFeedBatchDialogMode] = useState<FeedBatchDialogMode>("onHand");
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
@@ -911,7 +923,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
+  }, [feedBatchRefreshKey, feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
 
   useEffect(() => {
     if (!linkedCardNo) {
@@ -1855,6 +1867,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
+    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -2009,6 +2022,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
+    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -2130,6 +2144,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
     if (!selectedWarehouseCode) {
       toast("Please select a farm with a default feed warehouse.");
+      return;
+    }
+
+    const hasMortalityOrThinning = gridValues.some(row => getMortalityThinningTotal(row) > 0);
+    if (hasMortalityOrThinning && !getDefaultDisposalWarehouseCode(selectedFarm)) {
+      toast("Please configure the farm's default Disposal warehouse before saving mortality or thinning.");
       return;
     }
 

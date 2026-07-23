@@ -102,11 +102,13 @@ export type GoodsIssueOnHandShortage = {
 }
 
 type InventoryPostingRow = {
+  id: number
   item_code: string | null
   warehouse_code: string | null
   qty: number | null
   transfer_type: string | null
   ref: string | null
+  ref2: string | null
 }
 
 type ItemBatchRow = {
@@ -237,21 +239,33 @@ export async function getItemWarehouseOnHand(
 ) {
   if (!itemCode || !warehouseCode) return 0
 
-  let query = db
+  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, ref, ref2'
+  const buildQuery = () => db
     .from('inventory_postings')
-    .select('item_code, warehouse_code, qty, transfer_type, ref')
+    .select(postingSelect)
     .eq('item_code', itemCode)
     .eq('warehouse_code', warehouseCode)
 
-  if (batchNumber) {
-    query = query.eq('ref', batchNumber)
+  const results = batchNumber
+    ? await Promise.all([
+        buildQuery().eq('ref', batchNumber),
+        buildQuery().eq('ref2', batchNumber),
+      ])
+    : [await buildQuery()]
+
+  for (const result of results) {
+    if (result.error) throw result.error
   }
 
-  const { data, error } = await query
-  if (error) throw error
+  const seenPostingIds = new Set<number>()
+  const rows = results.flatMap(result => (result.data ?? []) as InventoryPostingRow[])
 
-  return ((data ?? []) as InventoryPostingRow[]).reduce(
-    (total, row) => total + signedQty(row),
+  return rows.reduce(
+    (total, row) => {
+      if (seenPostingIds.has(row.id)) return total
+      seenPostingIds.add(row.id)
+      return total + signedQty(row)
+    },
     0,
   )
 }
@@ -340,7 +354,7 @@ export async function getGoodsIssueOnHandShortages(
 export async function getGoodsIssues(
   limit = 50,
   triggeredBy = 'GI',
-  farmId?: number | string | null,
+  farmIdentifier?: number | string | null,
 ): Promise<GoodsIssue[]> {
   let query = db
     .from('goods_issue')
@@ -349,8 +363,15 @@ export async function getGoodsIssues(
     .order('created_at', { ascending: false })
     .limit(limit)
 
-  if (farmId !== null && farmId !== undefined && String(farmId).trim() !== '') {
-    query = query.eq('farm_id', farmId)
+  if (
+    farmIdentifier !== null &&
+    farmIdentifier !== undefined &&
+    String(farmIdentifier).trim() !== ''
+  ) {
+    const farmValue = String(farmIdentifier).trim()
+    query = /^\d+$/.test(farmValue)
+      ? query.eq('farm_id', farmValue)
+      : query.eq('farm_code', farmValue)
   }
 
   const { data: issueRows, error: issueError } = await query

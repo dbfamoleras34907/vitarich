@@ -186,7 +186,7 @@ export default function SearchableCombobox(props: Props) {
   return (
     <div className="relative min-w-0 ">
       {(props.label || props.multiple) && (
-        <div className="flex  items-center justify-between mb-0.5">
+        <div className="flex  items-center justify-between mb-2">
           {props.label && (
             <Label required={props.required} className="">
               {props.label}

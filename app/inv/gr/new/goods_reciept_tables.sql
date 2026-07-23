@@ -5,6 +5,7 @@ create table if not exists public.goods_receipt (
   updated_by uuid null,
   updated_at timestamp with time zone null,
   gr_no text not null,
+  dr_reference text not null,
   vendor text not null,
   receive_date date not null,
   fms_type text null,

@@ -26,7 +26,7 @@ function FormTable({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-lg border bg-card shadow-[var(--starbucks-card-shadow)]",
+        "m-0 overflow-hidden rounded-lg border bg-card p-0 shadow-[var(--starbucks-card-shadow)]",
         className
       )}
     >

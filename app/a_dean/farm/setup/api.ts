@@ -24,6 +24,7 @@ export type FarmSetupWarehouseDraft = Pick<
   capacity?: number | null
   is_default_feed?: boolean
   is_default_receiving?: boolean
+  is_default_disposal?: boolean
 }
 
 export type FarmSetupPayload = {

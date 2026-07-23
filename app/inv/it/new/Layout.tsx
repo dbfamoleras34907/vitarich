@@ -106,6 +106,19 @@ const emptyTransfer = (itNo: string): InventoryTransfer => ({
   createdAt: new Date().toISOString(),
 })
 
+const duplicateTransfer = (source: InventoryTransfer, itNo: string): InventoryTransfer => ({
+  ...source,
+  id: null,
+  itNo,
+  status: 'Draft',
+  lines: source.lines.map(line => ({
+    ...line,
+    id: crypto.randomUUID(),
+    onHandQty: 0,
+  })),
+  createdAt: new Date().toISOString(),
+})
+
 const numberValue = (value: string) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -248,6 +261,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const transferId = searchParams.get('id')
+  const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
   const cannotInsert = usePermission('/inv/it/insert')
   const cannotEdit = usePermission('/inv/it/edit')
@@ -272,6 +286,14 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
   }, [setCollapsed])
 
   useEffect(() => {
+    if (!isPostMode && cannotInsert) {
+      router.replace('/inv/it')
+    }
+  }, [cannotInsert, isPostMode, router])
+
+  useEffect(() => {
+    if (!isPostMode && cannotInsert) return
+
     let cancelled = false
 
     async function loadPageData() {
@@ -297,13 +319,19 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
 
         const [references, savedTransfer, itNo] = await Promise.all([
           referencesPromise,
-          transferId ? getInventoryTransferById(Number(transferId)) : Promise.resolve(null),
-          transferId ? Promise.resolve('') : createInventoryTransferNumber(),
+          transferId
+            ? getInventoryTransferById(Number(transferId))
+            : duplicateId
+              ? getInventoryTransferById(Number(duplicateId))
+              : Promise.resolve(null),
+          transferId && !duplicateId ? Promise.resolve('') : createInventoryTransferNumber(),
         ])
 
         if (cancelled) return
 
-        setTransfer(savedTransfer ?? emptyTransfer(itNo))
+        setTransfer(duplicateId && savedTransfer
+          ? duplicateTransfer(savedTransfer, itNo)
+          : savedTransfer ?? emptyTransfer(itNo))
         setItems(references.items)
         setWarehouses(references.warehouses)
         setFarms(references.farms)
@@ -325,7 +353,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
     return () => {
       cancelled = true
     }
-  }, [getValue, isPostMode, transferId, router])
+  }, [cannotInsert, duplicateId, getValue, isPostMode, transferId, router])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === transfer?.farmId),
