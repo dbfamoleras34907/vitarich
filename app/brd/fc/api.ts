@@ -64,6 +64,17 @@ export type FarmOriginBatchOption = {
   expiryDate: string;
   grOrigin: string;
   docDetails: FarmOriginDocDetail[];
+  mortalityQty: number;
+  thinningQty: number;
+  batchOnHandQty: number;
+};
+
+export type BuildingPlacementInventoryLookup = {
+  farmId: number;
+  buildingCode?: string | null;
+  buildingName?: string | null;
+  buildingKey?: string | null;
+  buildingWarehouseCode?: string | null;
 };
 
 type AssociatedWarehouseRow = {
@@ -121,15 +132,26 @@ type ItemBatchOriginRow = {
   source_gr_id: number | null;
 };
 
+type FlockCardMortalityLineRow = {
+  mort_total: number | null;
+  thin_am: number | null;
+  thin_pm: number | null;
+  row_total: number | null;
+  extra: Record<string, unknown> | null;
+};
+
 type GoodsReceiptDocOriginRow = {
   goods_reciept_id: number;
+  line_no: number | null;
   receive_date: string | null;
+  receive_time: string | null;
   mnf_date: string | null;
   transfer_slip: string | null;
   average_doc_weight: number | null;
   quantity_received: number | null;
   doa_quantity: number | null;
   reject_count: number | null;
+  short_count: number | null;
   actual_received: number | null;
   short_count_remarks: string | null;
   doa_count_remarks: string | null;
@@ -141,14 +163,14 @@ const originDocDetailKey = (itemCode: string, batchNumber: string) =>
 
 const toFarmOriginDocDetail = (detail: GoodsReceiptDocOriginRow): FarmOriginDocDetail => ({
   receiveDate: detail.receive_date ?? "",
-  receiveTime: "",
+  receiveTime: detail.receive_time ?? "",
   manufacturingDate: detail.mnf_date ?? "",
   transferSlip: detail.transfer_slip ?? "",
   averageDocWeight: Number(detail.average_doc_weight ?? 0),
   totalReceived: Number(detail.quantity_received ?? 0),
   doaCount: Number(detail.doa_quantity ?? 0),
   rejectCount: Number(detail.reject_count ?? 0),
-  shortCount: Math.max(Number(detail.quantity_received ?? 0) - Number(detail.actual_received ?? 0), 0),
+  shortCount: Number(detail.short_count ?? Math.max(Number(detail.quantity_received ?? 0) - Number(detail.actual_received ?? 0), 0)),
   actualReceived: Number(detail.actual_received ?? 0),
   shortCountRemarks: detail.short_count_remarks ?? "",
   doaCountRemarks: detail.doa_count_remarks ?? "",
@@ -201,7 +223,7 @@ export async function getOriginDocDetailsByBatch(
 
   const detailResult = await db
     .from("goods_receipt_doc")
-    .select("goods_reciept_id, receive_date, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
+    .select("goods_reciept_id, line_no, receive_date, receive_time, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, short_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
     .in("goods_reciept_id", receiptIds)
     .eq("void", "1")
     .order("line_no", { ascending: true });
@@ -240,6 +262,7 @@ type GoodsReceiptOriginRow = {
 
 type GoodsReceiptItemOriginRow = {
   goods_reciept_id: number | null;
+  line_no?: number | null;
   item_code: string | null;
   batch_number: string | null;
   warehouse_code: string | null;
@@ -471,7 +494,18 @@ export async function getFarmBuildingsForFlockCard(
     }
   }
 
-  const warehouseRows = Array.from(warehouseById.values()).map(warehouse => {
+  const getPlacementInventoryAnimalQty = async (warehouseCode: string | null | undefined) => {
+    const code = String(warehouseCode ?? "").trim();
+    if (!code) return 0;
+
+    const placementRows = await getFarmOriginBatchesForFlockCard(farmId, code);
+    return placementRows.reduce(
+      (sum, row) => sum + Number(row.batchOnHandQty || row.onHandQty || 0),
+      0,
+    );
+  };
+
+  const warehouseRows = await Promise.all(Array.from(warehouseById.values()).map(async warehouse => {
     const id = Number(warehouse.id);
     const code = String(warehouse.whse_code ?? "").trim();
     const key = `warehouse:${id}`;
@@ -480,8 +514,12 @@ export async function getFarmBuildingsForFlockCard(
       flockCardByBuildingKey.get(key) ??
       flockCardByBuildingCode.get(code.toUpperCase()) ??
       null;
+    const placementAnimalQty = await getPlacementInventoryAnimalQty(code);
+    const displayedFlockCard = flockCard && placementAnimalQty > 0
+      ? { ...flockCard, animalQty: placementAnimalQty }
+      : flockCard;
 
-    if (flockCard) cardIdsAttachedToWarehouseRows.add(flockCard.id);
+    if (displayedFlockCard) cardIdsAttachedToWarehouseRows.add(displayedFlockCard.id);
 
     return {
       key,
@@ -493,11 +531,11 @@ export async function getFarmBuildingsForFlockCard(
       remarks: null,
       source: "WAREHOUSE" as const,
       warehouseCode: code,
-      flockCard,
+      flockCard: displayedFlockCard,
     };
-  });
+  }));
 
-  const flockCardOnlyRows = cards.flatMap(card => {
+  const flockCardOnlyRows = await Promise.all(cards.flatMap(async card => {
     if (cardIdsAttachedToWarehouseRows.has(Number(card.id))) return [];
 
     const info = cardToListInfo(card);
@@ -506,6 +544,10 @@ export async function getFarmBuildingsForFlockCard(
     const key = card.building_key?.trim() || (buildingWarehouseId > 0 ? `warehouse:${buildingWarehouseId}` : `flock-card:${card.id}`);
 
     if (!code && !buildingWarehouseId) return [];
+    const placementAnimalQty = await getPlacementInventoryAnimalQty(code || null);
+    const displayedInfo = placementAnimalQty > 0
+      ? { ...info, animalQty: placementAnimalQty }
+      : info;
 
     return [{
       key,
@@ -517,11 +559,11 @@ export async function getFarmBuildingsForFlockCard(
       remarks: null,
       source: "WAREHOUSE" as const,
       warehouseCode: code || null,
-      flockCard: info,
+      flockCard: displayedInfo,
     }];
-  });
+  }));
 
-  return [...warehouseRows, ...flockCardOnlyRows].sort((left, right) =>
+  return [...warehouseRows, ...flockCardOnlyRows.flat()].sort((left, right) =>
     left.code.localeCompare(right.code) || left.name.localeCompare(right.name)
   );
 }
@@ -578,21 +620,110 @@ function addFarmPostingQuantities(
       expiryDate: current?.expiryDate ?? "",
       grOrigin: current?.grOrigin ?? "",
       docDetails: current?.docDetails ?? [],
+      mortalityQty: current?.mortalityQty ?? 0,
+      thinningQty: current?.thinningQty ?? 0,
+      batchOnHandQty: current?.batchOnHandQty ?? 0,
     });
   }
 }
 
+function mortalityAllocationKey(itemCode: string, batchNumber: string, warehouseCode: string) {
+  return [
+    itemCode.trim().toUpperCase(),
+    batchNumber.trim().toUpperCase(),
+    warehouseCode.trim().toUpperCase(),
+  ].join("|");
+}
+
+async function getMortalityThinningByBatch(
+  rows: FarmOriginBatchOption[],
+): Promise<Map<string, { mortalityQty: number; thinningQty: number }>> {
+  const itemCodes = Array.from(new Set(rows.map(row => row.itemCode.trim()).filter(Boolean)));
+  const batchNumbers = Array.from(new Set(rows.map(row => row.batchNumber.trim()).filter(Boolean)));
+  const warehouseCodes = Array.from(new Set(rows.map(row => row.warehouseCode.trim()).filter(Boolean)));
+  if (itemCodes.length === 0 || batchNumbers.length === 0 || warehouseCodes.length === 0) return new Map();
+
+  const lineResult = await db
+    .from("brd_fc_line")
+    .select("mort_total, thin_am, thin_pm, row_total, extra")
+    .eq("void", "1")
+    .not("extra", "is", null);
+
+  if (lineResult.error) throwDbError(lineResult.error, "Unable to load flock mortality/thinning totals");
+
+  const itemCodeSet = new Set(itemCodes.map(value => value.toUpperCase()));
+  const batchNumberSet = new Set(batchNumbers.map(value => value.toUpperCase()));
+  const warehouseCodeSet = new Set(warehouseCodes.map(value => value.toUpperCase()));
+  const totalsByBatch = new Map<string, { mortalityQty: number; thinningQty: number }>();
+
+  for (const line of (lineResult.data ?? []) as FlockCardMortalityLineRow[]) {
+    const extra = line.extra && typeof line.extra === "object" ? line.extra : {};
+    const allocations = Array.isArray(extra.mortalityBatchAllocations)
+      ? extra.mortalityBatchAllocations
+      : [];
+    const mortalityTotal = Number(line.mort_total ?? 0);
+    const thinningTotal = Number(line.thin_am ?? 0) + Number(line.thin_pm ?? 0);
+    const depletionTotal = Number(line.row_total ?? 0) || mortalityTotal + thinningTotal;
+
+    for (const allocation of allocations) {
+      if (!allocation || typeof allocation !== "object") continue;
+
+      const row = allocation as Record<string, unknown>;
+      const itemCode = String(row.itemCode ?? "").trim();
+      const batchNumber = String(row.batchNumber ?? "").trim();
+      const warehouseCode = String(row.warehouseCode ?? "").trim();
+      const qty = Number(row.allocatedQty ?? 0);
+
+      if (
+        !itemCodeSet.has(itemCode.toUpperCase()) ||
+        !batchNumberSet.has(batchNumber.toUpperCase()) ||
+        !warehouseCodeSet.has(warehouseCode.toUpperCase()) ||
+        !Number.isFinite(qty) ||
+        qty <= 0
+      ) {
+        continue;
+      }
+
+      const key = mortalityAllocationKey(itemCode, batchNumber, warehouseCode);
+      const mortalityQty = depletionTotal > 0 ? qty * (mortalityTotal / depletionTotal) : qty;
+      const thinningQty = depletionTotal > 0 ? qty * (thinningTotal / depletionTotal) : 0;
+      const current = totalsByBatch.get(key) ?? { mortalityQty: 0, thinningQty: 0 };
+
+      totalsByBatch.set(key, {
+        mortalityQty: current.mortalityQty + mortalityQty,
+        thinningQty: current.thinningQty + thinningQty,
+      });
+    }
+  }
+
+  return new Map(
+    Array.from(totalsByBatch.entries()).map(([key, totals]) => [
+      key,
+      {
+        mortalityQty: Math.round(totals.mortalityQty),
+        thinningQty: Math.round(totals.thinningQty),
+      },
+    ]),
+  );
+}
+
 export async function getFarmOriginBatchesForFlockCard(
   farmId: number,
+  buildingWarehouseCode?: string | null,
 ): Promise<FarmOriginBatchOption[]> {
   if (!Number.isFinite(farmId)) return [];
 
-  const associatedWarehouses = await getAssociatedWarehouseRows(farmId);
-  const warehouseCodes = Array.from(new Set(
-    associatedWarehouses
-      .map(getAssociatedWarehouseCode)
-      .filter(Boolean),
-  ));
+  const selectedBuildingCode = String(buildingWarehouseCode ?? "").trim();
+  const associatedWarehouses = selectedBuildingCode
+    ? []
+    : await getAssociatedWarehouseRows(farmId);
+  const warehouseCodes = selectedBuildingCode
+    ? [selectedBuildingCode]
+    : Array.from(new Set(
+      associatedWarehouses
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean),
+    ));
 
   if (warehouseCodes.length === 0) return [];
 
@@ -604,7 +735,10 @@ export async function getFarmOriginBatchesForFlockCard(
   if (warehouseResult.error) throwDbError(warehouseResult.error, "Unable to load farm warehouses");
 
   const originWarehouseRows = ((warehouseResult.data ?? []) as WarehouseMasterRow[])
-    .filter(warehouse => String(warehouse.warehouse_type ?? "").trim() === "Warehouse");
+    .filter(warehouse =>
+      selectedBuildingCode ||
+      String(warehouse.warehouse_type ?? "").trim() === "Warehouse"
+    );
   const originWarehouseCodes = Array.from(new Set(
     originWarehouseRows
       .map(warehouse => String(warehouse.whse_code ?? "").trim())
@@ -640,6 +774,8 @@ export async function getFarmOriginBatchesForFlockCard(
     .filter(row => row.onHandQty > 0);
 
   if (rows.length === 0) return [];
+
+  const mortalityThinningByBatch = await getMortalityThinningByBatch(rows);
 
   const itemCodes = Array.from(new Set(rows.map(row => row.itemCode).filter(Boolean)));
   const batchNumbers = Array.from(new Set(rows.map(row => row.batchNumber).filter(Boolean)));
@@ -699,13 +835,16 @@ export async function getFarmOriginBatchesForFlockCard(
   ));
   const grNoById = new Map<number, string>();
   const receiptIdByItemBatch = new Map<string, number>();
+  const receiptLineNoByItemBatch = new Map<string, number>();
+  const receiptLineNoByExactBatch = new Map<string, number>();
   const batchQuantityByExactKey = new Map<string, number>();
   const batchQuantityByLooseKey = new Map<string, number>();
   const docDetailsByReceiptId = new Map<number, FarmOriginDocDetail[]>();
+  const docDetailByReceiptLine = new Map<string, FarmOriginDocDetail>();
 
   const receiptItemResult = await db
     .from("goods_receipt_items")
-    .select("goods_reciept_id, item_code, batch_number, warehouse_code, base_qty")
+    .select("goods_reciept_id, line_no, item_code, batch_number, warehouse_code, base_qty")
     .in("item_code", itemCodes)
     .in("batch_number", batchNumbers)
     .eq("void", "1");
@@ -714,6 +853,7 @@ export async function getFarmOriginBatchesForFlockCard(
 
   for (const receiptItem of (receiptItemResult.data ?? []) as GoodsReceiptItemOriginRow[]) {
     const grId = Number(receiptItem.goods_reciept_id ?? 0);
+    const lineNo = Number(receiptItem.line_no ?? 0);
     const itemCode = String(receiptItem.item_code ?? "").trim().toUpperCase();
     const batchNumber = String(receiptItem.batch_number ?? "").trim().toUpperCase();
     const warehouseCode = String(receiptItem.warehouse_code ?? "").trim().toUpperCase();
@@ -723,6 +863,12 @@ export async function getFarmOriginBatchesForFlockCard(
 
     const batchKey = [itemCode, batchNumber].join("|");
     if (!receiptIdByItemBatch.has(batchKey)) receiptIdByItemBatch.set(batchKey, grId);
+    if (!receiptLineNoByItemBatch.has(batchKey) && Number.isFinite(lineNo) && lineNo > 0) {
+      receiptLineNoByItemBatch.set(batchKey, lineNo);
+    }
+    if (warehouseCode && Number.isFinite(lineNo) && lineNo > 0) {
+      receiptLineNoByExactBatch.set([grId, itemCode, batchNumber, warehouseCode].join("|"), lineNo);
+    }
 
     if (!Number.isFinite(quantity)) continue;
 
@@ -748,12 +894,12 @@ export async function getFarmOriginBatchesForFlockCard(
         .in("id", receiptIds),
       db
         .from("goods_receipt_items")
-        .select("goods_reciept_id, item_code, batch_number, warehouse_code, base_qty")
+        .select("goods_reciept_id, line_no, item_code, batch_number, warehouse_code, base_qty")
         .in("goods_reciept_id", receiptIds)
         .eq("void", "1"),
       db
         .from("goods_receipt_doc")
-        .select("goods_reciept_id, receive_date, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
+        .select("goods_reciept_id, line_no, receive_date, receive_time, mnf_date, transfer_slip, average_doc_weight, quantity_received, doa_quantity, reject_count, short_count, actual_received, short_count_remarks, doa_count_remarks, reject_count_remarks")
         .in("goods_reciept_id", receiptIds)
         .eq("void", "1")
         .order("line_no", { ascending: true }),
@@ -769,12 +915,21 @@ export async function getFarmOriginBatchesForFlockCard(
 
     for (const receiptItem of (receiptItemResult.data ?? []) as GoodsReceiptItemOriginRow[]) {
       const grId = Number(receiptItem.goods_reciept_id ?? 0);
+      const lineNo = Number(receiptItem.line_no ?? 0);
       const itemCode = String(receiptItem.item_code ?? "").trim().toUpperCase();
       const batchNumber = String(receiptItem.batch_number ?? "").trim().toUpperCase();
       const warehouseCode = String(receiptItem.warehouse_code ?? "").trim().toUpperCase();
       const quantity = Number(receiptItem.base_qty ?? 0);
 
       if (!Number.isFinite(grId) || grId <= 0 || !itemCode || !batchNumber || !Number.isFinite(quantity)) continue;
+
+      const batchKey = [itemCode, batchNumber].join("|");
+      if (!receiptLineNoByItemBatch.has(batchKey) && Number.isFinite(lineNo) && lineNo > 0) {
+        receiptLineNoByItemBatch.set(batchKey, lineNo);
+      }
+      if (warehouseCode && Number.isFinite(lineNo) && lineNo > 0) {
+        receiptLineNoByExactBatch.set([grId, itemCode, batchNumber, warehouseCode].join("|"), lineNo);
+      }
 
       const looseKey = [grId, itemCode, batchNumber].join("|");
       batchQuantityByLooseKey.set(looseKey, (batchQuantityByLooseKey.get(looseKey) ?? 0) + quantity);
@@ -789,9 +944,15 @@ export async function getFarmOriginBatchesForFlockCard(
       const receiptId = Number(detail.goods_reciept_id);
       if (!Number.isFinite(receiptId) || receiptId <= 0) continue;
 
+      const docDetail = toFarmOriginDocDetail(detail);
       const rows = docDetailsByReceiptId.get(receiptId) ?? [];
-      rows.push(toFarmOriginDocDetail(detail));
+      rows.push(docDetail);
       docDetailsByReceiptId.set(receiptId, rows);
+
+      const lineNo = Number(detail.line_no ?? 0);
+      if (Number.isFinite(lineNo) && lineNo > 0) {
+        docDetailByReceiptLine.set([receiptId, lineNo].join("|"), docDetail);
+      }
     }
   }
 
@@ -809,20 +970,46 @@ export async function getFarmOriginBatchesForFlockCard(
       const receiptId = sourceGrId > 0
         ? sourceGrId
         : receiptIdByItemBatch.get([itemCodeKey, batchNumberKey].join("|")) ?? 0;
+      const receiptLineNo =
+        receiptLineNoByExactBatch.get([receiptId, itemCodeKey, batchNumberKey, warehouseCodeKey].join("|")) ??
+        receiptLineNoByItemBatch.get([itemCodeKey, batchNumberKey].join("|")) ??
+        0;
       const exactQuantityKey = [receiptId, itemCodeKey, batchNumberKey, warehouseCodeKey].join("|");
       const looseQuantityKey = [receiptId, itemCodeKey, batchNumberKey].join("|");
-
-      return [{
+      const batchQuantity = batchQuantityByExactKey.get(exactQuantityKey) ??
+        batchQuantityByLooseKey.get(looseQuantityKey) ??
+        0;
+      const depletion = mortalityThinningByBatch.get(mortalityAllocationKey(row.itemCode, row.batchNumber, row.warehouseCode)) ??
+        { mortalityQty: 0, thinningQty: 0 };
+      const batchOnHandQty = Math.max(row.onHandQty - depletion.mortalityQty - depletion.thinningQty, 0);
+      const receiptDocDetails = receiptId > 0 ? docDetailsByReceiptId.get(receiptId) ?? [] : [];
+      const matchedDocDetail = receiptId > 0 && receiptLineNo > 0
+        ? docDetailByReceiptLine.get([receiptId, receiptLineNo].join("|"))
+        : undefined;
+      const quantityMatchedDocDetail = receiptDocDetails.find(detail =>
+        Math.abs(Number(detail.actualReceived ?? 0) - Number(row.onHandQty ?? 0)) < 0.000001 ||
+        Math.abs(Number(detail.actualReceived ?? 0) - Number(batchQuantity ?? 0)) < 0.000001
+      );
+      const docDetails = matchedDocDetail
+        ? [matchedDocDetail]
+        : quantityMatchedDocDetail ? [quantityMatchedDocDetail] : receiptDocDetails;
+      const baseRow = {
         ...row,
         itemName: itemNameByCode.get(row.itemCode.toUpperCase()) ?? row.itemName,
         warehouseName: warehouseByCode.get(row.warehouseCode.toUpperCase()) ?? row.warehouseName,
-        batchQuantity: batchQuantityByExactKey.get(exactQuantityKey) ??
-          batchQuantityByLooseKey.get(looseQuantityKey) ??
-          0,
+        batchQuantity,
         manufacturingDate: batch.manufacturing_date ?? "",
         expiryDate: batch.expiry_date ?? "",
         grOrigin: receiptId > 0 ? grNoById.get(receiptId) ?? "" : "",
-        docDetails: receiptId > 0 ? docDetailsByReceiptId.get(receiptId) ?? [] : [],
+        mortalityQty: depletion.mortalityQty,
+        thinningQty: depletion.thinningQty,
+        batchOnHandQty,
+      };
+
+      return [{
+        ...baseRow,
+        onHandQty: batchOnHandQty,
+        docDetails,
       }];
     })
     .sort((left, right) => {
@@ -833,4 +1020,33 @@ export async function getFarmOriginBatchesForFlockCard(
         left.itemCode.localeCompare(right.itemCode) ||
         left.batchNumber.localeCompare(right.batchNumber);
     });
+}
+
+export async function getBuildingPlacementInventory(
+  lookup: BuildingPlacementInventoryLookup,
+): Promise<FarmOriginBatchOption[]> {
+  const farmId = Number(lookup.farmId ?? 0);
+  if (!Number.isFinite(farmId) || farmId <= 0) return [];
+
+  const directWarehouseCode = String(lookup.buildingWarehouseCode ?? "").trim();
+  if (directWarehouseCode) return getFarmOriginBatchesForFlockCard(farmId, directWarehouseCode);
+
+  const buildingCode = String(lookup.buildingCode ?? "").trim();
+  const buildingName = String(lookup.buildingName ?? "").trim();
+  const buildingKey = String(lookup.buildingKey ?? "").trim();
+
+  if (!buildingCode && !buildingName && !buildingKey) return [];
+
+  const buildings = await getFarmBuildingsForFlockCard(farmId);
+  const normalizedCode = buildingCode.toUpperCase();
+  const normalizedName = buildingName.toUpperCase();
+
+  const building = buildings.find(row =>
+    (buildingKey && row.key === buildingKey) ||
+    (normalizedCode && row.code.trim().toUpperCase() === normalizedCode) ||
+    (normalizedName && row.name.trim().toUpperCase() === normalizedName)
+  );
+
+  const warehouseCode = building?.warehouseCode || building?.code || buildingCode;
+  return warehouseCode ? getFarmOriginBatchesForFlockCard(farmId, warehouseCode) : [];
 }

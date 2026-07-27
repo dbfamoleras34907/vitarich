@@ -11,7 +11,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
-import { Search, Settings, ArrowUp, ArrowDown, CornerDownLeft } from "lucide-react"
+import { Search, Settings, ArrowUp, ArrowDown, CornerDownLeft, ExternalLink } from "lucide-react"
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
 import { getModuleIcon } from '@/lib/sidebar/moduleIcons'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -303,6 +303,31 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     command()
   }
 
+  const openInNewWindow = (url: string) => {
+    const newWindow = window.open(url, "_blank", "noopener,noreferrer")
+    if (newWindow) newWindow.opener = null
+    setOpen(false)
+  }
+
+  const openInNewWindowButton = (title: string, url: string) => (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+        openInNewWindow(url)
+      }}
+      className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100 md:group-data-[selected=true]/route:opacity-100"
+      aria-label={`Open ${title} in a new window`}
+      title="Open in new window"
+    >
+      <ExternalLink className="size-3.5" />
+    </button>
+  )
+
   return (
     <>
       {/* SEARCH BUTTON */}
@@ -381,6 +406,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                   <CommandItem
                     key={item.key}
                     value={item.title}
+                    className="group/route pr-10"
                     onSelect={() => {
                       if (item.url !== "#") {
                         runCommand(() => router.push(item.url))
@@ -395,6 +421,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                         {item.description}
                       </span>
                     </div>
+                    {openInNewWindowButton(item.title, item.url)}
                   </CommandItem>
                 )
               })}
@@ -452,6 +479,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                       key={child.url + child.title}
                       value={child.title}
                       keywords={[folder.title, group.group, child.type ?? ""]}
+                      className="group/route pr-10"
                       onSelect={() => {
                         if (child.url !== "#") {
                           runCommand(() =>
@@ -468,6 +496,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                           {folder.title} &gt; {group.group}
                         </span>
                       </div>
+                      {openInNewWindowButton(child.title, child.url)}
                     </CommandItem>
                     )]
 
@@ -478,6 +507,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                           key={`${child.newDocumentUrl}-${newDocumentTitle}`}
                           value={newDocumentTitle}
                           keywords={[folder.title, group.group, child.type ?? "", "new insert create add"]}
+                          className="group/route pr-10"
                           onSelect={() => runCommand(() => router.push(child.newDocumentUrl!))}
                         >
                           <Icon className="mr-2 h-4 w-4 text-green-500" />
@@ -488,6 +518,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                               {folder.title} &gt; {group.group} &gt; New Document
                             </span>
                           </div>
+                          {openInNewWindowButton(newDocumentTitle, child.newDocumentUrl!)}
                         </CommandItem>
                       )
                     }

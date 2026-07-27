@@ -11,6 +11,7 @@ export type {
   GoodsReceiptExistingBatch,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
+  GoodsReceiptOpenFlockBuilding,
   GoodsReceiptPrefetchReferences,
   UomConversionOption,
   UomGroupOption,

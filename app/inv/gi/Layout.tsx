@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, Plus, RefreshCw } from 'lucide-react'
+import { Copy, Eye, MoreHorizontal, Plus, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -17,6 +23,7 @@ import {
   getIssueItemSummary,
   GoodsIssue,
 } from './api'
+import DeliveryReceipt from '@/app/brd/dr/DeliveryReceipt'
 
 type GoodsIssueHistoryConfig = {
   triggeredBy: string
@@ -30,6 +37,9 @@ type GoodsIssueHistoryConfig = {
   emptyMessage: string
   noResultsMessage: string
   useDefaultFarm: boolean
+  showDeliveryReceipt: boolean
+  showDuplicateAction: boolean
+  receiptLabel: string
 }
 
 const defaultConfig: GoodsIssueHistoryConfig = {
@@ -44,6 +54,9 @@ const defaultConfig: GoodsIssueHistoryConfig = {
   emptyMessage: 'No item stock out transactions found',
   noResultsMessage: 'No matching item stock out transactions found',
   useDefaultFarm: false,
+  showDeliveryReceipt: false,
+  showDuplicateAction: false,
+  receiptLabel: 'Delivery Receipt',
 }
 
 type GoodsIssueTableRow = Record<string, unknown> & {
@@ -111,6 +124,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     : null
   const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
+  const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -188,24 +202,71 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         sortable: false,
         searchable: false,
         render: row => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={row.id === null || cannotView}
-            onClick={event => {
-              event.stopPropagation()
-              if (row.id === null || cannotView) return
-              router.push(`${config.basePath}/post?id=${row.id}`)
-            }}
-          >
-            <Eye className="size-4" />
-            View
-          </Button>
+          <div className="flex justify-center" onClick={event => event.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label={`Actions for ${row.giNo}`}
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuItem
+                  disabled={row.id === null || cannotView}
+                  onSelect={() => {
+                    if (row.id === null || cannotView) return
+                    router.push(`${config.basePath}/post?id=${row.id}`)
+                  }}
+                >
+                  <Eye className="size-4" />
+                  View
+                </DropdownMenuItem>
+                {config.showDeliveryReceipt && (
+                  <DropdownMenuItem
+                    disabled={row.id === null || cannotView}
+                    onSelect={() => {
+                      if (row.id === null || cannotView) return
+                      setReceiptDeliveryId(row.id)
+                    }}
+                  >
+                    <Printer className="size-4" />
+                    {config.receiptLabel}
+                  </DropdownMenuItem>
+                )}
+                {config.showDuplicateAction && (
+                  <DropdownMenuItem
+                    disabled={row.id === null || cannotInsert}
+                    onSelect={() => {
+                      if (row.id === null || cannotInsert) return
+                      setCollapsed(true)
+                      router.push(`${config.basePath}/new?duplicateId=${row.id}`)
+                    }}
+                  >
+                    <Copy className="size-4" />
+                    Duplicate
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       },
     ],
-    [cannotView, config.basePath, config.documentPrefix, router],
+    [
+      cannotInsert,
+      cannotView,
+      config.basePath,
+      config.documentPrefix,
+      config.receiptLabel,
+      config.showDeliveryReceipt,
+      config.showDuplicateAction,
+      router,
+      setCollapsed,
+    ],
   )
 
   const openNewGoodsIssue = () => {
@@ -253,6 +314,16 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           }}
         />
       </div>
+
+      <DeliveryReceipt
+        deliveryId={receiptDeliveryId}
+        triggeredBy={config.triggeredBy}
+        receiptTitle={config.receiptLabel}
+        open={receiptDeliveryId !== null}
+        onOpenChange={open => {
+          if (!open) setReceiptDeliveryId(null)
+        }}
+      />
     </main>
   )
 }

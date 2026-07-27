@@ -83,7 +83,6 @@ export default function DeliveryIssueLinesTable({
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
             <th className="w-[10%] border-r px-3 py-2">Cycle Count</th>
             <th className="w-[7%] border-r px-3 py-2">Age</th>
-            <th className="w-[10%] border-r px-3 py-2">Birds</th>
             <th className="w-[8%] border-r px-3 py-2">Weight g</th>
             <th className="w-[16%] border-r px-3 py-2">Item</th>
             <th className="w-[11%] border-r px-3 py-2">To Transfer</th>
@@ -178,13 +177,6 @@ export default function DeliveryIssueLinesTable({
                 <td className="border-r p-1 align-middle">
                   <Input
                     value={flockState?.info ? String(flockState.info.age) : ''}
-                    readOnly
-                    className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
-                  />
-                </td>
-                <td className="border-r p-1 align-middle">
-                  <Input
-                    value={flockState?.info ? formatQuantity(flockState.info.animalQty) : ''}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />

@@ -44,7 +44,6 @@ import {
 import {
   getFlockCardSheet,
   getFeedBatchOnHandByWarehouse,
-  getFlockOriginBatchesByCardNo,
   getFarmBuildings,
   reverseFlockCardFeedIntake,
   reverseFlockCardMortalityThinning,
@@ -53,6 +52,7 @@ import {
   type FarmBuildingOption,
   type FlockCardLinePayload,
 } from "./api";
+import { getBuildingPlacementInventory } from "../api";
 import {
   computeColumnTotals,
   computeGridValues,
@@ -926,7 +926,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }, [feedBatchRefreshKey, feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
 
   useEffect(() => {
-    if (!linkedCardNo) {
+    const farmId = Number(selectedFarmId);
+    if (!Number.isFinite(farmId) || farmId <= 0 || !selectedBuilding) {
       setMortalityBatchRows([]);
       setMortalityBatchError("");
       setLoadingMortalityBatches(false);
@@ -937,7 +938,13 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setLoadingMortalityBatches(true);
     setMortalityBatchError("");
 
-    getFlockOriginBatchesByCardNo(linkedCardNo)
+    getBuildingPlacementInventory({
+      farmId,
+      buildingCode: selectedBuilding.code,
+      buildingName: selectedBuilding.name,
+      buildingKey: selectedBuilding.key,
+      buildingWarehouseCode: selectedBuilding.warehouseCode || selectedBuilding.code,
+    })
       .then(rows => {
         if (!cancelled) setMortalityBatchRows(rows);
       })
@@ -955,7 +962,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [linkedCardNo]);
+  }, [selectedBuilding, selectedFarmId]);
 
   useEffect(() => {
     if (!reviewFeedBatch) {

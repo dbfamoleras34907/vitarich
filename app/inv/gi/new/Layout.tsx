@@ -294,6 +294,7 @@ export default function NewGoodsIssue({
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const issueId = searchParams.get('id')
+  const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
   const cannotInsert = usePermission(`${permissionPath}/insert`)
   const cannotEdit = usePermission(`${permissionPath}/edit`)
@@ -367,9 +368,11 @@ export default function NewGoodsIssue({
           }))
           : getGoodsIssueReferences()
 
+        const sourceIssueId = issueId ?? duplicateId
+        const isDuplicating = !issueId && Boolean(duplicateId)
         const [references, savedIssue, giNo] = await Promise.all([
           referencesPromise,
-          issueId ? getGoodsIssueById(Number(issueId)) : Promise.resolve(null),
+          sourceIssueId ? getGoodsIssueById(Number(sourceIssueId), triggeredBy) : Promise.resolve(null),
           issueId ? Promise.resolve('') : createGoodsIssueNumber(documentPrefix),
         ])
 
@@ -381,9 +384,38 @@ export default function NewGoodsIssue({
           return
         }
 
-        const nextIssue = savedIssue
-          ? { ...savedIssue, triggeredBy: savedIssue.triggeredBy || triggeredBy }
-          : { ...emptyIssue(giNo), triggeredBy }
+        const requestedQtyByGroup = new Map<string, number>()
+        if (isDuplicating && savedIssue) {
+          savedIssue.lines.forEach(line => {
+            const groupKey = `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+            requestedQtyByGroup.set(
+              groupKey,
+              (requestedQtyByGroup.get(groupKey) ?? 0) + Number(line.altQty || 0),
+            )
+          })
+        }
+
+        const nextIssue: GoodsIssue = isDuplicating && savedIssue
+          ? {
+              ...savedIssue,
+              id: null,
+              giNo,
+              issueDate: today(),
+              status: 'Draft',
+              createdAt: new Date().toISOString(),
+              triggeredBy,
+              lines: savedIssue.lines.map(line => {
+                const groupKey = `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+                return {
+                  ...line,
+                  id: crypto.randomUUID(),
+                  requestedAltQty: requestedQtyByGroup.get(groupKey) ?? Number(line.altQty || 0),
+                }
+              }),
+            }
+          : savedIssue
+            ? { ...savedIssue, triggeredBy: savedIssue.triggeredBy || triggeredBy }
+            : { ...emptyIssue(giNo), triggeredBy }
 
         if (!savedIssue && useDefaultFarm) {
           const defaultFarmId = getValue('DefaultFarmId')
@@ -428,7 +460,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [basePath, documentPrefix, getValue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
+  }, [basePath, documentPrefix, duplicateId, getValue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === issue?.farmId),

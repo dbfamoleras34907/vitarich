@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Boxes, Menu } from "lucide-react"
+import { Boxes, ExternalLink, Menu } from "lucide-react"
 import { useSidebar } from "./SidebarProvider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
@@ -96,6 +96,11 @@ export function AppSidebar() {
     router.push(url)
   }
 
+  const openInNewWindow = (url: string) => {
+    const newWindow = window.open(url, "_blank", "noopener,noreferrer")
+    if (newWindow) newWindow.opener = null
+  }
+
 
   const renderExpandedNavigation = () => (
     <>
@@ -158,15 +163,28 @@ export function AppSidebar() {
                       const isCurrentRoute = routeIsActive(pathname, child.url)
 
                       return (
-                        <Button
+                        <div
                           key={`${activeFolder.id}-${group.group}-${child.title}`}
-                          variant="ghost"
-                          className={`h-9 w-full justify-start rounded-md px-3 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
-                          onClick={() => goTo(child.url)}
+                          className="group/route relative"
                         >
-                          <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
-                          <span className="truncate">{child.title}</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
+                            onClick={() => goTo(child.url)}
+                          >
+                            <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
+                            <span className="truncate">{child.title}</span>
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => openInNewWindow(child.url)}
+                            className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
+                            aria-label={`Open ${child.title} in a new window`}
+                            title="Open in new window"
+                          >
+                            <ExternalLink className="size-3.5" />
+                          </button>
+                        </div>
                       )
                     })}
                   </div>

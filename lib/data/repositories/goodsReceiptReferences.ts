@@ -8,6 +8,19 @@ export type AssociatedWarehouse = {
   whse_name?: string | null
   is_default_receiving?: boolean | null
   is_default_receiving_warehouse?: boolean | null
+  is_default_disposal?: boolean | null
+  is_default_disposal_warehouse?: boolean | null
+}
+
+export type GoodsReceiptOpenFlockBuilding = {
+  flockCardId: number
+  farmId: number
+  warehouseId: number
+  warehouseCode: string
+  warehouseName: string
+  cardNo: string
+  flockCode: string
+  cycleAge: number
 }
 
 export type GoodsReceiptFarm = {
@@ -79,11 +92,64 @@ export type UomConversionOption = {
 
 export type GoodsReceiptPrefetchReferences = {
   farms: GoodsReceiptFarm[]
+  openFlockBuildings: GoodsReceiptOpenFlockBuilding[]
   uomGroups: UomGroupOption[]
   conversions: UomConversionOption[]
   itemGroups: GoodsReceiptItemGroup[]
   batchRules: GoodsReceiptBatchRule[]
   batchSeries: GoodsReceiptBatchSeries[]
+}
+
+type OpenFlockCardRow = {
+  id: number
+  farm_id: number
+  building_whse_id: number | null
+  building_code: string | null
+  building_name: string | null
+  card_no: string | null
+  flock_code: string | null
+  start_date: string | null
+}
+
+const calculateCycleAge = (startDate: string | null) => {
+  if (!startDate) return 0
+  const start = new Date(`${startDate.slice(0, 10)}T00:00:00`)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Number.isNaN(start.getTime())
+    ? 0
+    : Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86_400_000))
+}
+
+const buildOpenFlockBuildings = (
+  rows: OpenFlockCardRow[],
+  warehouses: WarehouseData[],
+): GoodsReceiptOpenFlockBuilding[] => {
+  const warehouseById = new Map(
+    warehouses.flatMap(warehouse =>
+      typeof warehouse.id === 'number' ? [[warehouse.id, warehouse] as const] : []
+    ),
+  )
+
+  const seenWarehouseIds = new Set<number>()
+
+  return rows.flatMap(card => {
+    const warehouseId = Number(card.building_whse_id ?? 0)
+    const warehouse = warehouseById.get(warehouseId)
+    if (!warehouseId || !warehouse || seenWarehouseIds.has(warehouseId)) return []
+    seenWarehouseIds.add(warehouseId)
+
+    return [{
+      flockCardId: Number(card.id),
+      farmId: Number(card.farm_id),
+      warehouseId,
+      warehouseCode: String(warehouse.whse_code ?? card.building_code ?? '').trim(),
+      warehouseName: String(warehouse.whse_name ?? card.building_name ?? '').trim(),
+      cardNo: String(card.card_no ?? '').trim(),
+      flockCode: String(card.flock_code ?? '').trim(),
+      cycleAge: calculateCycleAge(card.start_date),
+    }]
+  })
 }
 
 const singleRelation = <T,>(value: T | T[] | null): T | null =>
@@ -202,7 +268,7 @@ const getActiveFarmsByCodes = async (farmCodes: string[]) => {
 export async function getGoodsReceiptReferences() {
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
 
-  const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+  const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
     db
       .from('items')
       .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
@@ -245,6 +311,13 @@ export async function getGoodsReceiptReferences() {
       .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, include_expiry_date, active')
       .eq('void', '1')
       .eq('active', true),
+    db
+      .from('flock_card')
+      .select('id, farm_id, building_whse_id, building_code, building_name, card_no, flock_code, start_date')
+      .eq('void', '1')
+      .eq('status', 'Saved')
+      .order('start_date', { ascending: false })
+      .order('id', { ascending: false }),
   ])
 
   if (itemsResult.error) throw itemsResult.error
@@ -253,13 +326,19 @@ export async function getGoodsReceiptReferences() {
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
   if (batchSeriesResult.error) throw batchSeriesResult.error
+  if (openFlockCardsResult.error) throw openFlockCardsResult.error
 
   const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
+  const warehouseRows = (warehousesResult.data ?? []) as WarehouseData[]
 
   return {
     items: (itemsResult.data ?? []) as Items[],
-    warehouses: (warehousesResult.data ?? []) as WarehouseData[],
+    warehouses: warehouseRows,
     farms: await getActiveFarmsByCodes(assignedFarmCodes),
+    openFlockBuildings: buildOpenFlockBuildings(
+      (openFlockCardsResult.data ?? []) as OpenFlockCardRow[],
+      warehouseRows,
+    ),
     uomGroups,
     conversions,
     itemGroups: (itemGroupsResult.data ?? []) as GoodsReceiptItemGroup[],
@@ -271,7 +350,7 @@ export async function getGoodsReceiptReferences() {
 export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptPrefetchReferences> {
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
 
-  const [assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult] = await Promise.all([
+  const [assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, warehousesResult, openFlockCardsResult] = await Promise.all([
     assignedFarmCodesQuery,
     db
       .from('uom_groups')
@@ -304,17 +383,36 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, include_expiry_date, active')
       .eq('void', '1')
       .eq('active', true),
+    db
+      .from('i_warehouse')
+      .select('*')
+      .eq('is_active', true)
+      .order('whse_code'),
+    db
+      .from('flock_card')
+      .select('id, farm_id, building_whse_id, building_code, building_name, card_no, flock_code, start_date')
+      .eq('void', '1')
+      .eq('status', 'Saved')
+      .order('start_date', { ascending: false })
+      .order('id', { ascending: false }),
   ])
 
   if (conversionGroupsResult.error) throw conversionGroupsResult.error
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
   if (batchSeriesResult.error) throw batchSeriesResult.error
+  if (warehousesResult.error) throw warehousesResult.error
+  if (openFlockCardsResult.error) throw openFlockCardsResult.error
 
   const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
+  const warehouseRows = (warehousesResult.data ?? []) as WarehouseData[]
 
   return {
     farms: await getActiveFarmsByCodes(assignedFarmCodes),
+    openFlockBuildings: buildOpenFlockBuildings(
+      (openFlockCardsResult.data ?? []) as OpenFlockCardRow[],
+      warehouseRows,
+    ),
     uomGroups,
     conversions,
     itemGroups: (itemGroupsResult.data ?? []) as GoodsReceiptItemGroup[],

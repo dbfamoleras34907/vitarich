@@ -16,17 +16,36 @@ export interface InventoryPostingData {
   ref2: string
   ref_type: string
   ref_type2: string
+  batch_number: string | null
 }
 
 interface Filters {
   from?: string
   to?: string
-  warehouse_code?: string
-  item_code?: string
+  farm_id?: string
 }
 
 export async function getInventoryPostings(filters?: Filters) {
   try {
+    let warehouseCodes: string[] | null = null
+
+    if (filters?.farm_id) {
+      const { data: warehouses, error: warehouseError } = await db
+        .from('i_warehouse')
+        .select('whse_code')
+        .eq('farm_id', filters.farm_id)
+
+      if (warehouseError) throw warehouseError
+
+      warehouseCodes = (warehouses ?? [])
+        .map(warehouse => String(warehouse.whse_code ?? '').trim())
+        .filter(Boolean)
+
+      if (warehouseCodes.length === 0) {
+        return { success: true, data: [] as InventoryPostingData[] }
+      }
+    }
+
     let query = db
       .from('inventory_postings')
       .select('*')
@@ -38,15 +57,13 @@ export async function getInventoryPostings(filters?: Filters) {
     }
 
     if (filters?.to) {
-      query = query.lte('created_at', filters.to)
+      const dayAfter = new Date(`${filters.to}T00:00:00`)
+      dayAfter.setDate(dayAfter.getDate() + 1)
+      query = query.lt('created_at', dayAfter.toISOString())
     }
 
-    if (filters?.warehouse_code) {
-      query = query.eq('warehouse_code', filters.warehouse_code)
-    }
-
-    if (filters?.item_code) {
-      query = query.ilike('item_code', `%${filters.item_code}%`)
+    if (warehouseCodes) {
+      query = query.in('warehouse_code', warehouseCodes)
     }
 
     const { data, error } = await query
@@ -55,8 +72,9 @@ export async function getInventoryPostings(filters?: Filters) {
 
     return { success: true, data: data as InventoryPostingData[] }
 
-  } catch (error: any) {
-    console.error('Error fetching inventory postings:', error.message)
-    return { success: false, error: error.message }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unable to fetch inventory postings'
+    console.error('Error fetching inventory postings:', message)
+    return { success: false, error: message }
   }
 }

@@ -820,19 +820,6 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
           {
-            id: 57,
-            type: "Module",
-            title: "DOC Receiving",
-            url: "/inv/doc-receiving",
-            newDocumentUrl: "/inv/doc-receiving/new",
-            inventoriable: true,
-            section: "IV",
-            view: true,
-            insert: true,
-            edit: false,
-            approval: false,
-          },
-          {
             id: 52,
             type: "Module",
             title: "Item Stock Out",
@@ -978,6 +965,20 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 57,
+            type: "Module",
+            title: "DOC Receiving",
+            url: "/inv/doc-receiving",
+            newDocumentUrl: "/inv/doc-receiving/new",
+            inventoriable: true,
+            section: "IV",
+            view: true,
+            insert: true,
+            edit: false,
+            approval: false,
+          },
+
+          {
             id: 61,
             type: "Module",
             title: "Flock Card",
@@ -1015,9 +1016,48 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Clean up",
             url: "/brd/cu",
+            newDocumentUrl: "/brd/cu/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 65,
+            type: "Module",
+            title: "DOC Receiving Settings",
+            url: "/a_dean/doc-receiving-settings",
+            view: false,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 66,
+            type: "Module",
+            title: "Flock Card Settings",
+            url: "/brd/fc/settings",
             view: false,
             insert: false,
-            edit: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 71,
+            type: "Module",
+            title: "Delivery Settings",
+            url: "/brd/dr/settings",
+            view: false,
+            insert: false,
+            edit: true,
             approval: false,
           },
         ],
@@ -1109,39 +1149,6 @@ export const NavFolders: NavFolder[] = [
             insert: true,
             edit: false,
             approval: true,
-          },
-
-          {
-            id: 65,
-            type: "Module",
-            title: "DOC Receiving Settings",
-            url: "/a_dean/doc-receiving-settings",
-            view: false,
-            insert: true,
-            edit: true,
-            approval: false,
-          },
-
-          {
-            id: 66,
-            type: "Module",
-            title: "Flock Card Settings",
-            url: "/brd/fc/settings",
-            view: false,
-            insert: false,
-            edit: true,
-            approval: false,
-          },
-
-          {
-            id: 71,
-            type: "Module",
-            title: "BR Delivery Settings",
-            url: "/brd/dr/settings",
-            view: false,
-            insert: false,
-            edit: true,
-            approval: false,
           },
 
           {

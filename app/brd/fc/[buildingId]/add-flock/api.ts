@@ -48,7 +48,7 @@ export type FlockCardPlacementPayload = {
   sex?: string | null;
   remarks?: string | null;
   extra?: Record<string, unknown>;
-  origins: FlockCardOriginPayload[];
+  origins?: FlockCardOriginPayload[];
 };
 
 export type SavedFlockCardPlacement = {
@@ -56,9 +56,10 @@ export type SavedFlockCardPlacement = {
   cardNo: string;
 };
 
-export type FlockCardPlacementRecord = FlockCardPlacementPayload & {
+export type FlockCardPlacementRecord = Omit<FlockCardPlacementPayload, "origins"> & {
   id: number;
   cardNo: string;
+  origins: FlockCardOriginPayload[];
 };
 
 export type UsedFlockOriginBatch = {
@@ -517,10 +518,9 @@ export async function saveFlockCardPlacement(
   if (payload.id && !previousPlacement) {
     throw new Error("Unable to save flock card: the saved placement no longer exists");
   }
-  const originsToSave = getAddedPlacementOrigins(
-    payload.origins,
-    previousPlacement?.origins ?? [],
-  );
+  const originsToSave = payload.origins
+    ? getAddedPlacementOrigins(payload.origins, previousPlacement?.origins ?? [])
+    : [];
 
   let fcId = Number(payload.id ?? 0);
   let savedCardNo = cardNo;

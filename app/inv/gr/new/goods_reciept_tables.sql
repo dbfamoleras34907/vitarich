@@ -71,6 +71,8 @@ create table if not exists public.goods_receipt_doc (
   receive_date date null,
   receive_time time null,
   mnf_date date null,
+  building_warehouse_id bigint null,
+  flock_card_id bigint null,
   transfer_slip text null,
   average_doc_weight numeric(18, 6) null,
   quantity_received numeric(18, 6) not null default 0,
@@ -99,6 +101,12 @@ create table if not exists public.goods_receipt_doc (
 
 alter table public.goods_receipt_doc
   add column if not exists receive_time time null;
+
+alter table public.goods_receipt_doc
+  add column if not exists building_warehouse_id bigint null;
+
+alter table public.goods_receipt_doc
+  add column if not exists flock_card_id bigint null;
 
 create index if not exists goods_reciept_receive_date_idx
   on public.goods_receipt (receive_date desc);
