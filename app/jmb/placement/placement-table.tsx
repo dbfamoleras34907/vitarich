@@ -63,13 +63,21 @@ function PlacementTableInner() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [data, lockedIds] = await Promise.all([
-        listPlacements(),
-        listPlacementIdsWithGrowingOrLaying(),
-      ]);
+      const data = await listPlacements();
       setItems(Array.isArray(data) ? data : []);
-      setLockedPlacementIds(new Set(lockedIds));
-    } catch {
+
+      try {
+        const lockedIds = await listPlacementIdsWithGrowingOrLaying();
+        setLockedPlacementIds(
+          new Set(
+            lockedIds ?? data.map((placement) => placement.id),
+          ),
+        );
+      } catch {
+        setLockedPlacementIds(new Set(data.map((placement) => placement.id)));
+      }
+    } catch (error) {
+      console.error("Unable to load placements.", error);
       setItems([]);
       setLockedPlacementIds(new Set());
     } finally {
@@ -170,12 +178,21 @@ function PlacementTableInner() {
       cell: ({ row }) => <ClassificationRefBadge value={row.original.dr_no} />,
     },
     {
+      accessorKey: "farm_name",
+      header: "Farm",
+    },
+    {
       accessorKey: "building_no",
       header: "Building",
     },
     {
       accessorKey: "pen_no",
       header: "Pen",
+    },
+    {
+      accessorKey: "f_source",
+      header: "Source of Birds",
+      cell: ({ row }) => row.original.f_source ?? row.original.m_source ?? "",
     },
     {
       accessorKey: "f_beg",

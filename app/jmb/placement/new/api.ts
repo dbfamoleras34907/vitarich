@@ -5,6 +5,7 @@ const TABLE = "tbl_placement";
 const GROWING_TABLE = "tbl_growing";
 const EGG_LAYING_TABLE = "tbl_egglaying";
 const BREEDER_SOURCE_TABLE = "tbl_breeder_source";
+const BREEDER_FARM_VIEW = "view_breeder_farm";
 const FARM_LOCATION_LOOKUP_VIEW = "view_farm_location_lookup";
 const FARM_PEN_TABLE = "farm_pens";
 const LAST_PEN_CODE_VIEW = "v_last_pen_code";
@@ -25,6 +26,12 @@ export type FarmLocationLookup = {
   full_location: string;
 };
 
+export type BreederFarm = {
+  id: number;
+  code: string;
+  name: string;
+};
+
 export type CreateFarmPenInput = {
   buildingId: number;
   penNo: string;
@@ -39,7 +46,9 @@ export type Placement = {
   placement_date: string;
   dr_no: string;
   file_attached: string | null;
-  farm_id: number | null;
+  farm_id: number;
+  building_id: number;
+  pen_id: number;
   farm_name: string;
   building_no: string;
   pen_no: string;
@@ -49,22 +58,39 @@ export type Placement = {
   f_reject: number;
   f_shortcount: number;
   f_endingbalance: number | null;
+  f_remarks: string | null;
   m_source: string | null;
   m_beg: number;
   m_doa: number;
   m_reject: number;
   m_shortcount: number;
   m_endingbalance: number | null;
+  m_remarks: string | null;
   remarks: string | null;
 };
 
-export type PlacementInsert = Omit<
+export type PlacementInsert = Pick<
   Placement,
-  | "id"
-  | "created_at"
-  | "created_by"
-  | "updated_at"
-  | "updated_by"
+  | "placement_date"
+  | "dr_no"
+  | "file_attached"
+  | "farm_id"
+  | "building_id"
+  | "pen_id"
+  | "farm_name"
+  | "building_no"
+  | "pen_no"
+  | "f_source"
+  | "f_beg"
+  | "f_doa"
+  | "f_reject"
+  | "f_shortcount"
+  | "m_source"
+  | "m_beg"
+  | "m_doa"
+  | "m_reject"
+  | "m_shortcount"
+  | "remarks"
 >;
 
 export type PlacementUpdate = Partial<PlacementInsert>;
@@ -80,7 +106,7 @@ export async function listPlacements() {
 }
 
 export async function listPlacementIdsWithGrowingOrLaying() {
-  const [growingResult, layingResult] = await Promise.all([
+  const results = await Promise.allSettled([
     db
       .from(GROWING_TABLE)
       .select("placement_id")
@@ -93,12 +119,18 @@ export async function listPlacementIdsWithGrowingOrLaying() {
       .not("placement_id", "is", null),
   ]);
 
-  if (growingResult.error) throw growingResult.error;
-  if (layingResult.error) throw layingResult.error;
+  for (const result of results) {
+    if (result.status === "rejected" || result.value.error) return null;
+  }
+
+  const rows = results.flatMap((result) => {
+    if (result.status === "rejected") return [];
+    return result.value.data ?? [];
+  });
 
   return Array.from(
     new Set(
-      [...(growingResult.data ?? []), ...(layingResult.data ?? [])]
+      rows
         .map((row) => row.placement_id)
         .filter((id): id is number => typeof id === "number"),
     ),
@@ -106,7 +138,7 @@ export async function listPlacementIdsWithGrowingOrLaying() {
 }
 
 export async function placementHasGrowingOrLaying(id: number) {
-  const [growingResult, layingResult] = await Promise.all([
+  const results = await Promise.allSettled([
     db
       .from(GROWING_TABLE)
       .select("id")
@@ -121,10 +153,18 @@ export async function placementHasGrowingOrLaying(id: number) {
       .limit(1),
   ]);
 
-  if (growingResult.error) throw growingResult.error;
-  if (layingResult.error) throw layingResult.error;
+  if (
+    results.some(
+      (result) => result.status === "rejected" || Boolean(result.value.error),
+    )
+  ) {
+    return true;
+  }
 
-  return Boolean(growingResult.data?.length || layingResult.data?.length);
+  return results.some(
+    (result) =>
+      result.status === "fulfilled" && Boolean(result.value.data?.length),
+  );
 }
 
 export async function getPlacementById(id: number) {
@@ -181,15 +221,43 @@ export async function deletePlacement(id: number) {
 export async function listBreederSources() {
   const { data, error } = await db
     .from(BREEDER_SOURCE_TABLE)
-    .select("breeder_source")
-    .eq("is_active", true)
+    .select("breeder_source, is_active")
     .order("breeder_source", { ascending: true });
 
   if (error) throw error;
 
-  return (data ?? [])
-    .map((row: { breeder_source: string | null }) => row.breeder_source?.trim())
+  const rows = (data ?? []) as Array<{
+    breeder_source: string | null;
+    is_active: boolean | number | string | null;
+  }>;
+  const activeRows = rows.filter((row) => {
+    const status = String(row.is_active ?? "")
+      .trim()
+      .toLowerCase();
+    return row.is_active === true || status === "1" || status === "active";
+  });
+  const configuredSources = (activeRows.length ? activeRows : rows)
+    .map((row) => row.breeder_source?.trim())
     .filter((source): source is string => Boolean(source));
+
+  if (configuredSources.length) {
+    return Array.from(new Set(configuredSources));
+  }
+
+  const { data: placementSources, error: placementSourcesError } = await db
+    .from(TABLE)
+    .select("f_source, m_source");
+
+  if (placementSourcesError) throw placementSourcesError;
+
+  return Array.from(
+    new Set(
+      (placementSources ?? [])
+        .flatMap((row) => [row.f_source, row.m_source])
+        .map((source) => source?.trim())
+        .filter((source): source is string => Boolean(source)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
 }
 
 export async function listFarmLocationLookup() {
@@ -204,6 +272,16 @@ export async function listFarmLocationLookup() {
 
   if (error) throw error;
   return (data ?? []) as FarmLocationLookup[];
+}
+
+export async function listBreederFarms() {
+  const { data, error } = await db
+    .from(BREEDER_FARM_VIEW)
+    .select("id, code, name")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as BreederFarm[];
 }
 
 function formatCode(prefix: string, number: number, pad: number = 6) {

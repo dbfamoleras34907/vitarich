@@ -15,26 +15,40 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Paperclip, Plus } from "lucide-react";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
+import SearchableCombobox from "@/components/SearchableCombobox";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { getUserFarms } from "@/app/admin/user/new/api";
+import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
   createFarmPen,
   createPlacement,
   createPlacementBatch,
   getPlacementById,
   getUserInfo,
+  listBreederFarms,
   listBreederSources,
   listFarmLocationLookup,
   placementHasGrowingOrLaying,
   updatePlacement,
+  type BreederFarm,
   type FarmLocationLookup,
   type PlacementInsert,
 } from "./api";
 
 type PlacementRow = {
+  pen_id: string;
   pen_no: string;
   f_beg: string;
   f_doa: string;
@@ -45,6 +59,39 @@ type PlacementRow = {
   m_reject: string;
   m_shortcount: string;
 };
+
+type AccessibleFarm = Partial<BreederFarm> & {
+  farm_id?: number | null;
+  farm_code?: string | null;
+  farm_name?: string | null;
+};
+
+const asArray = <T,>(value: unknown): T[] =>
+  Array.isArray(value) ? (value as T[]) : [];
+
+function normalizeFarmCode(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function normalizeAccessibleFarm(
+  farm: AccessibleFarm,
+  masterFarms: AccessibleFarm[] = [],
+) {
+  const code = normalizeFarmCode(farm.code ?? farm.farm_code);
+  if (!code) return null;
+
+  const masterFarm = masterFarms.find(
+    (candidate) => normalizeFarmCode(candidate.code) === code,
+  );
+  const id = farm.id ?? farm.farm_id ?? masterFarm?.id ?? null;
+  if (id == null) return null;
+
+  return {
+    id,
+    code,
+    name: farm.name ?? farm.farm_name ?? masterFarm?.name ?? code,
+  };
+}
 
 type FormState = {
   placement_date: string;
@@ -67,6 +114,7 @@ function getToday() {
 
 function createEmptyRow(index: number): PlacementRow {
   return {
+    pen_id: "",
     pen_no: String(index + 1),
     f_beg: "0",
     f_doa: "0",
@@ -92,7 +140,9 @@ function asNumber(value: string) {
 }
 
 function normalizeLookupValue(value: string | number | null | undefined) {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function isSelectedFarmLocation(
@@ -125,6 +175,15 @@ function getEndingBalance(
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message
+  ) {
+    return error.message;
+  }
   return fallback;
 }
 
@@ -157,6 +216,7 @@ const SheetClasses = {
 export default function PlacementForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { getValue } = useGlobalContext();
   const idParam = searchParams.get("id");
   const isEdit = !!idParam;
 
@@ -166,8 +226,13 @@ export default function PlacementForm() {
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
+  const [breederFarms, setBreederFarms] = useState<BreederFarm[]>([]);
+  const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<
+    AccessibleFarm[]
+  >([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [addingPen, setAddingPen] = useState(false);
+  const [addPenDialogOpen, setAddPenDialogOpen] = useState(false);
   const [newPenNo, setNewPenNo] = useState("");
   const [form, setForm] = useState<FormState>({
     placement_date: getToday(),
@@ -215,12 +280,17 @@ export default function PlacementForm() {
     (async () => {
       setLoadingLocations(true);
       try {
-        const lookup = await listFarmLocationLookup();
+        const [lookup, farms] = await Promise.all([
+          listFarmLocationLookup(),
+          listBreederFarms(),
+        ]);
         if (!mounted) return;
         setLocations(lookup);
+        setBreederFarms(farms);
       } catch {
         if (!mounted) return;
         setLocations([]);
+        setBreederFarms([]);
       } finally {
         if (mounted) setLoadingLocations(false);
       }
@@ -316,9 +386,9 @@ export default function PlacementForm() {
           placement_date: record.placement_date ?? getToday(),
           dr_no: record.dr_no ?? "",
           file_attached: record.file_attached ?? "",
-          farm_id: record.farm_id != null ? String(record.farm_id) : "",
+          farm_id: String(record.farm_id),
           farm_name: record.farm_name ?? "",
-          building_id: "",
+          building_id: String(record.building_id),
           building_no: record.building_no ?? "",
           pen_count: "1",
           source: record.f_source ?? record.m_source ?? "",
@@ -327,6 +397,7 @@ export default function PlacementForm() {
 
         setRows([
           {
+            pen_id: String(record.pen_id),
             pen_no: record.pen_no ?? "1",
             f_beg: String(record.f_beg ?? 0),
             f_doa: String(record.f_doa ?? 0),
@@ -351,6 +422,62 @@ export default function PlacementForm() {
     };
   }, [idParam, isEdit, router]);
 
+  const sessionUser = getValue("UserInfoAuthSession")?.[0] as
+    | { id?: number | string; users_farms?: unknown[] }
+    | undefined;
+
+  const assignedFarmCodes = useMemo(
+    () =>
+      asArray<unknown>(sessionUser?.users_farms)
+        .map(normalizeFarmCode)
+        .filter(Boolean),
+    [sessionUser?.users_farms],
+  );
+
+  const accessibleFarms = useMemo(() => {
+    const normalizedBreederFarms = breederFarms
+      .map((farm) => normalizeAccessibleFarm(farm, breederFarms))
+      .filter((farm): farm is NonNullable<typeof farm> => Boolean(farm));
+
+    if (assignedFarmCodes.length > 0) {
+      const assignedCodeSet = new Set(assignedFarmCodes);
+      return normalizedBreederFarms.filter((farm) =>
+        assignedCodeSet.has(farm.code),
+      );
+    }
+
+    const fallbackCodeSet = new Set(
+      fallbackAssignedFarms.map((farm) =>
+        normalizeFarmCode(farm.code ?? farm.farm_code),
+      ),
+    );
+    return normalizedBreederFarms.filter((farm) =>
+      fallbackCodeSet.has(farm.code),
+    );
+  }, [assignedFarmCodes, breederFarms, fallbackAssignedFarms]);
+
+  useEffect(() => {
+    if (assignedFarmCodes.length > 0 || !sessionUser?.id) return;
+
+    let cancelled = false;
+
+    getUserFarms(Number(sessionUser.id))
+      .then((farms) => {
+        if (!cancelled) {
+          setFallbackAssignedFarms(
+            Array.isArray(farms) ? (farms as AccessibleFarm[]) : [],
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackAssignedFarms([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assignedFarmCodes.length, sessionUser?.id]);
+
   const totalPens = useMemo(() => rows.length, [rows]);
   const disabledAll = saving || loadingRecord;
   const disablePlacementDate = disabledAll || (isEdit && hasDependentRecords);
@@ -362,15 +489,39 @@ export default function PlacementForm() {
     [form.farm_id, form.farm_name, locations],
   );
   const farmOptions = useMemo(() => {
-    const values = new Map<string, string>();
-    locations.forEach((location) => {
-      values.set(String(location.farm_id), location.farm_name);
+    const options = accessibleFarms.map((farm) => {
+      const farmLocation = locations.find(
+        (location) =>
+          normalizeFarmCode(location.farm_code) ===
+          normalizeFarmCode(farm.code),
+      );
+
+      return {
+        code: String(farmLocation?.farm_id ?? farm.id),
+        name: farm.code
+          ? `${farm.code} - ${farm.name ?? ""}`
+          : (farm.name ?? String(farm.id)),
+      };
     });
-    if (form.farm_id && form.farm_name.trim()) {
-      values.set(form.farm_id, form.farm_name.trim());
+
+    if (
+      isEdit &&
+      form.farm_id &&
+      !options.some((farm) => farm.code === form.farm_id)
+    ) {
+      const location = locations.find(
+        (item) => String(item.farm_id) === form.farm_id,
+      );
+      options.push({
+        code: form.farm_id,
+        name: location?.farm_code
+          ? `${location.farm_code} - ${form.farm_name}`
+          : form.farm_name,
+      });
     }
-    return Array.from(values, ([id, name]) => ({ id, name }));
-  }, [form.farm_id, form.farm_name, locations]);
+
+    return options;
+  }, [accessibleFarms, form.farm_id, form.farm_name, isEdit, locations]);
   const buildingOptions = useMemo(() => {
     const values = new Map<string, string>();
 
@@ -394,7 +545,11 @@ export default function PlacementForm() {
   }, [form.source, sourceOptions]);
 
   useEffect(() => {
-    if (form.building_id || !form.building_no || !selectedFarmLocations.length) {
+    if (
+      form.building_id ||
+      !form.building_no ||
+      !selectedFarmLocations.length
+    ) {
       return;
     }
 
@@ -417,6 +572,7 @@ export default function PlacementForm() {
 
     return uniquePens.map((pen, index) => ({
       ...createEmptyRow(index),
+      pen_id: String(pen.pen_id),
       pen_no: pen.pen_no,
     }));
   }
@@ -429,7 +585,9 @@ export default function PlacementForm() {
     );
   }
 
-  function getNextPenNo(pens: FarmLocationLookup[] = getSelectedBuildingPens()) {
+  function getNextPenNo(
+    pens: FarmLocationLookup[] = getSelectedBuildingPens(),
+  ) {
     const highestNumericPen = pens.reduce((highest, pen) => {
       const parsed = Number(pen.pen_no);
       return Number.isFinite(parsed) ? Math.max(highest, parsed) : highest;
@@ -439,14 +597,20 @@ export default function PlacementForm() {
   }
 
   function handleFarmChange(farmId: string) {
-    const farm = locations.find(
+    const farmLocation = locations.find(
       (location) => String(location.farm_id) === farmId,
+    );
+    const accessibleFarm = accessibleFarms.find(
+      (farm) =>
+        String(farm.id) === farmId ||
+        normalizeFarmCode(farm.code) ===
+          normalizeFarmCode(farmLocation?.farm_code),
     );
 
     setForm((prev) => ({
       ...prev,
       farm_id: farmId,
-      farm_name: farm?.farm_name ?? "",
+      farm_name: farmLocation?.farm_name ?? accessibleFarm?.name ?? "",
       building_id: "",
       building_no: "",
       pen_count: "",
@@ -514,6 +678,7 @@ export default function PlacementForm() {
         pen_count: String(nextRows.length),
       }));
       setNewPenNo(getNextPenNo(refreshedBuildingPens));
+      setAddPenDialogOpen(false);
     } catch (error: unknown) {
       alert(getErrorMessage(error, "Failed to add pen."));
     } finally {
@@ -549,7 +714,11 @@ export default function PlacementForm() {
     onValueChange: (nextValue: string) => void,
   ) {
     return (
-      <Select value={value} onValueChange={onValueChange} disabled={disabledAll}>
+      <Select
+        value={value}
+        onValueChange={onValueChange}
+        disabled={saving}
+      >
         <SelectTrigger className="w-full min-w-0 max-w-full overflow-hidden">
           <SelectValue
             className="truncate"
@@ -594,6 +763,10 @@ export default function PlacementForm() {
       alert("Building number is required.");
       return;
     }
+    if (!form.building_id.trim()) {
+      alert("Building is required.");
+      return;
+    }
     if (!rows.length) {
       alert("Please enter the number of pens to generate rows.");
       return;
@@ -602,12 +775,18 @@ export default function PlacementForm() {
       alert("Every row must have a Pen number.");
       return;
     }
+    if (rows.some((row) => !row.pen_id.trim())) {
+      alert("Every placement row must be linked to a valid Pen.");
+      return;
+    }
 
     const payloads: PlacementInsert[] = rows.map((row) => ({
       placement_date: form.placement_date,
       dr_no: form.dr_no.trim(),
       file_attached: form.file_attached.trim() || null,
-      farm_id: Number(form.farm_id),
+      farm_id: asNumber(form.farm_id),
+      building_id: asNumber(form.building_id),
+      pen_id: asNumber(row.pen_id),
       farm_name: form.farm_name.trim(),
       building_no: form.building_no.trim(),
       pen_no: row.pen_no.trim(),
@@ -616,23 +795,11 @@ export default function PlacementForm() {
       f_doa: asNumber(row.f_doa),
       f_reject: asNumber(row.f_reject),
       f_shortcount: asNumber(row.f_shortcount),
-      f_endingbalance: getEndingBalance(
-        row.f_beg,
-        row.f_doa,
-        row.f_reject,
-        row.f_shortcount,
-      ),
       m_source: form.source.trim() || null,
       m_beg: asNumber(row.m_beg),
       m_doa: asNumber(row.m_doa),
       m_reject: asNumber(row.m_reject),
       m_shortcount: asNumber(row.m_shortcount),
-      m_endingbalance: getEndingBalance(
-        row.m_beg,
-        row.m_doa,
-        row.m_reject,
-        row.m_shortcount,
-      ),
       remarks: form.remarks.trim() || null,
     }));
 
@@ -670,8 +837,97 @@ export default function PlacementForm() {
 
       <Card>
         <CardContent className="pt-4 space-y-5">
-          <div className="rounded-md border p-4 space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+            <div className="grid grid-cols-1 gap-4 bg-stone-50/80 p-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-1.5">
+                <RequiredLabel>Farm Name</RequiredLabel>
+                <SearchableCombobox
+                  items={farmOptions}
+                  value={form.farm_id}
+                  onValueChange={handleFarmChange}
+                  placeholder={
+                    loadingLocations ? "Loading farms..." : "Select farm..."
+                  }
+                  showCode
+                  className={`w-full bg-white ${
+                    disabledAll || loadingLocations || isEdit
+                      ? "pointer-events-none opacity-50"
+                      : ""
+                  }`}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <RequiredLabel>Building #</RequiredLabel>
+                <Select
+                  value={form.building_id || form.building_no}
+                  onValueChange={handleBuildingChange}
+                  disabled={
+                    disabledAll || loadingLocations || !form.farm_id || isEdit
+                  }
+                >
+                  <SelectTrigger className="h-10 w-full bg-white">
+                    <SelectValue
+                      placeholder={
+                        form.farm_id ? "Select building" : "Select farm first"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {buildingOptions.length ? (
+                      buildingOptions.map((building) => (
+                        <SelectItem key={building.id} value={building.id}>
+                          {building.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="__no_building_options__" disabled>
+                        No active buildings
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
+                <RequiredLabel>Total Pen</RequiredLabel>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={
+                      form.pen_count
+                        ? asNumber(form.pen_count).toLocaleString("en-US")
+                        : ""
+                    }
+                    placeholder="Generated from building"
+                    disabled
+                    className="h-10 bg-stone-100"
+                  />
+                  {!isEdit ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setAddPenDialogOpen(true)}
+                      disabled={
+                        disabledAll ||
+                        addingPen ||
+                        loadingLocations ||
+                        !form.building_id
+                      }
+                      className="h-10 shrink-0 gap-2 border-emerald-600/60 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Pen
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selecting a building creates placement rows from active pens.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 border-t border-stone-200 p-5 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
                 <RequiredLabel>Date</RequiredLabel>
                 <Input
@@ -725,120 +981,7 @@ export default function PlacementForm() {
               </div>
 
               <div className="space-y-2">
-                <RequiredLabel>Farm Name</RequiredLabel>
-                <Select
-                  value={form.farm_id}
-                  onValueChange={handleFarmChange}
-                  disabled={disabledAll || loadingLocations || isEdit}
-                >
-                  <SelectTrigger className="w-full">
-                    <span
-                      className={
-                        form.farm_name ? "truncate" : "text-muted-foreground"
-                      }
-                    >
-                      {form.farm_name ||
-                        (loadingLocations ? "Loading..." : "Select farm")}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {farmOptions.length ? (
-                      farmOptions.map((farm) => (
-                        <SelectItem key={farm.id} value={farm.id}>
-                          {farm.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="__no_farm_options__" disabled>
-                        No active farms
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <RequiredLabel>Building #</RequiredLabel>
-                <Select
-                  value={form.building_id || form.building_no}
-                  onValueChange={handleBuildingChange}
-                  disabled={
-                    disabledAll || loadingLocations || !form.farm_id || isEdit
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue
-                      placeholder={
-                        form.farm_id ? "Select building" : "Select farm first"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buildingOptions.length ? (
-                      buildingOptions.map((building) => (
-                        <SelectItem key={building.id} value={building.id}>
-                          {building.label}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="__no_building_options__" disabled>
-                        No active buildings
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <RequiredLabel>Pen #</RequiredLabel>
-                <Input
-                  type="text"
-                  value={
-                    form.pen_count
-                      ? asNumber(form.pen_count).toLocaleString("en-US")
-                      : ""
-                  }
-                  placeholder="Generated from building"
-                  disabled
-                />
-                {!isEdit ? (
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={newPenNo}
-                      onChange={(e) => setNewPenNo(e.target.value)}
-                      placeholder="Additional pen #"
-                      disabled={
-                        disabledAll ||
-                        addingPen ||
-                        loadingLocations ||
-                        !form.building_id
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleAddPen}
-                      disabled={
-                        disabledAll ||
-                        addingPen ||
-                        loadingLocations ||
-                        !form.building_id
-                      }
-                      className="shrink-0 gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {addingPen ? "Adding..." : "Add"}
-                    </Button>
-                  </div>
-                ) : null}
-                <p className="text-xs text-muted-foreground">
-                  Selecting a building creates placement rows from active pens.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Source</Label>
+                <RequiredLabel>Source of Birds</RequiredLabel>
                 {renderSourceSelect(form.source, (nextValue) =>
                   setForm((prev) => ({
                     ...prev,
@@ -1199,6 +1342,57 @@ export default function PlacementForm() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={addPenDialogOpen}
+        onOpenChange={(open) => {
+          if (!addingPen) setAddPenDialogOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddPen();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Add Pen</DialogTitle>
+              <DialogDescription>
+                Add a new pen to building {form.building_no}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <RequiredLabel>Pen Name</RequiredLabel>
+              <Input
+                type="text"
+                value={newPenNo}
+                onChange={(event) => setNewPenNo(event.target.value)}
+                placeholder="Enter pen name"
+                disabled={addingPen}
+                autoFocus
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddPenDialogOpen(false)}
+                disabled={addingPen}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addingPen}>
+                <Plus className="h-4 w-4" />
+                {addingPen ? "Adding..." : "Add Pen"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
