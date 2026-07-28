@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 import {
   ArrowLeft,
   ArrowRight,
@@ -22,12 +23,14 @@ import {
   Save,
   Trash2,
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   createFarmSetup,
   generateNextCode,
+  getFarmSetup,
+  updateFarmSetup,
   type FarmSetupPayload,
   type FarmSetupWarehouseDraft,
 } from './api'
@@ -45,6 +48,7 @@ type FieldConfig = {
 
 type WarehouseDraft = {
   clientKey: string
+  id?: number | null
   data: FormDataMap
 }
 
@@ -239,12 +243,14 @@ function WizardActions({
   onBack,
   onNext,
   onSubmit,
+  submitLabel,
 }: {
   step: number
   loading: boolean
   onBack: () => void
   onNext: () => void
   onSubmit: () => void
+  submitLabel: string
 }) {
   return (
     <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-4 dark:border-border sm:px-6">
@@ -265,7 +271,7 @@ function WizardActions({
           className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800"
         >
           <Save className="size-4" />
-          {loading ? 'Submitting...' : 'Submit Setup'}
+          {loading ? 'Submitting...' : submitLabel}
         </Button>
       )}
     </div>
@@ -379,8 +385,12 @@ function ReviewDraftRow({
 
 export default function Layout() {
   const router = useRouter()
+  const params = useParams<{ farmid?: string }>()
+  const farmId = Number(params?.farmid ?? 0)
+  const isEditMode = Number.isFinite(farmId) && farmId > 0
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [loadingFarm, setLoadingFarm] = useState(isEditMode)
   const [farmData, setFarmData] = useState<FormDataMap>({})
   const [addressData, setAddressData] = useState<FormDataMap>({})
   const [warehouseDrafts, setWarehouseDrafts] = useState<WarehouseDraft[]>([])
@@ -389,6 +399,21 @@ export default function Layout() {
   const [defaultDisposalKey, setDefaultDisposalKey] = useState('')
 
   const selectedFarmType = FARM_TYPES.find((type) => type.value === farmData.farm_type)
+  const defaultWarehouseOptions: ComboboxItemType[] = useMemo(
+    () =>
+      warehouseDrafts
+        .filter((draft) => !isPenDraft(draft))
+        .map((draft) => {
+          const name = compact(draft.data.whse_name) || 'Unnamed warehouse'
+          const code = compact(draft.data.whse_code)
+
+          return {
+            code: draft.clientKey,
+            name: code ? `${code} - ${name}` : name,
+          }
+        }),
+    [warehouseDrafts]
+  )
   const locationPreview = useMemo(
     () =>
       [addressData.address, addressData.barangay, addressData.city, addressData.province]
@@ -469,11 +494,29 @@ export default function Layout() {
   }
 
   const validateFarmStep = () => {
-    const missingFarm = farmFields.some((field) => field.required && !compact(farmData[field.code]))
-    const missingAddress = addressFields.some((field) => field.required && !compact(addressData[field.code]))
+    // Older farms store their location as one combined address and may predate
+    // some of the newer required profile fields. Editing must not force users to
+    // manufacture missing address segments just to manage warehouse assignments.
+    const requiredFarmFields = isEditMode
+      ? farmFields.filter((field) => ['code', 'name'].includes(field.code))
+      : farmFields
+    const requiredAddressFields = isEditMode
+      ? addressFields.filter((field) => ['address', 'province'].includes(field.code))
+      : addressFields
+    const missingFarm = requiredFarmFields.filter(
+      (field) => field.required && !compact(farmData[field.code])
+    )
+    const missingAddress = requiredAddressFields.filter(
+      (field) => field.required && !compact(addressData[field.code])
+    )
 
-    if (missingFarm || missingAddress || !compact(farmData.farm_type)) {
-      toast.error('Complete the required farm details before continuing.')
+    if (missingFarm.length || missingAddress.length || !compact(farmData.farm_type)) {
+      const missingLabels = [
+        ...missingFarm.map((field) => field.label),
+        ...missingAddress.map((field) => field.label),
+        ...(!compact(farmData.farm_type) ? ['Farm Type'] : []),
+      ]
+      toast.error(`Complete the following before continuing: ${missingLabels.join(', ')}.`)
       return false
     }
 
@@ -547,6 +590,7 @@ export default function Layout() {
   }
 
   const goNext = () => {
+    if (loadingFarm) return
     if (step === 0 && !validateFarmStep()) return
     if (step === 1 && !validateWarehouseStep()) return
 
@@ -569,6 +613,7 @@ export default function Layout() {
       .join(', ')
 
     return {
+      id: draft.id ?? null,
       client_key: draft.clientKey,
       father_client_key: nullable(draft.data.father_client_key),
       whse_name: nullable(draft.data.whse_name),
@@ -612,6 +657,13 @@ export default function Layout() {
         machines: [],
       }
 
+      if (isEditMode) {
+        await updateFarmSetup(farmId, payload)
+        toast.success('Farm updated successfully.')
+        router.push('/a_dean/farm')
+        return
+      }
+
       const result = await createFarmSetup(payload)
 
       if (result.approval?.required) {
@@ -633,19 +685,46 @@ export default function Layout() {
     }
   }
 
-  const loadFarmCode = useCallback(async () => {
+  const loadFarm = useCallback(async () => {
     try {
+      if (isEditMode) {
+        const record = await getFarmSetup(farmId)
+        setFarmData(record.farm)
+        setAddressData(record.address)
+        setWarehouseDrafts(
+          record.warehouses.map((warehouse) => ({
+            id: warehouse.id,
+            clientKey: warehouse.client_key,
+            data: Object.fromEntries(
+              Object.entries(warehouse).map(([key, value]) => [key, String(value ?? '')])
+            ),
+          }))
+        )
+        setDefaultFeedKey(
+          record.warehouses.find((warehouse) => warehouse.is_default_feed)?.client_key ?? ''
+        )
+        setDefaultReceivingKey(
+          record.warehouses.find((warehouse) => warehouse.is_default_receiving)?.client_key ?? ''
+        )
+        setDefaultDisposalKey(
+          record.warehouses.find((warehouse) => warehouse.is_default_disposal)?.client_key ?? ''
+        )
+        return
+      }
+
       const code = await generateNextCode('v_last_farm_code', 'FRM', 6)
       setFarmData((prev) => ({ ...prev, code }))
     } catch {
-      toast.error('Unable to generate farm code.')
+      toast.error(isEditMode ? 'Unable to load farm.' : 'Unable to generate farm code.')
+    } finally {
+      setLoadingFarm(false)
     }
-  }, [])
+  }, [farmId, isEditMode])
 
   useEffect(() => {
     router.prefetch('/a_dean/farm')
-    loadFarmCode()
-  }, [loadFarmCode, router])
+    loadFarm()
+  }, [loadFarm, router])
 
   return (
     <div className="min-h-screen bg-[#d7dcdf] px-3 py-5 dark:bg-background sm:px-6 lg:px-8">
@@ -661,7 +740,10 @@ export default function Layout() {
                 onClose={() => router.push('/a_dean/farm')}
               />
               <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
-                <SectionIntro title="Register Farm Details" description={STEPS[0].description} />
+                <SectionIntro
+                  title={isEditMode ? 'Edit Farm Details' : 'Register Farm Details'}
+                  description={STEPS[0].description}
+                />
                 <div className="grid gap-4 sm:grid-cols-2">
                   {farmFields.map((field) => (
                     <TextField
@@ -883,53 +965,41 @@ export default function Layout() {
           {step === 2 ? (
             <>
               <WizardHeader
-                title="Review & Launch"
-                description="Select defaults and confirm the farm setup before saving."
+                title={isEditMode ? 'Review & Save' : 'Review & Launch'}
+                description={`Select defaults and confirm the farm ${isEditMode ? 'changes' : 'setup'} before saving.`}
                 onClose={() => router.push('/a_dean/farm')}
               />
               <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
                 <SectionIntro title="Default Warehouses" description={STEPS[2].description} />
-                <ApprovalNotice />
+                {!isEditMode ? <ApprovalNotice /> : null}
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <InlineSelect
-                    label="Default Feed"
+                  <SearchableCombobox
+                    label="Default Feed Warehouse"
+                    items={defaultWarehouseOptions}
                     required
                     value={defaultFeedKey}
-                    placeholder="select feed warehouse"
+                    placeholder="Select default feed warehouse..."
                     onValueChange={setDefaultFeedKey}
-                  >
-                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
-                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
-                        {draft.data.whse_name || 'Unnamed draft'}
-                      </SelectItem>
-                    ))}
-                  </InlineSelect>
-                  <InlineSelect
-                    label="Default Receiving"
+                    className="w-full"
+                  />
+                  <SearchableCombobox
+                    label="Default Receiving Warehouse"
+                    items={defaultWarehouseOptions}
                     required
                     value={defaultReceivingKey}
-                    placeholder="select receiving warehouse"
+                    placeholder="Select default receiving warehouse..."
                     onValueChange={setDefaultReceivingKey}
-                  >
-                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
-                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
-                        {draft.data.whse_name || 'Unnamed draft'}
-                      </SelectItem>
-                    ))}
-                  </InlineSelect>
-                  <InlineSelect
-                    label="Default Disposal"
+                    className="w-full"
+                  />
+                  <SearchableCombobox
+                    label="Default Disposal Warehouse"
+                    items={defaultWarehouseOptions}
                     required
                     value={defaultDisposalKey}
-                    placeholder="select disposal warehouse"
+                    placeholder="Select default disposal warehouse..."
                     onValueChange={setDefaultDisposalKey}
-                  >
-                    {warehouseDrafts.filter((draft) => !isPenDraft(draft)).map((draft) => (
-                      <SelectItem key={draft.clientKey} value={draft.clientKey}>
-                        {draft.data.whse_name || 'Unnamed draft'}
-                      </SelectItem>
-                    ))}
-                  </InlineSelect>
+                    className="w-full"
+                  />
                 </div>
 
                 <div className="rounded-md border border-neutral-200 dark:border-border">
@@ -979,7 +1049,14 @@ export default function Layout() {
             </>
           ) : null}
 
-          <WizardActions step={step} loading={loading} onBack={goBack} onNext={goNext} onSubmit={handleSubmit} />
+          <WizardActions
+            step={step}
+            loading={loading}
+            onBack={goBack}
+            onNext={goNext}
+            onSubmit={handleSubmit}
+            submitLabel={isEditMode ? 'Save Changes' : 'Submit Setup'}
+          />
         </section>
       </main>
     </div>
