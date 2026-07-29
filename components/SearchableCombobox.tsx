@@ -43,6 +43,8 @@ type MultiProps = {
   className?: string
   placeholder?: string
   showCode?: boolean
+  contentPositionerClassName?: string
+  contentPositionerZIndex?: number
 }
 
 type SingleProps = {
@@ -57,6 +59,8 @@ type SingleProps = {
   className?: string
   placeholder?: string
   showCode?: boolean
+  contentPositionerClassName?: string
+  contentPositionerZIndex?: number
 }
 
 type Props =
@@ -85,6 +89,8 @@ export default function SearchableCombobox(props: Props) {
     className = "w-full max-w-xs",
     placeholder = props.multiple ? "Search and select..." : "Select an option...",
     showCode = false,
+    contentPositionerClassName,
+    contentPositionerZIndex,
   } = props
 
   const open = props.open !== undefined ? props.open : internalOpen
@@ -299,7 +305,12 @@ export default function SearchableCombobox(props: Props) {
           <ComboboxTrigger />
         </ComboboxChips>
 
-        <ComboboxContent anchor={anchor} className="rounded-lg border border-stone-200 p-0 shadow-lg">
+        <ComboboxContent
+          anchor={anchor}
+          positionerClassName={contentPositionerClassName}
+          positionerZIndex={contentPositionerZIndex}
+          className="rounded-lg border border-stone-200 p-0 shadow-lg"
+        >
           <div className="border-b border-stone-200 p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

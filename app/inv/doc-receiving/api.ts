@@ -23,6 +23,7 @@ export type GoodsReceiptLine = {
   warehouseCode: string
   warehouseName: string
   returnedQty: number
+  docLineNo?: number | null
   docBatchSeparated?: boolean
   docBatchReference?: string
   docBatchReferenceKey?: string
@@ -97,6 +98,7 @@ type GoodsReceiptItemRow = {
   warehouse_code: string | null
   warehouse_name: string | null
   returned_qty: number
+  doc_line_no: number | null
   void: string
 }
 
@@ -177,6 +179,7 @@ const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   warehouseCode: row.warehouse_code ?? '',
   warehouseName: row.warehouse_name ?? '',
   returnedQty: Number(row.returned_qty),
+  docLineNo: row.doc_line_no ?? null,
 })
 
 const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
@@ -756,6 +759,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       warehouse_code: line.warehouseCode || null,
       warehouse_name: line.warehouseName || null,
       returned_qty: line.returnedQty,
+      doc_line_no: line.docLineNo ?? null,
       void: '1',
       updated_by: userId,
     }

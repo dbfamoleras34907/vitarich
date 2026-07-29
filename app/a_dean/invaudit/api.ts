@@ -49,8 +49,7 @@ export async function getInventoryPostings(filters?: Filters) {
     let query = db
       .from('inventory_postings')
       .select('*')
-      .order('created_at', { ascending: false })
-      .order('transfer_type', { ascending: true })
+      .order('id', { ascending: false })
 
     if (filters?.from) {
       query = query.gte('created_at', filters.from)

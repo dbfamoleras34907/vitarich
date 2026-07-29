@@ -104,6 +104,7 @@ export default function Layout() {
 
   const tableColumns: ColumnConfig[] = useMemo(
     () => [
+      { key: 'id', label: 'ID', type: 'text', disabled: true },
       { key: 'created_at', label: 'Date', type: 'text', disabled: true },
       { key: 'source_doc_type', label: 'Doc Type', type: 'text', disabled: true },
       { key: 'source_docentry', label: 'Doc Entry', type: 'text', disabled: true },

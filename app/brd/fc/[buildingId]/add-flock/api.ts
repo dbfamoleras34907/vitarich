@@ -1,5 +1,41 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 
+export const flockCardBreedComboOptions = [
+  "Arbor Acres Plus",
+  "Aviagen AP 95",
+  "COBB 400",
+  "COBB 500",
+  "COBB 700",
+  "COBB 800",
+  "COBB AVIAN 48",
+  "Cobb Sasso-150",
+  "Cobb Sasso-175",
+  "Hubbard Classic",
+  "Hubbard Efficiency Plus",
+  "Hubbard F15",
+  "Hubbard Flex",
+  "Hubbard H1",
+  "Hubbard JA 757",
+  "Hubbard JA 787",
+  "Hubbard JA 957",
+  "Hubbard JA 987",
+  "Hubbard JV",
+  "Hubbard Redbro",
+  "Indian River",
+  "Ross Ranger",
+  "Ross 308",
+  "Ross 708",
+  "Ross PM3",
+  "Rowan Rambler Ranger",
+  "Rowan Ranger",
+  "Rowan Ranger Classic",
+  "Rowan Ranger Gold",
+  "Vencobb 430 Y",
+  "Mixed",
+  "Other",
+  "Unknown",
+].map(breed => ({ code: breed, name: breed }));
+
 export type FlockCardOriginPayload = {
   lineNo: number;
   itemId?: number | null;

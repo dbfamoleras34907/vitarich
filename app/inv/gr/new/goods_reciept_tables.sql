@@ -48,6 +48,7 @@ create table if not exists public.goods_receipt_items (
   warehouse_code text null,
   warehouse_name text null,
   returned_qty numeric(18, 6) not null default 0,
+  doc_line_no integer null,
   void text not null default '1',
   constraint goods_reciept_items_pkey primary key (id),
   constraint goods_reciept_items_receipt_line_key unique (goods_reciept_id, line_no),
@@ -218,7 +219,11 @@ alter table public.goods_receipt_items
   add column if not exists batch_number text null,
   add column if not exists supplier_batch_number text null,
   add column if not exists manufacturing_date date null,
-  add column if not exists expiry_date date null;
+  add column if not exists expiry_date date null,
+  add column if not exists doc_line_no integer null;
+
+create index if not exists goods_receipt_items_doc_line_no_idx
+  on public.goods_receipt_items (goods_reciept_id, doc_line_no);
 
 do $$
 begin

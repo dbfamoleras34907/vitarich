@@ -28,6 +28,7 @@ import { calculateFlockAgeFromStartDate } from "../../age";
 import {
   getFlockCardPlacement,
   getNextFlockCardCycleCount,
+  flockCardBreedComboOptions,
   saveFlockCardPlacement,
 } from "./api";
 
@@ -83,47 +84,6 @@ const sexOptions = [
   { value: "male", label: "Male" },
   { value: "mix", label: "Mix" },
 ];
-
-const breedOptions = [
-  "Arbor Acres Plus",
-  "Aviagen AP 95",
-  "COBB 400",
-  "COBB 500",
-  "COBB 700",
-  "COBB 800",
-  "COBB AVIAN 48",
-  "Cobb Sasso-150",
-  "Cobb Sasso-175",
-  "Hubbard Classic",
-  "Hubbard Efficiency Plus",
-  "Hubbard F15",
-  "Hubbard Flex",
-  "Hubbard H1",
-  "Hubbard JA 757",
-  "Hubbard JA 787",
-  "Hubbard JA 957",
-  "Hubbard JA 987",
-  "Hubbard JV",
-  "Hubbard Redbro",
-  "Indian River",
-  "Ross Ranger",
-  "Ross 308",
-  "Ross 708",
-  "Ross PM3",
-  "Rowan Rambler Ranger",
-  "Rowan Ranger",
-  "Rowan Ranger Classic",
-  "Rowan Ranger Gold",
-  "Vencobb 430 Y",
-  "Mixed",
-  "Other",
-  "Unknown",
-];
-
-const breedComboOptions = breedOptions.map(breed => ({
-  code: breed,
-  name: breed,
-}));
 
 const today = () => {
   const date = new Date();
@@ -199,6 +159,13 @@ export default function Layout() {
       row,
     ]),
   ).values());
+  const totalActualReceived = placementBatchTotals.reduce(
+    (sum, row) => sum + row.docDetails.reduce(
+      (detailSum, detail) => detailSum + Number(detail.actualReceived || 0),
+      0,
+    ),
+    0,
+  );
   const totalMortalityAnimals = placementBatchTotals.reduce((sum, row) => sum + Number(row.mortalityQty || 0), 0);
   const totalThinningAnimals = placementBatchTotals.reduce((sum, row) => sum + Number(row.thinningQty || 0), 0);
 
@@ -518,7 +485,11 @@ export default function Layout() {
                   DOC inventory currently available in {selectedBuilding?.code || "the selected building"}.
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-right text-xs">
+              <div className="grid grid-cols-4 gap-2 text-right text-xs">
+                <div className="rounded-md border px-3 py-2">
+                  <div className="text-muted-foreground">Actual Received</div>
+                  <div className="font-semibold tabular-nums">{formatQuantity(totalActualReceived)}</div>
+                </div>
                 <div className="rounded-md border px-3 py-2">
                   <div className="text-muted-foreground">On-hand</div>
                   <div className="font-semibold tabular-nums">{formatQuantity(totalPlacementAnimals)}</div>
@@ -547,25 +518,23 @@ export default function Layout() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-[1600px] w-full text-sm">
+                <table className="min-w-[1300px] w-full text-sm">
                   <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
                     <tr>
                       {[
-                        "Batch",
-                        "Item",
-                        "Warehouse",
                         "GR Origin",
                         "Receive Date",
                         "MNF Date",
                         "Transfer Slip",
+                        "Total Received",
                         "Actual Received",
-                        "Batch On-hand",
-                        "Mortality",
-                        "Thinning",
                         "Avg DOC Weight",
                         "DOA",
                         "Reject",
                         "Short",
+                        "Short Count Remarks",
+                        "DOA Count Remarks",
+                        "Reject Count Remarks",
                       ].map(label => (
                         <th key={label} className="whitespace-nowrap border-r px-3 py-2 last:border-r-0">{label}</th>
                       ))}
@@ -573,36 +542,27 @@ export default function Layout() {
                   </thead>
                   <tbody>
                     {placementRows.map(row => {
-                      const detail = row.docDetails[0];
+                      const details = row.docDetails.length > 0 ? row.docDetails : [undefined];
 
-                      return (
-                        <Fragment key={row.id}>
+                      return details.map((detail, detailIndex) => (
+                        <Fragment key={`${row.id}-${detailIndex}`}>
                           <tr className="border-t">
-                            <td className="whitespace-nowrap border-r px-3 py-2 font-medium">{row.batchNumber}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2">{row.itemName || row.itemCode}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2">{row.warehouseCode}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{row.grOrigin || "-"}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.receiveDate ?? "")}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.manufacturingDate || row.manufacturingDate)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{detail?.transferSlip || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.totalReceived ?? 0)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.actualReceived ?? row.batchQuantity)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right font-semibold tabular-nums">{formatQuantity(row.batchOnHandQty || row.onHandQty)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(row.mortalityQty)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(row.thinningQty)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.averageDocWeight ?? 0)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.doaCount ?? 0)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.rejectCount ?? 0)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.shortCount ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.shortCount ?? 0)}</td>
+                            <td className="border-r px-3 py-2">{detail?.shortCountRemarks || "-"}</td>
+                            <td className="border-r px-3 py-2">{detail?.doaCountRemarks || "-"}</td>
+                            <td className="px-3 py-2">{detail?.rejectCountRemarks || "-"}</td>
                           </tr>
-                          {(detail?.shortCountRemarks || detail?.doaCountRemarks || detail?.rejectCountRemarks) ? (
-                            <tr className="border-t bg-muted/20">
-                              <td colSpan={15} className="px-3 py-2 text-xs text-muted-foreground">
-                                Short: {detail.shortCountRemarks || "-"} | DOA: {detail.doaCountRemarks || "-"} | Reject: {detail.rejectCountRemarks || "-"}
-                              </td>
-                            </tr>
-                          ) : null}
                         </Fragment>
-                      );
+                      ));
                     })}
                   </tbody>
                 </table>
@@ -693,7 +653,7 @@ export default function Layout() {
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Breed *</label>
                 <SearchableCombobox
-                  items={breedComboOptions}
+                  items={flockCardBreedComboOptions}
                   value={form.breed}
                   onValueChange={updateBreed}
                   placeholder="Select breed"

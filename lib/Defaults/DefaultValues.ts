@@ -860,6 +860,15 @@ export const NavFolders: NavFolder[] = [
             insert: false,
             edit: false,
           },
+          {
+            id: 58,
+            type: "Report",
+            title: "Warehouse Report",
+            url: "/inv/whse-report",
+            view: true,
+            insert: false,
+            edit: false,
+          },
 
           {
             id: 31,
