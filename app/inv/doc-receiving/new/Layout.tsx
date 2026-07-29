@@ -270,6 +270,10 @@ const today = () => {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
 }
 
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+
+const isFutureReceivingDate = (value: string) => Boolean(value) && value > today()
+
 const calculateCycleRange = (startDate: string, asOfDate: string) => {
   const start = new Date(`${startDate}T00:00:00`)
   const end = new Date(`${asOfDate}T00:00:00`)
@@ -938,6 +942,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     (total, line) => total + Number(line.baseQty || 0),
     0,
   )
+  const displayGoodChickQuantity = displayReceiptLines
+    .filter(line => line.itemId === docReceivingSettings?.good_doc)
+    .reduce(
+      (total, line) => total + Number(line.baseQty || 0),
+      0,
+    )
   const receivingSummary = [
     {
       key: 'good',
@@ -1168,7 +1178,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   if (!receipt) return <GoodsReceiveLoadingShell />
 
   const canEditDraft = receipt.status === 'Draft'
-  const canPostDocument = isPostMode && receipt.status === 'Draft'
+  const canPostDocument = receipt.status === 'Draft'
   const canEditDocDetails = receipt.status !== 'Posted'
 
   const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
@@ -1671,6 +1681,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const confirmModalDocDetail = () => {
     if (!modalDocDetailRow) return
+    if (isFutureReceivingDate(modalDocDetailRow.receive_date || receipt.receiveDate)) {
+      toast.error(FUTURE_RECEIVING_DATE_MESSAGE)
+      return
+    }
     if (!modalDocDetailRow.mnf_date) {
       toast.error('Enter the Production Date before adding the DOC Details line.')
       return
@@ -1736,6 +1750,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
     if (!receipt.farmId) {
       toast('Please select a farm.')
+      return
+    }
+    if (
+      isFutureReceivingDate(receipt.receiveDate) ||
+      docDetailRows.some(row => isFutureReceivingDate(row.receive_date || receipt.receiveDate))
+    ) {
+      toast.error(FUTURE_RECEIVING_DATE_MESSAGE)
       return
     }
     const rowsWithReceivedChicks = docDetailRows.filter(row => numberValue(row.quantity_received) > 0)
@@ -2092,6 +2113,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           disabled={!canEditDocDetails}
                           onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
                           min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                          max={column.code === 'receive_date' ? today() : undefined}
                           step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
                           className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
                           aria-label={column.name}
@@ -2207,6 +2229,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             readOnly={column.code === 'actual_received'}
                             onChange={event => updateModalDocDetail(column.code, event.target.value)}
                             min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                            max={column.code === 'receive_date' ? today() : undefined}
                             step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
                             className={`h-9 rounded-md border-stone-300 px-3 py-2 text-sm text-stone-950 shadow-none focus-visible:border-stone-400 focus-visible:ring-stone-200 dark:text-stone-950 ${
                               column.code === 'actual_received'
@@ -2804,7 +2827,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             <div className="flex justify-between gap-3">
               <span className="text-stone-500">Total Base Quantity</span>
               <span className="font-semibold tabular-nums">
-                {displayTotalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                {displayGoodChickQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
               </span>
             </div>
           </div>

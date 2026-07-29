@@ -5,6 +5,16 @@ import { db } from '@/lib/Supabase/supabaseClient'
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+
+const localToday = () => {
+  const date = new Date()
+  const offset = date.getTimezoneOffset()
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
+}
+
+const isFutureReceivingDate = (value: string) => Boolean(value) && value > localToday()
+
 export type GoodsReceiptLine = {
   id: number | string
   itemId: number | null
@@ -491,6 +501,13 @@ export async function getGoodsReceiptById(id: number): Promise<GoodsReceipt | nu
 }
 
 export async function saveGoodsReceipt(receipt: GoodsReceipt) {
+  if (
+    isFutureReceivingDate(receipt.receiveDate) ||
+    receipt.docDetails.some(row => isFutureReceivingDate(row.receive_date || receipt.receiveDate))
+  ) {
+    throw new Error(FUTURE_RECEIVING_DATE_MESSAGE)
+  }
+
   const userId = await getSessionUserId()
   const previousStatus = receipt.id
     ? await db

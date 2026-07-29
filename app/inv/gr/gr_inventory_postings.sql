@@ -14,7 +14,7 @@ as $$
 declare
   is_doc_receiving boolean;
   existing_posting_count integer;
-  posting_contract_mismatch boolean;
+  posting_contract_mismatch boolean;  
 begin
   if new.status <> 'Posted' then
     return new;
