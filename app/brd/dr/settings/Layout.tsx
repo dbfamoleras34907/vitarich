@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/components/ui/UserFarmSearchCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -36,6 +37,7 @@ export default function BrDeliverySettingsLayout() {
   const [selectedFarm, setSelectedFarm] = useState<UserFarm | null>(null);
   const [selectedFarmId, setSelectedFarmId] = useState("");
   const [batchAutoSelection, setBatchAutoSelection] = useState(false);
+  const [targetDeliveryAge, setTargetDeliveryAge] = useState("0");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -59,6 +61,7 @@ export default function BrDeliverySettingsLayout() {
   const resetSettingsForm = useCallback(() => {
     setSettings(null);
     setBatchAutoSelection(false);
+    setTargetDeliveryAge("0");
   }, []);
 
   const fetchSettings = useCallback(async () => {
@@ -73,6 +76,7 @@ export default function BrDeliverySettingsLayout() {
       const nextSettings = await getBrDeliverySettings(farmId);
       setSettings(nextSettings);
       setBatchAutoSelection(Boolean(nextSettings?.batch_auto_selection));
+      setTargetDeliveryAge(String(nextSettings?.target_delivery_age ?? 0));
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to load BR Delivery settings"));
       resetSettingsForm();
@@ -98,6 +102,12 @@ export default function BrDeliverySettingsLayout() {
       return;
     }
 
+    const parsedTargetDeliveryAge = Number(targetDeliveryAge);
+    if (!Number.isInteger(parsedTargetDeliveryAge) || parsedTargetDeliveryAge < 0) {
+      toast("Target Delivery Age must be a whole number of days, zero or greater.");
+      return;
+    }
+
     setSaving(true);
     try {
       const saved = await saveBrDeliverySettings({
@@ -106,9 +116,11 @@ export default function BrDeliverySettingsLayout() {
         farm_code: activeFarm?.code ?? settings?.farm_code ?? null,
         farm_name: activeFarm?.name ?? settings?.farm_name ?? null,
         batch_auto_selection: batchAutoSelection,
+        target_delivery_age: parsedTargetDeliveryAge,
       });
       setSettings(saved);
       setBatchAutoSelection(Boolean(saved.batch_auto_selection));
+      setTargetDeliveryAge(String(saved.target_delivery_age));
       toast("BR Delivery settings saved successfully");
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to save BR Delivery settings"));
@@ -146,6 +158,23 @@ export default function BrDeliverySettingsLayout() {
                     setSelectedFarm(farm ?? null);
                   }}
                 />
+
+                <div className="space-y-2">
+                  <Label htmlFor="target-delivery-age">Target Delivery Age</Label>
+                  <Input
+                    id="target-delivery-age"
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    value={targetDeliveryAge}
+                    disabled={loading || saving || canEdit || !activeFarmId}
+                    onChange={(event) => setTargetDeliveryAge(event.target.value)}
+                  />
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Minimum DOC age in days required before a BR Delivery can be posted.
+                  </p>
+                </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">

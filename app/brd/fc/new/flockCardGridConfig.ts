@@ -26,6 +26,10 @@ export const feedIntakeColumnIndexes = new Set([
 ]);
 
 export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i);
+const hiddenColumnIndexes = new Set([3, 4]);
+export const visibleColumnIndexes = columnIndexes.filter(
+  (colIndex) => !hiddenColumnIndexes.has(colIndex)
+);
 
 export const initialGridValues = rows.map(() =>
   Array.from({ length: dataColumnCount }, () => "")
@@ -51,7 +55,9 @@ export const editableColumnIndexes = new Set([
   23,
 ]);
 
-export const editableColumns = [...editableColumnIndexes].sort((a, b) => a - b);
+export const editableColumns = [...editableColumnIndexes]
+  .filter((colIndex) => !hiddenColumnIndexes.has(colIndex))
+  .sort((a, b) => a - b);
 
 export const columnDisabledFlags = columnIndexes.map(
   (colIndex) => !editableColumnIndexes.has(colIndex)
@@ -129,7 +135,6 @@ export const bodyEmphasisClasses = columnIndexes.map((colIndex) =>
 
 export const topHeaderCells: HeaderCellConfig[] = [
   { label: "Mortality", colSpan: 3, groupEnd: true, className: groupHeaderClass },
-  { label: "Thinning", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Total", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Feed Intake", colSpan: 4, groupEnd: true, className: groupHeaderClass },
   { label: "Water Intake", colSpan: 2, groupEnd: true, className: groupHeaderClass },
@@ -141,7 +146,6 @@ export const topHeaderCells: HeaderCellConfig[] = [
 
 export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "Deaths", colSpan: 3, groupEnd: true, top: middleHeaderTop, className: groupHeaderClass },
-  { label: "Other", colSpan: 2, groupEnd: true, top: middleHeaderTop, className: groupHeaderClass },
   { label: "Total", rowSpan: 2, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
   { label: "DOC Batch", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Cumulative", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
@@ -163,8 +167,6 @@ export const bottomHeaderCells: HeaderCellConfig[] = [
   { label: "AM", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "PM", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Total", groupEnd: true, top: bottomHeaderTop, className: `${leafHeaderClass} font-semibold` },
-  { label: "AM", top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "PM", groupEnd: true, top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Weight g", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Guideline g", groupEnd: true, top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Min C", top: bottomHeaderTop, className: leafHeaderClass },

@@ -463,7 +463,7 @@ export default function Layout() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          {hasFlockCard && !cannotViewReport ? (
+                          {/* {hasFlockCard && !cannotViewReport ? (
                             <Button
                               type="button"
                               size="sm"
@@ -473,7 +473,7 @@ export default function Layout() {
                               <BarChart3 className="size-4" />
                               Report
                             </Button>
-                          ) : null}
+                          ) : null} */}
                           {canOpenCard ? (
                             <Button
                               type="button"
@@ -492,7 +492,7 @@ export default function Layout() {
                             onClick={() => openFlockForm(building)}
                           >
                             {hasFlockCard ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                            {hasFlockCard ? "Edit" : "Add Flock"}
+                            {hasFlockCard ? "Edit/View" : "Add Flock"}
                           </Button>
                         </div>
                       </TableCell>

@@ -54,6 +54,7 @@ type CompactAddFlockRoutePayload = [
 type AddFlockForm = {
   age: string;
   flockStartDate: string;
+  cycleAsOfDate: string;
   broilerType: string;
   breed: string;
   guideline: string;
@@ -67,16 +68,8 @@ type AddFlockForm = {
   stockingDensity: string;
   stockingDensityByWeight: string;
   sex: string;
+  extra: Record<string, unknown>;
 };
-
-const broilerTypeOptions = [
-  { value: "2kgMax", label: "<= 2 kg" },
-  { value: "2To3", label: "2 - 3 kg" },
-  { value: "3kgMin", label: ">= 3 kg" },
-  { value: "freeRange", label: "Free range" },
-  { value: "slowGrowingBirds", label: "Slow growing birds" },
-  { value: "byProduct", label: "By product" },
-];
 
 const sexOptions = [
   { value: "unknown", label: "Unknown" },
@@ -95,6 +88,7 @@ const today = () => {
 const emptyFlockForm: AddFlockForm = {
   age: "0",
   flockStartDate: today(),
+  cycleAsOfDate: "",
   broilerType: "",
   breed: "",
   guideline: "",
@@ -108,6 +102,7 @@ const emptyFlockForm: AddFlockForm = {
   stockingDensity: "",
   stockingDensityByWeight: "",
   sex: "unknown",
+  extra: {},
 };
 
 const optionalNumberToInputValue = (value: number | string | null | undefined) =>
@@ -117,6 +112,11 @@ const formatQuantity = (value: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(value);
 
 const formatDateValue = (value: string) => value || "-";
+const calculateCycleAge = (startDate: string, asOfDate: string) =>
+  calculateFlockAgeFromStartDate(
+    startDate,
+    asOfDate ? new Date(`${asOfDate}T00:00:00`) : new Date(),
+  );
 
 function normalizeRoutePayload(value: unknown): AddFlockRoutePayload | null {
   if (Array.isArray(value)) {
@@ -254,8 +254,11 @@ export default function Layout() {
         setEditingCardId(card.id);
         setEditingCardNo(card.cardNo);
         setForm({
-          age: String(card.startDate ? calculateFlockAgeFromStartDate(card.startDate) : card.age ?? 0),
+          age: String(card.startDate
+            ? calculateCycleAge(card.startDate, String(card.extra?.cycleAsOfDate ?? ""))
+            : card.age ?? 0),
           flockStartDate: card.startDate || today(),
+          cycleAsOfDate: String(card.extra?.cycleAsOfDate ?? ""),
           broilerType: card.broilerType ?? "",
           breed: card.breed ?? "",
           guideline: card.guideline ?? "",
@@ -269,6 +272,7 @@ export default function Layout() {
           stockingDensity: optionalNumberToInputValue(card.stockingDensity),
           stockingDensityByWeight: optionalNumberToInputValue(card.stockingDensityByWeight),
           sex: card.sex ?? "unknown",
+          extra: card.extra ?? {},
         });
 
       })
@@ -317,7 +321,15 @@ export default function Layout() {
     setForm(current => ({
       ...current,
       flockStartDate: value,
-      age: String(calculateFlockAgeFromStartDate(value)),
+      age: String(calculateCycleAge(value, current.cycleAsOfDate)),
+    }));
+  }
+
+  function updateCycleAsOfDate(value: string) {
+    setForm(current => ({
+      ...current,
+      cycleAsOfDate: value,
+      age: String(calculateCycleAge(current.flockStartDate, value)),
     }));
   }
 
@@ -331,7 +343,7 @@ export default function Layout() {
       return;
     }
 
-    if (!form.flockStartDate || !form.broilerType || !form.breed) {
+    if (!form.flockStartDate || !form.breed) {
       toast("Please complete required flock fields.");
       return;
     }
@@ -339,7 +351,7 @@ export default function Layout() {
     setSaving(true);
 
     try {
-      const flockAge = calculateFlockAgeFromStartDate(form.flockStartDate);
+      const flockAge = calculateCycleAge(form.flockStartDate, form.cycleAsOfDate);
       const savedCard = await saveFlockCardPlacement({
         id: editingCardId,
         cardNo: editingCardNo,
@@ -369,6 +381,10 @@ export default function Layout() {
         stockingDensity: Number(form.stockingDensity || 0) || null,
         stockingDensityByWeight: Number(form.stockingDensityByWeight || 0) || null,
         sex: form.sex,
+        extra: {
+          ...form.extra,
+          cycleAsOfDate: form.cycleAsOfDate,
+        },
         origins: placementRows.map((row, index) => ({
           lineNo: index + 1,
           itemCode: row.itemCode,
@@ -547,7 +563,7 @@ export default function Layout() {
                       return details.map((detail, detailIndex) => (
                         <Fragment key={`${row.id}-${detailIndex}`}>
                           <tr className="border-t">
-                            <td className="whitespace-nowrap border-r px-3 py-2">{row.grOrigin || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2">{detail?.grOrigin || row.grOrigin || "-"}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.receiveDate ?? "")}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.manufacturingDate || row.manufacturingDate)}</td>
                             <td className="whitespace-nowrap border-r px-3 py-2">{detail?.transferSlip || "-"}</td>
@@ -617,11 +633,20 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Cycle start date</label>
+                <label className="text-sm font-medium">Cycle Date From</label>
                 <Input
                   type="date"
                   value={form.flockStartDate}
                   onChange={event => updateFlockStartDate(event.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Cycle Date To</label>
+                <Input
+                  type="date"
+                  value={form.cycleAsOfDate}
+                  onChange={event => updateCycleAsOfDate(event.target.value)}
                 />
               </div>
 
@@ -637,20 +662,6 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Type of broiler *</label>
-                <Select value={form.broilerType} onValueChange={value => updateForm("broilerType", value)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {broilerTypeOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
                 <label className="text-sm font-medium">Breed *</label>
                 <SearchableCombobox
                   items={flockCardBreedComboOptions}
@@ -662,14 +673,6 @@ export default function Layout() {
                 />
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Guideline</label>
-                <Input
-                  value={form.guideline}
-                  onChange={event => updateForm("guideline", event.target.value)}
-                  placeholder="Select or enter guideline"
-                />
-              </div>
             </div>
           </section>
 

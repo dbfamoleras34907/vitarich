@@ -372,6 +372,111 @@ export async function getDeliveryFlockCardInfo(params: {
   return data ? toFlockCardInfoWithBodyWeight(data as FlockCardInfoRow) : null
 }
 
+export async function getBrDeliveryAgeShortage(params: {
+  farmId: number
+  lines: Array<{
+    fromWarehouseId: number | null
+    fromWarehouseCode: string
+  }>
+}) {
+  const farmId = Number(params.farmId)
+  if (!Number.isFinite(farmId) || farmId <= 0) return null
+
+  const { data: settings, error: settingsError } = await db
+    .from('brd_dr_settings')
+    .select('target_delivery_age')
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (settingsError) throwReferenceError('BR Delivery settings', settingsError)
+
+  const targetAge = Number(settings?.target_delivery_age ?? 0)
+  if (!Number.isFinite(targetAge) || targetAge <= 0) return null
+
+  const uniqueBuildings = Array.from(new Map(
+    params.lines.map(line => [
+      `${line.fromWarehouseId ?? ''}|${line.fromWarehouseCode.trim().toUpperCase()}`,
+      line,
+    ]),
+  ).values())
+
+  for (const building of uniqueBuildings) {
+    const flock = await getDeliveryFlockCardInfo({
+      farmId,
+      buildingWarehouseId: building.fromWarehouseId,
+      buildingCode: building.fromWarehouseCode,
+    })
+
+    if (!flock || flock.age < targetAge) {
+      return {
+        targetAge,
+        currentAge: flock?.age ?? null,
+        buildingName: flock?.buildingName || building.fromWarehouseCode,
+        hasFlockCard: Boolean(flock),
+      }
+    }
+  }
+
+  return null
+}
+
+export async function getAvailableDeliveryFlockCards(params: {
+  farmId: number
+  targetAge: number
+}): Promise<GoodsIssueFlockCardInfo[]> {
+  const farmId = Number(params.farmId)
+  const targetAge = Math.max(0, Number(params.targetAge) || 0)
+  if (!Number.isFinite(farmId) || farmId <= 0) return []
+
+  const { data, error } = await db
+    .from('flock_card')
+    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status')
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+    .eq('status', 'Saved')
+    .order('start_date', { ascending: false })
+    .order('id', { ascending: false })
+
+  if (error) throwReferenceError('Available delivery flock cards', error)
+
+  const latestByBuilding = new Map<string, FlockCardInfoRow>()
+  ;((data ?? []) as FlockCardInfoRow[]).forEach(row => {
+    const buildingKey = row.building_whse_id
+      ? `id:${row.building_whse_id}`
+      : `code:${String(row.building_code ?? '').trim().toUpperCase()}`
+    if (buildingKey !== 'code:' && !latestByBuilding.has(buildingKey)) {
+      latestByBuilding.set(buildingKey, row)
+    }
+  })
+
+  const eligibleCards = (await Promise.all(
+    Array.from(latestByBuilding.values()).map(row => toFlockCardInfoWithBodyWeight(row)),
+  )).filter(card => card.age >= targetAge)
+
+  const cardsWithAvailableBatches = await Promise.all(
+    eligibleCards.map(async card => {
+      const batches = await getDeliveryFlockCardPlacementBatches({
+        flockCardId: card.id,
+        buildingCode: card.buildingCode,
+      })
+      return batches.some(batch => batch.onHandQty > 0) ? card : null
+    }),
+  )
+
+  return cardsWithAvailableBatches
+    .filter((card): card is GoodsIssueFlockCardInfo => Boolean(card))
+    .sort((left, right) =>
+      (left.buildingName || left.buildingCode).localeCompare(
+        right.buildingName || right.buildingCode,
+        undefined,
+        { numeric: true, sensitivity: 'base' },
+      ),
+    )
+}
+
 export async function getDeliveryFlockCardPlacementBatches(params: {
   flockCardId: number | null
   buildingCode: string
@@ -390,14 +495,39 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
   if (error) throwReferenceError('Flock card placement', error)
 
   const originRows = (data ?? []) as FlockCardOriginBatchRow[]
-  const batchNumbers = Array.from(new Set(
-    originRows
-      .map(row => String(row.batch_no ?? '').trim())
-      .filter(Boolean),
-  ))
   const itemCodes = Array.from(new Set(
     originRows
       .map(row => String(row.item_code ?? '').trim())
+      .filter(Boolean),
+  ))
+  const liveQtyByBatch = new Map<string, number>()
+
+  if (destinationWarehouseCode && itemCodes.length > 0) {
+    const postingResult = await db
+      .from('inventory_postings')
+      .select('item_code, warehouse_code, qty, transfer_type, batch_number, ref')
+      .eq('warehouse_code', destinationWarehouseCode)
+      .in('item_code', itemCodes)
+
+    if (postingResult.error) throwReferenceError('Delivery batch inventory', postingResult.error)
+
+    ;(postingResult.data ?? []).forEach(row => {
+      const itemCode = String(row.item_code ?? '').trim().toUpperCase()
+      const batchNumber = String(row.batch_number ?? row.ref ?? '').trim().toUpperCase()
+      if (!itemCode || !batchNumber) return
+
+      const quantity = Number(row.qty ?? 0)
+      const signedQuantity = String(row.transfer_type ?? '').toUpperCase() === 'OUT'
+        ? -quantity
+        : quantity
+      const key = `${itemCode}|${batchNumber}`
+      liveQtyByBatch.set(key, (liveQtyByBatch.get(key) ?? 0) + signedQuantity)
+    })
+  }
+
+  const batchNumbers = Array.from(new Set(
+    originRows
+      .map(row => String(row.batch_no ?? '').trim())
       .filter(Boolean),
   ))
   const batchDateByKey = new Map<string, ItemBatchDateRow>()
@@ -424,7 +554,9 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
     const batchNumber = String(row.batch_no ?? '').trim()
     const sourceWarehouseCode = String(row.whse_code ?? '').trim()
     const warehouseCode = destinationWarehouseCode || sourceWarehouseCode
-    const onHandQty = Number(row.animal_qty ?? row.onhand_snapshot ?? 0)
+    const onHandQty = liveQtyByBatch.get(
+      `${itemCode.toUpperCase()}|${batchNumber.toUpperCase()}`,
+    ) ?? 0
     if (!itemCode || !batchNumber || !warehouseCode) return []
     const batchDate =
       batchDateByKey.get(`${itemCode.toUpperCase()}|${batchNumber.toUpperCase()}`) ??

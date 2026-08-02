@@ -23,6 +23,7 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       warehouseTypeFilter="Building"
       showFlockCardInformation
       warehouseScope="line"
+      allowImmediatePost
     />
   )
 }

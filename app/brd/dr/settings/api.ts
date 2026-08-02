@@ -6,6 +6,7 @@ export type BrDeliverySettings = {
   farm_code?: string | null;
   farm_name?: string | null;
   batch_auto_selection: boolean;
+  target_delivery_age: number;
   void?: string;
   created_at?: string;
   updated_at?: string | null;
@@ -32,6 +33,10 @@ export async function saveBrDeliverySettings(payload: BrDeliverySettings) {
   if (!Number.isFinite(farmId) || farmId <= 0) {
     throw new Error("Please select a farm.");
   }
+  const targetDeliveryAge = Number(payload.target_delivery_age);
+  if (!Number.isInteger(targetDeliveryAge) || targetDeliveryAge < 0) {
+    throw new Error("Target Delivery Age must be a whole number of days, zero or greater.");
+  }
 
   const { data: authData } = await db.auth.getUser();
   const existingSettings = await getBrDeliverySettings(farmId);
@@ -41,6 +46,7 @@ export async function saveBrDeliverySettings(payload: BrDeliverySettings) {
     farm_code: payload.farm_code || null,
     farm_name: payload.farm_name || null,
     batch_auto_selection: payload.batch_auto_selection,
+    target_delivery_age: targetDeliveryAge,
     updated_by: authData.user?.id || null,
     updated_at: new Date().toISOString(),
   };

@@ -72,7 +72,6 @@ import {
   bodyEmphasisClasses,
   bottomHeaderCells,
   columnDisabledFlags,
-  columnIndexes,
   cumulativeTotalColumnIndex,
   dataColumnCount,
   dataColumnWidth,
@@ -96,6 +95,7 @@ import {
   mortalityBatchMinColumnWidth,
   rows,
   topHeaderCells,
+  visibleColumnIndexes,
 } from "./flockCardGridConfig";
 import type {
   FeedBatchAllocation,
@@ -631,7 +631,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }, [gridValues]);
 
   const columnWidths = useMemo(
-    () => columnIndexes.map((colIndex) =>
+    () => visibleColumnIndexes.map((colIndex) =>
       colIndex === feedBatchColumnIndex
         ? feedBatchColumnWidth
         : colIndex === mortalityBatchColumnIndex
@@ -1244,6 +1244,22 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       .filter(allocation => allocation.selectedQty > 0)
       .map(allocation => `${allocation.batchNumber} (${formatTotal(allocation.selectedQty)})`)
       .join(", ");
+  }
+
+  function formatFeedBatchAllocationDisplay(rowIndex: number) {
+    const allocations = (feedBatchAllocationsByRow[rowIndex] ?? [])
+      .filter(allocation => allocation.selectedQty > 0);
+
+    if (allocations.length === 0) {
+      return gridValues[rowIndex]?.[feedBatchColumnIndex]?.trim() || "Select";
+    }
+
+    const [firstAllocation, ...remainingAllocations] = allocations;
+    const firstBatch = firstAllocation.batchNumber;
+
+    if (remainingAllocations.length === 0) return firstBatch;
+
+    return `${firstBatch} +${remainingAllocations.length} more`;
   }
 
   function formatMortalityBatchAllocationCell(allocations: MortalityBatchAllocation[]) {
@@ -3746,7 +3762,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                       </DropdownMenu>
                     </TableCell>
 
-                    {columnIndexes.map((colIndex) => {
+                    {visibleColumnIndexes.map((colIndex) => {
                       const feedIntakeCellLocked = feedIntakeLocked && feedIntakeColumnIndexes.has(colIndex);
                       const mortalityThinningCellLocked =
                         mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex].includes(colIndex);
@@ -3835,7 +3851,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                 }
                               >
                                 <span className="min-w-0 break-words">
-                                  {gridValues[rowIndex]?.[feedBatchColumnIndex]?.trim() || "Select"}
+                                  {formatFeedBatchAllocationDisplay(rowIndex)}
                                 </span>
                                 <MousePointerClick className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
                               </button>
@@ -3894,12 +3910,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   Total
                 </TableCell>
 
-                {columnTotals.map((total, colIndex) => (
+                {visibleColumnIndexes.map((colIndex) => (
                   <TableCell
                     key={colIndex}
                     className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${footerBorderClasses[colIndex]}`}
                   >
-                    {total}
+                    {columnTotals[colIndex]}
                   </TableCell>
                 ))}
               </TableRow>

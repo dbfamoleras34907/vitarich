@@ -43,6 +43,8 @@ import {
 import {
   getDeliveryFlockCardInfo,
   getDeliveryFlockCardPlacementBatches,
+  getBrDeliveryAgeShortage,
+  getAvailableDeliveryFlockCards,
   getAssociatedWarehouseCode,
   getGoodsIssueReferences,
   GoodsIssueFlockCardInfo,
@@ -250,6 +252,7 @@ type NewGoodsIssueProps = {
   warehouseTypeFilter?: string
   showFlockCardInformation?: boolean
   warehouseScope?: 'header' | 'line'
+  allowImmediatePost?: boolean
 }
 
 function GoodsIssueLoadingShell() {
@@ -288,6 +291,7 @@ export default function NewGoodsIssue({
   warehouseTypeFilter,
   showFlockCardInformation = false,
   warehouseScope = 'header',
+  allowImmediatePost = false,
 }: NewGoodsIssueProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -330,8 +334,10 @@ export default function NewGoodsIssue({
     selectItem?: (line: GoodsIssueLine, value: string) => Promise<void>
   }>({})
   const handledAutoBatchSelectionRef = useRef<Record<string, string>>({})
+  const initializedDeliveryFarmRef = useRef<string>('')
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsIssueLine['id'] | null>(null)
   const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
+  const [noAvailableDeliveryBuildings, setNoAvailableDeliveryBuildings] = useState(false)
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
@@ -478,17 +484,68 @@ export default function NewGoodsIssue({
     async function loadDeliverySettings() {
       if (triggeredBy !== 'BR-DR' || !issue?.farmId) {
         setDeliveryBatchAutoSelection(false)
+        setNoAvailableDeliveryBuildings(false)
+        initializedDeliveryFarmRef.current = ''
         return
       }
 
       try {
         const settings = await getBrDeliverySettings(Number(issue.farmId))
-        if (!cancelled) {
-          setDeliveryBatchAutoSelection(Boolean(settings?.batch_auto_selection))
-        }
+        if (cancelled) return
+
+        setDeliveryBatchAutoSelection(Boolean(settings?.batch_auto_selection))
+
+        const farmKey = String(issue.farmId)
+        const shouldInitializeBuildings =
+          !loadingReferences &&
+          !issue.id &&
+          !duplicateId &&
+          issue.status === 'Draft' &&
+          initializedDeliveryFarmRef.current !== farmKey
+
+        if (!shouldInitializeBuildings) return
+
+        initializedDeliveryFarmRef.current = farmKey
+        const availableCards = await getAvailableDeliveryFlockCards({
+          farmId: Number(issue.farmId),
+          targetAge: Number(settings?.target_delivery_age ?? 0),
+        })
+        if (cancelled) return
+
+        const warehouseById = new Map(
+          farmWarehouses.map(warehouse => [Number(warehouse.id), warehouse]),
+        )
+        const warehouseByCode = new Map(
+          farmWarehouses.map(warehouse => [
+            String(warehouse.whse_code ?? '').trim().toUpperCase(),
+            warehouse,
+          ]),
+        )
+        const availableBuildings = availableCards.flatMap(card => {
+          const warehouse =
+            warehouseById.get(Number(card.buildingWarehouseId ?? 0)) ??
+            warehouseByCode.get(card.buildingCode.trim().toUpperCase())
+          return warehouse ? [warehouse] : []
+        })
+
+        setNoAvailableDeliveryBuildings(availableBuildings.length === 0)
+        setIssue(current => {
+          if (!current || String(current.farmId) !== farmKey || current.id) return current
+          return {
+            ...current,
+            lines: availableBuildings.length > 0
+              ? availableBuildings.map(warehouse =>
+                  clearWarehouseSensitiveLineData(newLine(), warehouse),
+                )
+              : [newLine()],
+          }
+        })
       } catch (error) {
         console.error(error)
-        if (!cancelled) setDeliveryBatchAutoSelection(false)
+        if (!cancelled) {
+          setDeliveryBatchAutoSelection(false)
+          initializedDeliveryFarmRef.current = ''
+        }
       }
     }
 
@@ -498,7 +555,15 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [issue?.farmId, triggeredBy])
+  }, [
+    duplicateId,
+    farmWarehouses,
+    issue?.farmId,
+    issue?.id,
+    issue?.status,
+    loadingReferences,
+    triggeredBy,
+  ])
 
   const lineWarehouseSignature = useMemo(
     () => issue?.lines
@@ -1302,7 +1367,7 @@ export default function NewGoodsIssue({
     0,
   )
   const canEditDraft = issue?.status === 'Draft'
-  const canPostDocument = isPostMode || Boolean(issue?.id)
+  const canPostDocument = allowImmediatePost || isPostMode || Boolean(issue?.id)
 
   const handleSave = async (targetStatus: GoodsIssueStatus) => {
     if (!issue) return
@@ -1340,6 +1405,27 @@ export default function NewGoodsIssue({
         }
 
         toast(`Please complete the line for ${invalidLine.itemCode || warehouseLabel.toLowerCase()}.`)
+        return
+      }
+    }
+    if (posting && triggeredBy === 'BR-DR') {
+      try {
+        const ageShortage = await getBrDeliveryAgeShortage({
+          farmId: Number(issue.farmId),
+          lines: linesToSave,
+        })
+        if (ageShortage) {
+          const currentAgeText = ageShortage.currentAge === null
+            ? 'has no saved flock card'
+            : `is only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'} old`
+          toast(
+            `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for delivery.`,
+          )
+          return
+        }
+      } catch (error) {
+        console.error(error)
+        toast('Error: ' + (error instanceof Error ? error.message : 'Unable to validate the DOC delivery age.'))
         return
       }
     }
@@ -1638,7 +1724,9 @@ export default function NewGoodsIssue({
                 <h2 className="text-base font-semibold">Issue Lines</h2>
                 {usesLineWarehouse && showFlockCardInformation && (
                   <span className="truncate text-xs text-muted-foreground">
-                    Flock card information: select building to load flock card.
+                    {noAvailableDeliveryBuildings
+                      ? 'No buildings meet the Delivery age and available-batch requirements. Add a line and select a building manually to confirm.'
+                      : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
                   </span>
                 )}
               </div>
@@ -2308,9 +2396,9 @@ export default function NewGoodsIssue({
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Post this item stock out?</DialogTitle>
+            <DialogTitle>Post this {listLabel.toLowerCase()}?</DialogTitle>
             <DialogDescription>
-              Posting {issue.giNo} will deduct inventory for the selected issue lines and cannot be edited afterward.
+              Posting {issue.giNo} will deduct inventory for the selected {listLabel.toLowerCase()} lines and cannot be edited afterward.
             </DialogDescription>
           </DialogHeader>
 

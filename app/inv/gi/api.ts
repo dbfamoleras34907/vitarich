@@ -259,7 +259,7 @@ export async function getItemWarehouseOnHand(
 ) {
   if (!itemCode || !warehouseCode) return 0
 
-  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, batch_number, ref, ref2'
+  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, batch_number, ref'
   const buildQuery = () => db
     .from('inventory_postings')
     .select(postingSelect)
@@ -270,7 +270,6 @@ export async function getItemWarehouseOnHand(
     ? await Promise.all([
         buildQuery().eq('batch_number', batchNumber),
         buildQuery().eq('ref', batchNumber),
-        buildQuery().eq('ref2', batchNumber),
       ])
     : [await buildQuery()]
 

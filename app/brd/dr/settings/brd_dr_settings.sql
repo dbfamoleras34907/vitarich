@@ -8,8 +8,10 @@ create table if not exists public.brd_dr_settings (
   farm_code text null,
   farm_name text null,
   batch_auto_selection boolean not null default false,
+  target_delivery_age integer not null default 0,
   void text not null default '1',
-  constraint brd_dr_settings_void_check check (void in ('0', '1'))
+  constraint brd_dr_settings_void_check check (void in ('0', '1')),
+  constraint brd_dr_settings_target_delivery_age_check check (target_delivery_age >= 0)
 );
 
 alter table public.brd_dr_settings
@@ -23,6 +25,16 @@ alter table public.brd_dr_settings
 
 alter table public.brd_dr_settings
   add column if not exists batch_auto_selection boolean not null default false;
+
+alter table public.brd_dr_settings
+  add column if not exists target_delivery_age integer not null default 0;
+
+alter table public.brd_dr_settings
+  drop constraint if exists brd_dr_settings_target_delivery_age_check;
+
+alter table public.brd_dr_settings
+  add constraint brd_dr_settings_target_delivery_age_check
+  check (target_delivery_age >= 0);
 
 alter table public.brd_dr_settings
   drop constraint if exists brd_dr_settings_batch_auto_selection_mode_check;
