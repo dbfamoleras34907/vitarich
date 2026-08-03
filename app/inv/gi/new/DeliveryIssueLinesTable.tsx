@@ -34,7 +34,7 @@ type DeliveryIssueLinesTableProps = {
   selectItem: (line: GoodsIssueLine, value: string) => Promise<void>
   openBatchSelector: (line: GoodsIssueLine) => void
   updateLine: (id: GoodsIssueLine['id'], changes: Partial<GoodsIssueLine>) => void
-  onTransferQuantityChange: (line: GoodsIssueLine) => void
+  onTransferQuantityChange: (line: GoodsIssueLine, requestedAltQty: number) => void
   setIssue: Dispatch<SetStateAction<GoodsIssue | null>>
   newLine: () => GoodsIssueLine
   calculateBaseQty: (altQty: number, altUom: string, groupCode: string) => number
@@ -223,7 +223,7 @@ export default function DeliveryIssueLinesTable({
                         } : {}),
                       })
                     }}
-                    onBlur={() => onTransferQuantityChange(line)}
+                    onBlur={() => onTransferQuantityChange(line, totalTransferQty)}
                     className={`h-8 rounded-sm text-right shadow-none focus-visible:ring-1 ${hasAllocationMismatch ? 'border-red-300 bg-red-50/70 font-semibold text-red-700 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-0 bg-transparent'}`}
                     title={line.batchNumber ? `${formatQuantity(allocatedTransferQty)} allocated` : undefined}
                   />

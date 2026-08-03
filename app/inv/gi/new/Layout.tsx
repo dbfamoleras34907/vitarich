@@ -328,6 +328,7 @@ export default function NewGoodsIssue({
   const batchSelectionActionsRef = useRef<{
     getBatchOptionsForLine?: (line: GoodsIssueLine) => GoodsIssueOnHandBatch[]
     selectBatch?: (line: GoodsIssueLine, batchNumber: string) => Promise<void>
+    autoSelectDeliveryBatches?: (line: GoodsIssueLine) => void
   }>({})
   const itemSelectionActionsRef = useRef<{
     getItemsForLine?: (line: GoodsIssueLine) => Items[]
@@ -337,6 +338,7 @@ export default function NewGoodsIssue({
   const initializedDeliveryFarmRef = useRef<string>('')
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsIssueLine['id'] | null>(null)
   const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
+  const [eligibleDeliveryBuildingCodes, setEligibleDeliveryBuildingCodes] = useState<Set<string> | null>(null)
   const [noAvailableDeliveryBuildings, setNoAvailableDeliveryBuildings] = useState(false)
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
@@ -477,6 +479,14 @@ export default function NewGoodsIssue({
     () => getWarehousesForFarm(selectedFarm, warehouses, warehouseTypeFilter),
     [selectedFarm, warehouses, warehouseTypeFilter],
   )
+  const deliveryFarmWarehouses = useMemo(
+    () => triggeredBy !== 'BR-DR'
+      ? farmWarehouses
+      : farmWarehouses.filter(warehouse =>
+          eligibleDeliveryBuildingCodes?.has(String(warehouse.whse_code ?? '').trim().toUpperCase()),
+        ),
+    [eligibleDeliveryBuildingCodes, farmWarehouses, triggeredBy],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -484,11 +494,13 @@ export default function NewGoodsIssue({
     async function loadDeliverySettings() {
       if (triggeredBy !== 'BR-DR' || !issue?.farmId) {
         setDeliveryBatchAutoSelection(false)
+        setEligibleDeliveryBuildingCodes(null)
         setNoAvailableDeliveryBuildings(false)
         initializedDeliveryFarmRef.current = ''
         return
       }
 
+      setEligibleDeliveryBuildingCodes(new Set())
       try {
         const settings = await getBrDeliverySettings(Number(issue.farmId))
         if (cancelled) return
@@ -503,9 +515,6 @@ export default function NewGoodsIssue({
           issue.status === 'Draft' &&
           initializedDeliveryFarmRef.current !== farmKey
 
-        if (!shouldInitializeBuildings) return
-
-        initializedDeliveryFarmRef.current = farmKey
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
           targetAge: Number(settings?.target_delivery_age ?? 0),
@@ -528,7 +537,13 @@ export default function NewGoodsIssue({
           return warehouse ? [warehouse] : []
         })
 
+        setEligibleDeliveryBuildingCodes(new Set(
+          availableBuildings.map(warehouse => String(warehouse.whse_code ?? '').trim().toUpperCase()),
+        ))
         setNoAvailableDeliveryBuildings(availableBuildings.length === 0)
+        if (!shouldInitializeBuildings) return
+
+        initializedDeliveryFarmRef.current = farmKey
         setIssue(current => {
           if (!current || String(current.farmId) !== farmKey || current.id) return current
           return {
@@ -544,6 +559,7 @@ export default function NewGoodsIssue({
         console.error(error)
         if (!cancelled) {
           setDeliveryBatchAutoSelection(false)
+          setEligibleDeliveryBuildingCodes(new Set())
           initializedDeliveryFarmRef.current = ''
         }
       }
@@ -1230,7 +1246,11 @@ export default function NewGoodsIssue({
       return
     }
 
-    const rawOptions = getRawBatchOptionsForLine(line)
+    const rawOptions = [...getRawBatchOptionsForLine(line)].sort((left, right) => {
+      const leftDate = left.manufacturingDate || left.expiryDate || '9999-12-31'
+      const rightDate = right.manufacturingDate || right.expiryDate || '9999-12-31'
+      return leftDate.localeCompare(rightDate) || left.batchNumber.localeCompare(right.batchNumber)
+    })
     let remainingAltQty = requestedAltQty
     const allocations: GoodsIssueLine[] = []
 
@@ -1299,9 +1319,9 @@ export default function NewGoodsIssue({
     }
   }
 
-  const handleTransferQuantityChange = (line: GoodsIssueLine) => {
+  const handleTransferQuantityChange = (line: GoodsIssueLine, requestedAltQty: number) => {
     if (!deliveryBatchAutoSelection || issue?.status !== 'Draft') return
-    if (getRawBatchOptionsForLine(line).length > 1) setActiveBatchLineId(line.id)
+    autoSelectDeliveryBatches({ ...line, requestedAltQty })
   }
 
   itemSelectionActionsRef.current = {
@@ -1323,6 +1343,7 @@ export default function NewGoodsIssue({
   batchSelectionActionsRef.current = {
     getBatchOptionsForLine,
     selectBatch,
+    autoSelectDeliveryBatches,
   }
 
   useEffect(() => {
@@ -1338,6 +1359,7 @@ export default function NewGoodsIssue({
         issue.farmId ?? '',
         line.fromWarehouseCode,
         line.itemCode,
+        line.requestedAltQty ?? '',
         options.map(option => `${option.itemCode}:${option.batchNumber}`).join('|'),
       ].join('::')
 
@@ -1349,6 +1371,9 @@ export default function NewGoodsIssue({
         return
       }
 
+      if (Number(line.requestedAltQty ?? 0) > 0) {
+        batchSelectionActionsRef.current.autoSelectDeliveryBatches?.(line)
+      }
     })
   }, [
     activeBatchLineId,
@@ -1736,7 +1761,7 @@ export default function NewGoodsIssue({
               <DeliveryIssueLinesTable
                 issue={issue}
                 warehouseLabel={warehouseLabel}
-                farmWarehouses={farmWarehouses}
+                farmWarehouses={deliveryFarmWarehouses}
                 loadingBatchOptions={loadingBatchOptions}
                 batchOptions={batchOptions}
                 lineFlockCardInfo={lineFlockCardInfo}

@@ -2697,22 +2697,24 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   </div>
                 </div>
 
-                <label className="w-[160px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <span className="text-xs font-medium text-muted-foreground">Animals</span>
-                  <Input
-                    value={numberOfAnimals}
-                    onChange={(event) =>
-                      setNumberOfAnimals(Number(event.target.value))
-                    }
-                    aria-label="Number of animals"
-                    className="h-6 border-0 bg-transparent p-0 text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
-                  />
-                </label>
+                <div className="grid w-[328px] min-w-0 grid-cols-2 divide-x rounded-md border bg-slate-50 dark:bg-background/40">
+                  <label className="min-w-0 px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">Total birds</span>
+                    <Input
+                      value={numberOfAnimals}
+                      onChange={(event) =>
+                        setNumberOfAnimals(Number(event.target.value))
+                      }
+                      aria-label="Total birds"
+                      className="h-6 border-0 bg-transparent p-0 text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
+                    />
+                  </label>
 
-                <div className="w-[160px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Live animals</div>
-                  <div className="text-base font-semibold tabular-nums text-foreground">
-                    {liveAnimalMetricLabel}
+                  <div className="min-w-0 px-3 py-2">
+                    <div className="text-xs font-medium text-muted-foreground">Live birds</div>
+                    <div className="truncate text-base font-semibold tabular-nums text-foreground">
+                      {liveAnimalMetricLabel}
+                    </div>
                   </div>
                 </div>
 
@@ -2743,13 +2745,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   ) : null}
                 </button>
 
-                <div className="w-[140px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Feed batches</div>
-                  <div className="text-sm font-semibold tabular-nums text-foreground">
-                    {feedBatchMetricLabel}
-                  </div>
-                </div>
-
                 <div className="w-[190px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Auto feed selection</div>
                   <div className="truncate text-sm font-semibold text-foreground">
@@ -2764,17 +2759,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   </div>
                 </div>
 
-                <div className="w-[190px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Mortality batches</div>
-                  <div className="truncate text-sm font-semibold text-foreground">
-                    {mortalityBatchMetricLabel}
-                  </div>
-                  {mortalityBatchError ? (
-                    <div className="mt-1 truncate text-xs text-amber-700 dark:text-amber-400">
-                      {mortalityBatchError}
-                    </div>
-                  ) : null}
-                </div>
               </div>
 
               <Button

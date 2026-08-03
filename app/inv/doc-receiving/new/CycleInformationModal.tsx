@@ -73,22 +73,25 @@ export default function CycleInformationModal({
                 <Label>Cycle Count</Label>
                 <Input value={form.cycleNumber} readOnly className="bg-stone-50" />
               </div>
-              <div className="space-y-2">
-                <Label required>Cycle Start Date</Label>
-                <Input
-                  type="date"
-                  value={form.startDate}
-                  onChange={event => onFormChange({ startDate: event.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label required>Cycle As-of Date</Label>
-                <Input
-                  type="date"
-                  value={form.asOfDate}
-                  min={form.startDate || undefined}
-                  onChange={event => onFormChange({ asOfDate: event.target.value })}
-                />
+              <div className="space-y-2 sm:col-span-2">
+                <Label required>Cycle Date</Label>
+                <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
+                  <Input
+                    type="date"
+                    aria-label="Cycle date from"
+                    value={form.startDate}
+                    max={form.asOfDate || undefined}
+                    onChange={event => onFormChange({ startDate: event.target.value })}
+                  />
+                  <span className="text-center text-sm text-stone-500">to</span>
+                  <Input
+                    type="date"
+                    aria-label="Cycle date to"
+                    value={form.asOfDate}
+                    min={form.startDate || undefined}
+                    onChange={event => onFormChange({ asOfDate: event.target.value })}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Age</Label>

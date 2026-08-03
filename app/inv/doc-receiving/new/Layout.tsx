@@ -938,8 +938,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     (!receipt.id || hasDocDetailValues(docDetailRows)),
   )
   const displayReceiptLines = shouldDeriveReceiptLines ? derivedReceiptLines : receipt?.lines ?? []
-  const displayTotalQuantity = displayReceiptLines.reduce(
-    (total, line) => total + Number(line.baseQty || 0),
+  const displayTotalQuantity = docDetailRows.reduce(
+    (total, row) => total + numberValue(row.quantity_received),
     0,
   )
   const displayGoodChickQuantity = displayReceiptLines
@@ -1608,7 +1608,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const createCycle = async () => {
     if (!receipt?.farmId || !cycleBuilding || !cycleTarget) return
     if (!cycleForm.startDate || !cycleForm.asOfDate || !cycleForm.breed.trim()) {
-      toast.error('Complete Cycle Start Date, As-of Date, and Breed.')
+      toast.error('Complete the Cycle Date range and Breed.')
       return
     }
 
