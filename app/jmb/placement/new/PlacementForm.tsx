@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,11 +40,13 @@ import {
   listBreederFarms,
   listBreederSources,
   listFarmLocationLookup,
+  listPlacementHistory,
   placementHasGrowingOrLaying,
   updatePlacement,
   type BreederFarm,
   type FarmLocationLookup,
   type PlacementInsert,
+  type Placement,
 } from "./api";
 
 type PlacementRow = {
@@ -58,6 +60,7 @@ type PlacementRow = {
   m_doa: string;
   m_reject: string;
   m_shortcount: string;
+  avg_bodyw: string;
 };
 
 type AccessibleFarm = Partial<BreederFarm> & {
@@ -106,6 +109,17 @@ type FormState = {
   remarks: string;
 };
 
+function serializePlacementDraft(form: FormState, rows: PlacementRow[]) {
+  return JSON.stringify({
+    placement_date: form.placement_date,
+    dr_no: form.dr_no,
+    file_attached: form.file_attached,
+    source: form.source,
+    remarks: form.remarks,
+    rows,
+  });
+}
+
 function getToday() {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -124,6 +138,7 @@ function createEmptyRow(index: number): PlacementRow {
     m_doa: "0",
     m_reject: "0",
     m_shortcount: "0",
+    avg_bodyw: "0",
   };
 }
 
@@ -137,6 +152,17 @@ function clampInteger(raw: string) {
 function asNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatHistoryDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-CA");
+}
+
+function formatHistoryNumber(value?: number | null) {
+  return Number(value ?? 0).toLocaleString("en-US");
 }
 
 function normalizeLookupValue(value: string | number | null | undefined) {
@@ -194,11 +220,12 @@ function withoutPlacementDate(payload: PlacementInsert) {
 }
 
 const TableWidths = {
-  tableMin: "min-w-[1080px]",
+  tableMin: "min-w-[1320px]",
   pen: "w-[72px] min-w-[72px]",
   count: "w-[112px] min-w-[112px]",
   shortCount: "w-[128px] min-w-[128px]",
   ending: "w-[104px] min-w-[104px]",
+  bodyWeight: "w-[120px] min-w-[120px]",
 } as const;
 
 const SheetClasses = {
@@ -218,6 +245,8 @@ export default function PlacementForm() {
   const searchParams = useSearchParams();
   const { getValue } = useGlobalContext();
   const idParam = searchParams.get("id");
+  const farmIdParam = searchParams.get("farmId");
+  const buildingIdParam = searchParams.get("buildingId");
   const isEdit = !!idParam;
 
   const [saving, setSaving] = useState(false);
@@ -247,6 +276,9 @@ export default function PlacementForm() {
     remarks: "",
   });
   const [rows, setRows] = useState<PlacementRow[]>([]);
+  const [history, setHistory] = useState<Placement[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const buildingDraftBaselineRef = useRef<string | null>(null);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -407,6 +439,7 @@ export default function PlacementForm() {
             m_doa: String(record.m_doa ?? 0),
             m_reject: String(record.m_reject ?? 0),
             m_shortcount: String(record.m_shortcount ?? 0),
+            avg_bodyw: String(record.avg_bodyw ?? 0),
           },
         ]);
       } catch (error: unknown) {
@@ -538,6 +571,59 @@ export default function PlacementForm() {
 
     return Array.from(values, ([id, label]) => ({ id, label }));
   }, [form.building_id, form.building_no, selectedFarmLocations]);
+
+  useEffect(() => {
+    const farmId = Number(form.farm_id);
+    const buildingId = Number(form.building_id);
+    if (!Number.isFinite(farmId) || !Number.isFinite(buildingId) || !farmId || !buildingId) {
+      setHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingHistory(true);
+    listPlacementHistory({ farmId, buildingId })
+      .then((records) => {
+        if (!cancelled) setHistory(records);
+      })
+      .catch((error) => {
+        console.error("Unable to load placement history.", error);
+        if (!cancelled) setHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [form.building_id, form.farm_id]);
+
+  useEffect(() => {
+    if (isEdit || !farmIdParam || !buildingIdParam || !locations.length) return;
+    const location = locations.find(
+      (item) =>
+        String(item.farm_id) === farmIdParam &&
+        String(item.building_id) === buildingIdParam,
+    );
+    if (!location) return;
+
+    const buildingLocations = locations.filter(
+      (item) => item.building_id === location.building_id,
+    );
+    const nextRows = buildRowsFromPens(buildingLocations);
+    setForm((prev) => {
+      const nextForm = {
+        ...prev,
+        farm_id: String(location.farm_id),
+        farm_name: location.farm_name,
+        building_id: String(location.building_id),
+        building_no: location.building_no,
+        pen_count: String(nextRows.length),
+      };
+      buildingDraftBaselineRef.current = serializePlacementDraft(nextForm, nextRows);
+      return nextForm;
+    });
+    setRows(nextRows);
+  }, [buildingIdParam, farmIdParam, isEdit, locations]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
     if (form.source.trim()) values.add(form.source.trim());
@@ -620,6 +706,23 @@ export default function PlacementForm() {
   }
 
   function handleBuildingChange(buildingId: string) {
+    if (buildingId === form.building_id) return;
+
+    const currentDraft = serializePlacementDraft(form, rows);
+    const hasUnsavedChanges =
+      Boolean(form.building_id) &&
+      buildingDraftBaselineRef.current !== null &&
+      currentDraft !== buildingDraftBaselineRef.current;
+
+    if (
+      hasUnsavedChanges &&
+      !window.confirm(
+        "The current placement details have unsaved changes. Change building and discard these changes?",
+      )
+    ) {
+      return;
+    }
+
     const buildingLocations = selectedFarmLocations.filter(
       (location) =>
         String(location.building_id) === buildingId ||
@@ -628,6 +731,13 @@ export default function PlacementForm() {
     const buildingNo = buildingLocations[0]?.building_no ?? buildingId;
     const nextRows = buildRowsFromPens(buildingLocations);
 
+    const nextForm: FormState = {
+      ...form,
+      building_id: buildingId,
+      building_no: buildingNo,
+      pen_count: String(nextRows.length),
+    };
+
     setForm((prev) => ({
       ...prev,
       building_id: buildingId,
@@ -635,6 +745,7 @@ export default function PlacementForm() {
       pen_count: String(nextRows.length),
     }));
     setRows(nextRows);
+    buildingDraftBaselineRef.current = serializePlacementDraft(nextForm, nextRows);
     setNewPenNo(getNextPenNo(buildingLocations));
   }
 
@@ -650,13 +761,25 @@ export default function PlacementForm() {
       return;
     }
 
+    if (!/^\d+$/.test(penNo) || Number(penNo) < 1) {
+      alert("Pen number must be a whole number greater than zero.");
+      return;
+    }
+
+    const normalizedPenNo = String(Number(penNo));
+
     const existingPens = getSelectedBuildingPens();
     const isDuplicate = existingPens.some(
-      (pen) => pen.pen_no.trim().toLowerCase() === penNo.toLowerCase(),
+      (pen) => {
+        const existingPenNo = pen.pen_no.trim();
+        return /^\d+$/.test(existingPenNo)
+          ? String(Number(existingPenNo)) === normalizedPenNo
+          : existingPenNo === normalizedPenNo;
+      },
     );
 
     if (isDuplicate) {
-      alert(`Pen ${penNo} already exists for this building.`);
+      alert(`Pen ${normalizedPenNo} already exists for this building.`);
       return;
     }
 
@@ -664,7 +787,7 @@ export default function PlacementForm() {
     try {
       await createFarmPen({
         buildingId: asNumber(form.building_id),
-        penNo,
+        penNo: normalizedPenNo,
       });
 
       const lookup = await listFarmLocationLookup();
@@ -673,10 +796,14 @@ export default function PlacementForm() {
 
       setLocations(lookup);
       setRows(nextRows);
-      setForm((prev) => ({
-        ...prev,
-        pen_count: String(nextRows.length),
-      }));
+      setForm((prev) => {
+        const nextForm = {
+          ...prev,
+          pen_count: String(nextRows.length),
+        };
+        buildingDraftBaselineRef.current = serializePlacementDraft(nextForm, nextRows);
+        return nextForm;
+      });
       setNewPenNo(getNextPenNo(refreshedBuildingPens));
       setAddPenDialogOpen(false);
     } catch (error: unknown) {
@@ -700,13 +827,50 @@ export default function PlacementForm() {
                 field.includes("_beg") ||
                 field.includes("_doa") ||
                 field.includes("_reject") ||
-                field.includes("shortcount")
+                field.includes("shortcount") ||
+                field === "avg_bodyw"
                   ? clampInteger(value)
                   : value,
             }
           : row,
       ),
     );
+  }
+
+  function handlePlacementGridKeyDown(event: React.KeyboardEvent<HTMLTableElement>) {
+    const movement: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+    };
+    const offset = movement[event.key];
+    if (!offset) return;
+
+    const target = event.target as HTMLElement;
+    const currentCell = target.closest("td");
+    const currentRow = currentCell?.parentElement;
+    const tableBody = currentRow?.parentElement;
+    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+
+    const tableRows = Array.from(tableBody.querySelectorAll("tr"));
+    const rowCells = Array.from(currentRow.querySelectorAll("td"));
+    const rowIndex = tableRows.indexOf(currentRow as HTMLTableRowElement);
+    const columnIndex = rowCells.indexOf(currentCell as HTMLTableCellElement);
+    const nextRow = tableRows[rowIndex + offset[0]];
+    let nextColumnIndex = columnIndex + offset[1];
+    let nextInput: HTMLInputElement | null = null;
+    while (nextRow && nextColumnIndex >= 0 && nextColumnIndex < rowCells.length) {
+      const nextCell = nextRow.querySelectorAll("td")[nextColumnIndex];
+      nextInput = nextCell?.querySelector<HTMLInputElement>("input:not([disabled])") ?? null;
+      if (nextInput || offset[1] === 0) break;
+      nextColumnIndex += offset[1];
+    }
+    if (!nextInput) return;
+
+    event.preventDefault();
+    nextInput.focus();
+    nextInput.select();
   }
 
   function renderSourceSelect(
@@ -800,6 +964,7 @@ export default function PlacementForm() {
       m_doa: asNumber(row.m_doa),
       m_reject: asNumber(row.m_reject),
       m_shortcount: asNumber(row.m_shortcount),
+      avg_bodyw: asNumber(row.avg_bodyw),
       remarks: form.remarks.trim() || null,
     }));
 
@@ -1008,7 +1173,7 @@ export default function PlacementForm() {
 
             <Separator />
 
-            <div className="space-y-3">
+            <div className="space-y-3 p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium">Placement Details</h3>
@@ -1021,6 +1186,7 @@ export default function PlacementForm() {
               <div className="overflow-x-auto border border-slate-300 bg-white">
                 <table
                   className={`w-full ${TableWidths.tableMin} border-collapse table-fixed text-sm`}
+                  onKeyDownCapture={handlePlacementGridKeyDown}
                 >
                   <thead>
                     <tr>
@@ -1031,68 +1197,78 @@ export default function PlacementForm() {
                         Pen #
                       </th>
                       <th
-                        colSpan={5}
-                        className={`${SheetClasses.group} text-pink-800`}
+                        colSpan={6}
+                        className={`${SheetClasses.group} !bg-pink-100 text-pink-800`}
                       >
                         Female
                       </th>
                       <th
-                        colSpan={5}
-                        className={`${SheetClasses.group} text-sky-800`}
+                        colSpan={6}
+                        className={`${SheetClasses.group} !bg-sky-100 text-sky-800`}
                       >
                         Male
                       </th>
                     </tr>
                     <tr>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.shortCount}`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount} !bg-pink-50`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.ending}`}
+                        className={`${SheetClasses.header} ${TableWidths.ending} !bg-pink-50`}
                       >
                         Ending
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-pink-50`}
+                      >
+                        AVG Body W
+                      </th>
+                      <th
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count}`}
+                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.shortCount}`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount} !bg-sky-50`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.ending}`}
+                        className={`${SheetClasses.header} ${TableWidths.ending} !bg-sky-50`}
                       >
                         Ending
+                      </th>
+                      <th
+                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-sky-50`}
+                      >
+                        AVG Body W
                       </th>
                     </tr>
                   </thead>
@@ -1224,6 +1400,24 @@ export default function PlacementForm() {
                               />
                             </td>
                             <td
+                              className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
+                            >
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                value={asNumber(row.avg_bodyw).toLocaleString("en-US")}
+                                onChange={(e) =>
+                                  handleRowChange(
+                                    index,
+                                    "avg_bodyw",
+                                    e.target.value.replace(/,/g, ""),
+                                  )
+                                }
+                                disabled={disabledAll}
+                                className={SheetClasses.input}
+                              />
+                            </td>
+                            <td
                               className={`${SheetClasses.cell} ${TableWidths.count}`}
                             >
                               <Input
@@ -1313,13 +1507,31 @@ export default function PlacementForm() {
                                 className={SheetClasses.readOnlyInput}
                               />
                             </td>
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
+                            >
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                value={asNumber(row.avg_bodyw).toLocaleString("en-US")}
+                                onChange={(e) =>
+                                  handleRowChange(
+                                    index,
+                                    "avg_bodyw",
+                                    e.target.value.replace(/,/g, ""),
+                                  )
+                                }
+                                disabled={disabledAll}
+                                className={SheetClasses.input}
+                              />
+                            </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
                         <td
-                          colSpan={11}
+                          colSpan={13}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
                           Select a farm and building above to generate placement
@@ -1332,13 +1544,71 @@ export default function PlacementForm() {
               </div>
             </div>
             <Separator />
-            <FormActionButtons
-              saving={saving}
-              isEdit={isEdit}
-              disabled={disabledAll}
-              cancelPath="/jmb/placement"
-              onSave={onSave}
-            />
+            <div className="px-5">
+              <FormActionButtons
+                saving={saving}
+                isEdit={isEdit}
+                disabled={disabledAll}
+                cancelPath="/jmb/placement"
+                onSave={onSave}
+              />
+            </div>
+
+            <Separator className="mt-6" />
+
+            <div className="space-y-3 p-5">
+              <div>
+                <h3 className="text-sm font-medium">Placement History</h3>
+                <p className="text-xs text-muted-foreground">
+                  {form.farm_name && form.building_no
+                    ? `Showing previous placements for ${form.farm_name} / ${form.building_no}.`
+                    : "Select a farm and building to show placement history."}
+                </p>
+              </div>
+
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[1050px] text-sm">
+                  <thead className="bg-emerald-50">
+                    <tr className="border-b">
+                      <th className="px-3 py-2 text-left font-medium">Date</th>
+                      <th className="px-3 py-2 text-left font-medium">DR Number</th>
+                      <th className="px-3 py-2 text-left font-medium">Pen</th>
+                      <th className="px-3 py-2 text-left font-medium">Source of Birds</th>
+                      <th className="px-3 py-2 text-right font-medium">Female Placement</th>
+                      <th className="px-3 py-2 text-right font-medium">Female Ending</th>
+                      <th className="px-3 py-2 text-right font-medium">Male Placement</th>
+                      <th className="px-3 py-2 text-right font-medium">Male Ending</th>
+                      <th className="px-3 py-2 text-left font-medium">Date Recorded</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingHistory ? (
+                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">Loading placement history...</td></tr>
+                    ) : history.length ? (
+                      history.map((record) => {
+                        const femaleEnding = record.f_endingbalance ?? record.f_beg - record.f_doa - record.f_reject - record.f_shortcount;
+                        const maleEnding = record.m_endingbalance ?? record.m_beg - record.m_doa - record.m_reject - record.m_shortcount;
+                        return (
+                          <tr key={record.id} className="border-b last:border-0">
+                            <td className="px-3 py-2 tabular-nums">{formatHistoryDate(record.placement_date)}</td>
+                            <td className="px-3 py-2 font-medium">{record.dr_no}</td>
+                            <td className="px-3 py-2">{record.pen_no}</td>
+                            <td className="px-3 py-2">{record.f_source ?? record.m_source ?? ""}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(record.f_beg)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(femaleEnding)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(record.m_beg)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(maleEnding)}</td>
+                            <td className="px-3 py-2 tabular-nums">{formatHistoryDate(record.created_at)}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">No placement history found.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1365,12 +1635,16 @@ export default function PlacementForm() {
             </DialogHeader>
 
             <div className="space-y-2">
-              <RequiredLabel>Pen Name</RequiredLabel>
+              <RequiredLabel>Pen #</RequiredLabel>
               <Input
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={newPenNo}
-                onChange={(event) => setNewPenNo(event.target.value)}
-                placeholder="Enter pen name"
+                onChange={(event) =>
+                  setNewPenNo(event.target.value.replace(/\D/g, ""))
+                }
+                placeholder="Enter pen number"
                 disabled={addingPen}
                 autoFocus
               />

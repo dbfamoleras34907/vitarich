@@ -473,6 +473,36 @@ export default function GrowingForm() {
     );
   }
 
+  function handleGrowingGridKeyDown(event: React.KeyboardEvent<HTMLTableElement>) {
+    const movement: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+    };
+    const offset = movement[event.key];
+    if (!offset) return;
+
+    const target = event.target as HTMLElement;
+    const currentCell = target.closest("td");
+    const currentRow = currentCell?.parentElement;
+    const tableBody = currentRow?.parentElement;
+    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+
+    const rows = Array.from(tableBody.querySelectorAll("tr"));
+    const cells = Array.from(currentRow.querySelectorAll("td"));
+    const rowIndex = rows.indexOf(currentRow as HTMLTableRowElement);
+    const columnIndex = cells.indexOf(currentCell as HTMLTableCellElement);
+    const nextRow = rows[rowIndex + offset[0]];
+    const nextCell = nextRow?.querySelectorAll("td")[columnIndex + offset[1]];
+    const nextControl = nextCell?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])");
+    if (!nextControl) return;
+
+    event.preventDefault();
+    nextControl.focus();
+    if (nextControl instanceof HTMLInputElement) nextControl.select();
+  }
+
   function buildPayload(row: GrowingPenRow): GrowingInsert {
     return {
       placement_id: asNumber(row.placement_id),
@@ -646,6 +676,7 @@ export default function GrowingForm() {
                     ["Farm", selectedPlacement?.farm_name ?? ""],
                     ["Building", selectedPlacement?.building_no ?? ""],
                     ["Week #", String(weekNumber)],
+                    ["Placement Date", formatDate(selectedPlacement?.placement_date)],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -674,6 +705,7 @@ export default function GrowingForm() {
                   <div className="overflow-x-auto border border-slate-300 bg-white">
                     <table
                       className={`w-full ${TableWidths.tableMin} border-collapse table-fixed text-sm`}
+                      onKeyDownCapture={handleGrowingGridKeyDown}
                     >
                       <thead>
                         <tr>
@@ -685,55 +717,55 @@ export default function GrowingForm() {
                           </th>
                           <th
                             colSpan={4}
-                            className={`${SheetClasses.group} text-pink-800`}
+                            className={`${SheetClasses.group} !bg-pink-100 text-pink-800`}
                           >
                             Female
                           </th>
                           <th
                             colSpan={4}
-                            className={`${SheetClasses.group} text-sky-800`}
+                            className={`${SheetClasses.group} !bg-sky-100 text-sky-800`}
                           >
                             Male
                           </th>
                         </tr>
                         <tr>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count}`}
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
                           >
                             Mortality
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count}`}
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
                           >
                             Feed Consumption
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.feed}`}
+                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-pink-50`}
                           >
-                            Feed Type
+                            Feed Type (Optional)
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.bodyWeight}`}
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-pink-50`}
                           >
                             Body Weight
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count}`}
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
                           >
                             Mortality
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count}`}
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
                           >
                             Feed Consumption
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.feed}`}
+                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-sky-50`}
                           >
-                            Feed Type
+                            Feed Type (Optional)
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.bodyWeight}`}
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-sky-50`}
                           >
                             Body Weight
                           </th>
@@ -804,6 +836,7 @@ export default function GrowingForm() {
                                 codeLabel="id"
                                 nameLabel="description"
                                 showNameOnly
+                                clearable
                                 value={
                                   row.female_feedtype_id
                                     ? [row.female_feedtype_id]
@@ -901,6 +934,7 @@ export default function GrowingForm() {
                                 codeLabel="id"
                                 nameLabel="description"
                                 showNameOnly
+                                clearable
                                 value={
                                   row.male_feedtype_id
                                     ? [row.male_feedtype_id]

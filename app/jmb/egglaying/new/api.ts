@@ -17,6 +17,7 @@ export type EggLaying = {
   age: number | null;
   tep_collection: number | null;
   hatching_egg: number | null;
+  classb: number | null;
   table_egg: number | null;
   crack: number | null;
   junior: number | null;
@@ -100,6 +101,16 @@ export async function createEggLaying(payload: EggLayingInsert) {
 
   if (error) throw error;
   return data as EggLaying;
+}
+
+export async function createEggLayingBatch(payloads: EggLayingInsert[]) {
+  const { data, error } = await db
+    .from(EGG_LAYING_TABLE)
+    .insert(payloads)
+    .select("*");
+
+  if (error) throw error;
+  return (data ?? []) as EggLaying[];
 }
 
 export async function updateEggLaying(id: number, payload: EggLayingUpdate) {

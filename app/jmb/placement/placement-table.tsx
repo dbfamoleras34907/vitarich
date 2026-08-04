@@ -1,339 +1,219 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ColumnFiltersState,
-  ColumnDef,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  RowSelectionState,
-  SortingState,
-  useReactTable,
-  VisibilityState,
-} from "@tanstack/react-table";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, Plus, Search } from "lucide-react";
+import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import Breadcrumb from "@/lib/Breadcrumb";
 import {
-  ClassificationRefBadge,
-  ClassificationTableSection,
-} from "@/components/classification/ClassificationTable";
-import EditActionButton from "@/components/EditActionButton";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import Breadcrumb from "@/lib/Breadcrumb";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useConfirm, withConfirmProvider } from "@/lib/ConfirmProvider";
 import {
-  deletePlacement,
-  listPlacementIdsWithGrowingOrLaying,
+  listBreederFarms,
+  listFarmLocationLookup,
   listPlacements,
+  type BreederFarm,
+  type FarmLocationLookup,
   type Placement,
 } from "./new/api";
 
 function formatDate(value?: string | null) {
-  if (!value) return "";
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-CA");
+  return date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
-function formatNumber(value?: number | null) {
-  if (value == null || !Number.isFinite(Number(value))) return "";
-  return Number(value).toLocaleString();
+function endingCount(row: Placement) {
+  const female = row.f_endingbalance ?? row.f_beg - row.f_doa - row.f_reject - row.f_shortcount;
+  const male = row.m_endingbalance ?? row.m_beg - row.m_doa - row.m_reject - row.m_shortcount;
+  return Number(female) + Number(male);
 }
 
-function PlacementTableInner() {
+export default function PlacementTable() {
   const router = useRouter();
-  const confirm = useConfirm();
   const { setValue } = useGlobalContext();
-
-  const [items, setItems] = useState<Placement[]>([]);
-  const [lockedPlacementIds, setLockedPlacementIds] = useState<Set<number>>(
-    () => new Set(),
-  );
-  const [loading, setLoading] = useState(false);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-
-  async function fetchData() {
-    setLoading(true);
-    try {
-      const data = await listPlacements();
-      setItems(Array.isArray(data) ? data : []);
-
-      try {
-        const lockedIds = await listPlacementIdsWithGrowingOrLaying();
-        setLockedPlacementIds(
-          new Set(
-            lockedIds ?? data.map((placement) => placement.id),
-          ),
-        );
-      } catch {
-        setLockedPlacementIds(new Set(data.map((placement) => placement.id)));
-      }
-    } catch (error) {
-      console.error("Unable to load placements.", error);
-      setItems([]);
-      setLockedPlacementIds(new Set());
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [placements, setPlacements] = useState<Placement[]>([]);
+  const [farms, setFarms] = useState<BreederFarm[]>([]);
+  const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
+  const [selectedFarmId, setSelectedFarmId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     refreshSessionx(router);
   }, [router]);
 
   useEffect(() => {
-    (async () => {
-      router.prefetch("/jmb/placement/new");
-      await fetchData();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    Promise.all([listPlacements(), listBreederFarms(), listFarmLocationLookup()])
+      .then(([placementRows, farmRows, locationRows]) => {
+        if (cancelled) return;
+        setPlacements(placementRows);
+        setFarms(farmRows);
+        setLocations(locationRows);
+      })
+      .catch((loadError) => {
+        console.error("Unable to load breeder placement buildings.", loadError);
+        if (!cancelled) setError("Unable to load buildings for this farm.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    router.prefetch("/jmb/placement/new");
+    return () => { cancelled = true; };
+  }, [router]);
 
   useEffect(() => {
     setValue("loading_g", loading);
   }, [loading, setValue]);
 
-  async function handleDelete(row: Placement) {
-    if (lockedPlacementIds.has(row.id)) return;
+  const effectiveFarmId = selectedFarmId || (farms[0] ? String(farms[0].id) : "");
+  const selectedFarm = farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
+  const farmOptions = useMemo(
+    () => farms.map((farm) => ({
+      code: String(farm.id),
+      name: farm.code ? `${farm.code} - ${farm.name}` : farm.name,
+    })),
+    [farms],
+  );
+  const buildings = useMemo(() => {
+    const unique = new Map<number, FarmLocationLookup>();
+    locations
+      .filter((location) => String(location.farm_id) === effectiveFarmId)
+      .forEach((location) => unique.set(location.building_id, location));
+    return [...unique.values()].sort((left, right) =>
+      (left.building_code || left.building_no).localeCompare(
+        right.building_code || right.building_no,
+        undefined,
+        { numeric: true },
+      ),
+    );
+  }, [effectiveFarmId, locations]);
 
-    const approved = await confirm({
-      title: "Delete placement record?",
-      description: `This will permanently delete DR No. ${row.dr_no} / Pen ${row.pen_no}.`,
-      confirmText: "Delete",
-      cancelText: "Cancel",
-    });
-
-    if (!approved) return;
-
-    try {
-      await deletePlacement(row.id);
-      await fetchData();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to delete placement.";
-      alert(message);
-    }
+  function buildingPlacements(buildingId: number) {
+    return placements.filter((placement) => placement.building_id === buildingId);
   }
 
-  const columns: ColumnDef<Placement>[] = [
-    {
-      id: "row_no",
-      header: "#",
-      enableSorting: false,
-      cell: ({ row }) => formatNumber(row.index + 1),
-    },
-    {
-      id: "action",
-      header: "Action",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const isLocked = lockedPlacementIds.has(row.original.id);
-        const title = isLocked
-          ? "Placement already has population or laying production records"
-          : undefined;
-
-        return (
-          <div className="flex items-center gap-2">
-            <EditActionButton
-              id={row.original.id}
-              href={(id) => `/jmb/placement/new?id=${id}`}
-              title={
-                isLocked
-                  ? "Edit placement. Date is locked because related records exist."
-                  : "Edit"
-              }
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              title={title}
-              disabled={isLocked}
-              onClick={() => handleDelete(row.original)}
-              className="h-8 px-3 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Trash2 className="mr-1 h-4 w-4" />
-              Delete
-            </Button>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "placement_date",
-      header: "Date",
-      cell: ({ row }) => formatDate(row.original.placement_date),
-    },
-    {
-      accessorKey: "dr_no",
-      header: "DR No.",
-      cell: ({ row }) => <ClassificationRefBadge value={row.original.dr_no} />,
-    },
-    {
-      accessorKey: "farm_name",
-      header: "Farm",
-    },
-    {
-      accessorKey: "building_no",
-      header: "Building",
-    },
-    {
-      accessorKey: "pen_no",
-      header: "Pen",
-    },
-    {
-      accessorKey: "f_source",
-      header: "Source of Birds",
-      cell: ({ row }) => row.original.f_source ?? row.original.m_source ?? "",
-    },
-    {
-      accessorKey: "f_beg",
-      header: "Female Placement",
-      cell: ({ row }) => formatNumber(row.original.f_beg),
-    },
-    {
-      accessorKey: "f_doa",
-      header: "Female DOA",
-      cell: ({ row }) => formatNumber(row.original.f_doa),
-    },
-    {
-      accessorKey: "f_reject",
-      header: "Female Reject",
-      cell: ({ row }) => formatNumber(row.original.f_reject),
-    },
-    {
-      accessorKey: "f_shortcount",
-      header: "Female Short Count",
-      cell: ({ row }) => formatNumber(row.original.f_shortcount),
-    },
-    {
-      accessorKey: "f_endingbalance",
-      header: "Female Ending Balance",
-      cell: ({ row }) => {
-        const beg = row.original.f_beg ?? 0;
-        const doa = row.original.f_doa ?? 0;
-        const reject = row.original.f_reject ?? 0;
-        const shortcount = row.original.f_shortcount ?? 0;
-        return formatNumber(beg - (doa + reject + shortcount));
-      },
-    },
-    {
-      accessorKey: "m_beg",
-      header: "Male Placement",
-      cell: ({ row }) => formatNumber(row.original.m_beg),
-    },
-    {
-      accessorKey: "m_doa",
-      header: "Male DOA",
-      cell: ({ row }) => formatNumber(row.original.m_doa),
-    },
-    {
-      accessorKey: "m_reject",
-      header: "Male Reject",
-      cell: ({ row }) => formatNumber(row.original.m_reject),
-    },
-    {
-      accessorKey: "m_shortcount",
-      header: "Male Short Count",
-      cell: ({ row }) => formatNumber(row.original.m_shortcount),
-    },
-    {
-      accessorKey: "m_endingbalance",
-      header: "Male Ending Balance",
-      cell: ({ row }) => {
-        const beg = row.original.m_beg ?? 0;
-        const doa = row.original.m_doa ?? 0;
-        const reject = row.original.m_reject ?? 0;
-        const shortcount = row.original.m_shortcount ?? 0;
-        return formatNumber(beg - (doa + reject + shortcount));
-      },
-    },
-    {
-      accessorKey: "remarks",
-      header: "remarks",
-      cell: ({ row }) => row.original.remarks ?? "",
-    },
-  ];
-
-  const table = useReactTable({
-    data: items,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  });
+  function openNewPlacement(building: FarmLocationLookup) {
+    const query = new URLSearchParams({
+      farmId: String(building.farm_id),
+      buildingId: String(building.building_id),
+    });
+    router.push(`/jmb/placement/new?${query.toString()}`);
+  }
 
   return (
-    <div className="rounded-md p-4 mt-4">
-      <Breadcrumb
-        SecondPreviewPageName="Breeder"
-        CurrentPageName="Placement List"
-      />
-      <br />
-
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={fetchData}
-            disabled={loading}
-            className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
-          >
-            <RefreshCw className="size-4" />
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-
-        <Button
-          type="button"
-          onClick={() => router.push("/jmb/placement/new")}
-          className="flex h-full w-full items-center gap-2 md:h-auto md:w-auto"
-        >
-          <Plus className="size-4" />
-          New Pleasement
-        </Button>
+    <main className="min-h-[calc(100vh-4rem)] pb-8 text-stone-950 dark:bg-background dark:text-foreground">
+      <div className="px-4 mt-4">
+        <Breadcrumb SecondPreviewPageName="Breeder" CurrentPageName="Placement List" />
       </div>
 
-      <ClassificationTableSection
-        table={table}
-        title="Placement"
-        tone="sky"
-        isLoading={loading}
-        colSpan={columns.length}
-        paginationMode="showing-rows"
-        headerActions={
-          <Input
-            placeholder="Filter DR Number"
-            className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-            value={(table.getColumn("dr_no")?.getFilterValue() as string) ?? ""}
-            onChange={(e) =>
-              table.getColumn("dr_no")?.setFilterValue(e.target.value)
-            }
-          />
-        }
-      />
-    </div>
+      <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
+        <div className="border-b bg-muted/30 px-5 py-4">
+          <div className="max-w-[420px] space-y-2">
+            <label className="text-sm font-semibold">Breeder Farm</label>
+            <SearchableCombobox
+              items={farmOptions}
+              value={effectiveFarmId}
+              onValueChange={setSelectedFarmId}
+              placeholder="Select breeder farm..."
+              showCode
+              className="w-full"
+            />
+          </div>
+        </div>
+        <div className="flex">
+          <div className="border-r px-5 py-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Farm code</div>
+            <div className="mt-1 font-medium">{selectedFarm?.code || "-"}</div>
+          </div>
+          <div className="px-5 py-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Farm</div>
+            <div className="mt-1 font-medium">{selectedFarm?.name || "-"}</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="m-3 mt-5 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
+        <div className="border-b bg-muted/20 px-5 py-3">
+          <h2 className="text-sm font-semibold">Buildings</h2>
+          <p className="text-xs text-muted-foreground">Breeder placements for the selected farm.</p>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading buildings...
+          </div>
+        ) : error ? (
+          <div className="p-4 text-sm text-amber-700">{error}</div>
+        ) : !selectedFarm ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground">
+            <Search className="size-5" /> Select a breeder farm first.
+          </div>
+        ) : buildings.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground">
+            <Search className="size-5" /> No buildings found.
+          </div>
+        ) : (
+          <>
+            <Table className="min-w-[900px]">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Building</TableHead>
+                  <TableHead className="w-[130px]">Start Date</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead className="w-[130px] text-right">Count</TableHead>
+                  <TableHead className="w-[130px]">Status</TableHead>
+                  <TableHead className="w-[190px] text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {buildings.map((building) => {
+                  const rows = buildingPlacements(building.building_id);
+                  const latest = [...rows].sort((a, b) => b.placement_date.localeCompare(a.placement_date))[0];
+                  const count = rows.reduce((sum, row) => sum + endingCount(row), 0);
+                  return (
+                    <TableRow key={building.building_id}>
+                      <TableCell>
+                        <div className="text-base font-semibold">{building.building_code || building.building_no}</div>
+                        <div className="text-xs text-muted-foreground">{building.building_no}</div>
+                      </TableCell>
+                      <TableCell className="tabular-nums">{formatDate(latest?.placement_date)}</TableCell>
+                      <TableCell className="font-medium">{latest?.dr_no || "-"}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{rows.length ? count.toLocaleString("en-PH") : "-"}</TableCell>
+                      <TableCell>
+                        <span className="inline-flex rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Active</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button type="button" size="sm" variant="outline" onClick={() => openNewPlacement(building)} className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800">
+                            <Plus className="size-4" /> New Placement
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <div className="py-6 text-center text-sm font-medium">Showing {buildings.length} of {buildings.length}</div>
+          </>
+        )}
+      </section>
+    </main>
   );
 }
-
-export default withConfirmProvider(PlacementTableInner);

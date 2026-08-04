@@ -66,6 +66,7 @@ export type Placement = {
   m_shortcount: number;
   m_endingbalance: number | null;
   m_remarks: string | null;
+  avg_bodyw: number | null;
   remarks: string | null;
 };
 
@@ -90,6 +91,7 @@ export type PlacementInsert = Pick<
   | "m_doa"
   | "m_reject"
   | "m_shortcount"
+  | "avg_bodyw"
   | "remarks"
 >;
 
@@ -99,6 +101,22 @@ export async function listPlacements() {
   const { data, error } = await db
     .from(TABLE)
     .select("*")
+    .order("id", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as Placement[];
+}
+
+export async function listPlacementHistory(params: {
+  farmId: number;
+  buildingId: number;
+}) {
+  const { data, error } = await db
+    .from(TABLE)
+    .select("*")
+    .eq("farm_id", params.farmId)
+    .eq("building_id", params.buildingId)
+    .order("placement_date", { ascending: false })
     .order("id", { ascending: false });
 
   if (error) throw error;
@@ -299,6 +317,25 @@ async function getLastPenCodeNumber() {
 }
 
 export async function createFarmPen({ buildingId, penNo }: CreateFarmPenInput) {
+  const normalizedPenNo = String(Number(penNo));
+  const { data: existingPens, error: existingPensError } = await db
+    .from(FARM_PEN_TABLE)
+    .select("name")
+    .eq("building_id", buildingId);
+
+  if (existingPensError) throw existingPensError;
+
+  const duplicate = (existingPens ?? []).some((pen) => {
+    const existingPenNo = String(pen.name ?? "").trim();
+    return /^\d+$/.test(existingPenNo)
+      ? String(Number(existingPenNo)) === normalizedPenNo
+      : existingPenNo === normalizedPenNo;
+  });
+
+  if (duplicate) {
+    throw new Error(`Pen ${normalizedPenNo} already exists for this building.`);
+  }
+
   const nextCode = formatCode("PEN", (await getLastPenCodeNumber()) + 1);
 
   const { data, error } = await db
@@ -306,7 +343,7 @@ export async function createFarmPen({ buildingId, penNo }: CreateFarmPenInput) {
     .insert({
       building_id: buildingId,
       code: nextCode,
-      name: penNo,
+      name: normalizedPenNo,
       status: "Active",
     })
     .select("id, building_id, code, name, status")

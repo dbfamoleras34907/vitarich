@@ -460,12 +460,12 @@ export const NavFolders: NavFolder[] = [
             url: "/home",
           },
 
-          {
-            id: 6,
-            type: "Module",
-            title: "Stock In/Out",
-            url: "/home",
-          },
+          // {
+          //   id: 6,
+          //   type: "Module",
+          //   title: "Stock In/Out",
+          //   url: "/home",
+          // },
 
           {
             id: 7,
@@ -740,8 +740,8 @@ export const NavFolders: NavFolder[] = [
           //   view: false,
           //   insert: false,
           //   edit: false,
-          // },  
-           {
+          // },
+          {
             id: 50,
             type: "Module",
             title: "Item Group",
@@ -1197,13 +1197,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-    { code: "todo", name: "To Do", color: "gray" },
-    { code: "in_progress", name: "In Progress", color: "blue" },
-    { code: "in_review", name: "In Review", color: "purple" },
-    { code: "blocked", name: "Blocked", color: "red" },
-    { code: "done", name: "Done", color: "green" },
-    { code: "reopened", name: "Reopened", color: "orange" },
-  ];
+  { code: "todo", name: "To Do", color: "gray" },
+  { code: "in_progress", name: "In Progress", color: "blue" },
+  { code: "in_review", name: "In Review", color: "purple" },
+  { code: "blocked", name: "Blocked", color: "red" },
+  { code: "done", name: "Done", color: "green" },
+  { code: "reopened", name: "Reopened", color: "orange" },
+];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -1212,12 +1212,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-    // { code: "highest", name: "Highest", color: "red" },
-    { code: "high", name: "High", color: "orange" },
-    { code: "medium", name: "Medium", color: "yellow" },
-    { code: "low", name: "Low", color: "blue" },
-    // { code: "lowest", name: "Lowest", color: "gray" },
-  ];
+  // { code: "highest", name: "Highest", color: "red" },
+  { code: "high", name: "High", color: "orange" },
+  { code: "medium", name: "Medium", color: "yellow" },
+  { code: "low", name: "Low", color: "blue" },
+  // { code: "lowest", name: "Lowest", color: "gray" },
+];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
