@@ -142,7 +142,7 @@ export default function FlockCardSettingsLayout() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Settings"
-          CurrentPageName="Flock Card Settings"
+          CurrentPageName="Growing & Farm Condition Settings"
         />
         <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving || !activeFarmId}>
           <RefreshCcw className={loading ? "size-4 animate-spin" : "size-4"} />
@@ -151,7 +151,7 @@ export default function FlockCardSettingsLayout() {
 
       <Card className="border-border/70 shadow-sm">
         <CardHeader>
-          <CardTitle>Flock Card Settings</CardTitle>
+          <CardTitle>Growing &amp; Farm Condition Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">

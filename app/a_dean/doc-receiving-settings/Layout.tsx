@@ -136,7 +136,7 @@ export default function DocReceivingSettingsLayout() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Settings"
-          CurrentPageName="DOC Receiving Settings"
+          CurrentPageName="DOC Placement Settings"
         />
         <Button type="button" variant="secondary" onClick={fetchData} disabled={loading || saving}>
           <RefreshCcw className={loading ? 'size-4 animate-spin' : 'size-4'} />
@@ -145,7 +145,7 @@ export default function DocReceivingSettingsLayout() {
 
       <Card>
         <CardHeader>
-          <CardTitle>DOC Receiving Settings</CardTitle>
+          <CardTitle>DOC Placement Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">

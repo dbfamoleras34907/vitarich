@@ -99,6 +99,7 @@ export interface UserInsert {
   default_farm?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  fms_type?: string | null;
   users_group_id?: string | number | null;
 }
 
@@ -130,6 +131,7 @@ export interface UserRow {
   isactive?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  fms_type?: string | null;
   users_group_id?: string | number | null;
 
 }

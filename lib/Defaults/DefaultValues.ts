@@ -976,7 +976,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 57,
             type: "Module",
-            title: "DOC Receiving",
+            title: "DOC Placement",
             url: "/inv/doc-receiving",
             newDocumentUrl: "/inv/doc-receiving/new",
             inventoriable: true,
@@ -990,7 +990,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 61,
             type: "Module",
-            title: "Flock Card",
+            title: "Growing & Farm Condition",
             url: "/brd/fc",
             view: false,
             insert: false,
@@ -1001,7 +1001,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 67,
             type: "Report",
-            title: "Flock Card Report",
+            title: "Growing & Farm Condition Report",
             url: "/brd/fc/report",
             view: true,
             insert: false,
@@ -1011,7 +1011,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 62,
             type: "Module",
-            title: "Delivery",
+            title: "Harvest & Delivery",
             url: "/brd/dr",
             newDocumentUrl: "/brd/dr/new",
             view: true,
@@ -1040,7 +1040,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 65,
             type: "Module",
-            title: "DOC Receiving Settings",
+            title: "DOC Placement Settings",
             url: "/a_dean/doc-receiving-settings",
             view: false,
             insert: true,
@@ -1051,7 +1051,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 66,
             type: "Module",
-            title: "Flock Card Settings",
+            title: "Growing & Farm Condition Settings",
             url: "/brd/fc/settings",
             view: false,
             insert: false,
@@ -1062,7 +1062,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 71,
             type: "Module",
-            title: "Delivery Settings",
+            title: "Harvest & Delivery Settings",
             url: "/brd/dr/settings",
             view: false,
             insert: false,

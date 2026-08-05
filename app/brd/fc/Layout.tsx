@@ -318,9 +318,9 @@ export default function Layout() {
         <Breadcrumb
           SecondPreviewPageName="Breeder"
           SecondPreviewPageLink="/brd"
-          FirstPreviewsPageName="Flock Card"
+          FirstPreviewsPageName="Growing & Farm Condition"
           FirstPreviewsPageLink="/brd/fc"
-          CurrentPageName="Flock Card"
+          CurrentPageName="Growing & Farm Condition"
         />
       </div>
 

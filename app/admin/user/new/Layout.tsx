@@ -49,6 +49,12 @@ type UserGroupOption = {
 
 const normalizeFarmCode = (value: unknown) => String(value ?? '').trim()
 
+const FMS_TYPES = [
+  { code: 'Broiler', name: 'Broiler' },
+  { code: 'Breeder', name: 'Breeder' },
+  { code: 'Hatchery', name: 'Hatchery' },
+]
+
 const uniqueFarmCodes = (values: unknown[]) => {
   const seen = new Set<string>()
 
@@ -152,6 +158,16 @@ export default function Layout() {
       name: 'name',
     },
     {
+      required: false,
+      key: 'fms_type',
+      label: 'FMS Type',
+      type: 'list',
+      list: FMS_TYPES,
+      code: 'code',
+      name: 'name',
+      showNameOnly: true,
+    },
+    {
       required: true,
       key: 'default_farm',
       label: 'Default Farm',
@@ -221,7 +237,7 @@ export default function Layout() {
     {
       title: 'Access',
       icon: ShieldCheck,
-      fields: ['default_farm', 'assigned_farms', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
+      fields: ['fms_type', 'default_farm', 'assigned_farms', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
     },
   ]
 

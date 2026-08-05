@@ -16,8 +16,8 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       permissionPath="/brd/dr"
       parentLabel="Broiler"
       parentLink="/brd"
-      listLabel="Delivery"
-      formLabel={mode === 'post' ? 'Post Delivery' : 'New Delivery'}
+      listLabel="Harvest & Delivery"
+      formLabel={mode === 'post' ? 'Post Harvest & Delivery' : 'New Harvest & Delivery'}
       useDefaultFarm
       warehouseLabel="Building"
       warehouseTypeFilter="Building"

@@ -134,7 +134,7 @@ export default function BrDeliverySettingsLayout() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Settings"
-          CurrentPageName="BR Delivery Settings"
+          CurrentPageName="Harvest & Delivery Settings"
         />
         <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving || !activeFarmId}>
           <RefreshCcw className={loading ? "size-4 animate-spin" : "size-4"} />
@@ -143,7 +143,7 @@ export default function BrDeliverySettingsLayout() {
 
       <Card className="border-border/70 shadow-sm">
         <CardHeader>
-          <CardTitle>BR Delivery Settings</CardTitle>
+          <CardTitle>Harvest &amp; Delivery Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">

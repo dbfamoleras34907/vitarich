@@ -5,7 +5,7 @@ import { db } from '@/lib/Supabase/supabaseClient'
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
-const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
 
 const localToday = () => {
   const date = new Date()

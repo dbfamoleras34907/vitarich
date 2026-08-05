@@ -21,6 +21,7 @@ type UserProfilePayload = {
   issuper?: string | null;
   archipelago?: string | null;
   region?: string | null;
+  fms_type?: string | null;
   users_group_id?: string | number | null;
 };
 
@@ -50,6 +51,8 @@ const uniqueFarmCodes = (values: unknown[]) => Array.from(
   )
 );
 
+const FMS_TYPES = new Set(["Broiler", "Breeder", "Hatchery"]);
+
 export async function POST(req: Request) {
   try {
     const body = await req.json() as RequestBody;
@@ -60,6 +63,12 @@ export async function POST(req: Request) {
     }
 
     const assignedFarmCodes = uniqueFarmCodes(body.defaultFarms ?? []);
+    const fmsType = normalizeText(userProfileData.fms_type);
+
+    if (fmsType && !FMS_TYPES.has(fmsType)) {
+      return NextResponse.json({ error: "Invalid FMS type." }, { status: 400 });
+    }
+
     const userPayload = {
       firstname: normalizeText(userProfileData.firstname),
       middlename: normalizeText(userProfileData.middlename),
@@ -75,6 +84,7 @@ export async function POST(req: Request) {
       issuper: userProfileData.issuper === "1" ? "1" : "0",
       archipelago: normalizeText(userProfileData.archipelago),
       region: normalizeText(userProfileData.region),
+      fms_type: fmsType,
       users_group_id: normalizeNumber(userProfileData.users_group_id),
       updated_at: new Date().toISOString(),
       updated_by: userProfileData.created_by,

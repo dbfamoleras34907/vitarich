@@ -270,7 +270,7 @@ const today = () => {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
 }
 
-const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
 
 const isFutureReceivingDate = (value: string) => Boolean(value) && value > today()
 
@@ -1371,7 +1371,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : {
           id: 0,
           code: 'GR',
-          name: 'DOC Receiving',
+          name: 'DOC Placement',
           prefix: 'FD',
           suffix: null,
           separator: '-',
@@ -1392,7 +1392,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const expPart = includesExpiryDate ? formatBatchDatePart(dateFormat, line.expiryDate) : ''
 
     return {
-      templateSource: series ? `${series.code} - ${series.name}` : 'DOC Receiving fallback template',
+      templateSource: series ? `${series.code} - ${series.name}` : 'DOC Placement fallback template',
       prefix: numberedSeries.prefix ?? '',
       mfgPart,
       expPart,
@@ -1867,7 +1867,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const activeBatchStatus = activeBatchMatch
     ? 'Existing database batch'
     : activeLineBatchMatch
-      ? 'Reusing current DOC Receiving batch'
+      ? 'Reusing current DOC Placement batch'
       : activeBatchNumber
         ? 'New batch to create'
         : activeBatchRequirement?.needsExpiryDate
@@ -1880,20 +1880,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="DOC Receiving"
+          FirstPreviewsPageName="DOC Placement"
           FirstPreviewsPageLink="/inv/doc-receiving"
-          CurrentPageName={isPostMode ? 'Post DOC Receiving' : 'New DOC Receiving'}
+          CurrentPageName={isPostMode ? 'Post DOC Placement' : 'New DOC Placement'}
         />
         <Button type="button" variant="outline" onClick={() => router.push('/inv/doc-receiving')}>
           <List className="size-4" />
-          DOC Receiving List
+          DOC Placement List
         </Button>
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-col items-start gap-1 p-5">
           <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">DOC Receiving No.</label>
+            <label className="text-sm font-semibold">DOC Placement No.</label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
