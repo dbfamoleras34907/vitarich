@@ -45,6 +45,7 @@ export type GoodsReceiptDocLine = {
   receive_date: string
   receive_time: string
   mnf_date: string
+  doc_source: string
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string
@@ -119,6 +120,7 @@ type GoodsReceiptDocRow = {
   receive_date: string | null
   receive_time: string | null
   mnf_date: string | null
+  doc_source: string | null
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string | null
@@ -197,6 +199,7 @@ const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
   receive_date: row.receive_date ?? '',
   receive_time: row.receive_time ?? '',
   mnf_date: row.mnf_date ?? '',
+  doc_source: row.doc_source ?? '',
   building_warehouse_id: row.building_warehouse_id ?? null,
   flock_card_id: row.flock_card_id ?? null,
   transfer_slip: row.transfer_slip ?? '',
@@ -651,6 +654,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       receive_date: row.receive_date || null,
       receive_time: row.receive_time || null,
       mnf_date: row.mnf_date || null,
+      doc_source: row.doc_source.trim() || null,
       building_warehouse_id: row.building_warehouse_id,
       flock_card_id: row.flock_card_id,
       transfer_slip: row.transfer_slip.trim() || null,

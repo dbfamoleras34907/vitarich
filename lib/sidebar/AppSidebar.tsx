@@ -15,8 +15,11 @@ import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
+import { getProfileByAuthId } from "@/app/admin/user/api"
 
 type FilteredNavFolder = NavFolder & { items: NavGroup[] }
+
+const FMS_FOLDER_TITLES = new Set(["broiler", "hatchery", "breeder"])
 
 const ACTIVE_NAV_ITEM_CLASS =
   "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
@@ -50,6 +53,7 @@ export function AppSidebar() {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
+  const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
 
   const filteredNavFolders = useMemo(
     () => filterNavFolders(NavFolders, userPermissions || []),
@@ -60,13 +64,16 @@ export function AppSidebar() {
 
   useEffect(() => {
     const routeFolder = filteredNavFolders.find(folder => folderContainsRoute(folder, pathname))
+    const fmsFolder = pathname === "/home"
+      ? filteredNavFolders.find(folder => folder.title.toLowerCase() === preferredFmsFolder)
+      : undefined
 
     // Keep the visible group aligned when navigation or permissions change.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveFolderId(currentId =>
-      routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
+      fmsFolder?.id ?? routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
     )
-  }, [filteredNavFolders, pathname])
+  }, [filteredNavFolders, pathname, preferredFmsFolder])
 
   // ===============================
   // INIT
@@ -83,6 +90,16 @@ export function AppSidebar() {
     const getUser = async () => {
       const { data: { session } } = await db.auth.getSession()
       setSession(session)
+
+      if (!session?.user.id) return
+
+      try {
+        const profile = await getProfileByAuthId(session.user.id)
+        const fmsType = String(profile?.fms_type ?? "").trim().toLowerCase()
+        setPreferredFmsFolder(FMS_FOLDER_TITLES.has(fmsType) ? fmsType : null)
+      } catch (error) {
+        console.error("Unable to load the user's FMS type:", error)
+      }
     }
     getUser()
   }, [])

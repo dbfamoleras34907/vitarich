@@ -94,11 +94,12 @@ const FMS_TYPE_OPTIONS = [
 ]
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
-  { code: 'receive_date', name: 'Receive Date' },
-  { code: 'receive_time', name: 'Receive Time' },
+  { code: 'receive_date', name: 'Date Receive' },
+  { code: 'receive_time', name: 'Time Receive' },
   { code: 'mnf_date', name: 'Production Date' },
+  { code: 'doc_source', name: 'DOC Source' },
   { code: 'building', name: 'Building' },
-  { code: 'transfer_slip', name: 'Transfer Slip' },
+  { code: 'transfer_slip', name: 'Hatchery Ref' },
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
   { code: 'doa_quantity', name: 'DOA Count' },
@@ -113,7 +114,7 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
 const DOC_RECEIVING_MODAL_GROUPS = [
   {
     key: 'receiving',
-    codes: ['receive_date', 'receive_time', 'mnf_date', 'building', 'transfer_slip'],
+    codes: ['receive_date', 'receive_time', 'mnf_date', 'doc_source', 'building', 'transfer_slip'],
   },
   {
     key: 'quantities',
@@ -165,6 +166,7 @@ const DOC_RECEIVING_ALIGNED_HEADER_CODES = new Set([
   'receive_date',
   'receive_time',
   'mnf_date',
+  'doc_source',
   'building',
   'transfer_slip',
   'short_count_remarks',
@@ -177,6 +179,7 @@ type DocDetailRow = GoodsReceiptDocLine & {
   receive_date: string
   receive_time: string
   mnf_date: string
+  doc_source: string
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string
@@ -235,6 +238,7 @@ const normalizeDocDetailRow = (
     receive_date: row.receive_date || receiveDate,
     receive_time: row.receive_time ?? '',
     mnf_date: row.mnf_date ?? '',
+    doc_source: row.doc_source ?? '',
     building_warehouse_id: row.building_warehouse_id ?? null,
     flock_card_id: row.flock_card_id ?? null,
     transfer_slip: row.transfer_slip ?? '',
@@ -674,7 +678,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
         setReceipt(nextReceipt)
         setDocDetailRows(nextReceipt.docDetails.length > 0
-          ? nextReceipt.docDetails.map(row => normalizeDocDetailRow(row, nextReceipt.receiveDate))
+          ? nextReceipt.docDetails.map(row => normalizeDocDetailRow({
+              ...row,
+              doc_source: row.doc_source || nextReceipt.vendor,
+            }, nextReceipt.receiveDate))
           : [])
         setItems(references.items)
         setWarehouses(references.warehouses)
@@ -1689,6 +1696,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast.error('Enter the Production Date before adding the DOC Details line.')
       return
     }
+    if (!modalDocDetailRow.doc_source.trim()) {
+      toast.error('Enter the DOC Source before adding the DOC Details line.')
+      return
+    }
     if (!modalDocDetailRow.building_warehouse_id || !modalDocDetailRow.flock_card_id) {
       toast.error('Select a building with an active flock-card cycle.')
       return
@@ -1740,8 +1751,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (!receipt.vendor.trim()) {
-      toast('Please enter a vendor.')
+    if (docDetailRows.length === 0 || docDetailRows.some(row => !row.doc_source.trim())) {
+      toast('Please enter a DOC source for every DOC Details row.')
       return
     }
     if (!receipt.fmsType) {
@@ -1822,6 +1833,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     try {
       const savedReceipt = await saveGoodsReceipt({
         ...receipt,
+        vendor: docDetailRows.find(row => row.doc_source.trim())?.doc_source.trim() || receipt.vendor,
         status: targetStatus,
         docDetails: docDetailRows.map(row => normalizeDocDetailRow(row, receipt.receiveDate)),
         lines: (posting ? completedLines : completeLines).map(line => ({
@@ -1933,14 +1945,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </select>
           </div>
 
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">Vendor</label>
-            <Input
-              value={receipt.vendor}
-              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
-              placeholder="Enter vendor"
-            />
-          </div>
         </div>
 
         <div className="border-t">
@@ -2173,7 +2177,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             : 'space-y-2'
                         }
                       >
-                        <Label required={['mnf_date', 'building'].includes(column.code)}>
+                        <Label required={['mnf_date', 'doc_source', 'building'].includes(column.code)}>
                           <span className="flex flex-col items-start">
                             {DOC_RECEIVING_DETAIL_UNITS[column.code] && (
                               <span className="text-xs font-normal text-muted-foreground">

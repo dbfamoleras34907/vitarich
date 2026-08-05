@@ -23,5 +23,9 @@ export async function checkUserActive(authId: string) {
     redirect("/logout");
   }
 
+  if (!String(user.fms_type ?? "").trim()) {
+    toast.warning("Your account does not have an FMS type. Please contact your administrator to update it.");
+  }
+
   redirect("/home");
 }
