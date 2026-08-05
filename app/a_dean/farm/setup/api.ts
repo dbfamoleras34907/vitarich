@@ -19,9 +19,20 @@ export type FarmSetupWarehouseDraft = Pick<
   | 'remarks'
   | 'is_active'
 > & {
+  id?: number | null
+  whse_code?: string | null
   client_key: string
+  father_client_key?: string | null
+  capacity?: number | null
   is_default_feed?: boolean
   is_default_receiving?: boolean
+  is_default_disposal?: boolean
+}
+
+export type FarmSetupRecord = {
+  farm: FarmSetupFormData
+  address: FarmSetupFormData
+  warehouses: FarmSetupWarehouseDraft[]
 }
 
 export type FarmSetupPayload = {
@@ -129,6 +140,65 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
   return {
     farmId,
     approval,
+  }
+}
+
+export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
+  const [{ data: farmData, error: farmError }, { data: warehouses, error: warehouseError }] =
+    await Promise.all([
+      db.rpc('get_farm_full', { p_farm_id: farmId }),
+      db.from('i_warehouse').select('*').eq('farm_id', farmId).order('id'),
+    ])
+
+  if (farmError) throw new Error(farmError.message)
+  if (warehouseError) throw new Error(warehouseError.message)
+  if (!farmData?.farm) throw new Error('Farm not found.')
+
+  const warehouseRows = warehouses ?? []
+
+  return {
+    farm: farmData.farm,
+    address: {
+      address: farmData.farm.address ?? '',
+      barangay: farmData.farm.barangay ?? farmData.address?.barangay ?? '',
+      city: farmData.farm.city ?? farmData.address?.city ?? '',
+      province: farmData.farm.region ?? farmData.address?.province ?? '',
+    },
+    warehouses: warehouseRows.map((warehouse) => ({
+      id: warehouse.id,
+      client_key: `warehouse-${warehouse.id}`,
+      father_client_key: warehouse.father_id ? `warehouse-${warehouse.father_id}` : null,
+      whse_name: warehouse.whse_name,
+      whse_code: warehouse.whse_code,
+      fms_type: warehouse.fms_type,
+      warehouse_type: warehouse.warehouse_type,
+      capacity: warehouse.capacity,
+      full_location_code: warehouse.full_location_code,
+      addr1: warehouse.addr1,
+      addr2: warehouse.addr2,
+      city: warehouse.city,
+      province: warehouse.province,
+      address: warehouse.address,
+      phone: warehouse.phone,
+      mobile: warehouse.mobile,
+      remarks: warehouse.remarks,
+      is_active: warehouse.is_active,
+      is_default_feed: warehouse.is_default_feed_warehouse,
+      is_default_receiving: warehouse.is_default_receiving_warehouse,
+      is_default_disposal: warehouse.is_default_disposal_warehouse,
+    })),
+  }
+}
+
+export async function updateFarmSetup(farmId: number, payload: FarmSetupPayload): Promise<void> {
+  const { error } = await db.rpc('update_farm_setup_wizard', {
+    p_farm_id: farmId,
+    payload,
+  })
+
+  if (error) {
+    console.error('update_farm_setup_wizard error:', error)
+    throw new Error(error.message)
   }
 }
 

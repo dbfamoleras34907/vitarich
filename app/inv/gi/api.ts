@@ -21,11 +21,13 @@ export type GoodsIssueLine = {
   fromWarehouseCode: string
   fromWarehouseName: string
   onHandQty: number
+  requestedAltQty?: number
 }
 
 export type GoodsIssue = {
   id: number | null
   giNo: string
+  triggeredBy: string
   issueDate: string
   farmId: number | null
   farmCode: string
@@ -49,6 +51,7 @@ type GoodsIssueRow = {
   from_warehouse_id: number | null
   from_warehouse_code: string | null
   from_warehouse_name: string | null
+  triggered_by: string | null
   remarks: string | null
   status: GoodsIssueStatus
   created_at: string
@@ -57,6 +60,8 @@ type GoodsIssueRow = {
 type GoodsIssueItemRow = {
   id: number
   goods_issue_id: number
+  br_delivery_id?: number
+  br_cleanup_id?: number
   item_id: number | null
   item_code: string
   description: string | null
@@ -75,7 +80,9 @@ type GoodsIssueItemRow = {
 }
 
 type GoodsIssueListItemRow = {
-  goods_issue_id: number
+  goods_issue_id?: number
+  br_delivery_id?: number
+  br_cleanup_id?: number
   item_code: string
   description: string | null
   base_qty: number
@@ -99,12 +106,30 @@ export type GoodsIssueOnHandShortage = {
 }
 
 type InventoryPostingRow = {
+  id: number
   item_code: string | null
   warehouse_code: string | null
   qty: number | null
   transfer_type: string | null
   ref: string | null
+  ref2: string | null
+  batch_number?: string | null
 }
+
+const dedicatedIssueTables = {
+  'BR-DR': { header: 'br_delivery', lines: 'br_delivery_lines', lineForeignKey: 'br_delivery_id' },
+  'BR-CU': { header: 'br_cleanup', lines: 'br_cleanup_lines', lineForeignKey: 'br_cleanup_id' },
+} as const
+
+const getIssueTables = (triggeredBy: string) =>
+  dedicatedIssueTables[triggeredBy.trim().toUpperCase() as keyof typeof dedicatedIssueTables]
+  ?? { header: 'goods_issue', lines: 'goods_issue_items', lineForeignKey: 'goods_issue_id' }
+
+const usesDedicatedIssueTables = (triggeredBy: string) =>
+  triggeredBy.trim().toUpperCase() in dedicatedIssueTables
+
+const getListLineHeaderId = (row: GoodsIssueListItemRow) =>
+  Number(row.br_delivery_id ?? row.br_cleanup_id ?? row.goods_issue_id ?? 0)
 
 type ItemBatchRow = {
   item_code: string
@@ -141,6 +166,7 @@ const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
 const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
   id: row.id,
   giNo: row.gi_no,
+  triggeredBy: row.triggered_by ?? 'GI',
   issueDate: row.issue_date,
   farmId: row.farm_id,
   farmCode: row.farm_code ?? '',
@@ -155,7 +181,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
 })
 
 const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
-  id: `${row.goods_issue_id}-${row.item_code}`,
+  id: `${getListLineHeaderId(row)}-${row.item_code}`,
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -233,21 +259,33 @@ export async function getItemWarehouseOnHand(
 ) {
   if (!itemCode || !warehouseCode) return 0
 
-  let query = db
+  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, batch_number, ref'
+  const buildQuery = () => db
     .from('inventory_postings')
-    .select('item_code, warehouse_code, qty, transfer_type, ref')
+    .select(postingSelect)
     .eq('item_code', itemCode)
     .eq('warehouse_code', warehouseCode)
 
-  if (batchNumber) {
-    query = query.eq('ref', batchNumber)
+  const results = batchNumber
+    ? await Promise.all([
+        buildQuery().eq('batch_number', batchNumber),
+        buildQuery().eq('ref', batchNumber),
+      ])
+    : [await buildQuery()]
+
+  for (const result of results) {
+    if (result.error) throw result.error
   }
 
-  const { data, error } = await query
-  if (error) throw error
+  const seenPostingIds = new Set<number>()
+  const rows = results.flatMap(result => (result.data ?? []) as InventoryPostingRow[])
 
-  return ((data ?? []) as InventoryPostingRow[]).reduce(
-    (total, row) => total + signedQty(row),
+  return rows.reduce(
+    (total, row) => {
+      if (seenPostingIds.has(row.id)) return total
+      seenPostingIds.add(row.id)
+      return total + signedQty(row)
+    },
     0,
   )
 }
@@ -260,16 +298,15 @@ export async function getOnHandBatches(
 
   const { data: postingRows, error: postingError } = await db
     .from('inventory_postings')
-    .select('item_code, warehouse_code, qty, transfer_type, ref')
+    .select('item_code, warehouse_code, qty, transfer_type, batch_number, ref')
     .eq('item_code', itemCode)
     .eq('warehouse_code', warehouseCode)
-    .not('ref', 'is', null)
 
   if (postingError) throw postingError
 
   const quantityByBatch = new Map<string, number>()
   for (const row of (postingRows ?? []) as InventoryPostingRow[]) {
-    const batchNumber = String(row.ref ?? '').trim()
+    const batchNumber = String(row.batch_number ?? row.ref ?? '').trim()
     if (!batchNumber) continue
     quantityByBatch.set(batchNumber, (quantityByBatch.get(batchNumber) ?? 0) + signedQty(row))
   }
@@ -333,12 +370,32 @@ export async function getGoodsIssueOnHandShortages(
   )
 }
 
-export async function getGoodsIssues(limit = 50): Promise<GoodsIssue[]> {
-  const { data: issueRows, error: issueError } = await db
-    .from('goods_issue')
-    .select('id, gi_no, issue_date, farm_id, farm_code, farm_name, from_warehouse_id, from_warehouse_code, from_warehouse_name, remarks, status, created_at')
+export async function getGoodsIssues(
+  limit = 50,
+  triggeredBy = 'GI',
+  farmIdentifier?: number | string | null,
+): Promise<GoodsIssue[]> {
+  const tables = getIssueTables(triggeredBy)
+  let query = db
+    .from(tables.header)
+    .select('id, gi_no, triggered_by, issue_date, farm_id, farm_code, farm_name, from_warehouse_id, from_warehouse_code, from_warehouse_name, remarks, status, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (!usesDedicatedIssueTables(triggeredBy)) query = query.eq('triggered_by', triggeredBy)
+
+  if (
+    farmIdentifier !== null &&
+    farmIdentifier !== undefined &&
+    String(farmIdentifier).trim() !== ''
+  ) {
+    const farmValue = String(farmIdentifier).trim()
+    query = /^\d+$/.test(farmValue)
+      ? query.eq('farm_id', farmValue)
+      : query.eq('farm_code', farmValue)
+  }
+
+  const { data: issueRows, error: issueError } = await query
 
   if (issueError) throw issueError
 
@@ -347,9 +404,9 @@ export async function getGoodsIssues(limit = 50): Promise<GoodsIssue[]> {
   if (issueIds.length === 0) return []
 
   const { data: itemRows, error: itemError } = await db
-    .from('goods_issue_items')
-    .select('goods_issue_id, item_code, description, base_qty')
-    .in('goods_issue_id', issueIds)
+    .from(tables.lines)
+    .select('*')
+    .in(tables.lineForeignKey, issueIds)
     .eq('void', '1')
     .order('line_no', { ascending: true })
 
@@ -357,13 +414,14 @@ export async function getGoodsIssues(limit = 50): Promise<GoodsIssue[]> {
 
   const items = (itemRows ?? []) as GoodsIssueListItemRow[]
   return issues.map(issue =>
-    toIssueListItem(issue, items.filter(item => item.goods_issue_id === issue.id)),
+    toIssueListItem(issue, items.filter(item => getListLineHeaderId(item) === issue.id)),
   )
 }
 
-export async function getGoodsIssueById(id: number): Promise<GoodsIssue | null> {
+export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise<GoodsIssue | null> {
+  const tables = getIssueTables(triggeredBy)
   const { data: issueRow, error: issueError } = await db
-    .from('goods_issue')
+    .from(tables.header)
     .select('*')
     .eq('id', id)
     .maybeSingle()
@@ -372,9 +430,9 @@ export async function getGoodsIssueById(id: number): Promise<GoodsIssue | null> 
   if (!issueRow) return null
 
   const { data: itemRows, error: itemError } = await db
-    .from('goods_issue_items')
+    .from(tables.lines)
     .select('*')
-    .eq('goods_issue_id', id)
+    .eq(tables.lineForeignKey, id)
     .eq('void', '1')
     .order('line_no', { ascending: true })
 
@@ -394,10 +452,11 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
 }
 
 export async function saveGoodsIssue(issue: GoodsIssue) {
+  const tables = getIssueTables(issue.triggeredBy)
   const userId = await getSessionUserId()
   const previousStatus = issue.id
     ? await db
-        .from('goods_issue')
+        .from(tables.header)
         .select('status')
         .eq('id', issue.id)
         .maybeSingle()
@@ -422,22 +481,23 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     from_warehouse_id: issue.fromWarehouseId,
     from_warehouse_code: issue.fromWarehouseCode || null,
     from_warehouse_name: issue.fromWarehouseName || null,
+    triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
     status: saveStatus,
     ...(issue.id ? { updated_by: userId } : { created_by: userId }),
   }
 
   const { data: savedHeader, error: headerError } = issue.id
-    ? await db.from('goods_issue').update(headerPayload).eq('id', issue.id).select('*').single()
-    : await db.from('goods_issue').insert(headerPayload).select('*').single()
+    ? await db.from(tables.header).update(headerPayload).eq('id', issue.id).select('*').single()
+    : await db.from(tables.header).insert(headerPayload).select('*').single()
 
   if (headerError) throw headerError
   const header = savedHeader as GoodsIssueRow
 
   const { data: existingItems, error: existingItemsError } = await db
-    .from('goods_issue_items')
+    .from(tables.lines)
     .select('id')
-    .eq('goods_issue_id', header.id)
+    .eq(tables.lineForeignKey, header.id)
     .eq('void', '1')
 
   if (existingItemsError) throw existingItemsError
@@ -445,7 +505,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   for (const item of existingItems ?? []) {
     const itemId = Number(item.id)
     const { error } = await db
-      .from('goods_issue_items')
+      .from(tables.lines)
       .update({ line_no: -itemId, updated_by: userId })
       .eq('id', itemId)
 
@@ -463,7 +523,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
 
   if (removedItemIds.length > 0) {
     const { error } = await db
-      .from('goods_issue_items')
+      .from(tables.lines)
       .update({ void: '0', updated_by: userId })
       .in('id', removedItemIds)
 
@@ -472,7 +532,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
 
   for (const [index, line] of issue.lines.entries()) {
     const itemPayload = {
-      goods_issue_id: header.id,
+      [tables.lineForeignKey]: header.id,
       line_no: index + 1,
       item_id: line.itemId,
       item_code: line.itemCode,
@@ -494,14 +554,14 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
 
     if (typeof line.id === 'number') {
       const { error } = await db
-        .from('goods_issue_items')
+        .from(tables.lines)
         .update(itemPayload)
         .eq('id', line.id)
 
       if (error) throw error
     } else {
       const { error } = await db
-        .from('goods_issue_items')
+        .from(tables.lines)
         .insert({ ...itemPayload, created_by: userId })
 
       if (error) throw error
@@ -509,9 +569,9 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   }
 
   const staleLineVoid = db
-    .from('goods_issue_items')
+    .from(tables.lines)
     .update({ void: '0', updated_by: userId })
-    .eq('goods_issue_id', header.id)
+    .eq(tables.lineForeignKey, header.id)
     .eq('void', '1')
 
   const { error: deleteError } = issue.lines.length > 0
@@ -522,23 +582,25 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
 
   if (shouldPostAfterLines) {
     const { error: postError } = await db
-      .from('goods_issue')
+      .from(tables.header)
       .update({ status: 'Posted', updated_by: userId })
       .eq('id', header.id)
 
     if (postError) throw postError
   }
 
-  return getGoodsIssueById(header.id)
+  return getGoodsIssueById(header.id, issue.triggeredBy)
 }
 
-export async function createGoodsIssueNumber() {
+export async function createGoodsIssueNumber(prefix = 'GI') {
   const yearSuffix = String(new Date().getFullYear()).slice(-2)
+  const documentPrefix = prefix.trim() || 'GI'
 
+  const tables = getIssueTables(documentPrefix)
   const { data, error } = await db
-    .from('goods_issue')
+    .from(tables.header)
     .select('gi_no')
-    .ilike('gi_no', `GI-${yearSuffix}-%`)
+    .ilike('gi_no', `${documentPrefix}-${yearSuffix}-%`)
     .order('gi_no', { ascending: false })
     .limit(1)
 
@@ -548,7 +610,7 @@ export async function createGoodsIssueNumber() {
   const latestSequence = Number(latestNo.match(/(\d+)$/)?.[1] ?? 0)
   const sequence = Number.isFinite(latestSequence) ? latestSequence + 1 : 1
 
-  return `GI-${yearSuffix}-${String(sequence).padStart(6, '0')}`
+  return `${documentPrefix}-${yearSuffix}-${String(sequence).padStart(6, '0')}`
 }
 
 export function getIssueItemSummary(issue: GoodsIssue) {

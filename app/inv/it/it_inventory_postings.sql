@@ -35,7 +35,7 @@ begin
       select
         ip.item_code,
         ip.warehouse_code,
-        ip.ref as batch_number,
+        batch_ref.batch_number,
         sum(
           case
             when ip.transfer_type = 'OUT' then -ip.qty
@@ -43,10 +43,16 @@ begin
           end
         ) as qty
       from public.inventory_postings ip
+      cross join lateral (
+        select distinct batch_number
+        from (values (ip.ref), (ip.ref2)) as refs(batch_number)
+        where batch_number is not null
+          and btrim(batch_number) <> ''
+      ) batch_ref
       group by
         ip.item_code,
         ip.warehouse_code,
-        ip.ref
+        batch_ref.batch_number
     )
     select 1
     from transfer_qty tq

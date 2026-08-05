@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 
 export type FeedBatchOnHand = {
   id: string;
@@ -28,6 +29,7 @@ type AssociatedWarehouseRow = {
   whse_code?: string | null;
   whse_name?: string | null;
   is_default_feed?: boolean | null;
+  is_default_disposal?: boolean | null;
 };
 
 type WarehouseMasterRow = {
@@ -889,9 +891,7 @@ export async function getFarmBuildings(farmId: number): Promise<FarmBuildingOpti
       .select("id, farm_id, code, name, status, remarks")
       .eq("farm_id", farmId)
       .order("code", { ascending: true }),
-    db
-      .from("farms")
-      .select("associated_warehouses")
+    activeApprovedFarmsQuery(db.from("farms").select("associated_warehouses"))
       .eq("id", farmId)
       .single(),
   ]);

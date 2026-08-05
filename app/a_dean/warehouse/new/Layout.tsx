@@ -26,6 +26,7 @@ import {
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { getWarehouseBuildings, type WarehouseBuildingOption } from '../api'
 import { createWarehouse } from './api'
 
 type FieldCode = keyof Pick<
@@ -65,6 +66,7 @@ const WAREHOUSE_TYPE_PREFIX: Record<string, string> = {
 const WAREHOUSE_TYPES = [
   { value: 'Warehouse', label: 'Warehouse' },
   { value: 'Building', label: 'Building' },
+  { value: 'Pen', label: 'Pen' },
 ]
 
 const compact = (value: unknown) => String(value ?? '').trim()
@@ -147,6 +149,8 @@ function OptionRow({
 export default function Layout() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [loadingBuildings, setLoadingBuildings] = useState(false)
+  const [buildings, setBuildings] = useState<WarehouseBuildingOption[]>([])
   const [formData, setFormData] = useState<Partial<WarehouseData>>({
     is_active: true,
     fms_type: 'Broiler',
@@ -190,10 +194,21 @@ export default function Layout() {
     [formData.addr1, formData.addr2, formData.city, formData.province]
   )
 
+  const selectedFatherBuilding = useMemo(
+    () => buildings.find((building) => building.id === formData.father_id) ?? null,
+    [buildings, formData.father_id]
+  )
+
   const sampleWarehouseCode = useMemo(() => {
+    if (formData.warehouse_type === 'Pen') {
+      return selectedFatherBuilding?.whse_code
+        ? `${selectedFatherBuilding.whse_code}-P#`
+        : 'Select a father building'
+    }
+
     const prefix = WAREHOUSE_TYPE_PREFIX[compact(formData.warehouse_type)] ?? 'WH'
     return `${prefix}-0000001`
-  }, [formData.warehouse_type])
+  }, [formData.warehouse_type, selectedFatherBuilding])
 
   const handleTextChange = (
     code: FieldCode,
@@ -212,11 +227,28 @@ export default function Layout() {
       return
     }
 
+    if (formData.warehouse_type === 'Pen' && !formData.father_id) {
+      toast.error('Select a father Building for this Pen.')
+      return
+    }
+
+    const capacityText = compact(formData.capacity)
+    const capacity = capacityText === '' ? null : Number(capacityText)
+    if (
+      (formData.warehouse_type === 'Pen' && capacity == null) ||
+      (capacity != null && (!Number.isFinite(capacity) || capacity < 0))
+    ) {
+      toast.error('Enter a valid non-negative capacity.')
+      return
+    }
+
     setLoading(true)
     const payload: WarehouseData = {
       whse_name: nullable(formData.whse_name),
       fms_type: nullable(formData.fms_type),
       warehouse_type: nullable(formData.warehouse_type),
+      father_id: formData.warehouse_type === 'Pen' ? formData.father_id ?? null : null,
+      capacity,
       full_location_code: nullable(formData.full_location_code),
       addr1: nullable(formData.addr1),
       addr2: nullable(formData.addr2),
@@ -244,6 +276,23 @@ export default function Layout() {
   useEffect(() => {
     router.prefetch('/a_dean/warehouse')
   }, [router])
+
+  useEffect(() => {
+    async function loadBuildings() {
+      setLoadingBuildings(true)
+      const result = await getWarehouseBuildings()
+
+      if (result.success && Array.isArray(result.data)) {
+        setBuildings(result.data)
+      } else {
+        toast.error(result.error ?? 'Unable to load buildings.')
+      }
+
+      setLoadingBuildings(false)
+    }
+
+    loadBuildings()
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#f7f5f1]">
@@ -326,7 +375,11 @@ export default function Layout() {
                   <Label required>Warehouse Type</Label>
                   <Select
                     value={formData.warehouse_type ?? ''}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, warehouse_type: value }))}
+                    onValueChange={(value) => setFormData((prev) => ({
+                      ...prev,
+                      warehouse_type: value,
+                      father_id: value === 'Pen' ? prev.father_id : null,
+                    }))}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select warehouse type" />
@@ -340,6 +393,46 @@ export default function Layout() {
                     </SelectContent>
                   </Select>
                 </div>
+                {formData.warehouse_type === 'Pen' ? (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label required>Father Building</Label>
+                    <Select
+                      value={formData.father_id == null ? '' : String(formData.father_id)}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, father_id: Number(value) }))}
+                      disabled={loadingBuildings}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={loadingBuildings ? 'Loading buildings...' : 'Select father building'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {buildings.map((building) => (
+                          <SelectItem key={building.id} value={String(building.id)}>
+                            {building.whse_code || `Building ${building.id}`} - {building.whse_name || 'Unnamed building'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {formData.warehouse_type === 'Building' || formData.warehouse_type === 'Pen' ? (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label required={formData.warehouse_type === 'Pen'}>Capacity</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="any"
+                      required={formData.warehouse_type === 'Pen'}
+                      value={formData.capacity ?? ''}
+                      onChange={(event) => setFormData((prev) => ({
+                        ...prev,
+                        capacity: event.target.value === '' ? null : Number(event.target.value),
+                      }))}
+                    />
+                    <p className="text-xs leading-5 text-stone-500">
+                      A standalone building has no capacity-matching condition. Adding a Pen requires the total Pen capacity to equal its Building capacity.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Sample Warehouse Code</Label>
                   <div className="flex h-10 items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 font-mono text-sm font-semibold text-stone-800">

@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 
 type UserProfilePayload = {
   auth_id?: string;
@@ -104,9 +105,7 @@ export async function POST(req: Request) {
     }
 
     if (assignedFarmCodes.length > 0) {
-      const { data: farms, error: farmsError } = await admin_db
-        .from("farms")
-        .select("id, code")
+      const { data: farms, error: farmsError } = await activeApprovedFarmsQuery(admin_db.from("farms").select("id, code"))
         .in("code", assignedFarmCodes);
 
       if (farmsError) {

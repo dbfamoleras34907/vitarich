@@ -28,6 +28,7 @@ export type GoodsReceiptLine = {
 export type GoodsReceipt = {
   id: number | null
   grNo: string
+  drReference: string
   vendor: string
   receiveDate: string
   fmsType: string
@@ -43,6 +44,7 @@ export type GoodsReceipt = {
 type GoodsReceiptRow = {
   id: number
   gr_no: string
+  dr_reference: string
   vendor: string
   receive_date: string
   fms_type: string | null
@@ -74,14 +76,6 @@ type GoodsReceiptItemRow = {
   warehouse_name: string | null
   returned_qty: number
   void: string
-}
-
-type GoodsReceiptListItemRow = {
-  goods_reciept_id: number
-  item_code: string
-  description: string | null
-  base_qty: number
-  returned_qty: number
 }
 
 type ItemBatchRow = {
@@ -131,6 +125,7 @@ const toReceipt = (
 ): GoodsReceipt => ({
   id: row.id,
   grNo: row.gr_no,
+  drReference: row.dr_reference,
   vendor: row.vendor,
   receiveDate: row.receive_date,
   fmsType: row.fms_type ?? '',
@@ -143,65 +138,10 @@ const toReceipt = (
   createdAt: row.created_at,
 })
 
-const toReceiptListLine = (row: GoodsReceiptListItemRow): GoodsReceiptLine => ({
-  id: `${row.goods_reciept_id}-${row.item_code}`,
-  itemId: null,
-  itemCode: row.item_code,
-  description: row.description ?? '',
-  batchRuleId: null,
-  batchNumber: '',
-  supplierBatchNumber: '',
-  manufacturingDate: '',
-  expiryDate: '',
-  altQty: 0,
-  altUom: '',
-  baseQty: Number(row.base_qty),
-  baseUom: '',
-  warehouseId: null,
-  warehouseCode: '',
-  warehouseName: '',
-  returnedQty: Number(row.returned_qty),
-})
-
-const toReceiptListItem = (
-  row: GoodsReceiptRow,
-  lines: GoodsReceiptListItemRow[],
-): GoodsReceipt => ({
-  id: row.id,
-  grNo: row.gr_no,
-  vendor: row.vendor,
-  receiveDate: row.receive_date,
-  fmsType: row.fms_type ?? '',
-  farmId: row.farm_id,
-  farmCode: row.farm_code ?? '',
-  farmName: row.farm_name ?? '',
-  defaultWarehouseId: row.default_warehouse_id,
-  status: normalizeReceiptStatus(row.status),
-  lines: lines.map(toReceiptListLine),
-  createdAt: row.created_at,
-})
-
 async function getSessionUserId() {
   const { data, error } = await db.auth.getSession()
   if (error) throw error
   return data.session?.user.id ?? null
-}
-
-async function getReceiptIdsWithDocReceiving() {
-  const { data, error } = await db
-    .from('goods_receipt_doc')
-    .select('goods_reciept_id')
-    .eq('void', '1')
-
-  if (error) throw error
-
-  return Array.from(
-    new Set(
-      (data ?? [])
-        .map(row => Number(row.goods_reciept_id))
-        .filter(id => Number.isFinite(id))
-    )
-  )
 }
 
 async function getOrCreateItemBatch({
@@ -303,47 +243,6 @@ async function getOrCreateItemBatch({
   }
 }
 
-export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
-  const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
-
-  let receiptQuery = db
-    .from('goods_receipt')
-    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (docReceivingReceiptIds.length > 0) {
-    receiptQuery = receiptQuery.not('id', 'in', `(${docReceivingReceiptIds.join(',')})`)
-  }
-
-  const { data: receiptRows, error: receiptError } = await receiptQuery
-
-  if (receiptError) throw receiptError
-
-  const receipts = (receiptRows ?? []) as GoodsReceiptRow[]
-  const receiptIds = receipts.map(receipt => receipt.id)
-
-  if (receiptIds.length === 0) return []
-
-  const { data: itemRows, error: itemError } = await db
-    .from('goods_receipt_items')
-    .select('goods_reciept_id, item_code, description, base_qty, returned_qty')
-    .in('goods_reciept_id', receiptIds)
-    .eq('void', '1')
-    .order('line_no', { ascending: true })
-
-  if (itemError) throw itemError
-
-  const items = (itemRows ?? []) as GoodsReceiptListItemRow[]
-
-  return receipts.map(receipt =>
-    toReceiptListItem(
-      receipt,
-      items.filter(item => item.goods_reciept_id === receipt.id),
-    )
-  )
-}
-
 export async function getGoodsReceiptById(id: number): Promise<GoodsReceipt | null> {
   const { data: receiptRow, error: receiptError } = await db
     .from('goods_receipt')
@@ -392,6 +291,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
 
   const headerPayload = {
     gr_no: receipt.grNo,
+    dr_reference: receipt.drReference.trim(),
     vendor: receipt.vendor,
     receive_date: receipt.receiveDate,
     fms_type: receipt.fmsType || null,
@@ -670,14 +570,4 @@ export async function createGoodsReceiptNumber() {
   const sequence = Number.isFinite(latestSequence) ? latestSequence + 1 : 1
 
   return `GR-${yearSuffix}-${String(sequence).padStart(6, '0')}`
-}
-
-export function getReceiptItemSummary(receipt: GoodsReceipt) {
-  const descriptions = receipt.lines
-    .filter(line => line.itemCode)
-    .map(line => line.description || line.itemCode)
-
-  if (descriptions.length === 0) return '-'
-  if (descriptions.length === 1) return descriptions[0]
-  return `${descriptions[0]} +${descriptions.length - 1} more`
 }

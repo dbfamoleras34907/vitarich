@@ -195,8 +195,11 @@ export interface WarehouseData {
   farm_id?: number | null;
   farm_code?: string | null;
   farm_name?: string | null;
+  father_id?: number | null;
+  capacity?: number | null;
   is_default_feed_warehouse?: boolean | null;
   is_default_receiving_warehouse?: boolean | null;
+  is_default_disposal_warehouse?: boolean | null;
   full_location_code?: string | null;
   fms_type?: string | null;
   warehouse_type?: string | null;
@@ -586,6 +589,7 @@ export interface NavChild extends NavPermission {
   type: NavItemType;
   title: string;
   url: string;
+  newDocumentUrl?: string;
 
   inventoriable?: boolean;
   section?: string;

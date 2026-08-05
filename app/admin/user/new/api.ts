@@ -1,9 +1,10 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { createClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
 
-
+// 
 export async function toggleUserPermission(
   userId: string,
   groupName: string,
@@ -112,11 +113,8 @@ export async function getUserFarms(users_id: number) {
 
   if (farmCodes.length === 0) return []
 
-  const { data, error } = await db
-    .from("farms")
-    .select("*")
+  const { data, error } = await activeApprovedFarmsQuery(db.from("farms").select("*"))
     .in("code", farmCodes)
-    .eq("void", 1)
 
   console.log({ data, error })
   if (error) {

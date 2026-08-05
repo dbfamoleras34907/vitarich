@@ -5,6 +5,16 @@ import { db } from '@/lib/Supabase/supabaseClient'
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+
+const localToday = () => {
+  const date = new Date()
+  const offset = date.getTimezoneOffset()
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
+}
+
+const isFutureReceivingDate = (value: string) => Boolean(value) && value > localToday()
+
 export type GoodsReceiptLine = {
   id: number | string
   itemId: number | null
@@ -23,6 +33,7 @@ export type GoodsReceiptLine = {
   warehouseCode: string
   warehouseName: string
   returnedQty: number
+  docLineNo?: number | null
   docBatchSeparated?: boolean
   docBatchReference?: string
   docBatchReferenceKey?: string
@@ -32,11 +43,15 @@ export type GoodsReceiptLine = {
 export type GoodsReceiptDocLine = {
   id: number | string
   receive_date: string
+  receive_time: string
   mnf_date: string
+  building_warehouse_id: number | null
+  flock_card_id: number | null
   transfer_slip: string
   average_doc_weight: string
   quantity_received: string
   actual_received: string
+  short_count?: string
   short_count_remarks: string
   doa_quantity: string
   doa_count_remarks: string
@@ -93,6 +108,7 @@ type GoodsReceiptItemRow = {
   warehouse_code: string | null
   warehouse_name: string | null
   returned_qty: number
+  doc_line_no: number | null
   void: string
 }
 
@@ -101,7 +117,10 @@ type GoodsReceiptDocRow = {
   goods_reciept_id: number
   line_no: number
   receive_date: string | null
+  receive_time: string | null
   mnf_date: string | null
+  building_warehouse_id: number | null
+  flock_card_id: number | null
   transfer_slip: string | null
   average_doc_weight: number | null
   quantity_received: number
@@ -120,6 +139,13 @@ type GoodsReceiptListItemRow = {
   description: string | null
   base_qty: number
   returned_qty: number
+}
+
+export type GoodsReceiptListParams = {
+  limit?: number
+  farmId?: number | string
+  dateFrom?: string
+  dateTo?: string
 }
 
 type ItemBatchRow = {
@@ -163,12 +189,16 @@ const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   warehouseCode: row.warehouse_code ?? '',
   warehouseName: row.warehouse_name ?? '',
   returnedQty: Number(row.returned_qty),
+  docLineNo: row.doc_line_no ?? null,
 })
 
 const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
   id: row.id,
   receive_date: row.receive_date ?? '',
+  receive_time: row.receive_time ?? '',
   mnf_date: row.mnf_date ?? '',
+  building_warehouse_id: row.building_warehouse_id ?? null,
+  flock_card_id: row.flock_card_id ?? null,
   transfer_slip: row.transfer_slip ?? '',
   average_doc_weight: row.average_doc_weight == null ? '' : String(row.average_doc_weight),
   quantity_received: String(row.quantity_received ?? ''),
@@ -386,17 +416,28 @@ async function getOrCreateItemBatch({
   }
 }
 
-export async function getGoodsReceipts(limit = 50): Promise<GoodsReceipt[]> {
+export async function getGoodsReceipts({
+  limit = 50,
+  farmId,
+  dateFrom,
+  dateTo,
+}: GoodsReceiptListParams = {}): Promise<GoodsReceipt[]> {
   const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
 
   if (docReceivingReceiptIds.length === 0) return []
 
-  const { data: receiptRows, error: receiptError } = await db
+  let receiptQuery = db
     .from('goods_receipt')
     .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
     .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (farmId !== undefined && farmId !== '') receiptQuery = receiptQuery.eq('farm_id', farmId)
+  if (dateFrom) receiptQuery = receiptQuery.gte('receive_date', dateFrom)
+  if (dateTo) receiptQuery = receiptQuery.lte('receive_date', dateTo)
+
+  const { data: receiptRows, error: receiptError } = await receiptQuery
 
   if (receiptError) throw receiptError
 
@@ -460,6 +501,13 @@ export async function getGoodsReceiptById(id: number): Promise<GoodsReceipt | nu
 }
 
 export async function saveGoodsReceipt(receipt: GoodsReceipt) {
+  if (
+    isFutureReceivingDate(receipt.receiveDate) ||
+    receipt.docDetails.some(row => isFutureReceivingDate(row.receive_date || receipt.receiveDate))
+  ) {
+    throw new Error(FUTURE_RECEIVING_DATE_MESSAGE)
+  }
+
   const userId = await getSessionUserId()
   const previousStatus = receipt.id
     ? await db
@@ -482,6 +530,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
 
   const headerPayload = {
     gr_no: receipt.grNo,
+    dr_reference: receipt.grNo,
     vendor: receipt.vendor,
     receive_date: receipt.receiveDate,
     fms_type: receipt.fmsType || null,
@@ -600,7 +649,10 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       goods_reciept_id: header.id,
       line_no: index + 1,
       receive_date: row.receive_date || null,
+      receive_time: row.receive_time || null,
       mnf_date: row.mnf_date || null,
+      building_warehouse_id: row.building_warehouse_id,
+      flock_card_id: row.flock_card_id,
       transfer_slip: row.transfer_slip.trim() || null,
       average_doc_weight: numberValue(row.average_doc_weight),
       quantity_received: numberValue(row.quantity_received),
@@ -724,6 +776,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       warehouse_code: line.warehouseCode || null,
       warehouse_name: line.warehouseName || null,
       returned_qty: line.returnedQty,
+      doc_line_no: line.docLineNo ?? null,
       void: '1',
       updated_by: userId,
     }

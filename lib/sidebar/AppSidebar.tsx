@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu } from "lucide-react"
+import { Boxes, ExternalLink, Menu } from "lucide-react"
 import { useSidebar } from "./SidebarProvider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
@@ -14,11 +14,26 @@ import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
+import type { NavFolder, NavGroup } from "../types"
+
+type FilteredNavFolder = NavFolder & { items: NavGroup[] }
 
 const ACTIVE_NAV_ITEM_CLASS =
   "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
 const SIDEBAR_SCROLL_CLASS =
   "[scrollbar-color:#d6d3d1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300/80 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400/90"
+
+function routeIsActive(pathname: string, url: string) {
+  return url !== "#" && (pathname === url || pathname.startsWith(`${url}/`))
+}
+
+function folderContainsRoute(folder: NavFolder, pathname: string) {
+  return Boolean(
+    folder.items?.some(group =>
+      group.children.some(child => routeIsActive(pathname, child.url)),
+    ),
+  )
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -34,11 +49,24 @@ export function AppSidebar() {
   const [session, setSession] = useState<Session | null>()
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
 
   const filteredNavFolders = useMemo(
     () => filterNavFolders(NavFolders, userPermissions || []),
     [userPermissions],
   )
+
+  const activeFolder = filteredNavFolders.find(folder => folder.id === activeFolderId)
+
+  useEffect(() => {
+    const routeFolder = filteredNavFolders.find(folder => folderContainsRoute(folder, pathname))
+
+    // Keep the visible group aligned when navigation or permissions change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveFolderId(currentId =>
+      routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
+    )
+  }, [filteredNavFolders, pathname])
 
   // ===============================
   // INIT
@@ -67,6 +95,115 @@ export function AppSidebar() {
     setValue("loading_s", true)
     router.push(url)
   }
+
+  const openInNewWindow = (url: string) => {
+    const newWindow = window.open(url, "_blank", "noopener,noreferrer")
+    if (newWindow) newWindow.opener = null
+  }
+
+
+  const renderExpandedNavigation = () => (
+    <>
+      <div className="px-2 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/45">
+        Module groups
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-start gap-2">
+        {filteredNavFolders.map(folder => {
+          const Icon = folder.icon
+          const isSelected = activeFolderId === folder.id
+          const hasActiveRoute = folderContainsRoute(folder, pathname)
+
+          return (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => setActiveFolderId(current => current === folder.id ? null : folder.id)}
+              className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${isSelected
+                ? "border-primary bg-primary text-primary-foreground"
+                : hasActiveRoute
+                  ? "border-primary/40 bg-primary/5 text-sidebar-foreground"
+                  : "border-sidebar-border bg-card text-sidebar-foreground hover:border-primary/40 hover:bg-sidebar-accent"
+                }`}
+              aria-expanded={isSelected}
+            >
+              <Icon className="size-4 shrink-0" />
+              <span className="min-w-0 whitespace-normal">{folder.title}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {activeFolder ? (
+        <div className="mt-6">
+          <div className="mb-2 flex items-center justify-between px-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+              {activeFolder.title}
+            </div>
+            <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] text-sidebar-foreground/60">
+              {activeFolder.items?.reduce((count, group) => count + group.children.filter(child => child.url !== "#").length, 0) ?? 0} modules
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {activeFolder.items?.map(group => {
+              const visibleChildren = group.children.filter(child => child.url && child.url !== "#")
+              if (!visibleChildren.length) return null
+
+              return (
+                <div key={`${activeFolder.id}-${group.group}`}>
+                  {(activeFolder.items?.length ?? 0) > 1 && (
+                    <div className="mb-1 px-3 text-[11px] font-medium text-sidebar-foreground/45">
+                      {group.group}
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    {visibleChildren.map(child => {
+                      const Icon = getModuleIcon(child.title, child.type)
+                      const isCurrentRoute = routeIsActive(pathname, child.url)
+
+                      return (
+                        <div
+                          key={`${activeFolder.id}-${group.group}-${child.title}`}
+                          className="group/route relative"
+                        >
+                          <Button
+                            variant="ghost"
+                            className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
+                            onClick={() => goTo(child.url)}
+                          >
+                            <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
+                            <span className="truncate">{child.title}</span>
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => openInNewWindow(child.url)}
+                            className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
+                            aria-label={`Open ${child.title} in a new window`}
+                            title="Open in new window"
+                          >
+                            <ExternalLink className="size-3.5" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-xl border border-dashed border-sidebar-border p-5 text-center">
+          <Boxes className="mx-auto mb-2 size-6 text-sidebar-foreground/45" />
+          <p className="text-sm font-medium">Choose a group</p>
+          <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">
+            The modules in the selected group will appear here.
+          </p>
+        </div>
+      )}
+    </>
+  )
   // exclude appSideBar from this pages
   if (pathname === "/signup_update" || pathname === "/init" || pathname === "/logout") return null;
   // ===============================
@@ -107,39 +244,8 @@ export function AppSidebar() {
               </div>
               <GlobalSearch collapsed={false} />
 
-              <div className={`mt-4 max-h-[calc(100vh-15rem)] space-y-5 overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
-
-                {filteredNavFolders.map(folder => (
-                  <div key={folder.id} className="space-y-1">
-                    <div className="px-2 text-xs font-medium text-sidebar-foreground/45">
-                      {folder.title}
-                    </div>
-
-                    {folder.items?.flatMap((group: any) =>
-                      group.children
-                        .filter((child: any) => child.url && child.url !== "#")
-                        .map((child: any) => {
-                          const Icon = getModuleIcon(child.title, child.type)
-
-                          return (
-                            <Button
-                              key={`${folder.id}-${group.group}-${child.title}`}
-                              variant="ghost"
-                              className={`h-9 w-full justify-start rounded-md px-2 text-sm font-normal text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : ""
-                                }`}
-                              onClick={() => goTo(child.url)}
-                            >
-                              <Icon className="size-4 shrink-0 text-sidebar-foreground/70" />
-                              <span className="truncate">{child.title}</span>
-                            </Button>
-                          )
-                        })
-                    )}
-                  </div>
-                ))}
-
+              <div className={`mt-4 max-h-[calc(100vh-15rem)] overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
+                {renderExpandedNavigation()}
               </div>
               <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
                 <UserAccountMenu session={session} collapsed={false} />
@@ -157,7 +263,7 @@ export function AppSidebar() {
 
   return (
     <aside
-      className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground shadow-[var(--starbucks-nav-shadow)] transition-all ${collapsed ? "w-16" : "w-72"
+      className={`flex h-screen flex-col text-sidebar-foreground shadow-[var(--starbucks-nav-shadow)] transition-all ${collapsed ? "w-16 bg-card" : "w-72 bg-sidebar"
         } duration-300`}
     >
       <div className="z-50 px-3 pt-3">
@@ -201,74 +307,26 @@ export function AppSidebar() {
             </div>
           )}
 
-          {filteredNavFolders.map(folder => (
+          {collapsed ? filteredNavFolders.map(folder => (
             <div key={folder.id} className={`text-sidebar-foreground/80 ${collapsed ? "" : "space-y-1 pb-3 last:pb-0"}`}>
-
-              {collapsed ? (
-                <div className="space-y-1">
-                  {folder.items?.flatMap((group: any) =>
-                    group.children
-                      .filter((child: any) => child.url && child.url !== "#")
-                      .map((child: any) => {
-                        const Icon = getModuleIcon(child.title, child.type)
-
-                        return (
-                          <Tooltip key={`${folder.id}-${group.group}-${child.title}`}>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                onClick={() => goTo(child.url)}
-                                className={`h-10 w-full justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
-                                  ? ACTIVE_NAV_ITEM_CLASS
-                                  : ""
-                                  }`}
-                                aria-label={child.title}
-                              >
-                                <Icon className="size-5 text-sidebar-foreground/70" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="right">
-                              {child.title}
-                            </TooltipContent>
-                          </Tooltip>
-                        )
-                      })
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="px-2 text-xs font-medium text-sidebar-foreground/45">
-                    {folder.title}
-                  </div>
-
-                  <div className="space-y-1">
-                    {folder.items?.flatMap((group: any) =>
-                      group.children
-                        .filter((child: any) => child.url && child.url !== "#")
-                        .map((child: any) => {
-                          const Icon = getModuleIcon(child.title, child.type)
-
-                          return (
-                            <Button
-                              key={`${folder.id}-${group.group}-${child.title}`}
-                              variant="ghost"
-                              className={`h-9 w-full justify-start rounded-md px-2 text-sm font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${pathname.startsWith(child.url)
-                                ? ACTIVE_NAV_ITEM_CLASS
-                                : ""
-                                }`}
-                              onClick={() => goTo(child.url)}
-                            >
-                              <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
-                              <span className="truncate">{child.title}</span>
-                            </Button>
-                          )
-                        })
-                    )}
-                  </div>
-                </>
-              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setActiveFolderId(folder.id)
+                      toggle()
+                    }}
+                    className={`h-10 w-full justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${folderContainsRoute(folder, pathname) ? ACTIVE_NAV_ITEM_CLASS : ""}`}
+                    aria-label={folder.title}
+                  >
+                    <folder.icon className="size-5 text-sidebar-foreground/70" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{folder.title}</TooltipContent>
+              </Tooltip>
             </div>
-          ))}
+          )) : renderExpandedNavigation()}
         </div>
 
         {/* {getValue("loading_s") && (
@@ -295,7 +353,7 @@ interface Permission {
   is_visible: boolean
 }
 
-export function filterNavFolders(navFolders: any[], permissions: Permission[]) {
+export function filterNavFolders(navFolders: NavFolder[], permissions: Permission[]): FilteredNavFolder[] {
   return navFolders
     .map(folder => ({
       ...folder,
@@ -316,5 +374,5 @@ export function filterNavFolders(navFolders: any[], permissions: Permission[]) {
         })
         .filter(Boolean),
     }))
-    .filter(folder => folder.items?.length)
+    .filter((folder): folder is FilteredNavFolder => Boolean(folder.items?.length))
 }

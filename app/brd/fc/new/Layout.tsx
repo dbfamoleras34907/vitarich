@@ -36,7 +36,7 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import type { Items, WarehouseData } from "@/lib/types";
 import { getUserFarms } from "@/app/admin/user/new/api";
-import { ArrowRightCircle, ChevronDown, ChevronUp, Copy, Eraser, Loader2, MousePointerClick, PackageCheck, RotateCcw, Save, X } from "lucide-react";
+import { ArrowRightCircle, ChevronDown, ChevronUp, Copy, Eraser, Loader2, MousePointerClick, PackageCheck, RotateCcw, Save, WandSparkles, X } from "lucide-react";
 import {
   getBatchTransactionTrail,
   type BatchTransactionTrail,
@@ -44,7 +44,6 @@ import {
 import {
   getFlockCardSheet,
   getFeedBatchOnHandByWarehouse,
-  getFlockOriginBatchesByCardNo,
   getFarmBuildings,
   reverseFlockCardFeedIntake,
   reverseFlockCardMortalityThinning,
@@ -53,6 +52,7 @@ import {
   type FarmBuildingOption,
   type FlockCardLinePayload,
 } from "./api";
+import { getBuildingPlacementInventory } from "../api";
 import {
   computeColumnTotals,
   computeGridValues,
@@ -62,7 +62,9 @@ import {
 import Help from "./Help";
 import FlockCardExportMenu from "./FlockCardExportMenu";
 import { calculateFlockAgeFromStartDate } from "../age";
+import { getFlockCardSettings } from "../settings/api";
 import { CellInput, HeaderCells } from "./FlockCardGridCells";
+import { populateSensibleSampleData } from "./developmentAutoPopulate";
 import {
   ageColumnWidth,
   bodyBorderClassesPlain,
@@ -70,7 +72,6 @@ import {
   bodyEmphasisClasses,
   bottomHeaderCells,
   columnDisabledFlags,
-  columnIndexes,
   cumulativeTotalColumnIndex,
   dataColumnCount,
   dataColumnWidth,
@@ -93,8 +94,8 @@ import {
   mortalityBatchMaxColumnWidth,
   mortalityBatchMinColumnWidth,
   rows,
-  shouldInitializeRowToZero,
   topHeaderCells,
+  visibleColumnIndexes,
 } from "./flockCardGridConfig";
 import type {
   FeedBatchAllocation,
@@ -157,6 +158,17 @@ function getDefaultFeedWarehouseCode(farm?: FeedFarm | null) {
   return defaultWarehouse ? getAssociatedWarehouseCode(defaultWarehouse) : "";
 }
 
+function getDefaultDisposalWarehouseCode(farm?: FeedFarm | null) {
+  const associations = farm?.associated_warehouses;
+  if (!Array.isArray(associations)) return "";
+
+  const defaultWarehouse = associations.find(warehouse =>
+    typeof warehouse === "object" && Boolean(warehouse?.is_default_disposal)
+  );
+
+  return defaultWarehouse ? getAssociatedWarehouseCode(defaultWarehouse) : "";
+}
+
 function isFeedItem(item: Items) {
   const groupTokens = [
     item.group,
@@ -202,7 +214,7 @@ function getMortalityThinningTotal(row: string[]) {
     getNumericValue(row[4] ?? "");
 }
 
-export default function StickyTablePage() {
+export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const searchParams = useSearchParams();
   const { getValue, setValue } = useGlobalContext();
   const flockCardNavigationContext = getValue("brdFcNewContext") as FlockCardNavigationContext | undefined;
@@ -210,7 +222,6 @@ export default function StickyTablePage() {
   const autoSelectFeedBatchRef = useRef<() => void>(() => undefined);
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
-  const initializedDefaultRowsRef = useRef(false);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
@@ -235,6 +246,7 @@ export default function StickyTablePage() {
   const [feedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
+  const [feedBatchRefreshKey, setFeedBatchRefreshKey] = useState(0);
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
   const [feedBatchDialogMode, setFeedBatchDialogMode] = useState<FeedBatchDialogMode>("onHand");
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
@@ -272,11 +284,33 @@ export default function StickyTablePage() {
   const displayFlockCode = requestedFlockCode || linkedCardNo || "-";
   const selectedBreed = String(flockCardNavigationContext?.breed ?? "").trim();
   const hasLockedFlockContext = Boolean(flockCardNavigationContext?.buildingKey);
-  const flockCardSettings = getValue("FlockCardSettings") as FlockCardSettingsState | null | undefined;
+  const [flockCardSettings, setFlockCardSettings] = useState<FlockCardSettingsState | null>(null);
   const allowAdvancePosting = Boolean(flockCardSettings?.allow_advance_posting);
   const autoFeedBatchSelection = Boolean(flockCardSettings?.auto_feed_batch_selection);
   const autoFeedBatchSelectionMode = flockCardSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED";
   const autoMortalityRateBatchSelection = Boolean(flockCardSettings?.auto_mortality_rate_batch_selection);
+
+  useEffect(() => {
+    const farmId = Number(selectedFarmId);
+    if (!Number.isFinite(farmId) || farmId <= 0) {
+      setFlockCardSettings(null);
+      return;
+    }
+
+    let cancelled = false;
+    getFlockCardSettings(farmId)
+      .then((nextSettings) => {
+        if (!cancelled) setFlockCardSettings(nextSettings);
+      })
+      .catch((error) => {
+        console.error("FlockCardSettings error:", error);
+        if (!cancelled) setFlockCardSettings(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFarmId]);
   const currentFlockAge = requestedFlockStartDate
     ? calculateFlockAgeFromStartDate(requestedFlockStartDate)
     : rawRequestedFlockAge != null && String(rawRequestedFlockAge).trim() !== "" && Number.isFinite(requestedFlockAge)
@@ -597,7 +631,7 @@ export default function StickyTablePage() {
   }, [gridValues]);
 
   const columnWidths = useMemo(
-    () => columnIndexes.map((colIndex) =>
+    () => visibleColumnIndexes.map((colIndex) =>
       colIndex === feedBatchColumnIndex
         ? feedBatchColumnWidth
         : colIndex === mortalityBatchColumnIndex
@@ -621,7 +655,7 @@ export default function StickyTablePage() {
   const activeFeedBatchRowLocked =
     feedBatchSelectionRowIndex != null &&
     (isRowAgeLocked(feedBatchSelectionRowIndex) ||
-      (Boolean(savedLineByRowIndex[feedBatchSelectionRowIndex]) && !allowAdvancePosting));
+      Boolean(savedLineByRowIndex[feedBatchSelectionRowIndex]));
 
   const activeFeedRequiredQty = feedBatchSelectionRowIndex == null
     ? 0
@@ -655,7 +689,7 @@ export default function StickyTablePage() {
   const activeMortalityBatchRowLocked =
     mortalityBatchSelectionRowIndex != null &&
     (isRowAgeLocked(mortalityBatchSelectionRowIndex) ||
-      (Boolean(savedMortalityLineByRowIndex[mortalityBatchSelectionRowIndex]) && !allowAdvancePosting));
+      Boolean(savedMortalityLineByRowIndex[mortalityBatchSelectionRowIndex]));
 
   const activeMortalityAllocatedQty = activeMortalityBatchAllocations.reduce(
     (total, allocation) => total + Number(allocation.selectedQty || 0),
@@ -761,14 +795,7 @@ export default function StickyTablePage() {
           }
         }
 
-        const nextGridValuesWithDefaultRows = nextGridValues.map((gridRow, rowIndex) =>
-          shouldInitializeRowToZero(rowIndex, gridRow, nextAllocationsByRow[rowIndex], currentFlockAge)
-            ? getZeroInputRow()
-            : gridRow
-        );
-
-        initializedDefaultRowsRef.current = true;
-        setGridValues(nextGridValuesWithDefaultRows);
+        setGridValues(nextGridValues);
         setSavedLineByRowIndex(nextSavedLineByRowIndex);
         setSavedMortalityLineByRowIndex(nextSavedMortalityLineByRowIndex);
         setFeedBatchAllocationsByRow(nextAllocationsByRow);
@@ -788,22 +815,6 @@ export default function StickyTablePage() {
       cancelled = true;
     };
   }, [requestedCardNo, requestedFlockCardId, currentFlockAge]);
-
-  useEffect(() => {
-    const cardId = Number(requestedFlockCardId);
-    if (initializedDefaultRowsRef.current) return;
-    if ((Number.isFinite(cardId) && cardId > 0) || requestedCardNo) return;
-    if (currentFlockAge == null) return;
-
-    initializedDefaultRowsRef.current = true;
-    setGridValues(currentValues =>
-      currentValues.map((gridRow, rowIndex) =>
-        shouldInitializeRowToZero(rowIndex, gridRow, feedBatchAllocationsByRow[rowIndex], currentFlockAge)
-          ? getZeroInputRow()
-          : gridRow
-      )
-    );
-  }, [currentFlockAge, feedBatchAllocationsByRow, requestedCardNo, requestedFlockCardId]);
 
   useEffect(() => {
     if (selectedFarmId || farms.length === 0) return;
@@ -912,10 +923,11 @@ export default function StickyTablePage() {
     return () => {
       cancelled = true;
     };
-  }, [feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
+  }, [feedBatchRefreshKey, feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
 
   useEffect(() => {
-    if (!linkedCardNo) {
+    const farmId = Number(selectedFarmId);
+    if (!Number.isFinite(farmId) || farmId <= 0 || !selectedBuilding) {
       setMortalityBatchRows([]);
       setMortalityBatchError("");
       setLoadingMortalityBatches(false);
@@ -926,7 +938,13 @@ export default function StickyTablePage() {
     setLoadingMortalityBatches(true);
     setMortalityBatchError("");
 
-    getFlockOriginBatchesByCardNo(linkedCardNo)
+    getBuildingPlacementInventory({
+      farmId,
+      buildingCode: selectedBuilding.code,
+      buildingName: selectedBuilding.name,
+      buildingKey: selectedBuilding.key,
+      buildingWarehouseCode: selectedBuilding.warehouseCode || selectedBuilding.code,
+    })
       .then(rows => {
         if (!cancelled) setMortalityBatchRows(rows);
       })
@@ -944,7 +962,7 @@ export default function StickyTablePage() {
     return () => {
       cancelled = true;
     };
-  }, [linkedCardNo]);
+  }, [selectedBuilding, selectedFarmId]);
 
   useEffect(() => {
     if (!reviewFeedBatch) {
@@ -1018,11 +1036,11 @@ export default function StickyTablePage() {
   // inside buildFlockCardLines instead.
 
   function isFeedIntakeLocked(rowIndex: number) {
-    return Boolean(savedLineByRowIndex[rowIndex]) && !allowAdvancePosting;
+    return Boolean(savedLineByRowIndex[rowIndex]);
   }
 
   function isMortalityThinningLocked(rowIndex: number) {
-    return Boolean(savedMortalityLineByRowIndex[rowIndex]) && !allowAdvancePosting;
+    return Boolean(savedMortalityLineByRowIndex[rowIndex]);
   }
 
   function isRowAgeLocked(rowIndex: number) {
@@ -1205,11 +1223,43 @@ export default function StickyTablePage() {
     });
   }
 
+  function handlePopulateSampleData() {
+    if (currentFlockAge == null) {
+      toast("The current flock age is unavailable.");
+      return;
+    }
+
+    setGridValues(currentValues => populateSensibleSampleData({
+      gridValues: currentValues,
+      currentFlockAge,
+      numberOfAnimals,
+      lockedMortalityRowIndexes: Object.keys(savedMortalityLineByRowIndex).map(Number),
+      devMode,
+    }));
+    toast(`Sample data populated through age ${Math.min(currentFlockAge, rows.length - 1)}.`);
+  }
+
   function formatFeedBatchAllocationCell(allocations: FeedBatchAllocation[]) {
     return allocations
       .filter(allocation => allocation.selectedQty > 0)
       .map(allocation => `${allocation.batchNumber} (${formatTotal(allocation.selectedQty)})`)
       .join(", ");
+  }
+
+  function formatFeedBatchAllocationDisplay(rowIndex: number) {
+    const allocations = (feedBatchAllocationsByRow[rowIndex] ?? [])
+      .filter(allocation => allocation.selectedQty > 0);
+
+    if (allocations.length === 0) {
+      return gridValues[rowIndex]?.[feedBatchColumnIndex]?.trim() || "Select";
+    }
+
+    const [firstAllocation, ...remainingAllocations] = allocations;
+    const firstBatch = firstAllocation.batchNumber;
+
+    if (remainingAllocations.length === 0) return firstBatch;
+
+    return `${firstBatch} +${remainingAllocations.length} more`;
   }
 
   function formatMortalityBatchAllocationCell(allocations: MortalityBatchAllocation[]) {
@@ -1840,6 +1890,7 @@ export default function StickyTablePage() {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
+    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -1994,6 +2045,7 @@ export default function StickyTablePage() {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
+    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -2064,8 +2116,8 @@ export default function StickyTablePage() {
         id: savedLine?.id ?? null,
         age: row.age,
         values: computedValuesForSave[rowIndex],
-        feedIntakeLocked: Boolean(savedLine) && !allowAdvancePosting,
-        mortalityThinningLocked: Boolean(savedMortalityLineByRowIndex[rowIndex]) && !allowAdvancePosting,
+        feedIntakeLocked: Boolean(savedLine),
+        mortalityThinningLocked: Boolean(savedMortalityLineByRowIndex[rowIndex]),
         mortalityAllocations: mortalityBatchAllocationsForSave.map((allocation, allocationIndex) => ({
           lineNo: allocationIndex + 1,
           itemCode: allocation.itemCode,
@@ -2115,6 +2167,12 @@ export default function StickyTablePage() {
 
     if (!selectedWarehouseCode) {
       toast("Please select a farm with a default feed warehouse.");
+      return;
+    }
+
+    const hasMortalityOrThinning = gridValues.some(row => getMortalityThinningTotal(row) > 0);
+    if (hasMortalityOrThinning && !getDefaultDisposalWarehouseCode(selectedFarm)) {
+      toast("Please configure the farm's default Disposal warehouse before saving mortality or thinning.");
       return;
     }
 
@@ -2590,6 +2648,19 @@ export default function StickyTablePage() {
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
                   <Help />
+                  {devMode ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="default"
+                      onClick={handlePopulateSampleData}
+                      disabled={currentFlockAge == null}
+                      title="Populate blank cells with development sample data through the current flock age"
+                    >
+                      <WandSparkles className="size-4" />
+                      Populate sample data
+                    </Button>
+                  ) : null}
                   <div className="min-w-[120px] text-xs text-muted-foreground" aria-live="polite">
                     {saveStatusLabel}
                   </div>
@@ -2626,22 +2697,24 @@ export default function StickyTablePage() {
                   </div>
                 </div>
 
-                <label className="w-[160px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <span className="text-xs font-medium text-muted-foreground">Animals</span>
-                  <Input
-                    value={numberOfAnimals}
-                    onChange={(event) =>
-                      setNumberOfAnimals(Number(event.target.value))
-                    }
-                    aria-label="Number of animals"
-                    className="h-6 border-0 bg-transparent p-0 text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
-                  />
-                </label>
+                <div className="grid w-[328px] min-w-0 grid-cols-2 divide-x rounded-md border bg-slate-50 dark:bg-background/40">
+                  <label className="min-w-0 px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">Total birds</span>
+                    <Input
+                      value={numberOfAnimals}
+                      onChange={(event) =>
+                        setNumberOfAnimals(Number(event.target.value))
+                      }
+                      aria-label="Total birds"
+                      className="h-6 border-0 bg-transparent p-0 text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
+                    />
+                  </label>
 
-                <div className="w-[160px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Live animals</div>
-                  <div className="text-base font-semibold tabular-nums text-foreground">
-                    {liveAnimalMetricLabel}
+                  <div className="min-w-0 px-3 py-2">
+                    <div className="text-xs font-medium text-muted-foreground">Live birds</div>
+                    <div className="truncate text-base font-semibold tabular-nums text-foreground">
+                      {liveAnimalMetricLabel}
+                    </div>
                   </div>
                 </div>
 
@@ -2672,13 +2745,6 @@ export default function StickyTablePage() {
                   ) : null}
                 </button>
 
-                <div className="w-[140px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Feed batches</div>
-                  <div className="text-sm font-semibold tabular-nums text-foreground">
-                    {feedBatchMetricLabel}
-                  </div>
-                </div>
-
                 <div className="w-[190px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Auto feed selection</div>
                   <div className="truncate text-sm font-semibold text-foreground">
@@ -2693,17 +2759,6 @@ export default function StickyTablePage() {
                   </div>
                 </div>
 
-                <div className="w-[190px] min-w-0 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Mortality batches</div>
-                  <div className="truncate text-sm font-semibold text-foreground">
-                    {mortalityBatchMetricLabel}
-                  </div>
-                  {mortalityBatchError ? (
-                    <div className="mt-1 truncate text-xs text-amber-700 dark:text-amber-400">
-                      {mortalityBatchError}
-                    </div>
-                  ) : null}
-                </div>
               </div>
 
               <Button
@@ -2734,6 +2789,19 @@ export default function StickyTablePage() {
                 {saveStatusLabel}
               </div>
               <Help />
+              {devMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePopulateSampleData}
+                  disabled={currentFlockAge == null}
+                  title="Populate blank cells with development sample data through the current flock age"
+                >
+                  <WandSparkles className="size-4" />
+                  Sample data
+                </Button>
+              ) : null}
               <FlockCardExportMenu
                 farmLabel={selectedFarmLabel}
                 buildingLabel={selectedBuildingLabel}
@@ -3678,7 +3746,7 @@ export default function StickyTablePage() {
                       </DropdownMenu>
                     </TableCell>
 
-                    {columnIndexes.map((colIndex) => {
+                    {visibleColumnIndexes.map((colIndex) => {
                       const feedIntakeCellLocked = feedIntakeLocked && feedIntakeColumnIndexes.has(colIndex);
                       const mortalityThinningCellLocked =
                         mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex].includes(colIndex);
@@ -3767,7 +3835,7 @@ export default function StickyTablePage() {
                                 }
                               >
                                 <span className="min-w-0 break-words">
-                                  {gridValues[rowIndex]?.[feedBatchColumnIndex]?.trim() || "Select"}
+                                  {formatFeedBatchAllocationDisplay(rowIndex)}
                                 </span>
                                 <MousePointerClick className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
                               </button>
@@ -3826,12 +3894,12 @@ export default function StickyTablePage() {
                   Total
                 </TableCell>
 
-                {columnTotals.map((total, colIndex) => (
+                {visibleColumnIndexes.map((colIndex) => (
                   <TableCell
                     key={colIndex}
                     className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${footerBorderClasses[colIndex]}`}
                   >
-                    {total}
+                    {columnTotals[colIndex]}
                   </TableCell>
                 ))}
               </TableRow>

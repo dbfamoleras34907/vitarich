@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
+  ChevronDown,
   Hash,
   List,
   Loader2,
@@ -27,14 +28,21 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { FormTable } from '@/components/ui/form-table'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
+import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
@@ -55,6 +63,7 @@ import {
   getGoodsReceiptReferences,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
+  GoodsReceiptOpenFlockBuilding,
   UomConversionOption,
   UomGroupOption,
 } from './api'
@@ -66,6 +75,17 @@ import {
   BatchTransactionTrail,
   getBatchTransactionTrail,
 } from '../../btch/api'
+import {
+  getFarmBuildingsForFlockCard,
+  type FarmBuildingListRow,
+} from '@/app/brd/fc/api'
+import {
+  getNextFlockCardCycleCount,
+  saveFlockCardPlacement,
+} from '@/app/brd/fc/[buildingId]/add-flock/api'
+import CycleInformationModal, {
+  type CycleInformationForm,
+} from './CycleInformationModal'
 
 const FMS_TYPE_OPTIONS = [
   { value: 'broiler', label: 'Broiler' },
@@ -75,18 +95,48 @@ const FMS_TYPE_OPTIONS = [
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Receive Date' },
-  { code: 'mnf_date', name: 'MNF Date' },
+  { code: 'receive_time', name: 'Receive Time' },
+  { code: 'mnf_date', name: 'Production Date' },
+  { code: 'building', name: 'Building' },
   { code: 'transfer_slip', name: 'Transfer Slip' },
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
-  { code: 'actual_received', name: 'Actual Received' },
-  { code: 'short_count', name: 'Short Count' },
-  { code: 'short_count_remarks', name: 'Short Count Remarks' },
   { code: 'doa_quantity', name: 'DOA Count' },
-  { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
   { code: 'reject_count', name: 'Reject Count' },
+  { code: 'short_count', name: 'Short Count' },
+  { code: 'actual_received', name: 'Actual Received' },
+  { code: 'short_count_remarks', name: 'Short Count Remarks' },
+  { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
   { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
 ]
+
+const DOC_RECEIVING_MODAL_GROUPS = [
+  {
+    key: 'receiving',
+    codes: ['receive_date', 'receive_time', 'mnf_date', 'building', 'transfer_slip'],
+  },
+  {
+    key: 'quantities',
+    codes: [
+      'average_doc_weight',
+      'quantity_received',
+      'doa_quantity',
+      'reject_count',
+      'short_count',
+      'actual_received',
+    ],
+  },
+  {
+    key: 'remarks',
+    codes: ['short_count_remarks', 'doa_count_remarks', 'reject_count_remarks'],
+  },
+].map(group => ({
+  ...group,
+  columns: group.codes.flatMap(code => {
+    const column = DOC_RECEIVING_DETAIL_COLUMNS.find(candidate => candidate.code === code)
+    return column ? [column] : []
+  }),
+}))
 
 const DOC_RECEIVING_NUMERIC_DETAIL_CODES = new Set([
   'average_doc_weight',
@@ -102,18 +152,38 @@ const DOC_RECEIVING_DATE_DETAIL_CODES = new Set([
   'mnf_date',
 ])
 
-const DOC_RECEIVING_BATCH_REFERENCE_COLUMNS = [
-  { code: 'transfer_slip', name: 'Transfer Slip' },
-]
+const DOC_RECEIVING_DETAIL_UNITS: Record<string, string> = {
+  average_doc_weight: 'in Grams',
+  quantity_received: 'in PC',
+  doa_quantity: 'in PC',
+  reject_count: 'in PC',
+  short_count: 'in PC',
+  actual_received: 'in PC',
+}
+
+const DOC_RECEIVING_ALIGNED_HEADER_CODES = new Set([
+  'receive_date',
+  'receive_time',
+  'mnf_date',
+  'building',
+  'transfer_slip',
+  'short_count_remarks',
+  'doa_count_remarks',
+  'reject_count_remarks',
+])
 
 type DocDetailRow = GoodsReceiptDocLine & {
   id: number | string
   receive_date: string
+  receive_time: string
   mnf_date: string
+  building_warehouse_id: number | null
+  flock_card_id: number | null
   transfer_slip: string
   average_doc_weight: string
   quantity_received: string
   actual_received: string
+  short_count: string
   short_count_remarks: string
   doa_quantity: string
   doa_count_remarks: string
@@ -128,31 +198,62 @@ type DerivedGoodsReceiptLine = GoodsReceiptLine & {
   docBatchReferenceColumn?: string
 }
 
+const createClientId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
 const defaultNumericDetailValue = (value: string | number | null | undefined) => {
   const text = String(value ?? '').trim()
   return text === '' ? '0' : text
 }
 
+const calculateActualReceived = (row: Partial<DocDetailRow>) => Math.max(
+  numberValue(String(row.quantity_received ?? '')) -
+  numberValue(String(row.doa_quantity ?? '')) -
+  numberValue(String(row.reject_count ?? '')) -
+  numberValue(String(row.short_count ?? '')),
+  0,
+)
+
 const normalizeDocDetailRow = (
   row: Partial<DocDetailRow>,
   receiveDate = '',
-): DocDetailRow => ({
-  id: row.id ?? crypto.randomUUID(),
-  receive_date: row.receive_date || receiveDate,
-  mnf_date: row.mnf_date ?? '',
-  transfer_slip: row.transfer_slip ?? '',
-  average_doc_weight: defaultNumericDetailValue(row.average_doc_weight),
-  quantity_received: defaultNumericDetailValue(row.quantity_received),
-  actual_received: defaultNumericDetailValue(row.actual_received),
-  short_count_remarks: row.short_count_remarks ?? '',
-  doa_quantity: defaultNumericDetailValue(row.doa_quantity),
-  doa_count_remarks: row.doa_count_remarks ?? '',
-  reject_count: defaultNumericDetailValue(row.reject_count),
-  reject_count_remarks: row.reject_count_remarks ?? '',
-})
+): DocDetailRow => {
+  const shortCount = row.short_count ?? Math.max(
+    numberValue(String(row.quantity_received ?? '')) -
+    numberValue(String(row.actual_received ?? '')) -
+    numberValue(String(row.doa_quantity ?? '')) -
+    numberValue(String(row.reject_count ?? '')),
+    0,
+  )
+  const normalized = {
+    id: row.id ?? createClientId(),
+    receive_date: row.receive_date || receiveDate,
+    receive_time: row.receive_time ?? '',
+    mnf_date: row.mnf_date ?? '',
+    building_warehouse_id: row.building_warehouse_id ?? null,
+    flock_card_id: row.flock_card_id ?? null,
+    transfer_slip: row.transfer_slip ?? '',
+    average_doc_weight: defaultNumericDetailValue(row.average_doc_weight),
+    quantity_received: defaultNumericDetailValue(row.quantity_received),
+    actual_received: defaultNumericDetailValue(row.actual_received),
+    short_count: defaultNumericDetailValue(shortCount),
+    short_count_remarks: row.short_count_remarks ?? '',
+    doa_quantity: defaultNumericDetailValue(row.doa_quantity),
+    doa_count_remarks: row.doa_count_remarks ?? '',
+    reject_count: defaultNumericDetailValue(row.reject_count),
+    reject_count_remarks: row.reject_count_remarks ?? '',
+  }
 
-const newDocDetailRow = (receiveDate = ''): DocDetailRow =>
-  normalizeDocDetailRow({ receive_date: receiveDate }, receiveDate)
+  return {
+    ...normalized,
+    actual_received: String(calculateActualReceived(normalized)),
+  }
+}
 
 const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
   BE: 'breeder',
@@ -169,8 +270,26 @@ const today = () => {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
 }
 
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+
+const isFutureReceivingDate = (value: string) => Boolean(value) && value > today()
+
+const calculateCycleRange = (startDate: string, asOfDate: string) => {
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${asOfDate}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86_400_000))
+}
+
+const emptyCycleForm = (): CycleInformationForm => ({
+  startDate: '',
+  asOfDate: '',
+  breed: '',
+  cycleNumber: '1',
+})
+
 const newLine = (): GoodsReceiptLine => ({
-  id: crypto.randomUUID(),
+  id: createClientId(),
   itemId: null,
   itemCode: '',
   description: '',
@@ -201,7 +320,7 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   defaultWarehouseId: null,
   status: 'Draft',
   lines: Array.from({ length: 1 }, newLine),
-  docDetails: [newDocDetailRow()],
+  docDetails: [],
   createdAt: new Date().toISOString(),
 })
 
@@ -212,12 +331,12 @@ const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => (
   status: 'Draft',
   lines: source.lines.map(line => ({
     ...line,
-    id: crypto.randomUUID(),
+    id: createClientId(),
     returnedQty: 0,
   })),
   docDetails: source.docDetails.map(row => normalizeDocDetailRow({
     ...row,
-    id: crypto.randomUUID(),
+    id: createClientId(),
   }, source.receiveDate)),
   createdAt: new Date().toISOString(),
 })
@@ -297,60 +416,36 @@ const addMonthsToDate = (dateValue: string, months: number) => {
   return `${nextYear}-${nextMonth}-${nextDay}`
 }
 
-const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => {
-  if (typeof warehouse === 'string') return warehouse.trim()
-  return String(warehouse.whse_code ?? '').trim()
-}
-
-const isDefaultReceivingAssociation = (warehouse: AssociatedWarehouse | string) =>
-  typeof warehouse === 'object' && (
-    Boolean(warehouse?.is_default_receiving) ||
-    Boolean(warehouse?.is_default_receiving_warehouse)
-  )
-
-const isWarehouseType = (warehouse: WarehouseData) =>
-  String(warehouse.warehouse_type ?? '').trim().toLowerCase() === 'warehouse'
-
 const getFarmFmsType = (farm: GoodsReceiptFarm | undefined | null) =>
   FARM_TYPE_TO_FMS_TYPE[String(farm?.farm_type ?? '').trim().toUpperCase()] ?? ''
 
-const getWarehouseFmsType = (warehouse: WarehouseData | undefined | null) =>
-  FARM_TYPE_TO_FMS_TYPE[String(warehouse?.fms_type ?? '').trim().toUpperCase()] ?? ''
+const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) =>
+  typeof warehouse === 'string'
+    ? warehouse.trim()
+    : String(warehouse.whse_code ?? '').trim()
 
-const getWarehousesForFarm = (farm: GoodsReceiptFarm | undefined | null, warehouseList: WarehouseData[]) => {
-  const associations = farm?.associated_warehouses
-  if (!Array.isArray(associations)) return []
-
-  const allowedCodes = new Set(
-    associations
-      .map(getAssociatedWarehouseCode)
-      .filter(Boolean)
+const isDefaultDisposalAssociation = (warehouse: AssociatedWarehouse | string) =>
+  typeof warehouse === 'object' && (
+    Boolean(warehouse.is_default_disposal) ||
+    Boolean(warehouse.is_default_disposal_warehouse)
   )
 
-  return warehouseList.filter(warehouse =>
-    allowedCodes.has(String(warehouse.whse_code ?? '').trim()) &&
-    isWarehouseType(warehouse)
-  )
+const getBuildingCodeIdentity = (value: string | null | undefined) => {
+  const digits = String(value ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  return digits || ''
 }
 
-const getDefaultReceivingWarehouse = (
-  farm: GoodsReceiptFarm | undefined | null,
-  farmWarehouseList: WarehouseData[],
-) => {
-  const associations = farm?.associated_warehouses
-  const defaultAssociationCode = Array.isArray(associations)
-    ? associations.find(isDefaultReceivingAssociation)
-    : null
-  const defaultCode = defaultAssociationCode
-    ? getAssociatedWarehouseCode(defaultAssociationCode)
-    : ''
-
-  const defaultWarehouse = farmWarehouseList.find(warehouse =>
-    defaultCode && String(warehouse.whse_code ?? '').trim() === defaultCode
-  ) ?? farmWarehouseList.find(warehouse => Boolean(warehouse.is_default_receiving_warehouse)) ?? null
-
-  return defaultWarehouse ?? (farmWarehouseList.length === 1 ? farmWarehouseList[0] : null)
+const currentTime = () => {
+  const date = new Date()
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
+
+const newDocDetailRow = (receiveDate = ''): DocDetailRow =>
+  normalizeDocDetailRow({
+    receive_date: receiveDate,
+    receive_time: currentTime(),
+    mnf_date: today(),
+  }, receiveDate)
 
 const getItemFmsType = (item: Items) =>
   String(item.fms_group ?? '').trim().toLowerCase()
@@ -368,6 +463,7 @@ const hasDocDetailValues = (rows: DocDetailRow[]) =>
     row.mnf_date ||
     numberValue(row.quantity_received) > 0 ||
     numberValue(row.actual_received) > 0 ||
+    numberValue(row.short_count) > 0 ||
     numberValue(row.doa_quantity) > 0 ||
     numberValue(row.reject_count) > 0
   )
@@ -405,7 +501,7 @@ function GoodsReceiveLoadingShell() {
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+        <div className="grid gap-y-3 p-5">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
               <div className="h-4 w-20 rounded bg-stone-200" />
@@ -442,6 +538,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
+  const canInsert = usePermission('/inv/doc-receiving/insert')
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
@@ -449,6 +546,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
+  const [farmBuildings, setFarmBuildings] = useState<FarmBuildingListRow[]>([])
+  const [buildingRefreshKey, setBuildingRefreshKey] = useState(0)
   const [uomGroups, setUomGroups] = useState<UomGroupOption[]>([])
   const [conversions, setConversions] = useState<UomConversionOption[]>([])
   const [itemGroups, setItemGroups] = useState<GoodsReceiptItemGroup[]>([])
@@ -460,9 +559,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
-  const [docDetailRows, setDocDetailRows] = useState(() => [newDocDetailRow()])
-  const [separateBatchByReference, setSeparateBatchByReference] = useState(true)
-  const [batchReferenceColumn, setBatchReferenceColumn] = useState('transfer_slip')
+  const [docDetailRows, setDocDetailRows] = useState<DocDetailRow[]>([])
+  const [forceDocDetailsModal, setForceDocDetailsModal] = useState(false)
+  const [docDetailsModalOpen, setDocDetailsModalOpen] = useState(false)
+  const [modalDocDetailRow, setModalDocDetailRow] = useState<DocDetailRow | null>(null)
+  const [cycleModalOpen, setCycleModalOpen] = useState(false)
+  const [cycleBuilding, setCycleBuilding] = useState<FarmBuildingListRow | null>(null)
+  const [cycleTarget, setCycleTarget] = useState<{ kind: 'row'; rowId: number | string } | { kind: 'modal' } | null>(null)
+  const [cycleForm, setCycleForm] = useState<CycleInformationForm>(emptyCycleForm)
+  const [savingCycle, setSavingCycle] = useState(false)
+  const separateBatchByReference = true
+  const batchReferenceColumn = 'transfer_slip'
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -471,6 +578,46 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [setCollapsed])
 
   useEffect(() => {
+    const farmId = Number(receipt?.farmId ?? 0)
+    if (!farmId) {
+      setFarmBuildings([])
+      return
+    }
+
+    let cancelled = false
+    getFarmBuildingsForFlockCard(farmId)
+      .then(rows => {
+        if (!cancelled) setFarmBuildings(rows.filter(row => row.source === 'WAREHOUSE'))
+      })
+      .catch(error => {
+        if (!cancelled) toast.error(`Unable to load farm buildings: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [buildingRefreshKey, receipt?.farmId])
+
+  useEffect(() => {
+    const updateForWidth = () => {
+      const isTabletWidth = window.innerWidth <= 1024
+      setForceDocDetailsModal(isTabletWidth)
+    }
+
+    updateForWidth()
+    window.addEventListener('resize', updateForWidth)
+    return () => window.removeEventListener('resize', updateForWidth)
+  }, [])
+
+  useEffect(() => {
+    if (!isPostMode && canInsert) {
+      router.replace('/inv/doc-receiving')
+    }
+  }, [canInsert, isPostMode, router])
+
+  useEffect(() => {
+    if (!isPostMode && canInsert) return
+
     let cancelled = false
 
     async function loadPageData() {
@@ -491,7 +638,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         )
         const canUseCachedReferences = cachedItems.length > 0 &&
           cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
+          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups && cachedGrReferences.openFlockBuildings) &&
           cachedReferencesHaveFarmMetadata
 
         const referencesPromise = canUseCachedReferences
@@ -499,6 +646,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               items: cachedItems,
               warehouses: cachedWarehouses,
               farms: cachedGrReferences?.farms ?? [],
+              openFlockBuildings: cachedGrReferences?.openFlockBuildings ?? [],
               uomGroups: cachedGrReferences?.uomGroups ?? [],
               conversions: cachedGrReferences?.conversions ?? [],
               itemGroups: cachedGrReferences?.itemGroups ?? [],
@@ -527,7 +675,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         setReceipt(nextReceipt)
         setDocDetailRows(nextReceipt.docDetails.length > 0
           ? nextReceipt.docDetails.map(row => normalizeDocDetailRow(row, nextReceipt.receiveDate))
-          : [newDocDetailRow(nextReceipt.receiveDate)])
+          : [])
         setItems(references.items)
         setWarehouses(references.warehouses)
         setFarms(references.farms)
@@ -550,17 +698,64 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [duplicateId, getValue, isPostMode, receiptId, router])
+  }, [canInsert, duplicateId, getValue, isPostMode, receiptId, router])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === receipt?.farmId),
     [farms, receipt?.farmId],
   )
 
-  const farmWarehouses = useMemo(
-    () => getWarehousesForFarm(selectedFarm, warehouses),
-    [selectedFarm, warehouses],
-  )
+  const farmOpenFlockBuildings = useMemo(() => {
+    const selectableBuildings = farmBuildings.filter(building => Number(building.id ?? 0) > 0)
+    const resolvedBuildings = selectableBuildings.flatMap(building => {
+      const codeIdentity = getBuildingCodeIdentity(building.code)
+      const cycleSource = building.flockCard
+        ? building
+        : farmBuildings.find(candidate =>
+            Boolean(candidate.flockCard) &&
+            codeIdentity !== '' &&
+            getBuildingCodeIdentity(candidate.code) === codeIdentity
+          )
+      const flockCard = cycleSource?.flockCard
+      const warehouseId = Number(building.id ?? 0)
+      if (!flockCard || !warehouseId) return []
+
+      return [{
+        flockCardId: flockCard.id,
+        farmId: building.farmId,
+        warehouseId,
+        warehouseCode: building.warehouseCode || building.code,
+        warehouseName: building.name,
+        cardNo: flockCard.cardNo,
+        flockCode: flockCard.flockCode,
+        cycleAge: flockCard.age,
+      } satisfies GoodsReceiptOpenFlockBuilding]
+    })
+    return resolvedBuildings
+  }, [farmBuildings])
+
+  const selectableFarmBuildings = useMemo(() => farmBuildings.map(building => {
+    const activeCycle = farmOpenFlockBuildings.find(candidate => candidate.warehouseId === building.id)
+    return { building, activeCycle }
+  }).filter(entry => Number(entry.building.id ?? 0) > 0), [farmBuildings, farmOpenFlockBuildings])
+
+  const defaultDisposalWarehouse = useMemo(() => {
+    const associations = selectedFarm?.associated_warehouses
+    const defaultCode = Array.isArray(associations)
+      ? getAssociatedWarehouseCode(associations.find(isDefaultDisposalAssociation) ?? '')
+      : ''
+
+    return warehouses.find(warehouse =>
+      defaultCode &&
+      String(warehouse.whse_code ?? '').trim() === defaultCode
+    ) ?? warehouses.find(warehouse =>
+      Boolean(warehouse.is_default_disposal_warehouse) &&
+      (
+        warehouse.farm_id === selectedFarm?.id ||
+        String(warehouse.farm_code ?? '').trim() === String(selectedFarm?.code ?? '').trim()
+      )
+    ) ?? null
+  }, [selectedFarm, warehouses])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -604,9 +799,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const derivedReceiptLines = useMemo(() => {
     if (!receipt || !hasDocReceivingSettings(docReceivingSettings)) return []
 
-    const defaultWarehouse = receipt.defaultWarehouseId == null
-      ? null
-      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
     const existingLineByKey = new Map<string, DerivedGoodsReceiptLine>()
 
     receipt.lines.forEach(line => {
@@ -618,7 +810,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const referenceKey = separateBatchByReference
         ? derivedLine.docBatchReferenceKey || derivedLine.docBatchReference || ''
         : ''
-      existingLineByKey.set(`${line.itemId}|${line.manufacturingDate}|${referenceKey}`, derivedLine)
+      existingLineByKey.set(
+        `${line.itemId}|${line.manufacturingDate}|${referenceKey}|${line.warehouseId ?? ''}`,
+        derivedLine,
+      )
     })
 
     const quantities = new Map<string, {
@@ -627,6 +822,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       referenceValue: string
       referenceKey: string
       quantity: number
+      buildingWarehouseId: number | null
+      docLineNo: number
     }>()
 
     const addQuantity = (
@@ -635,13 +832,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       referenceValue: string,
       sourceRowId: number | string,
       quantity: number,
+      buildingWarehouseId: number | null,
+      docLineNo: number,
     ) => {
       if (!itemId || !manufacturingDate || quantity <= 0) return
 
       const referenceKey = separateBatchByReference
         ? `${referenceValue || 'NO_REFERENCE'}|${String(sourceRowId)}`
         : ''
-      const key = `${itemId}|${manufacturingDate}|${referenceKey}`
+      const key = `${itemId}|${manufacturingDate}|${referenceKey}|${buildingWarehouseId ?? ''}`
       const current = quantities.get(key)
       quantities.set(key, {
         itemId,
@@ -649,23 +848,25 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         referenceValue,
         referenceKey,
         quantity: (current?.quantity ?? 0) + quantity,
+        buildingWarehouseId,
+        docLineNo,
       })
     }
 
-    docDetailRows.forEach(row => {
+    docDetailRows.forEach((row, index) => {
       const manufacturingDate = row.mnf_date
       const referenceValue = getDocDetailReferenceValue(row, batchReferenceColumn) || String(row.id)
       const actualReceived = numberValue(row.actual_received)
       const daoQuantity = numberValue(row.doa_quantity)
       const rejectCount = numberValue(row.reject_count)
-      const goodQuantity = actualReceived - (daoQuantity + rejectCount)
+      const goodQuantity = actualReceived
 
-      addQuantity(docReceivingSettings.good_doc, manufacturingDate, referenceValue, row.id, goodQuantity)
-      addQuantity(docReceivingSettings.bad_doc, manufacturingDate, referenceValue, row.id, daoQuantity)
-      addQuantity(docReceivingSettings.reject_doc, manufacturingDate, referenceValue, row.id, rejectCount)
+      addQuantity(docReceivingSettings.good_doc, manufacturingDate, referenceValue, row.id, goodQuantity, row.building_warehouse_id, index + 1)
+      addQuantity(docReceivingSettings.bad_doc, manufacturingDate, referenceValue, row.id, daoQuantity, row.building_warehouse_id, index + 1)
+      addQuantity(docReceivingSettings.reject_doc, manufacturingDate, referenceValue, row.id, rejectCount, row.building_warehouse_id, index + 1)
     })
 
-    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, referenceValue, referenceKey, quantity }) => {
+    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, referenceValue, referenceKey, quantity, buildingWarehouseId, docLineNo }) => {
       const item = itemById.get(itemId)
       if (!item) return []
 
@@ -684,13 +885,28 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const baseQty = selectedGroupCode && uom
         ? quantity * (conversion?.baseQty ?? 0)
         : 0
-      const existingLine = existingLineByKey.get(`${itemId}|${manufacturingDate}|${referenceKey}`)
+      const rowBuilding = farmOpenFlockBuildings.find(
+        building => building.warehouseId === buildingWarehouseId,
+      )
+      const isGoodDoc = itemId === docReceivingSettings.good_doc
+      const destination = isGoodDoc
+        ? rowBuilding
+          ? {
+              id: rowBuilding.warehouseId,
+              whse_code: rowBuilding.warehouseCode,
+              whse_name: rowBuilding.warehouseName,
+            }
+          : null
+        : defaultDisposalWarehouse
+      const existingLine = existingLineByKey.get(
+        `${itemId}|${manufacturingDate}|${referenceKey}|${destination?.id ?? ''}`,
+      )
       const expiryDate = typeof item.default_expiration_months === 'number'
         ? addMonthsToDate(manufacturingDate, item.default_expiration_months)
         : ''
 
       return [{
-        id: existingLine?.id ?? crypto.randomUUID(),
+        id: existingLine?.id ?? createClientId(),
         itemId,
         itemCode: item.item_code || '',
         description: getItemDescription(item),
@@ -703,17 +919,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         altUom: uom,
         baseQty,
         baseUom: selectedGroupCode,
-        warehouseId: defaultWarehouse?.id ?? null,
-        warehouseCode: defaultWarehouse?.whse_code ?? '',
-        warehouseName: defaultWarehouse?.whse_name ?? '',
+        warehouseId: destination?.id ?? null,
+        warehouseCode: destination?.whse_code ?? '',
+        warehouseName: destination?.whse_name ?? '',
         returnedQty: existingLine?.returnedQty ?? 0,
+        docLineNo,
         docBatchSeparated: separateBatchByReference,
         docBatchReference: referenceValue,
         docBatchReferenceKey: referenceKey,
         docBatchReferenceColumn: separateBatchByReference ? batchReferenceColumn : '',
       }]
     })
-  }, [batchReferenceColumn, conversions, docDetailRows, docReceivingSettings, farmWarehouses, itemById, receipt, separateBatchByReference, uomGroups])
+  }, [batchReferenceColumn, conversions, defaultDisposalWarehouse, docDetailRows, docReceivingSettings, farmOpenFlockBuildings, itemById, receipt, separateBatchByReference, uomGroups])
 
   const shouldDeriveReceiptLines = Boolean(
     receipt &&
@@ -721,10 +938,39 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     (!receipt.id || hasDocDetailValues(docDetailRows)),
   )
   const displayReceiptLines = shouldDeriveReceiptLines ? derivedReceiptLines : receipt?.lines ?? []
-  const displayTotalQuantity = displayReceiptLines.reduce(
-    (total, line) => total + Number(line.baseQty || 0),
+  const displayTotalQuantity = docDetailRows.reduce(
+    (total, row) => total + numberValue(row.quantity_received),
     0,
   )
+  const displayGoodChickQuantity = displayReceiptLines
+    .filter(line => line.itemId === docReceivingSettings?.good_doc)
+    .reduce(
+      (total, line) => total + Number(line.baseQty || 0),
+      0,
+    )
+  const receivingSummary = [
+    {
+      key: 'good',
+      label: 'Good Chick',
+      itemId: docReceivingSettings?.good_doc,
+    },
+    {
+      key: 'doa',
+      label: 'DOA',
+      itemId: docReceivingSettings?.bad_doc,
+    },
+    {
+      key: 'reject',
+      label: 'Reject',
+      itemId: docReceivingSettings?.reject_doc,
+    },
+  ].map(group => {
+    const lines = displayReceiptLines.filter(line => line.itemId === group.itemId)
+    return {
+      ...group,
+      quantity: lines.reduce((total, line) => total + Number(line.baseQty || 0), 0),
+    }
+  })
 
   useEffect(() => {
     if (!receipt || !shouldDeriveReceiptLines) return
@@ -765,55 +1011,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   useEffect(() => {
     if (loadingReferences || !receipt?.farmId) return
 
-    const allowedCodes = new Set(
-      farmWarehouses.map(warehouse => String(warehouse.whse_code ?? '').trim())
-    )
-    const currentDefaultWarehouse = receipt.defaultWarehouseId == null
-      ? null
-      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
-    const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
-    const nextDefaultWarehouse = defaultWarehouse ?? currentDefaultWarehouse
-    const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
-    const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
-
-    const nextLines = receipt.lines.map(line => {
-      if (line.warehouseCode && allowedCodes.has(line.warehouseCode)) return line
-      if (!line.warehouseCode && !nextDefaultWarehouse) return line
-
-      return {
-        ...line,
-        warehouseId: nextDefaultWarehouse?.id ?? null,
-        warehouseCode: nextDefaultWarehouse?.whse_code ?? '',
-        warehouseName: nextDefaultWarehouse?.whse_name ?? '',
-      }
-    })
-
-    const linesChanged = nextLines.some((line, index) => line !== receipt.lines[index])
-    const defaultWarehouseChanged = receipt.defaultWarehouseId !== nextDefaultWarehouseId
+    const nextFmsType = getFarmFmsType(selectedFarm)
     const fmsTypeChanged = Boolean(nextFmsType) && receipt.fmsType !== nextFmsType
 
-    if (!defaultWarehouseChanged && !fmsTypeChanged && !linesChanged) return
+    if (!fmsTypeChanged) return
 
     setReceipt(current => current ? {
       ...current,
       fmsType: nextFmsType || current.fmsType,
-      defaultWarehouseId: nextDefaultWarehouseId,
-      lines: nextLines,
     } : current)
-  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.fmsType, receipt?.lines, selectedFarm])
+  }, [loadingReferences, receipt?.farmId, receipt?.fmsType, selectedFarm])
 
   useEffect(() => {
     if (loadingReferences || receipt?.farmId || farms.length !== 1) return
 
     const [farm] = farms
-    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
-    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
-    const allowedCodes = new Set(
-      (farm.associated_warehouses ?? [])
-        .map(getAssociatedWarehouseCode)
-        .filter(Boolean)
-    )
-
     setReceipt(current => {
       if (!current || current.farmId) return current
 
@@ -822,21 +1034,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         farmId: farm.id,
         farmCode: farm.code,
         farmName: farm.name ?? '',
-        fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
-        defaultWarehouseId: defaultWarehouse?.id ?? null,
-        lines: current.lines.map(line =>
-          allowedCodes.has(line.warehouseCode)
-            ? line
-            : {
-              ...line,
-              warehouseId: defaultWarehouse?.id ?? null,
-              warehouseCode: defaultWarehouse?.whse_code ?? '',
-              warehouseName: defaultWarehouse?.whse_name ?? '',
-            }
-        ),
+        fmsType: getFarmFmsType(farm),
+        defaultWarehouseId: null,
       }
     })
-  }, [farms, loadingReferences, receipt?.farmId, warehouses])
+  }, [farms, loadingReferences, receipt?.farmId])
 
   useEffect(() => {
     if (shouldDeriveReceiptLines) return
@@ -976,14 +1178,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   if (!receipt) return <GoodsReceiveLoadingShell />
 
   const canEditDraft = receipt.status === 'Draft'
-  const canPostDocument = isPostMode && receipt.status === 'Draft'
+  const canPostDocument = receipt.status === 'Draft'
   const canEditDocDetails = receipt.status !== 'Posted'
-
-  const toggleSeparateBatchByReference = (checked: boolean) => {
-    setSeparateBatchByReference(checked)
-    setBatchMatches({})
-    setActiveBatchLineId(null)
-  }
 
   const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
     setReceipt(current => current
@@ -998,10 +1194,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     setDocDetailRows(current => current.map(row => {
       if (row.id !== rowId) return row
 
-      return {
+      const nextRow = {
         ...row,
         [code]: value,
       }
+
+      return DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(code) && code !== 'actual_received'
+        ? { ...nextRow, actual_received: String(calculateActualReceived(nextRow)) }
+        : nextRow
     }))
 
     if (code === 'receive_date') {
@@ -1013,17 +1213,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     if (!canEditDocDetails) return
 
     setDocDetailRows(current => {
-      const nextRows = current.filter(row => row.id !== rowId)
-      return nextRows.length > 0 ? nextRows : [newDocDetailRow(receipt.receiveDate)]
+      return current.filter(row => row.id !== rowId)
     })
   }
 
   const getDocDetailValue = (row: DocDetailRow, code: string) => {
     if (code === 'receive_date') return row.receive_date || receipt.receiveDate
-    if (code === 'short_count') {
-      const shortCount = numberValue(row.quantity_received) - numberValue(row.actual_received)
-      return Number.isFinite(shortCount) ? String(shortCount) : ''
-    }
+    if (code === 'actual_received') return String(calculateActualReceived(row))
 
     return String(row[code as keyof DocDetailRow] ?? '')
   }
@@ -1300,60 +1496,227 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     })
   }
 
-  const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
-    const warehouse = farmWarehouses.find(candidate => candidate.whse_code === warehouseCode)
-    updateLine(lineId, {
-      warehouseId: warehouse?.id ?? null,
-      warehouseCode: warehouse?.whse_code ?? '',
-      warehouseName: warehouse?.whse_name ?? '',
-      batchRuleId: null,
+  const clearCycleTarget = () => {
+    if (cycleTarget?.kind === 'row') {
+      setDocDetailRows(current => current.map(row => row.id === cycleTarget.rowId ? {
+        ...row,
+        building_warehouse_id: null,
+        flock_card_id: null,
+      } : row))
+    } else if (cycleTarget?.kind === 'modal') {
+      setModalDocDetailRow(current => current ? {
+        ...current,
+        building_warehouse_id: null,
+        flock_card_id: null,
+      } : current)
+    }
+  }
+
+  const beginCycleCreation = async (
+    building: FarmBuildingListRow,
+    target: { kind: 'row'; rowId: number | string } | { kind: 'modal' },
+  ) => {
+    if (!receipt?.farmId) return
+    const nextForm = emptyCycleForm()
+    setCycleBuilding(building)
+    setCycleTarget(target)
+    setCycleForm(nextForm)
+    setCycleModalOpen(true)
+
+    try {
+      const cycleNumber = await getNextFlockCardCycleCount({
+        farmId: receipt.farmId,
+        buildingWarehouseId: building.id,
+        buildingKey: building.key,
+      })
+      setCycleForm(current => ({ ...current, cycleNumber }))
+    } catch (error) {
+      toast.error(`Unable to calculate Cycle Count: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const selectBuilding = (rowId: number | string, warehouseId: string) => {
+    const entry = selectableFarmBuildings.find(
+      candidate => candidate.building.id === Number(warehouseId),
+    )
+    const building = entry?.activeCycle
+    setDocDetailRows(current => current.map(row => row.id === rowId ? {
+      ...row,
+      building_warehouse_id: entry?.building.id ?? null,
+      flock_card_id: building?.flockCardId ?? null,
+    } : row))
+
+    if (entry && !building) {
+      void beginCycleCreation(entry.building, { kind: 'row', rowId })
+      return
+    }
+
+    if (building && building.cycleAge > 7) {
+      toast.error(
+        `${building.warehouseCode} has a flock-cycle age of ${building.cycleAge} days. DOC placement is only allowed through age 7.`,
+      )
+    }
+  }
+
+  const addDocDetailsUsingModal = () => {
+    setModalDocDetailRow(newDocDetailRow(receipt.receiveDate))
+    setDocDetailsModalOpen(true)
+  }
+
+  const handleAddDocDetailsRow = () => {
+    if (forceDocDetailsModal) {
+      addDocDetailsUsingModal()
+      return
+    }
+
+    setDocDetailRows(current => [...current, newDocDetailRow(receipt.receiveDate)])
+  }
+
+  const updateModalDocDetail = (code: string, value: string) => {
+    setModalDocDetailRow(current => {
+      if (!current) return current
+      const nextRow = { ...current, [code]: value }
+      return DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(code) && code !== 'actual_received'
+        ? { ...nextRow, actual_received: String(calculateActualReceived(nextRow)) }
+        : nextRow
     })
   }
 
-  const applyDefaultWarehouse = (warehouseId: string) => {
-    const id = warehouseId ? Number(warehouseId) : null
-    const warehouse = farmWarehouses.find(candidate => candidate.id === id)
-
-    setReceipt(current => current ? {
+  const selectModalBuilding = (warehouseId: string) => {
+    const entry = selectableFarmBuildings.find(
+      candidate => candidate.building.id === Number(warehouseId),
+    )
+    const building = entry?.activeCycle
+    setModalDocDetailRow(current => current ? {
       ...current,
-      defaultWarehouseId: id,
-      lines: current.lines.map(line => line.warehouseId ? line : {
-        ...line,
-        warehouseId: warehouse?.id ?? null,
-        warehouseCode: warehouse?.whse_code ?? '',
-        warehouseName: warehouse?.whse_name ?? '',
-      }),
+      building_warehouse_id: entry?.building.id ?? null,
+      flock_card_id: building?.flockCardId ?? null,
     } : current)
+
+    if (entry && !building) {
+      void beginCycleCreation(entry.building, { kind: 'modal' })
+      return
+    }
+
+    if (building && building.cycleAge > 7) {
+      toast.error(
+        `${building.warehouseCode} has a flock-cycle age of ${building.cycleAge} days. DOC placement is only allowed through age 7.`,
+      )
+    }
+  }
+
+  const createCycle = async () => {
+    if (!receipt?.farmId || !cycleBuilding || !cycleTarget) return
+    if (!cycleForm.startDate || !cycleForm.asOfDate || !cycleForm.breed.trim()) {
+      toast.error('Complete the Cycle Date range and Breed.')
+      return
+    }
+
+    const cycleAge = calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)
+    const targetRow = cycleTarget.kind === 'row'
+      ? docDetailRows.find(row => row.id === cycleTarget.rowId)
+      : modalDocDetailRow
+
+    setSavingCycle(true)
+    try {
+      const saved = await saveFlockCardPlacement({
+        farmId: receipt.farmId,
+        farmCode: receipt.farmCode,
+        farmName: receipt.farmName,
+        buildingWarehouseId: cycleBuilding.id,
+        buildingSource: cycleBuilding.source,
+        buildingKey: cycleBuilding.key,
+        buildingCode: cycleBuilding.code,
+        buildingName: cycleBuilding.name,
+        age: cycleAge,
+        startDate: cycleForm.startDate,
+        breed: cycleForm.breed,
+        cycleNumber: cycleForm.cycleNumber,
+        animalQty: calculateActualReceived(targetRow ?? {}),
+        extra: {
+          cycleAsOfDate: cycleForm.asOfDate,
+          createdFrom: 'DOC_RECEIVING',
+          goodsReceiptNo: receipt.grNo,
+        },
+      })
+
+      const createdBuilding: GoodsReceiptOpenFlockBuilding = {
+        flockCardId: saved.id,
+        farmId: receipt.farmId,
+        warehouseId: Number(cycleBuilding.id),
+        warehouseCode: cycleBuilding.code,
+        warehouseName: cycleBuilding.name,
+        cardNo: saved.cardNo,
+        flockCode: '',
+        cycleAge,
+      }
+      if (cycleTarget.kind === 'row') {
+        setDocDetailRows(current => current.map(row => row.id === cycleTarget.rowId ? {
+          ...row,
+          building_warehouse_id: createdBuilding.warehouseId,
+          flock_card_id: saved.id,
+        } : row))
+      } else {
+        setModalDocDetailRow(current => current ? {
+          ...current,
+          building_warehouse_id: createdBuilding.warehouseId,
+          flock_card_id: saved.id,
+        } : current)
+      }
+      setFarmBuildings(current => current.map(building =>
+        building.id === cycleBuilding.id
+          ? { ...building, flockCard: { id: saved.id, cardNo: saved.cardNo, age: cycleAge, startDate: cycleForm.startDate, flockCode: '', breed: cycleForm.breed, animalQty: calculateActualReceived(targetRow ?? {}), status: 'Saved' } }
+          : building
+      ))
+      setCycleModalOpen(false)
+      setCycleBuilding(null)
+      setCycleTarget(null)
+      toast.success(`Cycle created: ${saved.cardNo}`)
+    } catch (error) {
+      toast.error(`Unable to create cycle: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setSavingCycle(false)
+    }
+  }
+
+  const confirmModalDocDetail = () => {
+    if (!modalDocDetailRow) return
+    if (isFutureReceivingDate(modalDocDetailRow.receive_date || receipt.receiveDate)) {
+      toast.error(FUTURE_RECEIVING_DATE_MESSAGE)
+      return
+    }
+    if (!modalDocDetailRow.mnf_date) {
+      toast.error('Enter the Production Date before adding the DOC Details line.')
+      return
+    }
+    if (!modalDocDetailRow.building_warehouse_id || !modalDocDetailRow.flock_card_id) {
+      toast.error('Select a building with an active flock-card cycle.')
+      return
+    }
+
+    setDocDetailRows(current => [...current, normalizeDocDetailRow(modalDocDetailRow, receipt.receiveDate)])
+    if (modalDocDetailRow.receive_date) {
+      setReceipt(current => current ? { ...current, receiveDate: modalDocDetailRow.receive_date } : current)
+    }
+    setDocDetailsModalOpen(false)
+    setModalDocDetailRow(null)
   }
 
   const selectFarm = (farmId: string) => {
     const farm = farms.find(candidate => String(candidate.id) === farmId)
-    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
-    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
-    const allowedCodes = new Set(
-      (farm?.associated_warehouses ?? [])
-        .map(getAssociatedWarehouseCode)
-        .filter(Boolean)
-    )
-
     setReceipt(current => current ? {
       ...current,
       farmId: farm?.id ?? null,
       farmCode: farm?.code ?? '',
       farmName: farm?.name ?? '',
-      fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
-      defaultWarehouseId: defaultWarehouse?.id ?? null,
-      lines: current.lines.map(line =>
-        allowedCodes.has(line.warehouseCode)
-          ? line
-          : {
-            ...line,
-            warehouseId: defaultWarehouse?.id ?? null,
-            warehouseCode: defaultWarehouse?.whse_code ?? '',
-            warehouseName: defaultWarehouse?.whse_name ?? '',
-          }
-      ),
+      fmsType: getFarmFmsType(farm),
+      defaultWarehouseId: null,
     } : current)
+    setDocDetailRows(current => current.map(row => ({
+      ...row,
+      building_warehouse_id: null,
+      flock_card_id: null,
+    })))
   }
 
   const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
@@ -1387,6 +1750,42 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
     if (!receipt.farmId) {
       toast('Please select a farm.')
+      return
+    }
+    if (
+      isFutureReceivingDate(receipt.receiveDate) ||
+      docDetailRows.some(row => isFutureReceivingDate(row.receive_date || receipt.receiveDate))
+    ) {
+      toast.error(FUTURE_RECEIVING_DATE_MESSAGE)
+      return
+    }
+    const rowsWithReceivedChicks = docDetailRows.filter(row => numberValue(row.quantity_received) > 0)
+    const missingBuildingRow = rowsWithReceivedChicks.find(row =>
+      !farmOpenFlockBuildings.some(building =>
+        building.warehouseId === row.building_warehouse_id &&
+        building.flockCardId === row.flock_card_id
+      )
+    )
+    if (posting && missingBuildingRow) {
+      toast('Select a building with an active flock-card cycle for every DOC Details row.')
+      return
+    }
+    const ageIssue = rowsWithReceivedChicks
+      .map(row => farmOpenFlockBuildings.find(building =>
+        building.warehouseId === row.building_warehouse_id &&
+        building.flockCardId === row.flock_card_id
+      ))
+      .find(building => building && building.cycleAge > 7)
+    if (posting && ageIssue) {
+      toast(`${ageIssue.warehouseCode} has a flock-cycle age of ${ageIssue.cycleAge} days. DOC placement is only allowed through age 7.`)
+      return
+    }
+    if (
+      posting &&
+      !defaultDisposalWarehouse &&
+      docDetailRows.some(row => numberValue(row.doa_quantity) > 0 || numberValue(row.reject_count) > 0)
+    ) {
+      toast('Set a default disposal warehouse before posting DOA or Reject quantities.')
       return
     }
     if (posting && completedLines.length === 0) {
@@ -1447,7 +1846,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         setReceipt(savedReceipt)
         setDocDetailRows(savedReceipt.docDetails.length > 0
           ? savedReceipt.docDetails.map(row => normalizeDocDetailRow(row, savedReceipt.receiveDate))
-          : [newDocDetailRow(savedReceipt.receiveDate)])
+          : [])
       }
     } catch (error) {
       console.log({ error })
@@ -1492,8 +1891,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+        <div className="flex flex-col items-start gap-1 p-5">
+          <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">DOC Receiving No.</label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
@@ -1503,16 +1902,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Vendor</label>
-            <Input
-              value={receipt.vendor}
-              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
-              placeholder="Enter vendor"
-            />
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+          <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">Farm</label>
             <SearchableCombobox
               items={farmOptions}
@@ -1527,33 +1917,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
-            <label className="text-sm font-semibold">Default WH</label>
-            <select
-              value={receipt.defaultWarehouseId ?? ''}
-              disabled={loadingReferences || !receipt.farmId}
-              onChange={event => applyDefaultWarehouse(event.target.value)}
-              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
-            >
-              <option value="">
-                {loadingReferences
-                  ? 'Loading warehouses...'
-                  : receipt.farmId
-                    ? 'Select default warehouse...'
-                    : 'Select farm first'}
-              </option>
-              {farmWarehouses.map(warehouse => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.whse_code} - {warehouse.whse_name}
-                </option>
-              ))}
-            </select>
-            {!loadingReferences && Boolean(receipt.farmId) && farmWarehouses.length === 0 && (
-              <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
-            )}
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+          <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">FMS Type</label>
             <select
               value={receipt.fmsType}
@@ -1568,6 +1932,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               ))}
             </select>
           </div>
+
+          <div className="w-full max-w-md space-y-2">
+            <label className="text-sm font-semibold">Vendor</label>
+            <Input
+              value={receipt.vendor}
+              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
+              placeholder="Enter vendor"
+            />
+          </div>
         </div>
 
         <div className="border-t">
@@ -1575,45 +1948,47 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             title="DOC Details"
             description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
             actions={(
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
-                  <Switch
-                    checked={separateBatchByReference}
-                    disabled={!canEditDocDetails}
-                    onCheckedChange={toggleSeparateBatchByReference}
-                  />
-                  Separate batch per reference
-                </label>
-                <select
-                  value={batchReferenceColumn}
-                  disabled={!canEditDocDetails || !separateBatchByReference}
-                  onChange={event => setBatchReferenceColumn(event.target.value)}
-                  className="h-9 rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500"
-                  aria-label="Batch reference column"
-                >
-                  {DOC_RECEIVING_BATCH_REFERENCE_COLUMNS.map(column => (
-                    <option key={column.code} value={column.code}>
-                      {column.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center justify-end">
                 <Button
                   type="button"
                   variant="outline"
                   disabled={!canEditDocDetails}
-                  onClick={() => setDocDetailRows(current => [...current, newDocDetailRow(receipt.receiveDate)])}
+                  onClick={handleAddDocDetailsRow}
+                  className="rounded-r-none"
                 >
                   <Plus className="size-4" />
-                  Add Row
+                  {forceDocDetailsModal ? 'Add Row as Modal' : 'Add Row'}
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={!canEditDocDetails}
+                      className="-ml-px rounded-l-none"
+                      aria-label="More add row options"
+                    >
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={addDocDetailsUsingModal}>
+                      Add as modal
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
             className="rounded-none border-0 border-b shadow-none"
           >
-            <table className="min-w-[1710px] w-full text-sm">
+            <table className="min-w-[1840px] w-full text-sm">
               <thead className="bg-secondary">
                 <tr>
-                  <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">
+                  <th className="h-9 w-20 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">
+                    <p aria-hidden="true" className="invisible text-[10px] font-normal normal-case">
+                      spacer
+                    </p>
                     Action
                   </th>
                   {DOC_RECEIVING_DETAIL_COLUMNS.map(column => (
@@ -1621,15 +1996,36 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       key={column.code}
                       className="h-9 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700"
                     >
-                      {column.name}
+                      {DOC_RECEIVING_DETAIL_UNITS[column.code] && (
+                        <span className="block text-[10px] font-normal normal-case text-stone-500">
+                          {DOC_RECEIVING_DETAIL_UNITS[column.code]}
+                        </span>
+                      )}
+                      {DOC_RECEIVING_ALIGNED_HEADER_CODES.has(column.code) && (
+                        <p aria-hidden="true" className="invisible text-[10px] font-normal normal-case">
+                          spacer
+                        </p>
+                      )}
+                      <span className="block">{column.name}</span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
+                {docDetailRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={DOC_RECEIVING_DETAIL_COLUMNS.length + 1}
+                      className="px-4 py-10 text-center text-sm text-stone-500"
+                    >
+                      No DOC Details lines yet. Use Add Row to create the first line.
+                    </td>
+                  </tr>
+                )}
                 {docDetailRows.map(row => (
                   <tr key={row.id} className="odd:bg-card even:bg-secondary/40">
-                    <td className="px-1 py-1 text-center align-middle">
+                    <td className="px-1 py-1 align-middle">
+                      <div className="flex items-center justify-center gap-1">
                       <button
                         type="button"
                         onClick={() => removeDocDetailRow(row.id)}
@@ -1639,32 +2035,233 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       >
                         <Trash2 className="size-4" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleAddDocDetailsRow}
+                        disabled={!canEditDocDetails}
+                        className="inline-flex size-8 items-center justify-center rounded-md text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Add DOC detail row"
+                        title="Add DOC detail row"
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                      </div>
                     </td>
-                    {DOC_RECEIVING_DETAIL_COLUMNS.map(column => (
+                    {DOC_RECEIVING_DETAIL_COLUMNS.map(column => {
+                      const selectedRowBuilding = column.code === 'building'
+                        ? farmOpenFlockBuildings.find(building =>
+                            building.warehouseId === row.building_warehouse_id &&
+                            building.flockCardId === row.flock_card_id
+                          )
+                        : null
+                      const hasAgeIssue = Boolean(selectedRowBuilding && selectedRowBuilding.cycleAge > 7)
+
+                      return (
                       <td key={column.code} className="px-1 py-1 align-middle">
+                        {column.code === 'building' ? (
+                          <div className="min-w-80">
+                            <select
+                              value={row.building_warehouse_id ?? ''}
+                              disabled={!canEditDocDetails || loadingReferences || !receipt.farmId}
+                              onFocus={() => setBuildingRefreshKey(current => current + 1)}
+                              onChange={event => selectBuilding(row.id, event.target.value)}
+                              className={`h-8 w-full rounded-md border px-2 text-sm outline-none focus:ring-2 ${
+                                hasAgeIssue
+                                  ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-200'
+                                  : 'border-stone-300 bg-white focus:ring-stone-200'
+                              } disabled:cursor-not-allowed disabled:bg-stone-100`}
+                              aria-label="Building"
+                            >
+                              <option value="">
+                                {loadingReferences
+                                  ? 'Loading buildings...'
+                                  : receipt.farmId
+                                    ? 'Select building...'
+                                    : 'Select farm first'}
+                              </option>
+                              {selectableFarmBuildings.map(({ building, activeCycle }) => (
+                                <option
+                                  key={building.key}
+                                  value={building.id ?? ''}
+                                  className={activeCycle && activeCycle.cycleAge > 7 ? 'text-red-700' : ''}
+                                >
+                                  {building.code} - {building.name}
+                                  {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
+                                  {activeCycle && activeCycle.cycleAge > 7 ? ' · AGE ISSUE' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {hasAgeIssue && (
+                              <p className="mt-1 text-xs font-medium text-red-700">
+                                Cycle age exceeds 7 days.
+                              </p>
+                            )}
+                          </div>
+                        ) : (
                         <Input
                           type={
                             DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
                               ? 'date'
+                              : column.code === 'receive_time'
+                                ? 'time'
                               : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
                                 ? 'number'
                                 : 'text'
                           }
                           value={getDocDetailValue(row, column.code)}
-                          readOnly={column.code === 'short_count'}
+                          readOnly={column.code === 'actual_received'}
                           disabled={!canEditDocDetails}
                           onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
+                          min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                          max={column.code === 'receive_date' ? today() : undefined}
                           step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
-                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'short_count' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
+                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
                           aria-label={column.name}
                         />
+                        )}
                       </td>
-                    ))}
+                      )
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </FormTable>
+
+          <Dialog
+            open={docDetailsModalOpen}
+            onOpenChange={open => {
+              if (!open && cycleModalOpen) return
+              setDocDetailsModalOpen(open)
+              if (!open) setModalDocDetailRow(null)
+            }}
+          >
+            <DialogContent
+              className="max-h-[90vh] overflow-y-auto sm:max-w-5xl"
+              onInteractOutside={event => {
+                if (cycleModalOpen) event.preventDefault()
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Add DOC Details Line</DialogTitle>
+                <DialogDescription>
+                  Complete the receiving details below. The line is added only after you confirm.
+                </DialogDescription>
+              </DialogHeader>
+
+              {modalDocDetailRow && (
+                <div className="space-y-4">
+                  {DOC_RECEIVING_MODAL_GROUPS.map((group, groupIndex) => (
+                    <div key={group.key} className="space-y-4">
+                      {groupIndex > 0 && <Separator />}
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.columns.map(column => {
+                    const selectedModalBuilding = column.code === 'building'
+                      ? farmOpenFlockBuildings.find(building =>
+                          building.warehouseId === modalDocDetailRow.building_warehouse_id &&
+                          building.flockCardId === modalDocDetailRow.flock_card_id
+                        )
+                      : null
+                    const hasAgeIssue = Boolean(selectedModalBuilding && selectedModalBuilding.cycleAge > 7)
+
+                    return (
+                      <div
+                        key={column.code}
+                        className={
+                          ['short_count_remarks', 'doa_count_remarks', 'reject_count_remarks'].includes(column.code)
+                            ? 'space-y-2 sm:col-span-2 lg:col-span-1'
+                            : 'space-y-2'
+                        }
+                      >
+                        <Label required={['mnf_date', 'building'].includes(column.code)}>
+                          <span className="flex flex-col items-start">
+                            {DOC_RECEIVING_DETAIL_UNITS[column.code] && (
+                              <span className="text-xs font-normal text-muted-foreground">
+                                {DOC_RECEIVING_DETAIL_UNITS[column.code]}
+                              </span>
+                            )}
+                            <span>{column.name}</span>
+                          </span>
+                        </Label>
+                        {column.code === 'building' ? (
+                          <>
+                            <select
+                              value={modalDocDetailRow.building_warehouse_id ?? ''}
+                              onFocus={() => setBuildingRefreshKey(current => current + 1)}
+                              onChange={event => selectModalBuilding(event.target.value)}
+                              className={`h-9 w-full rounded-md border px-3 py-2 text-sm text-stone-950 shadow-none outline-none focus:ring-2 dark:text-stone-950 ${
+                                hasAgeIssue
+                                  ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-200 dark:bg-red-50'
+                                  : 'border-stone-300 bg-white focus:ring-stone-200 dark:bg-white'
+                              }`}
+                            >
+                              <option value="">
+                                {receipt.farmId ? 'Select building...' : 'Select farm first'}
+                              </option>
+                              {selectableFarmBuildings.map(({ building, activeCycle }) => (
+                                <option
+                                  key={building.key}
+                                  value={building.id ?? ''}
+                                  className={activeCycle && activeCycle.cycleAge > 7 ? 'text-red-700' : ''}
+                                >
+                                  {building.code} - {building.name}
+                                  {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
+                                  {activeCycle && activeCycle.cycleAge > 7 ? ' · AGE ISSUE' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {hasAgeIssue && (
+                              <p className="text-xs font-medium text-red-700">Cycle age exceeds 7 days.</p>
+                            )}
+                          </>
+                        ) : (
+                          <Input
+                            type={
+                              DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
+                                ? 'date'
+                                : column.code === 'receive_time'
+                                  ? 'time'
+                                  : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
+                                    ? 'number'
+                                    : 'text'
+                            }
+                            value={getDocDetailValue(modalDocDetailRow, column.code)}
+                            readOnly={column.code === 'actual_received'}
+                            onChange={event => updateModalDocDetail(column.code, event.target.value)}
+                            min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                            max={column.code === 'receive_date' ? today() : undefined}
+                            step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
+                            className={`h-9 rounded-md border-stone-300 px-3 py-2 text-sm text-stone-950 shadow-none focus-visible:border-stone-400 focus-visible:ring-stone-200 dark:text-stone-950 ${
+                              column.code === 'actual_received'
+                                ? 'bg-stone-50 dark:bg-stone-50'
+                                : 'bg-white dark:bg-white'
+                            }`}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDocDetailsModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" onClick={confirmModalDocDetail}>
+                  <Plus className="size-4" />
+                  Add Line
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <FormTable
             title="Receive Item Lines"
@@ -1682,7 +2279,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   <tr>
                     <th className="h-9 w-12 whitespace-nowrap px-2 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
                     <th className="h-9 min-w-80 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
-                    <th className="h-9 min-w-72 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
+                    <th className="h-9 w-56 max-w-56 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
                     <th className="h-9 w-44 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
                     <th className="h-9 w-28 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
                     <th className="h-9 w-52 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
@@ -1708,7 +2305,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           onChange={(value) => selectItem(line, value)}
                         />
                         </td>
-                        <td className="px-1 py-1 align-top">
+                        <td className="w-56 max-w-56 px-1 py-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"
@@ -1722,13 +2319,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                     {line.batchNumber || getGeneratedBatchNumber(line) || 'Batch details'}
                                   </span>
                                 </span>
-                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
+                                {/* <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
                                   {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
                                     <span>{batchRequirement.needsExpiryDate ? 'MFG/EXP required' : 'MFG required'}</span>
                                   )}
-                                </span>
+                                </span> */}
                               </span>
                               <Hash className="size-4 shrink-0 text-stone-400" />
                             </button>
@@ -1806,16 +2403,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         )}
                       </td>
                       <td className="px-1 py-1 align-middle">
-                        <SearchableDropdown
-                          list={farmWarehouses}
-                          codeLabel="whse_code"
-                          nameLabel="whse_name"
-                          value={line.warehouseCode}
-                          placeholder={receipt.farmId ? 'Select warehouse...' : 'Select farm first'}
-                          width={360}
-                          disabled
-                          onChange={(value) => selectWarehouse(line.id, value)}
-                        />
+                        <div className="min-h-9 rounded-md border border-stone-300 bg-stone-100 px-3 py-2 text-sm text-stone-700">
+                          {line.warehouseCode ? (
+                            <>
+                              <span className="font-medium">{line.warehouseCode}</span>
+                              {line.warehouseName ? ` - ${line.warehouseName}` : ''}
+                            </>
+                          ) : (
+                            <span className="text-amber-700">Destination not configured</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     )
@@ -2141,14 +2738,29 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </DialogContent>
           </Dialog>
 
-          <div className="mx-4 mb-4 mt-6 flex flex-col items-end gap-4">
-            <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
-              <h3 className="text-sm font-semibold">Receiving Summary</h3>
-              <div className="mt-3 flex justify-between text-sm">
-                <span>Total Base Quantity</span>
-                <span className="font-medium tabular-nums">
-                  {displayTotalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
-                </span>
+          <div className="mx-2 mb-4 mt-4 flex flex-col items-stretch gap-3 sm:mx-4">
+            <div className="w-full rounded-lg border bg-card text-card-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Receiving Summary</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Quantity by condition</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
+                  <div className="rounded-md border px-3 py-2">
+                    <div className="text-muted-foreground">Total</div>
+                    <div className="font-semibold tabular-nums">
+                      {formatQuantity(displayTotalQuantity)}
+                    </div>
+                  </div>
+                  {receivingSummary.map(group => (
+                    <div key={group.key} className="rounded-md border px-3 py-2">
+                      <div className="text-muted-foreground">{group.label}</div>
+                      <div className="font-semibold tabular-nums">
+                        {formatQuantity(group.quantity)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2177,6 +2789,31 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </div>
       </section>
 
+      <CycleInformationModal
+        open={cycleModalOpen}
+        building={cycleBuilding}
+        form={cycleForm}
+        age={calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)}
+        saving={savingCycle}
+        onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
+        onCreate={createCycle}
+        onCancel={() => {
+          clearCycleTarget()
+          setCycleModalOpen(false)
+          setCycleBuilding(null)
+          setCycleTarget(null)
+        }}
+        onOpenChange={open => {
+          if (savingCycle) return
+          if (!open) {
+            clearCycleTarget()
+            setCycleBuilding(null)
+            setCycleTarget(null)
+          }
+          setCycleModalOpen(open)
+        }}
+      />
+
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
           <DialogHeader>
@@ -2190,7 +2827,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             <div className="flex justify-between gap-3">
               <span className="text-stone-500">Total Base Quantity</span>
               <span className="font-semibold tabular-nums">
-                {displayTotalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                {displayGoodChickQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
               </span>
             </div>
           </div>

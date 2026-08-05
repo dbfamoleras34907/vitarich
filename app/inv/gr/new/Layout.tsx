@@ -17,15 +17,6 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -45,7 +36,6 @@ import {
   saveGoodsReceipt,
 } from '../api'
 import {
-  AssociatedWarehouse,
   findExistingItemBatch,
   GoodsReceiptBatchRule,
   GoodsReceiptBatchSeries,
@@ -61,288 +51,35 @@ import {
   BatchTransactionTrail,
   getBatchTransactionTrail,
 } from '../../btch/api'
-
-const FMS_TYPE_OPTIONS = [
-  { value: 'broiler', label: 'Broiler' },
-  { value: 'breeder', label: 'Breeder' },
-  { value: 'hatchery', label: 'Hatchery' },
-]
-
-const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
-  BE: 'breeder',
-  HA: 'hatchery',
-  BR: 'broiler',
-  BREEDER: 'breeder',
-  HATCHERY: 'hatchery',
-  BROILER: 'broiler',
-}
-
-const today = () => {
-  const date = new Date()
-  const offset = date.getTimezoneOffset()
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
-}
-
-const newLine = (): GoodsReceiptLine => ({
-  id: crypto.randomUUID(),
-  itemId: null,
-  itemCode: '',
-  description: '',
-  batchRuleId: null,
-  batchNumber: '',
-  supplierBatchNumber: '',
-  manufacturingDate: '',
-  expiryDate: '',
-  altQty: 1,
-  altUom: '',
-  baseQty: 1,
-  baseUom: '',
-  warehouseId: null,
-  warehouseCode: '',
-  warehouseName: '',
-  returnedQty: 0,
-})
-
-const emptyReceipt = (grNo: string): GoodsReceipt => ({
-  id: null,
-  grNo,
-  vendor: '',
-  receiveDate: today(),
-  fmsType: '',
-  farmId: null,
-  farmCode: '',
-  farmName: '',
-  defaultWarehouseId: null,
-  status: 'Draft',
-  lines: Array.from({ length: 5 }, newLine),
-  createdAt: new Date().toISOString(),
-})
-
-const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => ({
-  ...source,
-  id: null,
-  grNo,
-  status: 'Draft',
-  lines: source.lines.map(line => ({
-    ...line,
-    id: crypto.randomUUID(),
-    returnedQty: 0,
-  })),
-  createdAt: new Date().toISOString(),
-})
-
-const numberValue = (value: string) => {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-const asArray = <T,>(value: unknown): T[] =>
-  Array.isArray(value) ? value as T[] : []
-
-const getCachedWarehouses = (value: unknown): WarehouseData[] => {
-  if (Array.isArray(value)) return value as WarehouseData[]
-  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
-    return (value as { data: WarehouseData[] }).data
-  }
-
-  return []
-}
-
-const formatBatchDatePart = (
-  format: GoodsReceiptBatchSeries['date_format'],
-  dateValue: string,
-) => {
-  if (format === 'NONE' || !dateValue) return ''
-
-  const [year = '', month = '', day = ''] = dateValue.split('-')
-  const yy = year.slice(-2)
-
-  return format
-    .replace('YYYY', year)
-    .replace('YY', yy)
-    .replace('MM', month)
-    .replace('DD', day)
-}
-
-const buildBatchNumber = (
-  series: GoodsReceiptBatchSeries | null,
-  manufacturingDate: string,
-  expiryDate: string,
-) => {
-  const dateFormat = series?.date_format ?? 'YYMMDD'
-  const nextNumber = Math.max(0, Number(series?.next_number ?? 1) || 0)
-  const numberLength = Math.max(1, Number(series?.number_length ?? 5) || 1)
-  const sequence = String(nextNumber).padStart(numberLength, '0')
-  const mfgPart = formatBatchDatePart(dateFormat, manufacturingDate)
-  const expPart = formatBatchDatePart(dateFormat, expiryDate)
-  const separator = series?.separator || '-'
-  const prefix = series?.prefix ?? 'FD'
-  const suffix = series?.suffix ?? ''
-
-  return [prefix, mfgPart, series?.include_expiry_date === false ? '' : expPart, sequence, suffix]
-    .map(part => String(part ?? '').trim())
-    .filter(Boolean)
-    .join(separator)
-}
-
-const addMonthsToDate = (dateValue: string, months: number) => {
-  if (!dateValue || !Number.isInteger(months) || months < 0) return ''
-
-  const [year, month, day] = dateValue.split('-').map(Number)
-  if (!year || !month || !day) return ''
-
-  const date = new Date(year, month - 1, day)
-  const targetMonth = date.getMonth() + months
-  date.setMonth(targetMonth)
-
-  if (date.getMonth() !== ((targetMonth % 12) + 12) % 12) {
-    date.setDate(0)
-  }
-
-  const nextYear = String(date.getFullYear())
-  const nextMonth = String(date.getMonth() + 1).padStart(2, '0')
-  const nextDay = String(date.getDate()).padStart(2, '0')
-
-  return `${nextYear}-${nextMonth}-${nextDay}`
-}
-
-const getAssociatedWarehouseCode = (warehouse: AssociatedWarehouse | string) => {
-  if (typeof warehouse === 'string') return warehouse.trim()
-  return String(warehouse.whse_code ?? '').trim()
-}
-
-const isDefaultReceivingAssociation = (warehouse: AssociatedWarehouse | string) =>
-  typeof warehouse === 'object' && (
-    Boolean(warehouse?.is_default_receiving) ||
-    Boolean(warehouse?.is_default_receiving_warehouse)
-  )
-
-const isWarehouseType = (warehouse: WarehouseData) =>
-  String(warehouse.warehouse_type ?? '').trim().toLowerCase() === 'warehouse'
-
-const getFarmFmsType = (farm: GoodsReceiptFarm | undefined | null) =>
-  FARM_TYPE_TO_FMS_TYPE[String(farm?.farm_type ?? '').trim().toUpperCase()] ?? ''
-
-const getWarehouseFmsType = (warehouse: WarehouseData | undefined | null) =>
-  FARM_TYPE_TO_FMS_TYPE[String(warehouse?.fms_type ?? '').trim().toUpperCase()] ?? ''
-
-const getWarehousesForFarm = (farm: GoodsReceiptFarm | undefined | null, warehouseList: WarehouseData[]) => {
-  const associations = farm?.associated_warehouses
-  if (!Array.isArray(associations)) return []
-
-  const allowedCodes = new Set(
-    associations
-      .map(getAssociatedWarehouseCode)
-      .filter(Boolean)
-  )
-
-  return warehouseList.filter(warehouse =>
-    allowedCodes.has(String(warehouse.whse_code ?? '').trim()) &&
-    isWarehouseType(warehouse)
-  )
-}
-
-const getDefaultReceivingWarehouse = (
-  farm: GoodsReceiptFarm | undefined | null,
-  farmWarehouseList: WarehouseData[],
-) => {
-  const associations = farm?.associated_warehouses
-  const defaultAssociationCode = Array.isArray(associations)
-    ? associations.find(isDefaultReceivingAssociation)
-    : null
-  const defaultCode = defaultAssociationCode
-    ? getAssociatedWarehouseCode(defaultAssociationCode)
-    : ''
-
-  const defaultWarehouse = farmWarehouseList.find(warehouse =>
-    defaultCode && String(warehouse.whse_code ?? '').trim() === defaultCode
-  ) ?? farmWarehouseList.find(warehouse => Boolean(warehouse.is_default_receiving_warehouse)) ?? null
-
-  return defaultWarehouse ?? (farmWarehouseList.length === 1 ? farmWarehouseList[0] : null)
-}
-
-const getItemDescription = (item: Items) =>
-  item.item_name || item.description || ''
-
-const getItemFmsType = (item: Items) =>
-  String(item.fms_group ?? '').trim().toLowerCase()
-
-const isDocItem = (item: Items) => {
-  const tokens = [
-    item.item_code,
-    item.item_name,
-    item.description,
-    item.item_group,
-    item.fms_group,
-    item.group,
-  ].map(value => String(value ?? '').trim().toUpperCase())
-
-  return tokens.some(token => token === 'DOC' || token.startsWith('DOC'))
-}
-
-const formatQuantity = (value: number) =>
-  Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
-
-const formatDateTime = (value: string) => {
-  if (!value) return '-'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  return date.toLocaleString('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-type GoodsReceiveFormMode = 'draft' | 'post'
+import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
+import BatchDetailsDialog from './BatchDetailsDialog'
+import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
+import {
+  FMS_TYPE_OPTIONS,
+  addMonthsToDate,
+  asArray,
+  buildBatchNumber,
+  duplicateReceipt,
+  emptyReceipt,
+  formatBatchDatePart,
+  formatDateTime,
+  formatQuantity,
+  getCachedWarehouses,
+  getAssociatedWarehouseCode,
+  getDefaultReceivingWarehouse,
+  getFarmFmsType,
+  getItemDescription,
+  getItemFmsType,
+  getWarehouseFmsType,
+  getWarehousesForFarm,
+  isDocItem,
+  newLine,
+  numberValue,
+  type GoodsReceiveFormMode,
+} from './formUtils'
 
 type NewGoodsReceiveProps = {
   mode?: GoodsReceiveFormMode
-}
-
-function GoodsReceiveLoadingShell() {
-  return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
-        <div className="h-6 w-56 rounded bg-stone-200" />
-        <div className="h-9 w-24 rounded-md bg-stone-100" />
-      </div>
-
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-              <div className="h-4 w-20 rounded bg-stone-200" />
-              <div className="h-9 rounded-md bg-stone-100" />
-            </div>
-          ))}
-        </div>
-
-        <div className="border-t p-5">
-          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="border-b border-stone-200 bg-white px-3 py-3">
-              <div className="h-5 w-48 rounded bg-stone-200" />
-              <div className="mt-2 h-4 w-20 rounded bg-stone-100" />
-            </div>
-
-            <div className="space-y-2 p-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={index} className="grid grid-cols-[40px_2fr_1fr_1fr_1fr_1fr_1fr_56px] gap-3">
-                  {Array.from({ length: 8 }).map((__, cellIndex) => (
-                    <div key={cellIndex} className="h-9 rounded bg-stone-100" />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  )
 }
 
 export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
@@ -1088,6 +825,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast('Please enter a vendor.')
       return
     }
+    if (!receipt.drReference.trim()) {
+      toast('Please enter a DR Reference.')
+      return
+    }
     if (!receipt.fmsType) {
       toast('Please select an FMS type.')
       return
@@ -1213,6 +954,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">
+              DR Reference <span className="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <Input
+              value={receipt.drReference}
+              onChange={event => setReceipt(current => current ? { ...current, drReference: event.target.value } : current)}
+              placeholder="Enter DR reference"
+              required
+              aria-required="true"
+            />
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">Farm</label>
             <SearchableCombobox
               items={farmOptions}
@@ -1283,9 +1037,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
         </div>
 
-        <div className="border-t p-5">
+        <div className="m-0 border-t p-0">
           <FormTable
             title="Receive Item Lines"
+            className="rounded-none border-0 shadow-none"
             description={`${receipt.lines.length} ${receipt.lines.length === 1 ? 'line' : 'lines'}`}
             emptyState={receipt.lines.length === 0 && (
               <div className="border-t px-4 py-10 text-center">
@@ -1318,28 +1073,28 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="min-w-[1480px] w-full text-sm">
-                <thead className="bg-secondary">
+              <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
+                <thead>
                   <tr>
-                    <th className="h-10 w-12 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">#</th>
-                    <th className="h-10 min-w-80 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Item Code &amp; Description</th>
-                    <th className="h-10 min-w-72 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Batch</th>
-                    <th className="h-10 w-44 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Base UOM Group</th>
-                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt Qty</th>
-                    <th className="h-10 w-28 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Alt UoM</th>
-                    <th className="h-10 w-52 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Conversion UoM</th>
-                    <th className="h-10 min-w-48 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
-                    <th className="h-10 w-20 whitespace-nowrap px-3 text-center align-middle text-xs font-semibold uppercase text-stone-700">Action</th>
+                    <th className="w-12 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">#</th>
+                    <th className="w-80 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Item Code &amp; Description</th>
+                    <th className="w-72 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Batch</th>
+                    <th className="w-44 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Base UOM Group</th>
+                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt Qty</th>
+                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt UoM</th>
+                    <th className="w-52 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Conversion UoM</th>
+                    <th className="w-48 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Warehouse</th>
+                    <th className="w-20 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody>
                   {receipt.lines.map((line, index) => {
                     const batchRequirement = getBatchRequirement(line)
 
                     return (
-                      <tr key={line.id} className="odd:bg-card even:bg-secondary/40 hover:bg-accent/30">
-                        <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
-                        <td className="px-3 py-2 align-middle">
+                      <tr key={line.id} className="even:bg-white odd:bg-emerald-50/40">
+                        <td className="border border-slate-200 bg-slate-50 p-1 text-center align-middle text-slate-600">{index + 1}</td>
+                        <td className="border border-slate-200 p-1 align-middle">
                           <SearchableDropdown
                             list={itemDropdownOptions}
                             codeLabel="item_code"
@@ -1350,7 +1105,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             onChange={(value) => selectItem(line, value)}
                           />
                         </td>
-                        <td className="px-3 py-2 align-top">
+                        <td className="border border-slate-200 p-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"
@@ -1378,7 +1133,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
                           )}
                         </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="border border-slate-200 p-1 align-middle">
                         <select
                           value={line.baseUom}
                           disabled
@@ -1407,7 +1162,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="border border-slate-200 p-1 align-middle">
                         <Input
                           type="number"
                           min="0"
@@ -1424,7 +1179,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
                         />
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="border border-slate-200 p-1 align-middle">
                         <select
                           value={line.altUom}
                           disabled={!line.baseUom}
@@ -1450,7 +1205,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="px-3 py-3 align-middle text-stone-800">
+                      <td className="border border-slate-200 p-2 align-middle text-stone-800">
                         {line.baseUom && line.altUom ? (
                           <div className="whitespace-nowrap">
                             <span className="font-medium tabular-nums">
@@ -1472,7 +1227,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           <span className="text-stone-400">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="border border-slate-200 p-1 align-middle">
                         <SearchableDropdown
                           list={farmWarehouses}
                           codeLabel="whse_code"
@@ -1483,7 +1238,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           onChange={(value) => selectWarehouse(line.id, value)}
                         />
                       </td>
-                      <td className="px-3 py-3 text-center align-middle">
+                      <td className="border border-slate-200 p-1 text-center align-middle">
                         <button
                           type="button"
                           onClick={() => setReceipt(current => current ? {
@@ -1503,25 +1258,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </table>
           </FormTable>
 
-          <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
-            <DialogContent
-              className="max-h-[85vh] overflow-y-auto sm:max-w-4xl"
-              onKeyDown={event => {
-                if (event.key !== 'Enter' || event.shiftKey) return
-
-                const target = event.target as HTMLElement
-                if (target.closest('button')) return
-
-                event.preventDefault()
-                setActiveBatchLineId(null)
-              }}
-            >
-              <DialogHeader>
-                <DialogTitle>Batch Details</DialogTitle>
-                <DialogDescription>
-                  {activeBatchLine?.itemCode || 'Selected item'} batch information for this receipt line.
-                </DialogDescription>
-              </DialogHeader>
+          <BatchDetailsDialog
+            open={Boolean(activeBatchLine)}
+            itemCode={activeBatchLine?.itemCode}
+            onClose={() => setActiveBatchLineId(null)}
+          >
 
               {activeBatchLine && activeBatchRequirement && (
                 <Tabs defaultValue="details" className="space-y-4">
@@ -1833,16 +1574,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </Tabs>
               )}
 
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button type="button">Done</Button>
-                </DialogClose>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          </BatchDetailsDialog>
 
           <div className="mt-6 flex flex-col items-end gap-4">
-            <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
+            <div className="w-full rounded-xl border p-4 sm:w-[34rem] mx-4">
               <h3 className="text-sm font-semibold">Receiving Summary</h3>
               <div className="mt-3 flex justify-between text-sm">
                 <span>Total Base Quantity</span>
@@ -1853,7 +1588,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
 
             {canEditDraft ? (
-              <div className="flex flex-wrap justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2 mx-4 mb-4">
                 <Button
                   type="button"
                   variant="outline"
@@ -1877,44 +1612,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </div>
       </section>
 
-      <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Post this goods receipt?</DialogTitle>
-            <DialogDescription>
-              Posting {receipt.grNo} will add inventory for the selected receipt lines and cannot be edited afterward.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-stone-500">Total Base Quantity</span>
-              <span className="font-semibold tabular-nums">
-                {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
-              </span>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={saving}>
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              disabled={saving}
-              onClick={async () => {
-                await handleSave('Posted')
-                setPostConfirmOpen(false)
-              }}
-            >
-              <Save className="size-4" />
-              {saving ? 'Posting...' : 'Confirm Post'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PostGoodsReceiptDialog
+        open={postConfirmOpen}
+        receiptNumber={receipt.grNo}
+        totalQuantity={totalQuantity}
+        saving={saving}
+        onOpenChange={open => !saving && setPostConfirmOpen(open)}
+        onConfirm={async () => {
+          await handleSave('Posted')
+          setPostConfirmOpen(false)
+        }}
+      />
     </main>
   )
 }

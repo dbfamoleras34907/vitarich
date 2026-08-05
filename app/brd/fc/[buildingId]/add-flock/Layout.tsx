@@ -1,18 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Minus, MousePointerClick, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,16 +17,18 @@ import {
 import Breadcrumb from "@/lib/Breadcrumb";
 import { decryptData } from "@/app/utils/supabase/url-encryption";
 import {
-  getFarmOriginBatchesForFlockCard,
+  getBuildingPlacementInventory,
   getFarmBuildingsForFlockCard,
   getFarmInfoForFlockCard,
-  type FarmBuildingListRow,
   type FarmOriginBatchOption,
+  type FarmBuildingListRow,
   type FlockCardFarmInfo,
 } from "../../api";
 import { calculateFlockAgeFromStartDate } from "../../age";
 import {
   getFlockCardPlacement,
+  getNextFlockCardCycleCount,
+  flockCardBreedComboOptions,
   saveFlockCardPlacement,
 } from "./api";
 
@@ -59,13 +54,13 @@ type CompactAddFlockRoutePayload = [
 type AddFlockForm = {
   age: string;
   flockStartDate: string;
+  cycleAsOfDate: string;
   broilerType: string;
   breed: string;
   guideline: string;
   coccidiostatProgramId: string;
   otherProgramId: string;
   vaccinationProgramId: string;
-  flockId: string;
   trialCode: string;
   cycleNumber: string;
   nofAnimals: string;
@@ -73,33 +68,8 @@ type AddFlockForm = {
   stockingDensity: string;
   stockingDensityByWeight: string;
   sex: string;
+  extra: Record<string, unknown>;
 };
-
-type FlockOriginRow = {
-  id: string;
-  batch: string;
-  itemCode: string;
-  itemName: string;
-  warehouse: string;
-  warehouseName: string;
-  grOrigin: string;
-  nofAnimals: string;
-  savedAnimalQty: number;
-  breed: string;
-  onHandQty: number;
-  manufacturingDate: string;
-  expiryDate: string;
-  isSaved: boolean;
-};
-
-const broilerTypeOptions = [
-  { value: "2kgMax", label: "<= 2 kg" },
-  { value: "2To3", label: "2 - 3 kg" },
-  { value: "3kgMin", label: ">= 3 kg" },
-  { value: "freeRange", label: "Free range" },
-  { value: "slowGrowingBirds", label: "Slow growing birds" },
-  { value: "byProduct", label: "By product" },
-];
 
 const sexOptions = [
   { value: "unknown", label: "Unknown" },
@@ -107,47 +77,6 @@ const sexOptions = [
   { value: "male", label: "Male" },
   { value: "mix", label: "Mix" },
 ];
-
-const breedOptions = [
-  "Arbor Acres Plus",
-  "Aviagen AP 95",
-  "COBB 400",
-  "COBB 500",
-  "COBB 700",
-  "COBB 800",
-  "COBB AVIAN 48",
-  "Cobb Sasso-150",
-  "Cobb Sasso-175",
-  "Hubbard Classic",
-  "Hubbard Efficiency Plus",
-  "Hubbard F15",
-  "Hubbard Flex",
-  "Hubbard H1",
-  "Hubbard JA 757",
-  "Hubbard JA 787",
-  "Hubbard JA 957",
-  "Hubbard JA 987",
-  "Hubbard JV",
-  "Hubbard Redbro",
-  "Indian River",
-  "Ross Ranger",
-  "Ross 308",
-  "Ross 708",
-  "Ross PM3",
-  "Rowan Rambler Ranger",
-  "Rowan Ranger",
-  "Rowan Ranger Classic",
-  "Rowan Ranger Gold",
-  "Vencobb 430 Y",
-  "Mixed",
-  "Other",
-  "Unknown",
-];
-
-const breedComboOptions = breedOptions.map(breed => ({
-  code: breed,
-  name: breed,
-}));
 
 const today = () => {
   const date = new Date();
@@ -159,57 +88,35 @@ const today = () => {
 const emptyFlockForm: AddFlockForm = {
   age: "0",
   flockStartDate: today(),
+  cycleAsOfDate: "",
   broilerType: "",
   breed: "",
   guideline: "",
   coccidiostatProgramId: "",
   otherProgramId: "",
   vaccinationProgramId: "",
-  flockId: "",
   trialCode: "",
-  cycleNumber: "",
+  cycleNumber: "1",
   nofAnimals: "",
   feedMill: "",
   stockingDensity: "",
   stockingDensityByWeight: "",
   sex: "unknown",
+  extra: {},
 };
-
-const newOriginRow = (): FlockOriginRow => ({
-  id: crypto.randomUUID(),
-  batch: "",
-  itemCode: "",
-  itemName: "",
-  warehouse: "",
-  warehouseName: "",
-  grOrigin: "",
-  nofAnimals: "",
-  savedAnimalQty: 0,
-  breed: "",
-  onHandQty: 0,
-  manufacturingDate: "",
-  expiryDate: "",
-  isSaved: false,
-});
-
-const formatQuantity = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 3,
-  }).format(value);
-
-const formatDateValue = (value: string) => value || "-";
 
 const optionalNumberToInputValue = (value: number | string | null | undefined) =>
   value == null || value === "" ? "" : String(value);
 
-const normalizeKey = (value: string | number | null | undefined) =>
-  String(value ?? "").trim().toUpperCase();
+const formatQuantity = (value: number) =>
+  new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(value);
 
-const getBatchUsageId = (itemCode: string | null | undefined, batchNumber: string | null | undefined) =>
-  [itemCode, batchNumber].map(normalizeKey).join("|");
-
-const getOriginRowBatchId = (row: Pick<FlockOriginRow, "itemCode" | "batch">) =>
-  getBatchUsageId(row.itemCode, row.batch);
+const formatDateValue = (value: string) => value || "-";
+const calculateCycleAge = (startDate: string, asOfDate: string) =>
+  calculateFlockAgeFromStartDate(
+    startDate,
+    asOfDate ? new Date(`${asOfDate}T00:00:00`) : new Date(),
+  );
 
 function normalizeRoutePayload(value: unknown): AddFlockRoutePayload | null {
   if (Array.isArray(value)) {
@@ -233,38 +140,34 @@ export default function Layout() {
     [params.buildingId],
   );
   const [form, setForm] = useState<AddFlockForm>(emptyFlockForm);
-  const [originRows, setOriginRows] = useState<FlockOriginRow[]>([]);
   const [farmInfo, setFarmInfo] = useState<FlockCardFarmInfo | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<FarmBuildingListRow | null>(null);
-  const [originBatchRows, setOriginBatchRows] = useState<FarmOriginBatchOption[]>([]);
-  const [originBatchAllocations, setOriginBatchAllocations] = useState<Record<string, string>>({});
-  const [loadingOriginBatches, setLoadingOriginBatches] = useState(false);
-  const [originBatchError, setOriginBatchError] = useState("");
-  const [originBatchDialogOpen, setOriginBatchDialogOpen] = useState(false);
-  const [originBatchSelectionRowId, setOriginBatchSelectionRowId] = useState<string | null>(null);
+  const [placementRows, setPlacementRows] = useState<FarmOriginBatchOption[]>([]);
+  const [loadingPlacement, setLoadingPlacement] = useState(false);
+  const [placementError, setPlacementError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingCardId, setEditingCardId] = useState<number | null>(null);
   const [editingCardNo, setEditingCardNo] = useState("");
   const [loadingFlockCard, setLoadingFlockCard] = useState(false);
-
-  const selectedOriginRow = originRows.find(row => row.id === originBatchSelectionRowId) ?? null;
-  const totalOriginAnimals = originRows.reduce((sum, row) => sum + (Number(row.nofAnimals) || 0), 0);
-  const getAllocatedQtyForBatch = (batch: FarmOriginBatchOption, excludeRowId?: string | null) => {
-    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
-
-    return originRows.reduce((sum, row) => {
-      if (row.id === excludeRowId || getOriginRowBatchId(row) !== batchId) return sum;
-      return sum + Math.max((Number(row.nofAnimals) || 0) - row.savedAnimalQty, 0);
-    }, 0);
-  };
-
-  const getAvailableOnHandForBatch = (batch: FarmOriginBatchOption, excludeRowId?: string | null) =>
-    Math.max(batch.onHandQty - getAllocatedQtyForBatch(batch, excludeRowId), 0);
-
-  const totalOriginOnHand = originBatchRows.reduce(
-    (sum, row) => sum + getAvailableOnHandForBatch(row),
+  const totalPlacementAnimals = placementRows.reduce(
+    (sum, row) => sum + Number(row.onHandQty || 0),
     0,
   );
+  const placementBatchTotals = Array.from(new Map(
+    placementRows.map(row => [
+      [row.itemCode, row.batchNumber, row.warehouseCode].map(value => value.trim().toUpperCase()).join("|"),
+      row,
+    ]),
+  ).values());
+  const totalActualReceived = placementBatchTotals.reduce(
+    (sum, row) => sum + row.docDetails.reduce(
+      (detailSum, detail) => detailSum + Number(detail.actualReceived || 0),
+      0,
+    ),
+    0,
+  );
+  const totalMortalityAnimals = placementBatchTotals.reduce((sum, row) => sum + Number(row.mortalityQty || 0), 0);
+  const totalThinningAnimals = placementBatchTotals.reduce((sum, row) => sum + Number(row.thinningQty || 0), 0);
 
   useEffect(() => {
     if (!routePayload?.farmId) return;
@@ -301,34 +204,41 @@ export default function Layout() {
   }, [routePayload?.buildingKey, routePayload?.farmId]);
 
   useEffect(() => {
-    if (!routePayload?.farmId) return;
-
-    let cancelled = false;
-
-    async function loadOriginBatches() {
-      setLoadingOriginBatches(true);
-      setOriginBatchError("");
-
-      try {
-        const rows = await getFarmOriginBatchesForFlockCard(Number(routePayload?.farmId));
-        if (cancelled) return;
-        setOriginBatchRows(rows);
-      } catch (error) {
-        console.error(error);
-        if (cancelled) return;
-        setOriginBatchRows([]);
-        setOriginBatchError(error instanceof Error ? error.message : "Unable to load farm batches.");
-      } finally {
-        if (!cancelled) setLoadingOriginBatches(false);
-      }
+    const farmId = Number(routePayload?.farmId ?? 0);
+    if (!Number.isFinite(farmId) || farmId <= 0 || !selectedBuilding) {
+      setPlacementRows([]);
+      return;
     }
 
-    void loadOriginBatches();
+    let cancelled = false;
+    setLoadingPlacement(true);
+    setPlacementError("");
+
+    getBuildingPlacementInventory({
+      farmId,
+      buildingCode: selectedBuilding.code,
+      buildingName: selectedBuilding.name,
+      buildingKey: selectedBuilding.key,
+      buildingWarehouseCode: selectedBuilding.warehouseCode || selectedBuilding.code,
+    })
+      .then(rows => {
+        if (!cancelled) setPlacementRows(rows);
+      })
+      .catch(error => {
+        console.error(error);
+        if (!cancelled) {
+          setPlacementRows([]);
+          setPlacementError(error instanceof Error ? error.message : "Unable to load building stock.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlacement(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [routePayload?.farmId]);
+  }, [routePayload?.farmId, selectedBuilding]);
 
   useEffect(() => {
     const cardId = Number(routePayload?.cardId ?? 0);
@@ -344,42 +254,27 @@ export default function Layout() {
         setEditingCardId(card.id);
         setEditingCardNo(card.cardNo);
         setForm({
-          age: String(card.startDate ? calculateFlockAgeFromStartDate(card.startDate) : card.age ?? 0),
+          age: String(card.startDate
+            ? calculateCycleAge(card.startDate, String(card.extra?.cycleAsOfDate ?? ""))
+            : card.age ?? 0),
           flockStartDate: card.startDate || today(),
+          cycleAsOfDate: String(card.extra?.cycleAsOfDate ?? ""),
           broilerType: card.broilerType ?? "",
           breed: card.breed ?? "",
           guideline: card.guideline ?? "",
           coccidiostatProgramId: card.coccidiostatProgramId ?? "",
           otherProgramId: card.otherProgramId ?? "",
           vaccinationProgramId: card.vaccinationProgramId ?? "",
-          flockId: card.flockCode ?? "",
           trialCode: card.trialCode ?? "",
-          cycleNumber: card.cycleNumber ?? "",
+          cycleNumber: card.cycleNumber?.trim() || "1",
           nofAnimals: optionalNumberToInputValue(card.animalQty),
           feedMill: card.feedMill ?? "",
           stockingDensity: optionalNumberToInputValue(card.stockingDensity),
           stockingDensityByWeight: optionalNumberToInputValue(card.stockingDensityByWeight),
           sex: card.sex ?? "unknown",
+          extra: card.extra ?? {},
         });
 
-        const rows = card.origins.map(origin => ({
-          id: crypto.randomUUID(),
-          batch: origin.batchNo,
-          itemCode: origin.itemCode ?? "",
-          itemName: origin.itemName ?? "",
-          warehouse: origin.warehouseCode ?? "",
-          warehouseName: origin.warehouseName ?? "",
-          grOrigin: origin.grOrigin ?? "",
-          nofAnimals: optionalNumberToInputValue(origin.animalQty),
-          savedAnimalQty: Number(origin.animalQty ?? 0),
-          breed: origin.breed ?? card.breed ?? "",
-          onHandQty: Number(origin.onHandSnapshot ?? origin.animalQty ?? 0),
-          manufacturingDate: origin.manufacturingDate ?? "",
-          expiryDate: origin.expiryDate ?? "",
-          isSaved: true,
-        }));
-
-        setOriginRows(rows);
       })
       .catch(error => {
         console.error(error);
@@ -394,6 +289,30 @@ export default function Layout() {
     };
   }, [routePayload?.cardId]);
 
+  useEffect(() => {
+    if (editingCardId || !routePayload?.farmId || !routePayload.buildingKey || !selectedBuilding) return;
+
+    let cancelled = false;
+
+    getNextFlockCardCycleCount({
+      farmId: routePayload.farmId,
+      buildingId: selectedBuilding.source === "BUILDING" ? selectedBuilding.id : null,
+      buildingWarehouseId: selectedBuilding.source === "WAREHOUSE" ? selectedBuilding.id : null,
+      buildingKey: routePayload.buildingKey,
+    })
+      .then(cycleCount => {
+        if (!cancelled) updateForm("cycleNumber", cycleCount);
+      })
+      .catch(error => {
+        console.error(error);
+        if (!cancelled) toast(`Unable to calculate cycle count: ${error instanceof Error ? error.message : "Unknown error"}`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingCardId, routePayload?.buildingKey, routePayload?.farmId, selectedBuilding]);
+
   function updateForm<K extends keyof AddFlockForm>(key: K, value: AddFlockForm[K]) {
     setForm(current => ({ ...current, [key]: value }));
   }
@@ -402,106 +321,20 @@ export default function Layout() {
     setForm(current => ({
       ...current,
       flockStartDate: value,
-      age: String(calculateFlockAgeFromStartDate(value)),
+      age: String(calculateCycleAge(value, current.cycleAsOfDate)),
+    }));
+  }
+
+  function updateCycleAsOfDate(value: string) {
+    setForm(current => ({
+      ...current,
+      cycleAsOfDate: value,
+      age: String(calculateCycleAge(current.flockStartDate, value)),
     }));
   }
 
   function updateBreed(value: string) {
     updateForm("breed", value);
-    setOriginRows(current => current.map(row => ({ ...row, breed: value })));
-  }
-
-  function addOriginRowAndSelectBatch() {
-    setOriginBatchSelectionRowId(null);
-    setOriginBatchDialogOpen(true);
-  }
-
-  function openOriginBatchSelection(rowId: string) {
-    setOriginBatchSelectionRowId(rowId);
-    setOriginBatchDialogOpen(true);
-  }
-
-  function getOriginBatchAllocation(batch: FarmOriginBatchOption, availableOnHand: number) {
-    const savedValue = originBatchAllocations[batch.id];
-    if (savedValue == null || savedValue === "") return savedValue ?? String(availableOnHand);
-
-    const numericValue = Number(savedValue);
-    return String(Math.min(Number.isFinite(numericValue) ? numericValue : 0, availableOnHand));
-  }
-
-  function updateOriginBatchAllocation(batch: FarmOriginBatchOption, value: string, availableOnHand: number) {
-    const numericValue = Number(value);
-    const nextValue = value === ""
-      ? ""
-      : String(Math.min(Math.max(Number.isFinite(numericValue) ? numericValue : 0, 0), availableOnHand));
-
-    setOriginBatchAllocations(current => ({
-      ...current,
-      [batch.id]: nextValue,
-    }));
-  }
-
-  function selectOriginBatch(batch: FarmOriginBatchOption) {
-    const availableOnHand = getAvailableOnHandForBatch(batch, originBatchSelectionRowId);
-    const allocation = Number(getOriginBatchAllocation(batch, availableOnHand));
-    const allocatedQty = Number.isFinite(allocation) && allocation > 0
-      ? Math.min(allocation, availableOnHand)
-      : 0;
-
-    if (allocatedQty <= 0) {
-      toast("Please enter a valid allocation quantity.");
-      return;
-    }
-
-    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
-
-    setOriginRows(current => {
-      const existingRow = current.find(row =>
-        row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
-      );
-
-      if (existingRow) {
-        return current.flatMap(row => {
-          if (row.id === existingRow.id) {
-            return [{
-              ...row,
-              nofAnimals: String((Number(row.nofAnimals) || 0) + allocatedQty),
-              onHandQty: batch.onHandQty,
-              isSaved: false,
-            }];
-          }
-
-          return originBatchSelectionRowId && row.id === originBatchSelectionRowId ? [] : [row];
-        });
-      }
-
-      const selectedRowPayload: FlockOriginRow = {
-        ...newOriginRow(),
-        batch: batch.batchNumber,
-        itemCode: batch.itemCode,
-        itemName: batch.itemName,
-        warehouse: batch.warehouseCode,
-        warehouseName: batch.warehouseName,
-        grOrigin: batch.grOrigin,
-        nofAnimals: String(allocatedQty),
-        savedAnimalQty: 0,
-        onHandQty: batch.onHandQty,
-        manufacturingDate: batch.manufacturingDate,
-        expiryDate: batch.expiryDate,
-        isSaved: false,
-      };
-
-      if (!originBatchSelectionRowId) return [...current, selectedRowPayload];
-
-      return current.map(row =>
-        row.id === originBatchSelectionRowId
-          ? { ...selectedRowPayload, id: row.id }
-          : row
-      );
-    });
-
-    setOriginBatchDialogOpen(false);
-    setOriginBatchSelectionRowId(null);
   }
 
   async function handleSave() {
@@ -510,7 +343,7 @@ export default function Layout() {
       return;
     }
 
-    if (!form.flockStartDate || !form.broilerType || !form.breed || !originRows.some(row => row.batch.trim())) {
+    if (!form.flockStartDate || !form.breed) {
       toast("Please complete required flock fields.");
       return;
     }
@@ -518,7 +351,7 @@ export default function Layout() {
     setSaving(true);
 
     try {
-      const flockAge = calculateFlockAgeFromStartDate(form.flockStartDate);
+      const flockAge = calculateCycleAge(form.flockStartDate, form.cycleAsOfDate);
       const savedCard = await saveFlockCardPlacement({
         id: editingCardId,
         cardNo: editingCardNo,
@@ -539,31 +372,42 @@ export default function Layout() {
         coccidiostatProgramId: form.coccidiostatProgramId,
         otherProgramId: form.otherProgramId,
         vaccinationProgramId: form.vaccinationProgramId,
-        flockCode: form.flockId,
         trialCode: form.trialCode,
         cycleNumber: form.cycleNumber,
-        animalQty: form.nofAnimals.trim() === "" ? totalOriginAnimals : Number(form.nofAnimals),
+        animalQty: form.nofAnimals.trim() === ""
+          ? totalPlacementAnimals
+          : Number(form.nofAnimals || 0),
         feedMill: form.feedMill,
         stockingDensity: Number(form.stockingDensity || 0) || null,
         stockingDensityByWeight: Number(form.stockingDensityByWeight || 0) || null,
         sex: form.sex,
-        origins: originRows.map((row, index) => ({
+        extra: {
+          ...form.extra,
+          cycleAsOfDate: form.cycleAsOfDate,
+        },
+        origins: placementRows.map((row, index) => ({
           lineNo: index + 1,
           itemCode: row.itemCode,
           itemName: row.itemName,
-          batchNo: row.batch,
-          warehouseCode: row.warehouse,
+          batchNo: row.batchNumber,
+          warehouseCode: row.warehouseCode,
           warehouseName: row.warehouseName,
           grOrigin: row.grOrigin,
-          animalQty: Number(row.nofAnimals || 0),
-          onHandSnapshot: row.onHandQty,
+          animalQty: Number(row.onHandQty || 0),
+          onHandSnapshot: row.batchOnHandQty,
           breed: form.breed,
           manufacturingDate: row.manufacturingDate,
           expiryDate: row.expiryDate,
+          extra: {
+            docDetails: row.docDetails,
+            mortalityQty: row.mortalityQty,
+            thinningQty: row.thinningQty,
+            batchOnHandQty: row.batchOnHandQty,
+          },
         })),
       });
 
-      toast(`Cycle saved: ${savedCard.cardNo}`);
+      toast(`Cycle saved: ${savedCard.cardNo}.`);
       router.push("/brd/fc");
     } catch (error) {
       console.error(error);
@@ -650,6 +494,99 @@ export default function Layout() {
           </section>
 
           <section className="rounded-lg border">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold">Placement Information</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  DOC inventory currently available in {selectedBuilding?.code || "the selected building"}.
+                </p>
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-right text-xs">
+                <div className="rounded-md border px-3 py-2">
+                  <div className="text-muted-foreground">Actual Received</div>
+                  <div className="font-semibold tabular-nums">{formatQuantity(totalActualReceived)}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2">
+                  <div className="text-muted-foreground">On-hand</div>
+                  <div className="font-semibold tabular-nums">{formatQuantity(totalPlacementAnimals)}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2">
+                  <div className="text-muted-foreground">Mortality</div>
+                  <div className="font-semibold tabular-nums">{formatQuantity(totalMortalityAnimals)}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2">
+                  <div className="text-muted-foreground">Thinning</div>
+                  <div className="font-semibold tabular-nums">{formatQuantity(totalThinningAnimals)}</div>
+                </div>
+              </div>
+            </div>
+
+            {loadingPlacement ? (
+              <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading building DOC inventory...
+              </div>
+            ) : placementError ? (
+              <div className="p-4 text-sm text-destructive">{placementError}</div>
+            ) : placementRows.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">
+                No DOC inventory is available for this building.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-[1300px] w-full text-sm">
+                  <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      {[
+                        "GR Origin",
+                        "Receive Date",
+                        "MNF Date",
+                        "Transfer Slip",
+                        "Total Received",
+                        "Actual Received",
+                        "Avg DOC Weight",
+                        "DOA",
+                        "Reject",
+                        "Short",
+                        "Short Count Remarks",
+                        "DOA Count Remarks",
+                        "Reject Count Remarks",
+                      ].map(label => (
+                        <th key={label} className="whitespace-nowrap border-r px-3 py-2 last:border-r-0">{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {placementRows.map(row => {
+                      const details = row.docDetails.length > 0 ? row.docDetails : [undefined];
+
+                      return details.map((detail, detailIndex) => (
+                        <Fragment key={`${row.id}-${detailIndex}`}>
+                          <tr className="border-t">
+                            <td className="whitespace-nowrap border-r px-3 py-2">{detail?.grOrigin || row.grOrigin || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.receiveDate ?? "")}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.manufacturingDate || row.manufacturingDate)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2">{detail?.transferSlip || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.totalReceived ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.actualReceived ?? row.batchQuantity)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.averageDocWeight ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.doaCount ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.rejectCount ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.shortCount ?? 0)}</td>
+                            <td className="border-r px-3 py-2">{detail?.shortCountRemarks || "-"}</td>
+                            <td className="border-r px-3 py-2">{detail?.doaCountRemarks || "-"}</td>
+                            <td className="px-3 py-2">{detail?.rejectCountRemarks || "-"}</td>
+                          </tr>
+                        </Fragment>
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-lg border">
             <div className="border-b px-4 py-3">
               <h2 className="text-sm font-semibold">Mandatory flock info</h2>
             </div>
@@ -684,11 +621,32 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Cycle start date</label>
+                <label className="text-sm font-medium">Cycle Count</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.cycleNumber || "1"}
+                  placeholder="Calculated automatically"
+                  readOnly
+                  className="bg-stone-50"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Cycle Date From</label>
                 <Input
                   type="date"
                   value={form.flockStartDate}
                   onChange={event => updateFlockStartDate(event.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Cycle Date To</label>
+                <Input
+                  type="date"
+                  value={form.cycleAsOfDate}
+                  onChange={event => updateCycleAsOfDate(event.target.value)}
                 />
               </div>
 
@@ -704,23 +662,9 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Type of broiler *</label>
-                <Select value={form.broilerType} onValueChange={value => updateForm("broilerType", value)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {broilerTypeOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
                 <label className="text-sm font-medium">Breed *</label>
                 <SearchableCombobox
-                  items={breedComboOptions}
+                  items={flockCardBreedComboOptions}
                   value={form.breed}
                   onValueChange={updateBreed}
                   placeholder="Select breed"
@@ -729,14 +673,6 @@ export default function Layout() {
                 />
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Guideline</label>
-                <Input
-                  value={form.guideline}
-                  onChange={event => updateForm("guideline", event.target.value)}
-                  placeholder="Select or enter guideline"
-                />
-              </div>
             </div>
           </section>
 
@@ -749,9 +685,7 @@ export default function Layout() {
                 ["coccidiostatProgramId", "Cocci programs", "Add cocci program"],
                 ["otherProgramId", "Other programs", "Add other program"],
                 ["vaccinationProgramId", "Vaccination programs", "Add vaccination program"],
-                ["flockId", "Cycle ID", "Enter the flock ID"],
                 ["trialCode", "Trial code", "Enter the trial code"],
-                ["cycleNumber", "Cycle number", "Enter the cycle number"],
                 ["nofAnimals", "Number of animals (on start date)", "Enter the number of animals"],
                 ["feedMill", "Feedmill", "Enter the feedmill"],
                 ["stockingDensity", "Stocking density (Birds/m2)", "Stocking density"],
@@ -784,78 +718,6 @@ export default function Layout() {
             </div>
           </section>
 
-          <section className="rounded-lg border">
-            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <h2 className="text-sm font-semibold">Placement</h2>
-              <Button type="button" size="sm" variant="outline" onClick={addOriginRowAndSelectBatch}>
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </div>
-            <div className="overflow-hidden">
-              <table className="w-full table-fixed border-collapse text-sm">
-                <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="w-[20%] border-r px-3 py-2">Batch *</th>
-                    <th className="w-[18%] border-r px-3 py-2">Warehouse</th>
-                    <th className="w-[18%] border-r px-3 py-2">GR Origin</th>
-                    <th className="w-[16%] border-r px-3 py-2">Number of animals</th>
-                    <th className="w-[22%] border-r px-3 py-2">Breed</th>
-                    <th className="w-[6%] px-2 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {originRows.length === 0 && (
-                    <tr className="border-t">
-                      <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                        Click Add to select an origin batch.
-                      </td>
-                    </tr>
-                  )}
-                  {originRows.map(row => (
-                    <tr key={row.id} className="border-t">
-                      <td className="border-r p-1 align-middle">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-8 w-full justify-between rounded-sm px-2 font-normal"
-                          onClick={() => openOriginBatchSelection(row.id)}
-                        >
-                          <span className={row.batch ? "truncate font-medium" : "truncate text-muted-foreground"}>
-                            {row.batch || "Select batch"}
-                          </span>
-                          <MousePointerClick className="ml-2 size-4 shrink-0 text-muted-foreground" />
-                        </Button>
-                      </td>
-                      <td className="border-r p-1 align-middle">
-                        <Input value={row.warehouse} readOnly className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1" />
-                      </td>
-                      <td className="border-r p-1 align-middle">
-                        <Input value={row.grOrigin} readOnly className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1" />
-                      </td>
-                      <td className="border-r p-1 align-middle">
-                        <Input type="number" min={0} value={row.nofAnimals} readOnly className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1" />
-                      </td>
-                      <td className="border-r p-1 align-middle">
-                        <Input value={form.breed || row.breed} readOnly className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1" />
-                      </td>
-                      <td className="p-1 text-center align-middle">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="size-8"
-                          onClick={() => setOriginRows(current => current.filter(item => item.id !== row.id))}
-                        >
-                          <Minus className="size-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </div>
 
         <div className="flex justify-end gap-2 border-t p-5">
@@ -868,141 +730,6 @@ export default function Layout() {
         </div>
       </section>
 
-      <Dialog
-        open={originBatchDialogOpen}
-        onOpenChange={(open) => {
-          setOriginBatchDialogOpen(open);
-          if (!open) setOriginBatchSelectionRowId(null);
-        }}
-      >
-        <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] overflow-hidden sm:max-w-6xl [&>*]:min-w-0">
-          <DialogHeader>
-            <DialogTitle>Select Origin Batch</DialogTitle>
-            <DialogDescription>
-              Choose the batch used for this flock origin from the selected farm warehouses.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="rounded-md border bg-muted/30 p-3">
-            <div className="grid gap-2 text-sm sm:grid-cols-4">
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">Farm</div>
-                <div className="truncate font-semibold text-foreground">{farmInfo?.name || routePayload?.farmName || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">Building</div>
-                <div className="truncate font-semibold text-foreground">
-                  {selectedBuilding?.code || routePayload?.buildingCode || "-"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">Current Batch</div>
-                <div className="truncate font-semibold text-foreground">{selectedOriginRow?.batch || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">Available On Hand</div>
-                <div className="font-semibold tabular-nums text-foreground">
-                  {loadingOriginBatches ? "Loading..." : formatQuantity(totalOriginOnHand)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {loadingOriginBatches ? (
-            <div className="flex items-center justify-center gap-2 rounded-md border bg-muted/40 px-3 py-10 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Loading farm batches...
-            </div>
-          ) : originBatchError ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-              {originBatchError}
-            </div>
-          ) : originBatchRows.length === 0 ? (
-            <div className="rounded-md border bg-muted/40 px-3 py-10 text-center text-sm text-muted-foreground">
-              No available batches were found in this farm warehouse setup.
-            </div>
-          ) : (
-            <div className="w-full max-w-full overflow-hidden rounded-md border">
-              <div className="w-full">
-                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_96px_88px_104px_76px_minmax(0,0.9fr)_76px] gap-2 bg-muted px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-                  <div>Batch</div>
-                  <div>Item</div>
-                  <div>Warehouse</div>
-                  <div className="text-right">Batch qty</div>
-                  <div className="text-right">On hand</div>
-                  <div className="text-right">To transfer</div>
-                  <div>MFG</div>
-                  <div>GR Origin</div>
-                  <div />
-                </div>
-
-                <div className="max-h-[50vh] overflow-y-auto">
-                  {originBatchRows.map(batch => {
-                    const batchId = getBatchUsageId(batch.itemCode, batch.batchNumber);
-                    const availableOnHand = getAvailableOnHandForBatch(batch, originBatchSelectionRowId);
-                    const isAlreadyInPlacement = originRows.some(row =>
-                      row.id !== originBatchSelectionRowId && getOriginRowBatchId(row) === batchId
-                    );
-                    const disabled = availableOnHand <= 0;
-
-                    return (
-                      <div
-                        key={batch.id}
-                        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_96px_88px_104px_76px_minmax(0,0.9fr)_76px] gap-2 border-t px-3 py-2 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold text-foreground">{batch.batchNumber}</div>
-                          <div className="truncate text-xs text-muted-foreground">{batch.id}</div>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{batch.itemName || batch.itemCode}</div>
-                          <div className="truncate text-xs text-muted-foreground">{batch.itemCode}</div>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{batch.warehouseName || batch.warehouseCode}</div>
-                          <div className="truncate text-xs text-muted-foreground">{batch.warehouseCode}</div>
-                        </div>
-                        <div className="text-right font-semibold tabular-nums text-foreground">
-                          {formatQuantity(batch.batchQuantity)}
-                        </div>
-                        <div className="text-right font-semibold tabular-nums text-foreground">
-                          {formatQuantity(availableOnHand)}
-                        </div>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={availableOnHand}
-                          value={getOriginBatchAllocation(batch, availableOnHand)}
-                          disabled={disabled}
-                          onChange={event => updateOriginBatchAllocation(batch, event.target.value, availableOnHand)}
-                          onKeyDown={event => {
-                            if (event.key !== "Enter" || disabled) return;
-                            event.preventDefault();
-                            selectOriginBatch(batch);
-                          }}
-                          className="h-8 rounded-sm text-right font-semibold tabular-nums"
-                        />
-                        <div className="text-muted-foreground">{formatDateValue(batch.manufacturingDate)}</div>
-                        <div className="min-w-0 truncate text-muted-foreground">{batch.grOrigin || "-"}</div>
-                        <div className="flex justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={disabled}
-                            onClick={() => selectOriginBatch(batch)}
-                          >
-                            {isAlreadyInPlacement ? "Add" : "Select"}
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

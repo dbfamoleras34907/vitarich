@@ -4,6 +4,9 @@ export type AutoFeedBatchSelectionMode = "USER_SELECTED" | "FIFO";
 
 export type FlockCardSettings = {
   id?: number;
+  farm_id: number;
+  farm_code?: string | null;
+  farm_name?: string | null;
   allow_advance_posting: boolean;
   auto_feed_batch_selection: boolean;
   auto_feed_batch_selection_mode: AutoFeedBatchSelectionMode;
@@ -13,11 +16,14 @@ export type FlockCardSettings = {
   updated_at?: string | null;
 };
 
-export async function getFlockCardSettings() {
+export async function getFlockCardSettings(farmId: number) {
+  if (!Number.isFinite(farmId) || farmId <= 0) return null;
+
   const { data, error } = await db
     .from("brd_fc_settings")
     .select("*")
     .eq("void", "1")
+    .eq("farm_id", farmId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -27,10 +33,18 @@ export async function getFlockCardSettings() {
 }
 
 export async function saveFlockCardSettings(payload: FlockCardSettings) {
+  const farmId = Number(payload.farm_id);
+  if (!Number.isFinite(farmId) || farmId <= 0) {
+    throw new Error("Please select a farm.");
+  }
+
   const { data: authData } = await db.auth.getUser();
-  const existingSettings = await getFlockCardSettings();
+  const existingSettings = await getFlockCardSettings(farmId);
 
   const row = {
+    farm_id: farmId,
+    farm_code: payload.farm_code || null,
+    farm_name: payload.farm_name || null,
     allow_advance_posting: payload.allow_advance_posting,
     auto_feed_batch_selection: payload.auto_feed_batch_selection,
     auto_feed_batch_selection_mode: payload.auto_feed_batch_selection_mode,

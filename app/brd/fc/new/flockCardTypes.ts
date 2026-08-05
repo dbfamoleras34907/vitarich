@@ -3,6 +3,7 @@ export type FeedWarehouseAssociation = {
   whse_code?: string | null;
   whse_name?: string | null;
   is_default_feed?: boolean | null;
+  is_default_disposal?: boolean | null;
 };
 
 export type FlockCardNavigationContext = {

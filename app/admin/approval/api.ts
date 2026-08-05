@@ -351,20 +351,26 @@ export async function rejectDocumentApproval(requestId: number, remarks?: string
   return data
 }
 
-export async function approveLegacyApprovalRequest(requestId: number, approvedBy: number) {
+export async function approveLegacyApprovalRequest(requestId: number) {
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  const accessToken = sessionData.session?.access_token
+
+  if (sessionError || !accessToken) {
+    throw new Error("Your session has expired. Please sign in again.")
+  }
+
   const response = await fetch("/api/approval/approve", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      requestId,
-      approvedBy,
-    }),
+    body: JSON.stringify({ requestId }),
   })
 
   if (!response.ok) {
-    throw new Error("Unable to approve legacy approval request.")
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.error || "Unable to approve password reset request.")
   }
 }
 

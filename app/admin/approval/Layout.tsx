@@ -271,13 +271,7 @@ export default function Layout({ mode = 'inbox' }: { mode?: ApprovalLayoutMode }
     setLoading(true)
     try {
       if (request.request_type === 'password_reset') {
-        const authId = await getAuthId()
-        if (!authId) throw new Error('Session error')
-
-        const user = await getProfileByAuthId(authId)
-        if (!user?.id) throw new Error('User profile not found')
-
-        await approveLegacyApprovalRequest(request.id, user.id)
+        await approveLegacyApprovalRequest(request.id)
       } else {
         await approveDocumentApproval(request.id, remarks)
       }

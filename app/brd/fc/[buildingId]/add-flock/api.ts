@@ -1,5 +1,41 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 
+export const flockCardBreedComboOptions = [
+  "Arbor Acres Plus",
+  "Aviagen AP 95",
+  "COBB 400",
+  "COBB 500",
+  "COBB 700",
+  "COBB 800",
+  "COBB AVIAN 48",
+  "Cobb Sasso-150",
+  "Cobb Sasso-175",
+  "Hubbard Classic",
+  "Hubbard Efficiency Plus",
+  "Hubbard F15",
+  "Hubbard Flex",
+  "Hubbard H1",
+  "Hubbard JA 757",
+  "Hubbard JA 787",
+  "Hubbard JA 957",
+  "Hubbard JA 987",
+  "Hubbard JV",
+  "Hubbard Redbro",
+  "Indian River",
+  "Ross Ranger",
+  "Ross 308",
+  "Ross 708",
+  "Ross PM3",
+  "Rowan Rambler Ranger",
+  "Rowan Ranger",
+  "Rowan Ranger Classic",
+  "Rowan Ranger Gold",
+  "Vencobb 430 Y",
+  "Mixed",
+  "Other",
+  "Unknown",
+].map(breed => ({ code: breed, name: breed }));
+
 export type FlockCardOriginPayload = {
   lineNo: number;
   itemId?: number | null;
@@ -48,7 +84,7 @@ export type FlockCardPlacementPayload = {
   sex?: string | null;
   remarks?: string | null;
   extra?: Record<string, unknown>;
-  origins: FlockCardOriginPayload[];
+  origins?: FlockCardOriginPayload[];
 };
 
 export type SavedFlockCardPlacement = {
@@ -56,9 +92,10 @@ export type SavedFlockCardPlacement = {
   cardNo: string;
 };
 
-export type FlockCardPlacementRecord = FlockCardPlacementPayload & {
+export type FlockCardPlacementRecord = Omit<FlockCardPlacementPayload, "origins"> & {
   id: number;
   cardNo: string;
+  origins: FlockCardOriginPayload[];
 };
 
 export type UsedFlockOriginBatch = {
@@ -159,7 +196,7 @@ function throwDbError(error: unknown, context: string): never {
       dbError.code ? `code: ${dbError.code}` : "",
     ].filter(Boolean).join(" ");
 
-    // throw new Error(details ? `${context}: ${details}` : context);
+    throw new Error(details ? `${context}: ${details}` : context);
   }
 
   throw new Error(`${context}: ${String(error ?? "Unknown error")}`);
@@ -180,6 +217,47 @@ function nextCardNo() {
     pad(now.getSeconds()),
     pad(now.getMilliseconds(), 3),
   ].join("");
+}
+
+async function getNextCycleCount(payload: Pick<
+  FlockCardPlacementPayload,
+  "farmId" | "buildingId" | "buildingWarehouseId" | "buildingKey"
+>) {
+  const farmId = Number(payload.farmId ?? 0);
+  if (!Number.isFinite(farmId) || farmId <= 0) return "1";
+
+  let query = db
+    .from("flock_card")
+    .select("cycle_no")
+    .eq("farm_id", farmId)
+    .eq("void", "1");
+
+  if (payload.buildingId != null) {
+    query = query.eq("building_id", payload.buildingId);
+  } else if (payload.buildingWarehouseId != null) {
+    query = query.eq("building_whse_id", payload.buildingWarehouseId);
+  } else if (payload.buildingKey?.trim()) {
+    query = query.eq("building_key", payload.buildingKey.trim());
+  } else {
+    return "1";
+  }
+
+  const result = await query;
+  if (result.error) throwDbError(result.error, "Unable to calculate cycle count");
+
+  const highestCycleCount = (result.data ?? []).reduce((highest, row) => {
+    const count = Number(String(row.cycle_no ?? "").trim());
+    return Number.isInteger(count) && count > highest ? count : highest;
+  }, 0);
+
+  return String(highestCycleCount + 1);
+}
+
+export async function getNextFlockCardCycleCount(payload: Pick<
+  FlockCardPlacementPayload,
+  "farmId" | "buildingId" | "buildingWarehouseId" | "buildingKey"
+>) {
+  return getNextCycleCount(payload);
 }
 
 async function getSessionUserId() {
@@ -277,6 +355,50 @@ function makeBatchUsageId(itemCode: string, batchNo: string) {
     itemCode.trim().toUpperCase(),
     batchNo.trim().toUpperCase(),
   ].join("|");
+}
+
+function savedOriginSignature(origin: FlockCardOriginPayload) {
+  return [
+    origin.itemCode,
+    origin.itemName,
+    origin.batchNo,
+    origin.warehouseCode,
+    origin.warehouseName,
+    origin.grOrigin,
+    toNumberOrNull(origin.animalQty) ?? 0,
+    origin.breed,
+    origin.manufacturingDate,
+    origin.expiryDate,
+  ].map(value => String(value ?? "").trim().toUpperCase()).join("|");
+}
+
+function getAddedPlacementOrigins(
+  submittedOrigins: FlockCardOriginPayload[],
+  savedOrigins: FlockCardOriginPayload[],
+) {
+  const remainingSaved = new Map<string, number>();
+  for (const origin of savedOrigins.filter(hasOriginData)) {
+    const signature = savedOriginSignature(origin);
+    remainingSaved.set(signature, (remainingSaved.get(signature) ?? 0) + 1);
+  }
+
+  const addedOrigins: FlockCardOriginPayload[] = [];
+  for (const origin of submittedOrigins.filter(hasOriginData)) {
+    const signature = savedOriginSignature(origin);
+    const savedCount = remainingSaved.get(signature) ?? 0;
+    if (savedCount > 0) {
+      remainingSaved.set(signature, savedCount - 1);
+    } else {
+      addedOrigins.push(origin);
+    }
+  }
+
+  const changedOrRemovedCount = Array.from(remainingSaved.values()).reduce((sum, count) => sum + count, 0);
+  if (changedOrRemovedCount > 0) {
+    throw new Error("Saved placement lines cannot be changed or removed. You can only add another placement.");
+  }
+
+  return addedOrigins;
 }
 
 export async function getUsedFlockOriginBatches(
@@ -424,69 +546,81 @@ export async function saveFlockCardPlacement(
 ): Promise<SavedFlockCardPlacement> {
   const userId = await getSessionUserId();
   const cardNo = payload.cardNo?.trim() || nextCardNo();
-  const headerPayload = placementPayloadToRow(payload, userId, cardNo);
+  const cycleNumber = payload.id
+    ? payload.cycleNumber
+    : await getNextCycleCount(payload);
+  const headerPayload = placementPayloadToRow({ ...payload, cycleNumber }, userId, cardNo);
+  const previousPlacement = payload.id ? await getFlockCardPlacement(Number(payload.id)) : null;
+  if (payload.id && !previousPlacement) {
+    throw new Error("Unable to save flock card: the saved placement no longer exists");
+  }
+  const originsToSave = payload.origins
+    ? getAddedPlacementOrigins(payload.origins, previousPlacement?.origins ?? [])
+    : [];
 
   let fcId = Number(payload.id ?? 0);
   let savedCardNo = cardNo;
+  let insertedNewHeader = false;
 
-  if (payload.id) {
-    const updateHeaderResult = await db
-      .from("flock_card")
-      .update(headerPayload)
-      .eq("id", payload.id)
-      .select("id, card_no")
-      .maybeSingle();
+  try {
+    if (payload.id) {
+      const updateHeaderResult = await db
+        .from("flock_card")
+        .update(headerPayload)
+        .eq("id", payload.id)
+        .select("id, card_no")
+        .maybeSingle();
 
-    if (updateHeaderResult.error) throwDbError(updateHeaderResult.error, "Unable to save flock card");
+      if (updateHeaderResult.error) throwDbError(updateHeaderResult.error, "Unable to save flock card");
 
-    if (updateHeaderResult.data) {
-      fcId = Number(updateHeaderResult.data.id);
-      savedCardNo = String(updateHeaderResult.data.card_no ?? cardNo);
+      if (updateHeaderResult.data) {
+        fcId = Number(updateHeaderResult.data.id);
+        savedCardNo = String(updateHeaderResult.data.card_no ?? cardNo);
+      }
     } else {
-      const insertedHeader = await db
+      const savedHeader = await db
         .from("flock_card")
         .insert({ ...headerPayload, created_by: userId })
         .select("id, card_no")
         .single();
 
-      if (insertedHeader.error) throwDbError(insertedHeader.error, "Unable to save flock card");
+      if (savedHeader.error) throwDbError(savedHeader.error, "Unable to save flock card");
 
-      fcId = Number(insertedHeader.data.id);
-      savedCardNo = String(insertedHeader.data.card_no ?? cardNo);
+      fcId = Number(savedHeader.data.id);
+      savedCardNo = String(savedHeader.data.card_no ?? cardNo);
+      insertedNewHeader = true;
     }
-  } else {
-    const savedHeader = await db
-      .from("flock_card")
-      .insert({ ...headerPayload, created_by: userId })
-      .select("id, card_no")
-      .single();
 
-    if (savedHeader.error) throwDbError(savedHeader.error, "Unable to save flock card");
+    if (!Number.isFinite(fcId) || fcId <= 0) {
+      throw new Error("Unable to save flock card: missing flock card id");
+    }
 
-    fcId = Number(savedHeader.data.id);
-    savedCardNo = String(savedHeader.data.card_no ?? cardNo);
-  }
+    if (originsToSave.length > 0) {
+      const savedOriginCount = previousPlacement?.origins.filter(hasOriginData).length ?? 0;
+      const originRows = originsToSave.map((origin, index) => originPayloadToRow(
+        { ...origin, lineNo: savedOriginCount + index + 1 },
+        fcId,
+        userId,
+      ));
+      const savedOriginsResult = await db
+        .from("flock_card_origin")
+        .insert(originRows);
 
-  if (!Number.isFinite(fcId) || fcId <= 0) {
-    throw new Error("Unable to save flock card: missing flock card id");
-  }
+      if (savedOriginsResult.error) throwDbError(savedOriginsResult.error, "Unable to save flock origins");
+    }
+  } catch (error) {
+    if (insertedNewHeader && Number.isFinite(fcId) && fcId > 0) {
+      const rollbackResult = await db
+        .from("flock_card")
+        .update({ void: "0", updated_by: userId })
+        .eq("id", fcId);
 
-  const hideOriginsResult = await db
-    .from("flock_card_origin")
-    .update({ void: "0", updated_by: userId })
-    .eq("fc_id", fcId)
-    .eq("void", "1");
+      if (rollbackResult.error) {
+        console.error("Unable to rollback failed flock card placement", rollbackResult.error);
+      }
+    }
 
-  if (hideOriginsResult.error) throwDbError(hideOriginsResult.error, "Unable to hide old flock origins");
-
-  const originsToSave = payload.origins.filter(hasOriginData);
-  if (originsToSave.length > 0) {
-    const originRows = originsToSave.map(origin => originPayloadToRow(origin, fcId, userId));
-    const savedOriginsResult = await db
-      .from("flock_card_origin")
-      .insert(originRows);
-
-    if (savedOriginsResult.error) throwDbError(savedOriginsResult.error, "Unable to save flock origins");
+    throw error;
   }
 
   return {

@@ -4,17 +4,30 @@
 --   fms_type = Broiler, Breeder, Hatchery
 --
 -- Existing column kept as-is:
---   warehouse_type = Warehouse, Building
+--   warehouse_type = Warehouse, Building, Pen
 --
 -- No column is renamed.
 --
 -- Code format:
 --   Warehouse -> WH-0000001
 --   Building  -> BD-0000001
+--   Pen       -> BD-0000001-P1 (derived from its father Building)
 
 -- 1. Add only the missing column.
 alter table public.i_warehouse
-  add column if not exists fms_type text;
+  add column if not exists fms_type text,
+  add column if not exists father_id bigint null;
+
+alter table public.i_warehouse
+  drop constraint if exists i_warehouse_father_id_fkey;
+
+alter table public.i_warehouse
+  add constraint i_warehouse_father_id_fkey
+  foreign key (father_id)
+  references public.i_warehouse (id);
+
+create index if not exists i_warehouse_father_id_idx
+  on public.i_warehouse (father_id);
 
 -- Optional one-time backfill if old rows stored Broiler/Breeder/Hatchery in warehouse_type.
 -- Leave commented if you only want to add the missing column and handle old data manually.
@@ -38,6 +51,7 @@ declare
   candidate_no bigint;
   candidate_code text;
   max_existing_no bigint;
+  father_code text;
   attempt integer;
 begin
   normalized_fms_type := initcap(lower(btrim(coalesce(new.fms_type, 'Broiler'))));
@@ -50,12 +64,40 @@ begin
   case normalized_warehouse_type
     when 'Warehouse' then code_prefix := 'WH';
     when 'Building' then code_prefix := 'BD';
+    when 'Pen' then code_prefix := null;
     else
-      raise exception 'Invalid warehouse type: %. Allowed values are Warehouse, Building.', new.warehouse_type;
+      raise exception 'Invalid warehouse type: %. Allowed values are Warehouse, Building, Pen.', new.warehouse_type;
   end case;
 
   new.fms_type := normalized_fms_type;
   new.warehouse_type := normalized_warehouse_type;
+
+  if normalized_warehouse_type = 'Pen' then
+    if new.father_id is null then
+      raise exception 'A Pen must have a father Building.';
+    end if;
+
+    select whse_code
+    into father_code
+    from public.i_warehouse
+    where id = new.father_id
+      and btrim(coalesce(warehouse_type, '')) = 'Building';
+
+    if nullif(btrim(coalesce(father_code, '')), '') is null then
+      raise exception 'Pen father_id % must reference an existing Building.', new.father_id;
+    end if;
+
+    perform pg_advisory_xact_lock(hashtext('public.i_warehouse:pen:' || new.father_id::text)::bigint);
+
+    select coalesce(max((substring(whse_code from '-P([0-9]+)$'))::bigint), 0) + 1
+    into candidate_no
+    from public.i_warehouse
+    where father_id = new.father_id
+      and btrim(coalesce(warehouse_type, '')) = 'Pen';
+
+    new.whse_code := father_code || '-P' || candidate_no::text;
+    return new;
+  end if;
 
   perform pg_advisory_xact_lock(hashtext('public.i_warehouse:' || code_prefix)::bigint);
 
@@ -119,7 +161,7 @@ alter table public.i_warehouse
   add constraint i_warehouse_type_allowed_chk
   check (
     nullif(btrim(warehouse_type), '') is not null
-    and btrim(warehouse_type) in ('Warehouse', 'Building')
+    and btrim(warehouse_type) in ('Warehouse', 'Building', 'Pen')
   )
   not valid;
 
