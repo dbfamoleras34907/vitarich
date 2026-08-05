@@ -1,11 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -13,6 +10,7 @@ import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/co
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { ModuleSettingsHeader, SettingRow, SettingsCategory } from "@/components/settings/ModuleSettingsLayout";
 import {
   getFlockCardSettings,
   saveFlockCardSettings,
@@ -44,6 +42,7 @@ export default function FlockCardSettingsLayout() {
   const [autoMortalityRateBatchSelection, setAutoMortalityRateBatchSelection] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState("");
 
   const singleAllowedFarm = useMemo(() => {
     const allowedFarms = getAllowedUserFarms(
@@ -55,6 +54,14 @@ export default function FlockCardSettingsLayout() {
 
   const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
   const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+  const currentSnapshot = JSON.stringify({
+    farmId: activeFarmId,
+    allowAdvancePosting,
+    autoFeedBatchSelection,
+    autoFeedBatchSelectionMode,
+    autoMortalityRateBatchSelection,
+  });
+  const isDirty = Boolean(savedSnapshot) && currentSnapshot !== savedSnapshot;
 
   const canSave = useMemo(
     () => !saving && !loading && !canEdit && Boolean(activeFarmId),
@@ -69,6 +76,7 @@ export default function FlockCardSettingsLayout() {
       setAutoFeedBatchSelection(false);
       setAutoFeedBatchSelectionMode("USER_SELECTED");
       setAutoMortalityRateBatchSelection(false);
+      setSavedSnapshot("");
       setLoading(false);
       return;
     }
@@ -82,6 +90,13 @@ export default function FlockCardSettingsLayout() {
       setAutoFeedBatchSelection(Boolean(nextSettings?.auto_feed_batch_selection));
       setAutoFeedBatchSelectionMode(nextSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED");
       setAutoMortalityRateBatchSelection(Boolean(nextSettings?.auto_mortality_rate_batch_selection));
+      setSavedSnapshot(JSON.stringify({
+        farmId: activeFarmId,
+        allowAdvancePosting: Boolean(nextSettings?.allow_advance_posting),
+        autoFeedBatchSelection: Boolean(nextSettings?.auto_feed_batch_selection),
+        autoFeedBatchSelectionMode: nextSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED",
+        autoMortalityRateBatchSelection: Boolean(nextSettings?.auto_mortality_rate_batch_selection),
+      }));
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to load Flock Card settings"));
       setSettings(null);
@@ -89,6 +104,7 @@ export default function FlockCardSettingsLayout() {
       setAutoFeedBatchSelection(false);
       setAutoFeedBatchSelectionMode("USER_SELECTED");
       setAutoMortalityRateBatchSelection(false);
+      setSavedSnapshot("");
     } finally {
       setLoading(false);
     }
@@ -97,6 +113,20 @@ export default function FlockCardSettingsLayout() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  const handleRefresh = () => {
+    if (isDirty && !window.confirm("Discard unsaved settings?")) return;
+    void fetchSettings();
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -129,7 +159,14 @@ export default function FlockCardSettingsLayout() {
       setAutoFeedBatchSelection(Boolean(saved.auto_feed_batch_selection));
       setAutoFeedBatchSelectionMode(saved.auto_feed_batch_selection_mode ?? "USER_SELECTED");
       setAutoMortalityRateBatchSelection(Boolean(saved.auto_mortality_rate_batch_selection));
-      toast("Flock Card settings saved successfully");
+      setSavedSnapshot(JSON.stringify({
+        farmId: activeFarmId,
+        allowAdvancePosting: Boolean(saved.allow_advance_posting),
+        autoFeedBatchSelection: Boolean(saved.auto_feed_batch_selection),
+        autoFeedBatchSelectionMode: saved.auto_feed_batch_selection_mode ?? "USER_SELECTED",
+        autoMortalityRateBatchSelection: Boolean(saved.auto_mortality_rate_batch_selection),
+      }));
+      toast("Growing & Farm Condition settings saved");
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to save Flock Card settings"));
     } finally {
@@ -138,36 +175,43 @@ export default function FlockCardSettingsLayout() {
   };
 
   return (
-    <main className="mx-auto p-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <main className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
+      <div>
         <Breadcrumb
           FirstPreviewsPageName="Settings"
           CurrentPageName="Growing & Farm Condition Settings"
         />
-        <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving || !activeFarmId}>
-          <RefreshCcw className={loading ? "size-4 animate-spin" : "size-4"} />
-        </Button>
       </div>
 
-      <Card className="border-border/70 shadow-sm">
-        <CardHeader>
-          <CardTitle>Growing &amp; Farm Condition Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="grid gap-x-12 gap-y-6 lg:grid-cols-2">
-              <div className="space-y-6">
+      <ModuleSettingsHeader
+        title="Growing & Farm Condition Settings"
+        description="Configure Growing & Farm Condition defaults and operational behavior."
+        formId="growing-farm-condition-settings-form"
+        loading={loading}
+        saving={saving}
+        disableRefresh={!activeFarmId}
+        disableSave={!canSave}
+        onRefresh={handleRefresh}
+      />
+
+      <form id="growing-farm-condition-settings-form" onSubmit={handleSubmit} className="space-y-3">
+        <SettingsCategory title="Scope" description="Select the farm whose operational settings you want to maintain.">
+          <SettingRow label="Farm" description="Settings are stored independently for each authorized farm." settingKey="FARM_ID" required>
                 <UserFarmSearchCombobox
                   label="Farm"
                   required
                   value={activeFarmId}
                   onValueChange={(farmId, farm) => {
+                    if (farmId !== activeFarmId && isDirty && !window.confirm("Discard unsaved settings?")) return;
                     setSelectedFarmId(farmId);
                     setSelectedFarm(farm ?? null);
                   }}
                 />
+          </SettingRow>
+        </SettingsCategory>
 
-                <div className="space-y-2">
+        <SettingsCategory title="Posting & Inventory" description="Control posting dates and automatic inventory allocation behavior.">
+          <SettingRow label="Allow advance posting" description="Allows users to post rows ahead of the current flock age." settingKey="ALLOW_ADVANCE_POSTING">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="allow-advance-posting"
@@ -175,16 +219,11 @@ export default function FlockCardSettingsLayout() {
                       disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAllowAdvancePosting(checked === true)}
                     />
-                    <Label htmlFor="allow-advance-posting" className="text-sm font-medium">
-                      Allow advance posting
-                    </Label>
+                    <Label htmlFor="allow-advance-posting">{allowAdvancePosting ? "Enabled" : "Disabled"}</Label>
                   </div>
-                  <p className="pl-7 text-sm leading-relaxed text-muted-foreground">
-                    Allows users to post Flock Card rows ahead of the current flock age.
-                  </p>
-                </div>
+          </SettingRow>
 
-                <div className="space-y-2">
+          <SettingRow label="Auto mortality rate batch selection" description="Prorates whole-bird mortality across placement batches without decimal quantities." settingKey="AUTO_MORTALITY_RATE_BATCH_SELECTION">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="auto-mortality-rate-batch-selection"
@@ -192,18 +231,12 @@ export default function FlockCardSettingsLayout() {
                       disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAutoMortalityRateBatchSelection(checked === true)}
                     />
-                    <Label htmlFor="auto-mortality-rate-batch-selection" className="text-sm font-medium">
-                      Auto mortality rate batch selection
-                    </Label>
+                    <Label htmlFor="auto-mortality-rate-batch-selection">{autoMortalityRateBatchSelection ? "Enabled" : "Disabled"}</Label>
                   </div>
-                  <p className="pl-7 text-sm leading-relaxed text-muted-foreground">
-                    When selected, mortality is prorated across placement batches without decimals because birds are whole units. For 3 batches and 7 mortality, the split can be batch 1: 3, batch 2: 2, batch 3: 2.
-                  </p>
-                </div>
-              </div>
+          </SettingRow>
 
-              <div className="space-y-6">
-                <div className="space-y-3">
+          <SettingRow label="Auto feed batch selection" description="Shows available feed batches automatically when users open a new Growing & Farm Condition record." settingKey="AUTO_FEED_BATCH_SELECTION">
+                <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="auto-feed-batch-selection"
@@ -211,18 +244,13 @@ export default function FlockCardSettingsLayout() {
                       disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setAutoFeedBatchSelection(checked === true)}
                     />
-                    <Label htmlFor="auto-feed-batch-selection" className="text-sm font-medium">
-                      Auto feed batch selection
-                    </Label>
+                    <Label htmlFor="auto-feed-batch-selection">{autoFeedBatchSelection ? "Enabled" : "Disabled"}</Label>
                   </div>
-                  <p className="pl-7 text-sm leading-relaxed text-muted-foreground">
-                    When users go to the new Flock Card route, available feed batches are shown automatically.
-                  </p>
 
                   <RadioGroup
                     value={autoFeedBatchSelectionMode}
                     onValueChange={(value) => setAutoFeedBatchSelectionMode(value as AutoFeedBatchSelectionMode)}
-                    className="gap-3 pl-7 pt-1"
+                    className="gap-3"
                     disabled={loading || saving || canEdit || !autoFeedBatchSelection}
                   >
                     <div className="space-y-1">
@@ -250,18 +278,9 @@ export default function FlockCardSettingsLayout() {
                     </div>
                   </RadioGroup>
                 </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 border-t pt-6">
-              <Button type="submit" disabled={!canSave}>
-                <Save className="mr-2 size-4" />
-                {saving ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </SettingRow>
+        </SettingsCategory>
+      </form>
     </main>
   );
 }
