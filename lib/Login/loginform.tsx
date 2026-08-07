@@ -43,7 +43,7 @@ export function LoginForm({
         toast(error.message)
         setloading(false)
       } else {
-        setGlobals()
+        await setGlobals({ autoSelectSingleFarm: true })
         setValue('loading_g', true)
         router.push("/init");
         setloading(false)

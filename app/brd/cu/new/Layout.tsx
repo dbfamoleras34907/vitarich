@@ -23,6 +23,10 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       warehouseTypeFilter="Building"
       showFlockCardInformation
       warehouseScope="line"
+      allowImmediatePost
+      showLineRemarks
+      lineQuantityLabel="Clean up Quantity"
+      showLineOnHandQuantity={false}
     />
   )
 }

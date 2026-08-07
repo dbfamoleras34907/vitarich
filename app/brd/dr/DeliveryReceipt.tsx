@@ -157,6 +157,7 @@ export default function DeliveryReceipt({
                       <th className="border border-black px-2 py-2 text-left">Building</th>
                       <th className="border border-black px-2 py-2 text-right">Quantity</th>
                       <th className="border border-black px-2 py-2 text-center">UOM</th>
+                      {isCleanup && <th className="border border-black px-2 py-2 text-left">Remarks</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -169,12 +170,14 @@ export default function DeliveryReceipt({
                         <td className="border border-black px-2 py-2">{line.fromWarehouseCode || '-'}</td>
                         <td className="border border-black px-2 py-2 text-right tabular-nums">{formatQuantity(line.baseQty)}</td>
                         <td className="border border-black px-2 py-2 text-center">{line.baseUom || '-'}</td>
+                        {isCleanup && <td className="border border-black px-2 py-2">{line.lineRemarks || '-'}</td>}
                       </tr>
                     ))}
                     <tr>
                       <td colSpan={5} className="border border-black px-2 py-2 text-right font-bold uppercase">Total</td>
                       <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalQuantity)}</td>
                       <td className="border border-black px-2 py-2" />
+                      {isCleanup && <td className="border border-black px-2 py-2" />}
                     </tr>
                   </tbody>
                 </table>

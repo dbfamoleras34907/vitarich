@@ -129,7 +129,9 @@ export function useGlobalDefaults() {
      batch loader
   ------------------------------------------------------- */
 
-  const setGlobals = async () => {
+  const setGlobals = async ({
+    autoSelectSingleFarm = false,
+  }: { autoSelectSingleFarm?: boolean } = {}) => {
     setLoading(true);
     setValue("loading_g", true);
 
@@ -140,7 +142,7 @@ export function useGlobalDefaults() {
         return;
       }
 
-      await Promise.all([
+      const [, , , , farms, , userInfo] = await Promise.all([
         setUserPermissions(),
         setWhse(),
         setItems(),
@@ -150,6 +152,21 @@ export function useGlobalDefaults() {
         getUserInfoWithFarm(),
         setGoodsReceiptReferences(),
       ]);
+
+      if (autoSelectSingleFarm) {
+        const assignedFarmCodes = new Set(
+          (userInfo?.[0]?.users_farms ?? [])
+            .map((farmCode: unknown) => String(farmCode ?? "").trim())
+            .filter(Boolean),
+        );
+        const assignedFarms = (farms ?? []).filter((farm) =>
+          assignedFarmCodes.has(String(farm.code ?? "").trim()),
+        );
+
+        if (assignedFarms.length === 1) {
+          setValue("DefaultFarmId", assignedFarms[0].id);
+        }
+      }
     } catch (error) {
       console.error("setGlobals error:", error);
     }
@@ -210,7 +227,7 @@ export default function GlobalDefaults({ collapsed }: CollapsedProps) {
       <Button
         variant="ghost"
         type="button"
-        onClick={setGlobals}
+        onClick={() => setGlobals()}
         disabled={loading}
         className={`w-full  gap-2 py-2 justify-start ${collapsed ? "justify-center" : ""
           }`}

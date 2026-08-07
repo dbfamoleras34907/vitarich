@@ -9,6 +9,7 @@ export type GoodsIssueLine = {
   itemId: number | null
   itemCode: string
   description: string
+  lineRemarks?: string
   batchRuleId: number | null
   batchNumber: string
   manufacturingDate: string
@@ -65,6 +66,7 @@ type GoodsIssueItemRow = {
   item_id: number | null
   item_code: string
   description: string | null
+  remarks?: string | null
   batch_rule_id: number | null
   batch_number: string | null
   manufacturing_date: string | null
@@ -149,6 +151,7 @@ const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
   itemId: row.item_id,
   itemCode: row.item_code,
   description: row.description ?? '',
+  lineRemarks: row.remarks ?? '',
   batchRuleId: row.batch_rule_id ?? null,
   batchNumber: row.batch_number ?? '',
   manufacturingDate: row.manufacturing_date ?? '',
@@ -185,6 +188,7 @@ const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',
+  lineRemarks: '',
   batchRuleId: null,
   batchNumber: '',
   manufacturingDate: '',
@@ -537,6 +541,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       item_id: line.itemId,
       item_code: line.itemCode,
       description: line.description || null,
+      ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
       batch_rule_id: line.batchRuleId,
       batch_number: line.batchNumber.trim() || null,
       manufacturing_date: line.manufacturingDate || null,

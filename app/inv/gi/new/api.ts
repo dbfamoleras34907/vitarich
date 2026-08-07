@@ -55,6 +55,151 @@ export type GoodsIssuePlacementBatch = {
   onHandQty: number
 }
 
+export type CleanupCycleSummary = {
+  flockCardId: number
+  buildingCode: string
+  buildingName: string
+  flockCard: string
+  cycleCount: string
+  age: number
+  totalPlacement: number
+  totalMortality: number
+  totalDelivered: number
+  totalCleaned: number
+}
+
+type CleanupSummaryCardRow = FlockCardInfoRow & {
+  extra: Record<string, unknown> | null
+}
+
+type CleanupSummaryPostingRow = {
+  source_doc_type: string | null
+  item_code: string | null
+  warehouse_code: string | null
+  batch_number: string | null
+  ref: string | null
+  qty: number | null
+  transfer_type: string | null
+}
+
+export async function getCleanupCycleSummaries(params: {
+  farmId: number
+  cleanupDocumentId: number | null
+  buildings: Array<{ warehouseId: number | null; warehouseCode: string }>
+}): Promise<CleanupCycleSummary[]> {
+  const farmId = Number(params.farmId)
+  if (!Number.isFinite(farmId) || farmId <= 0 || params.buildings.length === 0) return []
+
+  const cardResult = await db
+    .from('flock_card')
+    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status, extra')
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+    .in('status', ['Saved', 'Closed'])
+    .order('start_date', { ascending: false })
+    .order('id', { ascending: false })
+
+  if (cardResult.error) throwReferenceError('Clean up cycle summary', cardResult.error)
+  const cards = (cardResult.data ?? []) as CleanupSummaryCardRow[]
+  const documentId = Number(params.cleanupDocumentId ?? 0)
+
+  const selectedCards = params.buildings.flatMap(building => {
+    const matches = cards.filter(card =>
+      (building.warehouseId && Number(card.building_whse_id) === Number(building.warehouseId)) ||
+      String(card.building_code ?? '').trim().toUpperCase() === building.warehouseCode.trim().toUpperCase(),
+    )
+    const card = documentId > 0
+      ? matches.find(candidate => Number(candidate.extra?.closed_by_docentry ?? 0) === documentId)
+        ?? matches.find(candidate => candidate.status === 'Saved')
+      : matches.find(candidate => candidate.status === 'Saved')
+    return card ? [card] : []
+  })
+
+  const uniqueCards = Array.from(new Map(selectedCards.map(card => [card.id, card])).values())
+  if (uniqueCards.length === 0) return []
+  const getCardBuildingCode = (card: CleanupSummaryCardRow) =>
+    params.buildings.find(building =>
+      (building.warehouseId && Number(card.building_whse_id) === Number(building.warehouseId)) ||
+      building.warehouseCode.trim().toUpperCase() === String(card.building_code ?? '').trim().toUpperCase(),
+    )?.warehouseCode.trim() || String(card.building_code ?? '').trim()
+
+  const originResult = await db
+    .from('flock_card_origin')
+    .select('fc_id, item_code, batch_no')
+    .in('fc_id', uniqueCards.map(card => card.id))
+    .eq('void', '1')
+
+  if (originResult.error) throwReferenceError('Clean up placement batches', originResult.error)
+  const origins = (originResult.data ?? []) as Array<{ fc_id: number; item_code: string | null; batch_no: string | null }>
+  const warehouseCodes = Array.from(new Set(uniqueCards.map(getCardBuildingCode).filter(Boolean)))
+  const itemCodes = Array.from(new Set(origins.map(origin => String(origin.item_code ?? '').trim()).filter(Boolean)))
+
+  let postings: CleanupSummaryPostingRow[] = []
+  if (warehouseCodes.length > 0 && itemCodes.length > 0) {
+    const postingResult = await db
+      .from('inventory_postings')
+      .select('source_doc_type, item_code, warehouse_code, batch_number, ref, qty, transfer_type')
+      .in('warehouse_code', warehouseCodes)
+      .in('item_code', itemCodes)
+      .in('source_doc_type', [
+        'FLOCK_CARD_ORIGIN',
+        'FLOCK_CARD_ORIGIN_VOID',
+        'BRD_FC_MORT_THIN_USAGE',
+        'BRD_FC_MORT_THIN_TRANSFER_OUT',
+        'BRD_FC_MORT_THIN_REVERSAL',
+        'BR_DELIVERY',
+        'BR_CLEANUP',
+      ])
+
+    if (postingResult.error) throwReferenceError('Clean up inventory summary', postingResult.error)
+    postings = (postingResult.data ?? []) as CleanupSummaryPostingRow[]
+  }
+
+  const signedQty = (posting: CleanupSummaryPostingRow) =>
+    String(posting.transfer_type ?? '').toUpperCase() === 'OUT'
+      ? -Number(posting.qty ?? 0)
+      : Number(posting.qty ?? 0)
+
+  return uniqueCards.map(card => {
+    const cardOrigins = origins.filter(origin => Number(origin.fc_id) === Number(card.id))
+    const originKeys = new Set(cardOrigins.map(origin =>
+      `${String(origin.item_code ?? '').trim().toUpperCase()}|${String(origin.batch_no ?? '').trim().toUpperCase()}`,
+    ))
+    const buildingCode = getCardBuildingCode(card)
+    const cardPostings = postings.filter(posting => {
+      const key = `${String(posting.item_code ?? '').trim().toUpperCase()}|${String(posting.batch_number ?? posting.ref ?? '').trim().toUpperCase()}`
+      return String(posting.warehouse_code ?? '').trim().toUpperCase() === buildingCode.toUpperCase() && originKeys.has(key)
+    })
+    const movementTotal = (types: string[]) => cardPostings
+      .filter(posting => types.includes(String(posting.source_doc_type ?? '').toUpperCase()))
+      .reduce((total, posting) => total + signedQty(posting), 0)
+    const totalPlacement = Math.max(movementTotal(['FLOCK_CARD_ORIGIN', 'FLOCK_CARD_ORIGIN_VOID']), 0)
+    const totalMortality = Math.max(-movementTotal([
+      'BRD_FC_MORT_THIN_USAGE',
+      'BRD_FC_MORT_THIN_TRANSFER_OUT',
+      'BRD_FC_MORT_THIN_REVERSAL',
+    ]), 0)
+    const totalDelivered = Math.max(-movementTotal(['BR_DELIVERY']), 0)
+    const postedCleaned = Math.max(-movementTotal(['BR_CLEANUP']), 0)
+    const remainingAfterHarvest = Math.max(totalPlacement - totalMortality - totalDelivered, 0)
+
+    return {
+      flockCardId: Number(card.id),
+      buildingCode,
+      buildingName: String(card.building_name ?? '').trim(),
+      flockCard: String(card.card_no ?? '').trim(),
+      cycleCount: String(card.cycle_no ?? '').trim(),
+      age: card.start_date ? calculateFlockAgeFromStartDate(card.start_date) : Number(card.age ?? 0),
+      totalPlacement,
+      totalMortality,
+      totalDelivered,
+      totalCleaned: postedCleaned > 0 ? postedCleaned : remainingAfterHarvest,
+    }
+  }).sort((left, right) =>
+    (left.buildingName || left.buildingCode).localeCompare(right.buildingName || right.buildingCode, undefined, { numeric: true }),
+  )
+}
+
 function throwReferenceError(label: string, error: unknown): never {
   const details = typeof error === 'object' && error !== null
     ? JSON.stringify(error)
@@ -394,6 +539,57 @@ export async function getBrDeliveryAgeShortage(params: {
   if (settingsError) throwReferenceError('BR Delivery settings', settingsError)
 
   const targetAge = Number(settings?.target_delivery_age ?? 0)
+  if (!Number.isFinite(targetAge) || targetAge <= 0) return null
+
+  const uniqueBuildings = Array.from(new Map(
+    params.lines.map(line => [
+      `${line.fromWarehouseId ?? ''}|${line.fromWarehouseCode.trim().toUpperCase()}`,
+      line,
+    ]),
+  ).values())
+
+  for (const building of uniqueBuildings) {
+    const flock = await getDeliveryFlockCardInfo({
+      farmId,
+      buildingWarehouseId: building.fromWarehouseId,
+      buildingCode: building.fromWarehouseCode,
+    })
+
+    if (!flock || flock.age < targetAge) {
+      return {
+        targetAge,
+        currentAge: flock?.age ?? null,
+        buildingName: flock?.buildingName || building.fromWarehouseCode,
+        hasFlockCard: Boolean(flock),
+      }
+    }
+  }
+
+  return null
+}
+
+export async function getBrCleanupAgeShortage(params: {
+  farmId: number
+  lines: Array<{
+    fromWarehouseId: number | null
+    fromWarehouseCode: string
+  }>
+}) {
+  const farmId = Number(params.farmId)
+  if (!Number.isFinite(farmId) || farmId <= 0) return null
+
+  const { data: settings, error: settingsError } = await db
+    .from('brd_cu_settings')
+    .select('target_cleanup_age')
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (settingsError) throwReferenceError('Clean up settings', settingsError)
+
+  const targetAge = Number(settings?.target_cleanup_age ?? 0)
   if (!Number.isFinite(targetAge) || targetAge <= 0) return null
 
   const uniqueBuildings = Array.from(new Map(

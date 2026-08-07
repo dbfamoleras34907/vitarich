@@ -23,6 +23,10 @@ type DeliveryIssueLinesTableProps = {
   lineFlockCardInfo: Record<string, LineFlockCardState>
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
+  lockCycleCloseout?: boolean
+  showLineRemarks?: boolean
+  quantityLabel?: string
+  showOnHandQuantity?: boolean
   getItemsForLine: (line: GoodsIssueLine) => Items[]
   itemNeedsBatch: (line: GoodsIssueLine) => boolean
   lineHasPlacementBatchOptions: (line: GoodsIssueLine) => boolean
@@ -53,6 +57,10 @@ export default function DeliveryIssueLinesTable({
   lineFlockCardInfo,
   loadingLinePlacementBatches,
   activeDocumentIsPosted,
+  lockCycleCloseout = false,
+  showLineRemarks = false,
+  quantityLabel = 'To Transfer',
+  showOnHandQuantity = true,
   getItemsForLine,
   itemNeedsBatch,
   lineHasPlacementBatchOptions,
@@ -75,7 +83,7 @@ export default function DeliveryIssueLinesTable({
 }: DeliveryIssueLinesTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-[1520px] w-full table-fixed border-collapse text-sm">
+      <table className={`${showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
@@ -85,10 +93,11 @@ export default function DeliveryIssueLinesTable({
             <th className="w-[7%] border-r px-3 py-2">Age</th>
             <th className="w-[8%] border-r px-3 py-2">Weight g</th>
             <th className="w-[16%] border-r px-3 py-2">Item</th>
-            <th className="w-[11%] border-r px-3 py-2">To Transfer</th>
+            <th className="w-[11%] border-r px-3 py-2">{quantityLabel}</th>
             <th className="w-[16%] border-r px-3 py-2">Batch</th>
             <th className="w-[10%] border-r px-3 py-2">UOM</th>
-            <th className="w-[11%] border-r px-3 py-2">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand Qty'}</th>
+            {showOnHandQuantity && <th className="w-[11%] border-r px-3 py-2">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand Qty'}</th>}
+            {showLineRemarks && <th className="w-[16%] border-r px-3 py-2">Remarks</th>}
             <th className="w-[54px] px-2 py-2" />
           </tr>
         </thead>
@@ -150,6 +159,7 @@ export default function DeliveryIssueLinesTable({
                     onChange={(value) => {
                       selectLineWarehouse(line, value).catch(console.error)
                     }}
+                    disabled={lockCycleCloseout}
                   />
                 </td>
                 <td className="border-r p-1 align-middle">
@@ -205,6 +215,7 @@ export default function DeliveryIssueLinesTable({
                     }
                     width={300}
                     onChange={(value) => selectItem(line, value)}
+                    disabled={lockCycleCloseout}
                   />
                 </td>
                 <td className="border-r p-1 align-middle">
@@ -213,6 +224,7 @@ export default function DeliveryIssueLinesTable({
                     min="0"
                     step="any"
                     value={totalTransferQty}
+                    readOnly={lockCycleCloseout}
                     onChange={event => {
                       const requestedTotal = Math.max(numberValue(event.target.value), 0)
                       updateLine(line.id, {
@@ -241,7 +253,7 @@ export default function DeliveryIssueLinesTable({
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={!canSearchBatches}
+                        disabled={lockCycleCloseout || !canSearchBatches}
                         onClick={() => openBatchSelector(line)}
                         className={`h-8 w-full justify-between rounded-sm px-2 font-normal ${batchSummary ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'bg-white text-stone-800'}`}
                       >
@@ -261,7 +273,7 @@ export default function DeliveryIssueLinesTable({
                 <td className="border-r p-1 align-middle">
                   <select
                     value={line.altUom}
-                    disabled={!line.baseUom || allocationLines.length > 1}
+                    disabled={lockCycleCloseout || !line.baseUom || allocationLines.length > 1}
                     onChange={event => {
                       const altUom = event.target.value
                       updateLine(line.id, { altUom, baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom) })
@@ -274,13 +286,32 @@ export default function DeliveryIssueLinesTable({
                     ))}
                   </select>
                 </td>
-                <td className="border-r p-1 align-middle">
+                {showOnHandQuantity && <td className="border-r p-1 align-middle">
                   <Input
                     value={`${formatQuantity(activeDocumentIsPosted ? allocationLines.reduce((total, allocation) => total + allocation.baseQty, 0) : totalAvailableQty)} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}`.trim()}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right text-stone-800 shadow-none focus-visible:ring-1"
                   />
-                </td>
+                </td>}
+                {showLineRemarks && (
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={line.lineRemarks ?? ''}
+                      readOnly={activeDocumentIsPosted}
+                      placeholder="Optional remarks"
+                      onChange={event => {
+                        const lineRemarks = event.target.value
+                        setIssue(current => current ? {
+                          ...current,
+                          lines: current.lines.map(candidate =>
+                            allocationLineIds.has(candidate.id) ? { ...candidate, lineRemarks } : candidate,
+                          ),
+                        } : current)
+                      }}
+                      className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                )}
                 <td className="p-1 text-center align-middle">
                   <Button
                     type="button"
@@ -294,6 +325,7 @@ export default function DeliveryIssueLinesTable({
                       return { ...current, lines: nextLines.length > 0 ? nextLines : [newLine()] }
                     })}
                     aria-label={`Delete row ${index + 1}`}
+                    disabled={lockCycleCloseout}
                   >
                     <Trash2 className="size-4" />
                   </Button>

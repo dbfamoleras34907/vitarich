@@ -36,7 +36,7 @@ create table if not exists public.flock_card (
   void text not null default '1',
   constraint flock_card_pkey primary key (id),
   constraint flock_card_card_no_key unique (card_no),
-  constraint flock_card_status_check check (status in ('Saved', 'Cancelled')),
+  constraint flock_card_status_check check (status in ('Saved', 'Closed', 'Cancelled')),
   constraint flock_card_void_check check (void in ('0', '1')),
   constraint flock_card_age_check check (age >= 0),
   constraint flock_card_qty_check check (

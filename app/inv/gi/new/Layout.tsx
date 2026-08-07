@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -44,10 +44,13 @@ import {
   getDeliveryFlockCardInfo,
   getDeliveryFlockCardPlacementBatches,
   getBrDeliveryAgeShortage,
+  getBrCleanupAgeShortage,
+  getCleanupCycleSummaries,
   getAvailableDeliveryFlockCards,
   getAssociatedWarehouseCode,
   getGoodsIssueReferences,
   GoodsIssueFlockCardInfo,
+  type CleanupCycleSummary,
 } from './api'
 import {
   GoodsReceiptBatchRule,
@@ -57,6 +60,7 @@ import {
   UomGroupOption,
 } from '@/app/inv/gr/new/api'
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
+import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -79,6 +83,7 @@ const newLine = (): GoodsIssueLine => ({
   itemId: null,
   itemCode: '',
   description: '',
+  lineRemarks: '',
   batchRuleId: null,
   batchNumber: '',
   manufacturingDate: '',
@@ -253,6 +258,9 @@ type NewGoodsIssueProps = {
   showFlockCardInformation?: boolean
   warehouseScope?: 'header' | 'line'
   allowImmediatePost?: boolean
+  showLineRemarks?: boolean
+  lineQuantityLabel?: string
+  showLineOnHandQuantity?: boolean
 }
 
 function GoodsIssueLoadingShell() {
@@ -292,6 +300,9 @@ export default function NewGoodsIssue({
   showFlockCardInformation = false,
   warehouseScope = 'header',
   allowImmediatePost = false,
+  showLineRemarks = false,
+  lineQuantityLabel = 'To Transfer',
+  showLineOnHandQuantity = true,
 }: NewGoodsIssueProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -344,7 +355,12 @@ export default function NewGoodsIssue({
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
+  const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
+  const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
+  const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
+  const isCleanup = triggeredBy === 'BR-CU'
 
   useEffect(() => {
     setCollapsed(true)
@@ -480,19 +496,19 @@ export default function NewGoodsIssue({
     [selectedFarm, warehouses, warehouseTypeFilter],
   )
   const deliveryFarmWarehouses = useMemo(
-    () => triggeredBy !== 'BR-DR'
+    () => !isBroilerCycleIssue
       ? farmWarehouses
       : farmWarehouses.filter(warehouse =>
           eligibleDeliveryBuildingCodes?.has(String(warehouse.whse_code ?? '').trim().toUpperCase()),
         ),
-    [eligibleDeliveryBuildingCodes, farmWarehouses, triggeredBy],
+    [eligibleDeliveryBuildingCodes, farmWarehouses, isBroilerCycleIssue],
   )
 
   useEffect(() => {
     let cancelled = false
 
     async function loadDeliverySettings() {
-      if (triggeredBy !== 'BR-DR' || !issue?.farmId) {
+      if (!isBroilerCycleIssue || !issue?.farmId) {
         setDeliveryBatchAutoSelection(false)
         setEligibleDeliveryBuildingCodes(null)
         setNoAvailableDeliveryBuildings(false)
@@ -502,10 +518,17 @@ export default function NewGoodsIssue({
 
       setEligibleDeliveryBuildingCodes(new Set())
       try {
-        const settings = await getBrDeliverySettings(Number(issue.farmId))
+        const cleanupSettings = triggeredBy === 'BR-CU'
+          ? await getBrCleanupSettings(Number(issue.farmId))
+          : null
+        const deliverySettings = triggeredBy === 'BR-DR'
+          ? await getBrDeliverySettings(Number(issue.farmId))
+          : null
         if (cancelled) return
 
-        setDeliveryBatchAutoSelection(Boolean(settings?.batch_auto_selection))
+        setDeliveryBatchAutoSelection(
+          triggeredBy === 'BR-CU' || Boolean(deliverySettings?.batch_auto_selection),
+        )
 
         const farmKey = String(issue.farmId)
         const shouldInitializeBuildings =
@@ -517,7 +540,7 @@ export default function NewGoodsIssue({
 
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
-          targetAge: Number(settings?.target_delivery_age ?? 0),
+          targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
         })
         if (cancelled) return
 
@@ -579,6 +602,7 @@ export default function NewGoodsIssue({
     issue?.status,
     loadingReferences,
     triggeredBy,
+    isBroilerCycleIssue,
   ])
 
   const lineWarehouseSignature = useMemo(
@@ -604,6 +628,55 @@ export default function NewGoodsIssue({
       }),
     [lineWarehouseSignature],
   )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCleanupSummaries() {
+      if (!isCleanup || !issue?.farmId) {
+        setCleanupSummaries([])
+        setCleanupSummaryError('')
+        return
+      }
+
+      const buildings = Array.from(new Map(
+        lineWarehouseLookups
+          .filter(line => line.fromWarehouseCode)
+          .map(line => [
+            `${line.fromWarehouseId ?? ''}|${line.fromWarehouseCode.trim().toUpperCase()}`,
+            { warehouseId: line.fromWarehouseId, warehouseCode: line.fromWarehouseCode },
+          ]),
+      ).values())
+
+      if (buildings.length === 0) {
+        setCleanupSummaries([])
+        setCleanupSummaryError('')
+        return
+      }
+
+      setLoadingCleanupSummaries(true)
+      setCleanupSummaryError('')
+      try {
+        const summaries = await getCleanupCycleSummaries({
+          farmId: Number(issue.farmId),
+          cleanupDocumentId: issue.id,
+          buildings,
+        })
+        if (!cancelled) setCleanupSummaries(summaries)
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) {
+          setCleanupSummaries([])
+          setCleanupSummaryError(error instanceof Error ? error.message : 'Unable to load Clean up summary.')
+        }
+      } finally {
+        if (!cancelled) setLoadingCleanupSummaries(false)
+      }
+    }
+
+    void loadCleanupSummaries()
+    return () => { cancelled = true }
+  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups])
 
   useEffect(() => {
     let cancelled = false
@@ -853,8 +926,8 @@ export default function NewGoodsIssue({
     )
   }
 
-  const getSelectedItem = (line: GoodsIssueLine) =>
-    items.find(item => item.id === line.itemId)
+  const getSelectedItem = useCallback((line: GoodsIssueLine) =>
+    items.find(item => item.id === line.itemId), [items])
 
   const getItemGroupId = (item: Items) => {
     const rawGroup = String(item.item_group ?? '').trim()
@@ -888,7 +961,7 @@ export default function NewGoodsIssue({
     return itemUsesBatchManagement(item)
   }
 
-  const calculateBaseQty = (altQty: number, altUom: string, groupCode: string) => {
+  const calculateBaseQty = useCallback((altQty: number, altUom: string, groupCode: string) => {
     if (!altUom || !groupCode) return 0
 
     const conversion = conversions.find(
@@ -898,7 +971,7 @@ export default function NewGoodsIssue({
     )
 
     return conversion ? altQty * conversion.baseQty : 0
-  }
+  }, [conversions])
 
   const getLineWithRecalculatedQuantity = (line: GoodsIssueLine): GoodsIssueLine => {
     const altQty = Number(line.altQty || 0)
@@ -917,7 +990,7 @@ export default function NewGoodsIssue({
   const lineHasInvalidQuantity = (line: GoodsIssueLine) =>
     !line.baseUom || !line.altUom || line.altQty <= 0 || line.baseQty <= 0
 
-  const getGroupUoms = (groupCode: string) => {
+  const getGroupUoms = useCallback((groupCode: string) => {
     const seen = new Set<string>()
     return conversions
       .filter(conversion => conversion.groupCode === groupCode)
@@ -927,7 +1000,7 @@ export default function NewGoodsIssue({
         seen.add(code)
         return true
       })
-  }
+  }, [conversions])
 
   const getSelectedGroup = (groupCode: string) =>
     uomGroups.find(group => group.code === groupCode)
@@ -939,8 +1012,8 @@ export default function NewGoodsIssue({
         conversion.uomCode.toUpperCase() === uomCode.toUpperCase(),
     )
 
-  const getDefaultAltUom = (groupCode: string) =>
-    getGroupUoms(groupCode)[0]?.uomCode ?? ''
+  const getDefaultAltUom = useCallback((groupCode: string) =>
+    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms])
 
   const refreshLineOnHand = async (line: GoodsIssueLine) => {
     if (!canSearchLineInventory(line)) return
@@ -1324,6 +1397,38 @@ export default function NewGoodsIssue({
     autoSelectDeliveryBatches({ ...line, requestedAltQty })
   }
 
+  useEffect(() => {
+    if (!issue || issue.status !== 'Draft' || !isCleanup) return
+
+    const processedGroups = new Set<string>()
+    issue.lines.forEach(line => {
+      if (!line.fromWarehouseCode || !line.itemCode) return
+      const groupKey = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+      if (processedGroups.has(groupKey)) return
+      processedGroups.add(groupKey)
+
+      const options = linePlacementBatches[String(line.id)]
+        ?.filter(option => option.itemCode.trim().toUpperCase() === line.itemCode.trim().toUpperCase())
+        .filter(option => option.onHandQty > 0) ?? []
+      if (options.length === 0 || loadingLinePlacementBatches[String(line.id)]) return
+
+      const selectedItem = getSelectedItem(line)
+      const baseUom = selectedItem?.inventory_uom || selectedItem?.unit_measure || line.baseUom
+      const altUom = line.altUom || getDefaultAltUom(baseUom)
+      const baseQtyPerAltQty = calculateBaseQty(1, altUom, baseUom)
+      if (baseQtyPerAltQty <= 0) return
+
+      const fullBaseQty = options.reduce((total, option) => total + Number(option.onHandQty || 0), 0)
+      const requestedAltQty = fullBaseQty / baseQtyPerAltQty
+      if (requestedAltQty <= 0) return
+
+      const signature = options.map(option => `${option.itemCode}:${option.batchNumber}:${option.onHandQty}`).join('|')
+      if (handledAutoBatchSelectionRef.current[String(line.id)] === `CLEANUP:${signature}`) return
+      handledAutoBatchSelectionRef.current[String(line.id)] = `CLEANUP:${signature}`
+      batchSelectionActionsRef.current.autoSelectDeliveryBatches?.({ ...line, requestedAltQty })
+    })
+  }, [calculateBaseQty, getDefaultAltUom, getSelectedItem, isCleanup, issue, linePlacementBatches, loadingLinePlacementBatches])
+
   itemSelectionActionsRef.current = {
     getItemsForLine,
     selectItem,
@@ -1433,9 +1538,9 @@ export default function NewGoodsIssue({
         return
       }
     }
-    if (posting && triggeredBy === 'BR-DR') {
+    if (posting && isBroilerCycleIssue) {
       try {
-        const ageShortage = await getBrDeliveryAgeShortage({
+        const ageShortage = await (triggeredBy === 'BR-CU' ? getBrCleanupAgeShortage : getBrDeliveryAgeShortage)({
           farmId: Number(issue.farmId),
           lines: linesToSave,
         })
@@ -1444,13 +1549,25 @@ export default function NewGoodsIssue({
             ? 'has no saved flock card'
             : `is only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'} old`
           toast(
-            `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for delivery.`,
+            `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for ${isCleanup ? 'clean up' : 'delivery'}.`,
           )
           return
         }
       } catch (error) {
         console.error(error)
-        toast('Error: ' + (error instanceof Error ? error.message : 'Unable to validate the DOC delivery age.'))
+        toast('Error: ' + (error instanceof Error ? error.message : `Unable to validate the DOC ${isCleanup ? 'clean-up' : 'delivery'} age.`))
+        return
+      }
+    }
+    if (posting && isCleanup) {
+      const incompleteCleanupLine = linesToSave.find(line => {
+        const fullBatchQty = getRawBatchOptionsForLine(line)
+          .find(batch => batch.batchNumber.trim().toUpperCase() === line.batchNumber.trim().toUpperCase())
+          ?.onHandQty ?? line.onHandQty
+        return Math.abs(Number(line.baseQty || 0) - Number(fullBatchQty || 0)) > 0.000001
+      })
+      if (incompleteCleanupLine) {
+        toast(`Clean up must use the full remaining quantity for batch ${incompleteCleanupLine.batchNumber}.`)
         return
       }
     }
@@ -1627,6 +1744,15 @@ export default function NewGoodsIssue({
       )}
     </div>
   )
+  const cleanupSummaryTotals = cleanupSummaries.reduce(
+    (totals, row) => ({
+      placement: totals.placement + row.totalPlacement,
+      mortality: totals.mortality + row.totalMortality,
+      delivered: totals.delivered + row.totalDelivered,
+      cleaned: totals.cleaned + row.totalCleaned,
+    }),
+    { placement: 0, mortality: 0, delivered: 0, cleaned: 0 },
+  )
   const flockCardInformationContent = showFlockCardInformation
     ? renderFlockCardInformation(flockCardInfo, loadingFlockCardInfo, Boolean(issue.fromWarehouseCode))
     : null
@@ -1743,6 +1869,14 @@ export default function NewGoodsIssue({
         <GoodsIssueHeaderSection fields={headerComponentList} />
 
         <div className="border-t p-5">
+          <Tabs defaultValue="lines" className="space-y-3">
+            {isCleanup && (
+              <TabsList>
+                <TabsTrigger value="lines">Clean up Lines</TabsTrigger>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+              </TabsList>
+            )}
+            <TabsContent value="lines" className="mt-0">
           <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -1750,8 +1884,10 @@ export default function NewGoodsIssue({
                 {usesLineWarehouse && showFlockCardInformation && (
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
-                      ? 'No buildings meet the Delivery age and available-batch requirements. Add a line and select a building manually to confirm.'
-                      : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
+                      ? `No buildings meet the ${isCleanup ? 'Clean-up' : 'Delivery'} age and available-batch requirements.`
+                      : isCleanup
+                        ? 'Eligible buildings and their full remaining placement-batch quantities load automatically and are locked for cycle close-out.'
+                        : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
                   </span>
                 )}
               </div>
@@ -1767,6 +1903,10 @@ export default function NewGoodsIssue({
                 lineFlockCardInfo={lineFlockCardInfo}
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
+                lockCycleCloseout={isCleanup}
+                showLineRemarks={showLineRemarks}
+                quantityLabel={lineQuantityLabel}
+                showOnHandQuantity={showLineOnHandQuantity}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}
                 lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
@@ -2025,7 +2165,7 @@ export default function NewGoodsIssue({
             </div>
             )}
 
-            <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
+            {!isCleanup && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
               <Input
                 type="number"
                 min="1"
@@ -2046,8 +2186,79 @@ export default function NewGoodsIssue({
                 <Plus className="size-4" />
                 Add Lines
               </Button>
-            </div>
+            </div>}
           </section>
+            </TabsContent>
+
+            {isCleanup && (
+              <TabsContent value="summary" className="mt-0">
+                <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+                  <div className="border-b border-stone-200 bg-white px-4 py-3">
+                    <h2 className="text-base font-semibold">Cycle Summary</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Posted bird movements from placement through mortality, Harvest & Delivery, and Clean up.
+                      Total Cleaned is the remaining quantity after mortality and delivery until the Clean up posting is created.
+                    </p>
+                  </div>
+
+                  {loadingCleanupSummaries ? (
+                    <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Loading inventory summary...
+                    </div>
+                  ) : cleanupSummaryError ? (
+                    <div className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                      {cleanupSummaryError}
+                    </div>
+                  ) : cleanupSummaries.length === 0 ? (
+                    <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
+                      No Flock Card cycle summary is available for the selected buildings.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[1120px] w-full border-collapse text-sm">
+                        <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="border-r px-3 py-3">Building</th>
+                            <th className="border-r px-3 py-3">Flock Card</th>
+                            <th className="border-r px-3 py-3 text-right">Cycle Count</th>
+                            <th className="border-r px-3 py-3 text-right">Age</th>
+                            <th className="border-r px-3 py-3 text-right">Total Placement</th>
+                            <th className="border-r px-3 py-3 text-right">Total Mortality</th>
+                            <th className="border-r px-3 py-3 text-right">Total Delivered</th>
+                            <th className="px-3 py-3 text-right">Total Cleaned</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cleanupSummaries.map(row => (
+                            <tr key={row.flockCardId} className="border-t odd:bg-white even:bg-stone-50/70">
+                              <td className="border-r px-3 py-3 font-medium">{row.buildingName || row.buildingCode}</td>
+                              <td className="border-r px-3 py-3">{row.flockCard || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleCount || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.age}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalPlacement)}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalMortality)}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalDelivered)}</td>
+                              <td className="px-3 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.totalCleaned)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 bg-stone-100 font-semibold">
+                          <tr>
+                            <td colSpan={4} className="border-r px-3 py-3 text-right uppercase">Total</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.placement)}</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.mortality)}</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.delivered)}</td>
+                            <td className="px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.cleaned)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </TabsContent>
+            )}
+          </Tabs>
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
