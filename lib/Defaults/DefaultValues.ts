@@ -884,7 +884,7 @@ export const NavFolders: NavFolder[] = [
             id: 32,
             type: "Report",
             title: "Warehouse Content List",
-            url: "#",
+            url: "/inv/whse-report",
             view: false,
             insert: false,
             edit: false,
@@ -974,6 +974,17 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 73,
+            type: "Module",
+            title: "Cycle Master",
+            url: "/brd/cycle-master",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
             id: 57,
             type: "Module",
             title: "DOC Placement",
@@ -998,15 +1009,15 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
 
-          {
-            id: 67,
-            type: "Report",
-            title: "Growing & Farm Condition Report",
-            url: "/brd/fc/report",
-            view: true,
-            insert: false,
-            edit: false,
-          },
+          // {
+          //   id: 67,
+          //   type: "Report",
+          //   title: "Growing & Farm Condition Report",
+          //   url: "/brd/fc/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          // },
 
           {
             id: 62,
@@ -1029,6 +1040,17 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            approval: false,
+          },
+
+          {
+            id: 74,
+            type: "Report",
+            title: "Clean Up Report",
+            url: "/brd/cu/report",
+            view: true,
+            insert: false,
+            edit: false,
             approval: false,
           },
 

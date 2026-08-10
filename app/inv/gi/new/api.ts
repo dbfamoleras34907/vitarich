@@ -125,12 +125,17 @@ export async function getCleanupCycleSummaries(params: {
 
   const originResult = await db
     .from('flock_card_origin')
-    .select('fc_id, item_code, batch_no')
+    .select('fc_id, item_code, batch_no, animal_qty')
     .in('fc_id', uniqueCards.map(card => card.id))
     .eq('void', '1')
 
   if (originResult.error) throwReferenceError('Clean up placement batches', originResult.error)
-  const origins = (originResult.data ?? []) as Array<{ fc_id: number; item_code: string | null; batch_no: string | null }>
+  const origins = (originResult.data ?? []) as Array<{
+    fc_id: number
+    item_code: string | null
+    batch_no: string | null
+    animal_qty: number | null
+  }>
   const warehouseCodes = Array.from(new Set(uniqueCards.map(getCardBuildingCode).filter(Boolean)))
   const itemCodes = Array.from(new Set(origins.map(origin => String(origin.item_code ?? '').trim()).filter(Boolean)))
 
@@ -173,7 +178,9 @@ export async function getCleanupCycleSummaries(params: {
     const movementTotal = (types: string[]) => cardPostings
       .filter(posting => types.includes(String(posting.source_doc_type ?? '').toUpperCase()))
       .reduce((total, posting) => total + signedQty(posting), 0)
-    const totalPlacement = Math.max(movementTotal(['FLOCK_CARD_ORIGIN', 'FLOCK_CARD_ORIGIN_VOID']), 0)
+    const postedPlacement = Math.max(movementTotal(['FLOCK_CARD_ORIGIN', 'FLOCK_CARD_ORIGIN_VOID']), 0)
+    const savedPlacement = cardOrigins.reduce((total, origin) => total + Number(origin.animal_qty ?? 0), 0)
+    const totalPlacement = postedPlacement > 0 ? postedPlacement : Math.max(savedPlacement, 0)
     const totalMortality = Math.max(-movementTotal([
       'BRD_FC_MORT_THIN_USAGE',
       'BRD_FC_MORT_THIN_TRANSFER_OUT',

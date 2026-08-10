@@ -148,6 +148,7 @@ export default function Layout() {
   const [saving, setSaving] = useState(false);
   const [editingCardId, setEditingCardId] = useState<number | null>(null);
   const [editingCardNo, setEditingCardNo] = useState("");
+  const [editingFarmCycleId, setEditingFarmCycleId] = useState<number | null>(null);
   const [loadingFlockCard, setLoadingFlockCard] = useState(false);
   const totalPlacementAnimals = placementRows.reduce(
     (sum, row) => sum + Number(row.onHandQty || 0),
@@ -253,6 +254,7 @@ export default function Layout() {
 
         setEditingCardId(card.id);
         setEditingCardNo(card.cardNo);
+        setEditingFarmCycleId(card.farmCycleId ?? null);
         setForm({
           age: String(card.startDate
             ? calculateCycleAge(card.startDate, String(card.extra?.cycleAsOfDate ?? ""))
@@ -374,6 +376,7 @@ export default function Layout() {
         vaccinationProgramId: form.vaccinationProgramId,
         trialCode: form.trialCode,
         cycleNumber: form.cycleNumber,
+        farmCycleId: editingFarmCycleId,
         animalQty: form.nofAnimals.trim() === ""
           ? totalPlacementAnimals
           : Number(form.nofAnimals || 0),

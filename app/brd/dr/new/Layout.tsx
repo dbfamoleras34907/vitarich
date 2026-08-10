@@ -24,6 +24,7 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       showFlockCardInformation
       warehouseScope="line"
       allowImmediatePost
+      lineQuantityLabel="Harvest Quantity"
     />
   )
 }

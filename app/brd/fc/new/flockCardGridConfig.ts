@@ -1,6 +1,6 @@
 export const rows = Array.from({ length: 40 }, (_, i) => ({ age: i }));
 
-export const dataColumnCount = 28;
+export const dataColumnCount = 29;
 export const ageColumnWidth = 50;
 export const dataColumnWidth = 80;
 export const feedBatchMinColumnWidth = 140;
@@ -18,6 +18,7 @@ export const feedDailyKgColumnIndex = 8;
 export const feedDailyPerBirdColumnIndex = 9;
 export const feedGuidelineColumnIndex = 10;
 export const feedBatchColumnIndex = 11;
+export const waterGuidelineColumnIndex = 28;
 export const feedIntakeColumnIndexes = new Set([
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
@@ -26,10 +27,10 @@ export const feedIntakeColumnIndexes = new Set([
 ]);
 
 export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i);
-const hiddenColumnIndexes = new Set([3, 4]);
-export const visibleColumnIndexes = columnIndexes.filter(
-  (colIndex) => !hiddenColumnIndexes.has(colIndex)
-);
+const hiddenColumnIndexes = new Set([3, 4, 21, 22, 23]);
+export const visibleColumnIndexes = columnIndexes
+  .filter((colIndex) => !hiddenColumnIndexes.has(colIndex) && colIndex !== waterGuidelineColumnIndex)
+  .flatMap((colIndex) => colIndex === 14 ? [waterGuidelineColumnIndex, colIndex] : [colIndex]);
 
 export const initialGridValues = rows.map(() =>
   Array.from({ length: dataColumnCount }, () => "")
@@ -63,7 +64,7 @@ export const columnDisabledFlags = columnIndexes.map(
   (colIndex) => !editableColumnIndexes.has(colIndex)
 );
 
-const groupEndColumnIndexes = new Set([2, 4, 7, 11, 13, 15, 20, 23, 27]);
+const groupEndColumnIndexes = new Set([2, 4, 7, 11, waterGuidelineColumnIndex, 15, 20, 23, 27]);
 const emphasizedColumnIndexes = new Set([2, 5, cumulativeTotalColumnIndex]);
 
 const stickyHeaderClass = "fc-grid-header sticky z-30";
@@ -137,10 +138,9 @@ export const topHeaderCells: HeaderCellConfig[] = [
   { label: "Mortality", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Total", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Feed Intake", colSpan: 4, groupEnd: true, className: groupHeaderClass },
-  { label: "Water Intake", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Water Intake", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Body weight", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Climate", colSpan: 5, groupEnd: true, className: groupHeaderClass },
-  { label: "Skin color", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { ariaLabel: "Spacer", colSpan: 4, groupEnd: true, className: groupHeaderClass },
 ];
 
@@ -154,12 +154,12 @@ export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "Guideline g/b/d", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Feeds Batch", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { label: "Daily L/Flock", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
-  { label: "Daily per Bird", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Daily per Bird ml/b/d", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Guideline ml/b/d", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { ariaLabel: "Body weight details", colSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { label: "Temp.", colSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Humidity", colSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "NH3", colSpan: 1, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
-  { ariaLabel: "Skin color details", colSpan: 3, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { ariaLabel: "Spacer", colSpan: 4, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
 ];
 
@@ -169,14 +169,11 @@ export const bottomHeaderCells: HeaderCellConfig[] = [
   { label: "Total", groupEnd: true, top: bottomHeaderTop, className: `${leafHeaderClass} font-semibold` },
   { label: "Weight g", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Guideline g", groupEnd: true, top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "Min C", top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "Max C", top: bottomHeaderTop, className: leafHeaderClass },
+  { label: "AM", top: bottomHeaderTop, className: leafHeaderClass },
+  { label: "PM", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Min %", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Max %", top: bottomHeaderTop, className: leafHeaderClass },
   { label: "Max ppm", groupEnd: true, top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "B (yellow)", top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "A (red)", top: bottomHeaderTop, className: leafHeaderClass },
-  { label: "L (luminosity)", groupEnd: true, top: bottomHeaderTop, className: leafHeaderClass },
   {
     ariaLabel: "Spacer",
     colSpan: 4,

@@ -37,6 +37,10 @@ export type GoodsIssue = {
   fromWarehouseCode: string
   fromWarehouseName: string
   remarks: string
+  haulerName: string
+  plateNumber: number | null
+  truckSeal: number | null
+  destination: string
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
   createdAt: string
@@ -54,6 +58,10 @@ type GoodsIssueRow = {
   from_warehouse_name: string | null
   triggered_by: string | null
   remarks: string | null
+  hauler_name?: string | null
+  plate_number?: number | null
+  truck_seal?: number | null
+  destination?: string | null
   status: GoodsIssueStatus
   created_at: string
 }
@@ -178,6 +186,10 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   fromWarehouseCode: row.from_warehouse_code ?? '',
   fromWarehouseName: row.from_warehouse_name ?? '',
   remarks: row.remarks ?? '',
+  haulerName: row.hauler_name ?? '',
+  plateNumber: row.plate_number == null ? null : Number(row.plate_number),
+  truckSeal: row.truck_seal == null ? null : Number(row.truck_seal),
+  destination: row.destination ?? '',
   status: row.status,
   lines: lines.map(toIssueLine),
   createdAt: row.created_at,
@@ -382,7 +394,7 @@ export async function getGoodsIssues(
   const tables = getIssueTables(triggeredBy)
   let query = db
     .from(tables.header)
-    .select('id, gi_no, triggered_by, issue_date, farm_id, farm_code, farm_name, from_warehouse_id, from_warehouse_code, from_warehouse_name, remarks, status, created_at')
+    .select('*')
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -487,6 +499,12 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     from_warehouse_name: issue.fromWarehouseName || null,
     triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
+    ...(issue.triggeredBy === 'BR-DR' ? {
+      hauler_name: issue.haulerName.trim() || null,
+      plate_number: issue.plateNumber,
+      truck_seal: issue.truckSeal,
+      destination: issue.destination.trim() || null,
+    } : {}),
     status: saveStatus,
     ...(issue.id ? { updated_by: userId } : { created_by: userId }),
   }

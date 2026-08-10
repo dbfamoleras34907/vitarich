@@ -48,8 +48,8 @@ const exportHeaders = [
   "Water Intake Daily per Bird",
   "Body Weight g",
   "Body Weight Guideline g",
-  "Temp Min C",
-  "Temp Max C",
+  "Temp AM C",
+  "Temp PM C",
   "Humidity Min %",
   "Humidity Max %",
   "NH3 Max ppm",
@@ -60,6 +60,7 @@ const exportHeaders = [
   "Spacer 2",
   "Spacer 3",
   "Spacer 4",
+  "Water Intake Guideline ml/b/d",
 ];
 
 function escapeTabDelimitedValue(value: unknown) {

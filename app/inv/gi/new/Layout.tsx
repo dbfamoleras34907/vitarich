@@ -111,6 +111,10 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   fromWarehouseCode: '',
   fromWarehouseName: '',
   remarks: '',
+  haulerName: '',
+  plateNumber: null,
+  truckSeal: null,
+  destination: '',
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
   createdAt: new Date().toISOString(),
@@ -1248,7 +1252,7 @@ export default function NewGoodsIssue({
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
     if (altQty <= 0) {
-      toast(remainingAltQty <= 0 ? 'To Transfer is already fully allocated.' : 'This batch has no available quantity.')
+      toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
     }
     const updatedLine = {
@@ -1315,7 +1319,7 @@ export default function NewGoodsIssue({
       0,
     )
     if (requestedAltQty <= 0) {
-      toast('Enter To Transfer before using Auto Select.')
+      toast(`Enter ${lineQuantityLabel} before using Auto Select.`)
       return
     }
 
@@ -1365,7 +1369,7 @@ export default function NewGoodsIssue({
     })
 
     if (allocations.length === 0) {
-      toast('No available batches can fulfill To Transfer.')
+      toast(`No available batches can fulfill ${lineQuantityLabel}.`)
       return
     }
     if (remainingAltQty > 0) {
@@ -1577,7 +1581,7 @@ export default function NewGoodsIssue({
     }
     const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
     if (overOnHandLine) {
-      toast(`To Transfer for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
+      toast(`${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
       return
     }
     const missingWarehouseLine = usesLineWarehouse
@@ -1615,7 +1619,7 @@ export default function NewGoodsIssue({
         const requestedQty = incompleteAllocation.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
           ?? incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
         const selectedQty = incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
-        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal To Transfer (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
+        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal ${lineQuantityLabel} (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
         return
       }
     }
@@ -1834,6 +1838,58 @@ export default function NewGoodsIssue({
           className: 'sm:col-span-2 sm:grid-cols-[112px_minmax(0,1fr)]',
           content: flockCardInformationContent,
         }]
+      : []),
+    ...(triggeredBy === 'BR-DR'
+      ? [
+          {
+            key: 'hauler-name',
+            label: 'Hauler Name',
+            content: (
+              <Input
+                type="text"
+                value={issue.haulerName}
+                onChange={event => setIssue(current => current ? { ...current, haulerName: event.target.value } : current)}
+                placeholder="Enter hauler name"
+              />
+            ),
+          },
+          {
+            key: 'plate-number',
+            label: 'Plate Number',
+            content: (
+              <Input
+                type="number"
+                value={issue.plateNumber ?? ''}
+                onChange={event => setIssue(current => current ? { ...current, plateNumber: event.target.value === '' ? null : Number(event.target.value) } : current)}
+                placeholder="Enter plate number"
+              />
+            ),
+          },
+          {
+            key: 'truck-seal',
+            label: 'Truck Seal',
+            content: (
+              <Input
+                type="number"
+                value={issue.truckSeal ?? ''}
+                onChange={event => setIssue(current => current ? { ...current, truckSeal: event.target.value === '' ? null : Number(event.target.value) } : current)}
+                placeholder="Enter truck seal"
+              />
+            ),
+          },
+          {
+            key: 'destination',
+            label: 'Destination',
+            content: (
+              <Input
+                type="text"
+                value={issue.destination}
+                onChange={event => setIssue(current => current ? { ...current, destination: event.target.value } : current)}
+                placeholder="Enter destination"
+              />
+            ),
+          },
+        ]
       : []),
     {
       key: 'remarks',
@@ -2221,12 +2277,12 @@ export default function NewGoodsIssue({
                           <tr>
                             <th className="border-r px-3 py-3">Building</th>
                             <th className="border-r px-3 py-3">Flock Card</th>
-                            <th className="border-r px-3 py-3 text-right">Cycle Count</th>
+                            <th className="border-r px-3 py-3 text-right">Growing #</th>
                             <th className="border-r px-3 py-3 text-right">Age</th>
                             <th className="border-r px-3 py-3 text-right">Total Placement</th>
                             <th className="border-r px-3 py-3 text-right">Total Mortality</th>
                             <th className="border-r px-3 py-3 text-right">Total Delivered</th>
-                            <th className="px-3 py-3 text-right">Total Cleaned</th>
+                            <th className="px-3 py-3 text-right">Total (TO) Cleaned</th>
                           </tr>
                         </thead>
                         <tbody>

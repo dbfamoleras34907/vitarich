@@ -1,9 +1,11 @@
 import docStandard from "@/app/json/doc_standard.json";
+import { bodyWeightByReferenceProfile } from "./broilerBodyWeightStandards";
 
 export type GridValues = string[][];
 
 type BreedStandard = {
   breed: string;
+  reference_profile_id: string;
   daily_feed_intake_g_per_bird_by_day: Record<string, number>;
 };
 
@@ -44,12 +46,42 @@ export function getFeedGuidelineGramsPerBird(age: number, breed: string) {
   return getBreedStandard(breed)?.daily_feed_intake_g_per_bird_by_day[String(age)] ?? 0;
 }
 
+export function calculateWaterDailyPerBird({
+  numberOfAnimals,
+  cumulativeTotal,
+  dailyLitersFlock,
+}: {
+  numberOfAnimals: number;
+  cumulativeTotal: number;
+  dailyLitersFlock: number;
+}) {
+  const remainingBirds = numberOfAnimals - cumulativeTotal;
+
+  if (dailyLitersFlock === 0 || remainingBirds <= 0) return 0;
+
+  return (dailyLitersFlock * 1000) / remainingBirds;
+}
+
+export function getWaterGuidelineMillilitersPerBird(age: number, breed: string) {
+  // Hubbard publishes Water = Feed x 1.70; Aviagen gives 1.6-1.8 L/kg at 21 C.
+  return getFeedGuidelineGramsPerBird(age, breed) * 1.7;
+}
+
+export function getBodyWeightGuidelineGrams(age: number, breed: string) {
+  const profileId = getBreedStandard(breed)?.reference_profile_id;
+  return profileId ? bodyWeightByReferenceProfile[profileId]?.[age] ?? 0 : 0;
+}
+
 export function computeGridValues({
   gridValues,
   numberOfAnimals,
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
   feedGuidelineColumnIndex,
+  waterGuidelineColumnIndex,
+  bodyGuidelineColumnIndex = 15,
+  waterDailyLitersColumnIndex = 12,
+  waterDailyPerBirdColumnIndex = 13,
   cumulativeTotalColumnIndex = 6,
   breed,
 }: {
@@ -58,6 +90,10 @@ export function computeGridValues({
   feedDailyKgColumnIndex: number;
   feedDailyPerBirdColumnIndex: number;
   feedGuidelineColumnIndex: number;
+  waterGuidelineColumnIndex: number;
+  bodyGuidelineColumnIndex?: number;
+  waterDailyLitersColumnIndex?: number;
+  waterDailyPerBirdColumnIndex?: number;
   cumulativeTotalColumnIndex?: number;
   breed: string;
 }) {
@@ -89,6 +125,12 @@ export function computeGridValues({
     computedRow[feedGuidelineColumnIndex] = formatComputedValue(
       getFeedGuidelineGramsPerBird(rowIndex, breed)
     );
+    computedRow[waterGuidelineColumnIndex] = formatComputedValue(
+      getWaterGuidelineMillilitersPerBird(rowIndex, breed)
+    );
+    computedRow[bodyGuidelineColumnIndex] = formatComputedValue(
+      getBodyWeightGuidelineGrams(rowIndex, breed)
+    );
 
     if ((row[feedDailyKgColumnIndex] ?? "").trim() !== "") {
       computedRow[feedDailyPerBirdColumnIndex] = formatComputedValue(
@@ -100,6 +142,18 @@ export function computeGridValues({
       );
     } else {
       computedRow[feedDailyPerBirdColumnIndex] = "";
+    }
+
+    if ((row[waterDailyLitersColumnIndex] ?? "").trim() !== "") {
+      computedRow[waterDailyPerBirdColumnIndex] = formatComputedValue(
+        calculateWaterDailyPerBird({
+          numberOfAnimals,
+          cumulativeTotal,
+          dailyLitersFlock: getNumericValue(row[waterDailyLitersColumnIndex]),
+        })
+      );
+    } else {
+      computedRow[waterDailyPerBirdColumnIndex] = "";
     }
 
     return computedRow;

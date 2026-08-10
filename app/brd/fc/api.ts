@@ -1012,7 +1012,10 @@ export async function getFarmOriginBatchesForFlockCard(
       const batchQuantity = row.batchQuantity;
       const depletion = mortalityThinningByBatch.get(mortalityAllocationKey(row.itemCode, row.batchNumber, row.warehouseCode)) ??
         { mortalityQty: 0, thinningQty: 0 };
-      const batchOnHandQty = Math.max(row.onHandQty - depletion.mortalityQty - depletion.thinningQty, 0);
+      // inventory_postings already includes BRD_FC_MORT_THIN_USAGE OUT rows, so
+      // row.onHandQty is the authoritative balance. Mortality and thinning are
+      // loaded separately only for their informational breakdown in the UI.
+      const batchOnHandQty = Math.max(row.onHandQty, 0);
       const receiptDocDetails = receiptId > 0 ? docDetailsByReceiptId.get(receiptId) ?? [] : [];
       const linkedOriginalBatches = [
         ...(originalBatchesByConsolidatedBatch.get(postingBatchKey) ?? []),

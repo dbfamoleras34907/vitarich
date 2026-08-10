@@ -80,7 +80,9 @@ import {
   type FarmBuildingListRow,
 } from '@/app/brd/fc/api'
 import {
-  getNextFlockCardCycleCount,
+  ensureActiveDocFarmCycle,
+  isDocCycleBuildingExcluded,
+  previewDocFarmCycle,
   saveFlockCardPlacement,
 } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import CycleInformationModal, {
@@ -572,6 +574,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [cycleTarget, setCycleTarget] = useState<{ kind: 'row'; rowId: number | string } | { kind: 'modal' } | null>(null)
   const [cycleForm, setCycleForm] = useState<CycleInformationForm>(emptyCycleForm)
   const [savingCycle, setSavingCycle] = useState(false)
+  const [cycleIsExcluded, setCycleIsExcluded] = useState(false)
   const separateBatchByReference = true
   const batchReferenceColumn = 'transfer_slip'
   const [loadingReferences, setLoadingReferences] = useState(true)
@@ -1528,15 +1531,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     setCycleBuilding(building)
     setCycleTarget(target)
     setCycleForm(nextForm)
+    setCycleIsExcluded(false)
     setCycleModalOpen(true)
 
     try {
-      const cycleNumber = await getNextFlockCardCycleCount({
-        farmId: receipt.farmId,
-        buildingWarehouseId: building.id,
-        buildingKey: building.key,
-      })
-      setCycleForm(current => ({ ...current, cycleNumber }))
+      const excluded = await isDocCycleBuildingExcluded(receipt.farmId, Number(building.id))
+      setCycleIsExcluded(excluded)
+      if (excluded) {
+        setCycleForm(current => ({ ...current, cycleNumber: '' }))
+      } else {
+        const farmCycle = await previewDocFarmCycle(receipt.farmId)
+        setCycleForm(current => ({ ...current, cycleNumber: farmCycle.cycleNumber }))
+      }
     } catch (error) {
       toast.error(`Unable to calculate Cycle Count: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
@@ -1618,6 +1624,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast.error('Complete the Cycle Date range and Breed.')
       return
     }
+    if (cycleIsExcluded && (!/^\d+$/.test(cycleForm.cycleNumber.trim()) || Number(cycleForm.cycleNumber) <= 0)) {
+      toast.error('Enter a positive whole-number Cycle Count for the excluded building.')
+      return
+    }
 
     const cycleAge = calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)
     const targetRow = cycleTarget.kind === 'row'
@@ -1626,6 +1636,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     setSavingCycle(true)
     try {
+      const farmCycle = cycleIsExcluded ? null : await ensureActiveDocFarmCycle(receipt.farmId)
       const saved = await saveFlockCardPlacement({
         farmId: receipt.farmId,
         farmCode: receipt.farmCode,
@@ -1638,7 +1649,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age: cycleAge,
         startDate: cycleForm.startDate,
         breed: cycleForm.breed,
-        cycleNumber: cycleForm.cycleNumber,
+        cycleNumber: farmCycle?.cycleNumber ?? cycleForm.cycleNumber,
+        farmCycleId: farmCycle?.id ?? null,
         animalQty: calculateActualReceived(targetRow ?? {}),
         extra: {
           cycleAsOfDate: cycleForm.asOfDate,
@@ -2799,6 +2811,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         form={cycleForm}
         age={calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)}
         saving={savingCycle}
+        cycleNumberEditable={cycleIsExcluded}
+        farmCycle={!cycleIsExcluded}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}
         onCancel={() => {
