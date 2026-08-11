@@ -66,6 +66,7 @@ export type CleanupCycleSummary = {
   totalMortality: number
   totalDelivered: number
   totalCleaned: number
+  totalVariance: number
 }
 
 type CleanupSummaryCardRow = FlockCardInfoRow & {
@@ -74,6 +75,7 @@ type CleanupSummaryCardRow = FlockCardInfoRow & {
 
 type CleanupSummaryPostingRow = {
   source_doc_type: string | null
+  source_docentry: number | null
   item_code: string | null
   warehouse_code: string | null
   batch_number: string | null
@@ -143,7 +145,7 @@ export async function getCleanupCycleSummaries(params: {
   if (warehouseCodes.length > 0 && itemCodes.length > 0) {
     const postingResult = await db
       .from('inventory_postings')
-      .select('source_doc_type, item_code, warehouse_code, batch_number, ref, qty, transfer_type')
+      .select('source_doc_type, source_docentry, item_code, warehouse_code, batch_number, ref, qty, transfer_type')
       .in('warehouse_code', warehouseCodes)
       .in('item_code', itemCodes)
       .in('source_doc_type', [
@@ -154,6 +156,7 @@ export async function getCleanupCycleSummaries(params: {
         'BRD_FC_MORT_THIN_REVERSAL',
         'BR_DELIVERY',
         'BR_CLEANUP',
+        'BR_CLEANUP_VARIANCE',
       ])
 
     if (postingResult.error) throwReferenceError('Clean up inventory summary', postingResult.error)
@@ -171,7 +174,10 @@ export async function getCleanupCycleSummaries(params: {
       `${String(origin.item_code ?? '').trim().toUpperCase()}|${String(origin.batch_no ?? '').trim().toUpperCase()}`,
     ))
     const buildingCode = getCardBuildingCode(card)
+    const cleanupId = Number(card.extra?.closed_by_docentry ?? 0)
     const cardPostings = postings.filter(posting => {
+      const sourceType = String(posting.source_doc_type ?? '').toUpperCase()
+      if ((sourceType === 'BR_CLEANUP' || sourceType === 'BR_CLEANUP_VARIANCE') && cleanupId > 0 && Number(posting.source_docentry) !== cleanupId) return false
       const key = `${String(posting.item_code ?? '').trim().toUpperCase()}|${String(posting.batch_number ?? posting.ref ?? '').trim().toUpperCase()}`
       return String(posting.warehouse_code ?? '').trim().toUpperCase() === buildingCode.toUpperCase() && originKeys.has(key)
     })
@@ -188,7 +194,7 @@ export async function getCleanupCycleSummaries(params: {
     ]), 0)
     const totalDelivered = Math.max(-movementTotal(['BR_DELIVERY']), 0)
     const postedCleaned = Math.max(-movementTotal(['BR_CLEANUP']), 0)
-    const remainingAfterHarvest = Math.max(totalPlacement - totalMortality - totalDelivered, 0)
+    const totalVariance = Math.max(-movementTotal(['BR_CLEANUP_VARIANCE']), 0)
 
     return {
       flockCardId: Number(card.id),
@@ -200,7 +206,8 @@ export async function getCleanupCycleSummaries(params: {
       totalPlacement,
       totalMortality,
       totalDelivered,
-      totalCleaned: postedCleaned > 0 ? postedCleaned : remainingAfterHarvest,
+      totalCleaned: postedCleaned,
+      totalVariance,
     }
   }).sort((left, right) =>
     (left.buildingName || left.buildingCode).localeCompare(right.buildingName || right.buildingCode, undefined, { numeric: true }),
@@ -380,6 +387,7 @@ type FlockCardInfoRow = {
   cycle_no: string | null
   animal_qty: number | null
   status: string | null
+  extra?: Record<string, unknown> | null
 }
 
 type FlockCardBodyWeightLineRow = {
@@ -418,24 +426,24 @@ async function getLatestFlockCardBodyWeight(row: FlockCardInfoRow) {
     .select('id')
     .eq('card_no', cardNo)
     .eq('void', '1')
-    .order('id', { ascending: false })
-    .limit(1)
 
   if (row.farm_id) headerQuery = headerQuery.eq('farm_id', row.farm_id)
   if (row.building_whse_id) headerQuery = headerQuery.eq('building_whse_id', row.building_whse_id)
   else if (row.building_code) headerQuery = headerQuery.eq('building_code', row.building_code)
 
-  const headerResult = await headerQuery.maybeSingle()
+  const headerResult = await headerQuery
   if (headerResult.error) throwReferenceError('Flock card body weight', headerResult.error)
-  const headerId = Number(headerResult.data?.id ?? 0)
-  if (!Number.isFinite(headerId) || headerId <= 0) return null
+  const headerIds = (headerResult.data ?? [])
+    .map(header => Number(header.id ?? 0))
+    .filter(headerId => Number.isFinite(headerId) && headerId > 0)
+  if (headerIds.length === 0) return null
 
   const lineResult = await db
     .from('brd_fc_line')
     .select('body_wt')
-    .eq('fc_id', headerId)
+    .in('fc_id', headerIds)
     .eq('void', '1')
-    .not('body_wt', 'is', null)
+    .gt('body_wt', 0)
     .order('age', { ascending: false })
     .order('id', { ascending: false })
     .limit(1)
@@ -479,6 +487,7 @@ export async function getDeliveryFlockCardInfo(params: {
   farmId: number | null
   buildingWarehouseId: number | null
   buildingCode: string
+  cleanupDocumentId?: number | null
 }): Promise<GoodsIssueFlockCardInfo | null> {
   const farmId = Number(params.farmId ?? 0)
   const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
@@ -487,7 +496,18 @@ export async function getDeliveryFlockCardInfo(params: {
   if (!Number.isFinite(farmId) || farmId <= 0) return null
   if ((!Number.isFinite(buildingWarehouseId) || buildingWarehouseId <= 0) && !buildingCode) return null
 
-  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status'
+  const cleanupDocumentId = Number(params.cleanupDocumentId ?? 0)
+  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status, extra'
+  const selectCard = (rows: FlockCardInfoRow[]) => {
+    if (Number.isFinite(cleanupDocumentId) && cleanupDocumentId > 0) {
+      const closedCard = rows.find(row =>
+        Number(row.extra?.closed_by_docentry ?? 0) === cleanupDocumentId,
+      )
+      if (closedCard) return closedCard
+    }
+
+    return rows.find(row => row.status === 'Saved') ?? null
+  }
 
   if (Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
     const { data, error } = await db
@@ -496,14 +516,13 @@ export async function getDeliveryFlockCardInfo(params: {
       .eq('farm_id', farmId)
       .eq('building_whse_id', buildingWarehouseId)
       .eq('void', '1')
-      .eq('status', 'Saved')
+      .in('status', ['Saved', 'Closed'])
       .order('start_date', { ascending: false })
       .order('id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
 
     if (error) throwReferenceError('Flock card information', error)
-    if (data) return toFlockCardInfoWithBodyWeight(data as FlockCardInfoRow)
+    const card = selectCard((data ?? []) as FlockCardInfoRow[])
+    if (card) return toFlockCardInfoWithBodyWeight(card)
   }
 
   if (!buildingCode) return null
@@ -514,14 +533,13 @@ export async function getDeliveryFlockCardInfo(params: {
     .eq('farm_id', farmId)
     .eq('building_code', buildingCode)
     .eq('void', '1')
-    .eq('status', 'Saved')
+    .in('status', ['Saved', 'Closed'])
     .order('start_date', { ascending: false })
     .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle()
 
   if (error) throwReferenceError('Flock card information', error)
-  return data ? toFlockCardInfoWithBodyWeight(data as FlockCardInfoRow) : null
+  const card = selectCard((data ?? []) as FlockCardInfoRow[])
+  return card ? toFlockCardInfoWithBodyWeight(card) : null
 }
 
 export async function getBrDeliveryAgeShortage(params: {

@@ -124,7 +124,7 @@ export default function BrCleanupSettingsLayout() {
           </SettingRow>
         </SettingsCategory>
         <SettingsCategory title="Batch Selection" description="Control automatic placement-batch selection during Clean up.">
-          <SettingRow label="Batch auto selection" description="Automatically loads all remaining placement batches. Posting always consumes the full building balance and closes its cycle." settingKey="BATCH_AUTO_SELECTION">
+          <SettingRow label="Batch auto selection" description="Automatically loads the available placement batches and defaults Clean up Quantity to the batch total. The quantity can be reduced before posting." settingKey="BATCH_AUTO_SELECTION">
             <div className="flex items-center gap-3">
               <Checkbox checked={batchAutoSelection} disabled={loading || saving || cannotEdit || !activeFarmId} onCheckedChange={checked => setBatchAutoSelection(checked === true)} />
               <Label>{batchAutoSelection ? "Enabled" : "Disabled"}</Label>

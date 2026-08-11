@@ -482,7 +482,7 @@ export default function Layout() {
                               onClick={() => openFlockCardSheet(building)}
                             >
                               <FileSpreadsheet className="size-4" />
-                              Card
+                              Growing
                             </Button>
                           ) : null}
                           <Button

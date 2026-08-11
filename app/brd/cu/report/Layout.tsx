@@ -66,7 +66,8 @@ export default function Layout() {
     mortality: sum.mortality + row.totalMortality,
     delivered: sum.delivered + row.totalDelivered,
     cleaned: sum.cleaned + row.totalCleaned,
-  }), { placement: 0, mortality: 0, delivered: 0, cleaned: 0 }), [rows])
+    variance: sum.variance + row.totalVariance,
+  }), { placement: 0, mortality: 0, delivered: 0, cleaned: 0, variance: 0 }), [rows])
 
   const generate = async () => {
     const selectedFarmId = Number(farmId)
@@ -101,14 +102,14 @@ export default function Layout() {
           <Button type="button" onClick={() => void generate()} disabled={loading || !farmId}>{loading && <Loader2 className="size-4 animate-spin" />}Generate</Button>
         </div>
         <div className="overflow-x-auto">
-          <Table className="min-w-[1050px]">
-            <TableHeader><TableRow><TableHead>Building</TableHead><TableHead>Flock Card</TableHead><TableHead className="text-right">Growing #</TableHead><TableHead className="text-right">Age</TableHead><TableHead className="text-right">Total Placement</TableHead><TableHead className="text-right">Total Mortality</TableHead><TableHead className="text-right">Total Delivered</TableHead><TableHead className="text-right">Total (TO) Cleaned</TableHead></TableRow></TableHeader>
+          <Table className="min-w-[1180px]">
+            <TableHeader><TableRow><TableHead>Building</TableHead><TableHead>Flock Card</TableHead><TableHead className="text-right">Growing #</TableHead><TableHead className="text-right">Age</TableHead><TableHead className="text-right">Total Placement</TableHead><TableHead className="text-right">Total Mortality</TableHead><TableHead className="text-right">Total Delivered</TableHead><TableHead className="text-right">Total (TO) Cleaned</TableHead><TableHead className="text-right">Total Variance</TableHead></TableRow></TableHeader>
             <TableBody>
-              {loading ? <TableRow><TableCell colSpan={8} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
-                : rows.length === 0 ? <TableRow><TableCell colSpan={8} className="h-32 text-center text-stone-500">Select filters and generate the report.</TableCell></TableRow>
-                  : rows.map(row => <TableRow key={row.flockCardId}><TableCell className="font-medium">{row.buildingName || row.buildingCode}</TableCell><TableCell>{row.flockCard || '-'}</TableCell><TableCell className="text-right tabular-nums">{row.growingNumber || '-'}</TableCell><TableCell className="text-right tabular-nums">{row.age}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalPlacement)}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalMortality)}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalDelivered)}</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatQuantity(row.totalCleaned)}</TableCell></TableRow>)}
+              {loading ? <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
+                : rows.length === 0 ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-stone-500">Select filters and generate the report.</TableCell></TableRow>
+                  : rows.map(row => <TableRow key={row.flockCardId}><TableCell className="font-medium">{row.buildingName || row.buildingCode}</TableCell><TableCell>{row.flockCard || '-'}</TableCell><TableCell className="text-right tabular-nums">{row.growingNumber || '-'}</TableCell><TableCell className="text-right tabular-nums">{row.age}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalPlacement)}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalMortality)}</TableCell><TableCell className="text-right tabular-nums">{formatQuantity(row.totalDelivered)}</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatQuantity(row.totalCleaned)}</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatQuantity(row.totalVariance)}</TableCell></TableRow>)}
             </TableBody>
-            {rows.length > 0 && <TableFooter><TableRow><TableCell colSpan={4} className="text-right uppercase">Total</TableCell><TableCell className="text-right">{formatQuantity(totals.placement)}</TableCell><TableCell className="text-right">{formatQuantity(totals.mortality)}</TableCell><TableCell className="text-right">{formatQuantity(totals.delivered)}</TableCell><TableCell className="text-right">{formatQuantity(totals.cleaned)}</TableCell></TableRow></TableFooter>}
+            {rows.length > 0 && <TableFooter><TableRow><TableCell colSpan={4} className="text-right uppercase">Total</TableCell><TableCell className="text-right">{formatQuantity(totals.placement)}</TableCell><TableCell className="text-right">{formatQuantity(totals.mortality)}</TableCell><TableCell className="text-right">{formatQuantity(totals.delivered)}</TableCell><TableCell className="text-right">{formatQuantity(totals.cleaned)}</TableCell><TableCell className="text-right">{formatQuantity(totals.variance)}</TableCell></TableRow></TableFooter>}
           </Table>
         </div>
       </section>

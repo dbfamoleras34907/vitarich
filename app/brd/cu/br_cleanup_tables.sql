@@ -59,12 +59,16 @@ create table if not exists public.br_cleanup_lines (
   alt_uom text not null,
   base_qty numeric(18, 6) not null default 0,
   base_uom text not null,
+  batch_total_qty numeric(18, 6) not null default 0,
+  variance_qty numeric(18, 6) not null default 0,
   from_warehouse_id bigint null references public.i_warehouse (id),
   from_warehouse_code text null,
   from_warehouse_name text null,
   void text not null default '1',
   constraint br_cleanup_lines_cleanup_line_key unique (br_cleanup_id, line_no),
-  constraint br_cleanup_lines_qty_check check (alt_qty >= 0 and base_qty >= 0)
+  constraint br_cleanup_lines_qty_check check (
+    alt_qty >= 1 and base_qty > 0 and batch_total_qty >= 0 and variance_qty >= 0
+  )
 );
 
 create index if not exists br_cleanup_issue_date_idx on public.br_cleanup (issue_date desc);
@@ -77,7 +81,17 @@ create index if not exists br_cleanup_lines_warehouse_id_idx on public.br_cleanu
 create index if not exists br_cleanup_lines_void_idx on public.br_cleanup_lines (void);
 
 alter table public.br_cleanup_lines
-  add column if not exists remarks text null;
+  add column if not exists remarks text null,
+  add column if not exists batch_total_qty numeric(18, 6) not null default 0,
+  add column if not exists variance_qty numeric(18, 6) not null default 0;
+
+alter table public.br_cleanup_lines
+  drop constraint if exists br_cleanup_lines_qty_check;
+
+alter table public.br_cleanup_lines
+  add constraint br_cleanup_lines_qty_check check (
+    alt_qty >= 1 and base_qty > 0 and batch_total_qty >= 0 and variance_qty >= 0
+  );
 
 alter table public.flock_card
   drop constraint if exists flock_card_status_check;
@@ -118,7 +132,17 @@ begin
       and line.void = '1'
       and line.base_qty > 0
   ) then
-    raise exception 'Clean up requires at least one positive full-balance line.';
+    raise exception 'Clean up requires at least one positive quantity line.';
+  end if;
+
+  if exists (
+    select 1
+    from public.br_cleanup_lines line
+    where line.br_cleanup_id = new.id
+      and line.void = '1'
+      and (line.alt_qty < 1 or line.base_qty <= 0)
+  ) then
+    raise exception 'Clean up quantity must be at least 1.';
   end if;
 
   select coalesce(settings.target_cleanup_age, 0)
@@ -230,10 +254,9 @@ begin
       on issued.item_code = expected.item_code
      and issued.warehouse_code = expected.warehouse_code
      and issued.batch_number is not distinct from expected.batch_number
-    where greatest(coalesce(expected.qty, 0), coalesce(issued.required_qty, 0)) > 0
-      and abs(coalesce(expected.qty, 0) - coalesce(issued.required_qty, 0)) > 0.000001
+    where coalesce(issued.required_qty, 0) > coalesce(expected.qty, 0) + 0.000001
   ) then
-    raise exception 'Clean up must issue the full live placement-batch balance for every selected building.';
+    raise exception 'Clean up quantity exceeds the live placement-batch balance.';
   end if;
 
   insert into public.inventory_postings (
@@ -302,6 +325,90 @@ after update of status on public.br_cleanup
 for each row
 when (new.status = 'Posted' and old.status is distinct from 'Posted')
 execute function public.post_br_cleanup_inventory();
+
+create or replace function public.post_br_cleanup_variance_inventory()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.status <> 'Posted' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.inventory_postings posting
+    where posting.source_doc_type = 'BR_CLEANUP_VARIANCE'
+      and posting.source_docentry = new.id
+  ) then
+    return new;
+  end if;
+
+  insert into public.inventory_postings (
+    source_doc_type, source_docentry, item_code, warehouse_code, bin_code,
+    qty, created_by, ref_type, ref, batch_number, transfer_type, ref_type2, ref2
+  )
+  with closed_cycles as (
+    select distinct card.id as flock_card_id, line.from_warehouse_code as warehouse_code
+    from public.br_cleanup_lines line
+    join public.flock_card card
+      on card.farm_id = new.farm_id
+      and card.void = '1'
+      and card.status = 'Closed'
+      and card.extra->>'closed_by_doc_type' = 'BR_CLEANUP'
+      and nullif(card.extra->>'closed_by_docentry', '')::bigint = new.id
+      and (
+        (line.from_warehouse_id is not null and card.building_whse_id = line.from_warehouse_id)
+        or card.building_code = line.from_warehouse_code
+      )
+    where line.br_cleanup_id = new.id
+      and line.void = '1'
+  ), expected_batches as (
+    select distinct origin.item_code, cycle.warehouse_code, origin.batch_no as batch_number
+    from closed_cycles cycle
+    join public.flock_card_origin origin
+      on origin.fc_id = cycle.flock_card_id
+     and origin.void = '1'
+  ), on_hand as (
+    select
+      posting.item_code,
+      posting.warehouse_code,
+      coalesce(posting.batch_number, posting.ref) as batch_number,
+      sum(case when posting.transfer_type = 'OUT' then -posting.qty else posting.qty end) as qty
+    from public.inventory_postings posting
+    group by posting.item_code, posting.warehouse_code, coalesce(posting.batch_number, posting.ref)
+  )
+  select
+    'BR_CLEANUP_VARIANCE',
+    new.id,
+    expected.item_code,
+    expected.warehouse_code,
+    'MAIN SUB BIN',
+    stock.qty,
+    coalesce(new.updated_by, new.created_by),
+    'batch_code',
+    expected.batch_number,
+    expected.batch_number,
+    'OUT',
+    'BR_CLEANUP',
+    new.gi_no
+  from expected_batches expected
+  join on_hand stock
+    on stock.item_code = expected.item_code
+   and stock.warehouse_code = expected.warehouse_code
+   and stock.batch_number is not distinct from expected.batch_number
+  where stock.qty > 0.000001;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists zz_post_br_cleanup_variance_inventory_trigger on public.br_cleanup;
+create trigger zz_post_br_cleanup_variance_inventory_trigger
+after update of status on public.br_cleanup
+for each row
+when (new.status = 'Posted' and old.status is distinct from 'Posted')
+execute function public.post_br_cleanup_variance_inventory();
 
 drop trigger if exists set_br_cleanup_updated_at on public.br_cleanup;
 create trigger set_br_cleanup_updated_at

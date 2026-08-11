@@ -19,6 +19,7 @@ export type CleanupReportRow = {
   totalMortality: number
   totalDelivered: number
   totalCleaned: number
+  totalVariance: number
 }
 
 type CardRow = {
@@ -147,6 +148,7 @@ export async function getCleanupReport(params: {
         'BRD_FC_MORT_THIN_REVERSAL',
         'BR_DELIVERY',
         'BR_CLEANUP',
+        'BR_CLEANUP_VARIANCE',
       ])
     if (postingResult.error) throw postingResult.error
     postings = (postingResult.data ?? []) as PostingRow[]
@@ -165,7 +167,7 @@ export async function getCleanupReport(params: {
     const cardPostings = postings.filter(posting => {
       const type = normalize(posting.source_doc_type)
       if ((type === 'FLOCK_CARD_ORIGIN' || type === 'FLOCK_CARD_ORIGIN_VOID') && !originIds.has(Number(posting.source_docentry))) return false
-      if (type === 'BR_CLEANUP' && Number(posting.source_docentry) !== cleanupId) return false
+      if ((type === 'BR_CLEANUP' || type === 'BR_CLEANUP_VARIANCE') && Number(posting.source_docentry) !== cleanupId) return false
       return normalize(posting.warehouse_code) === normalize(buildingCode)
         && originKeys.has(`${normalize(posting.item_code)}|${normalize(posting.batch_number ?? posting.ref)}`)
     })
@@ -185,6 +187,7 @@ export async function getCleanupReport(params: {
       totalMortality: Math.max(-movementTotal(['BRD_FC_MORT_THIN_USAGE', 'BRD_FC_MORT_THIN_TRANSFER_OUT', 'BRD_FC_MORT_THIN_REVERSAL']), 0),
       totalDelivered: Math.max(-movementTotal(['BR_DELIVERY']), 0),
       totalCleaned: Math.max(-movementTotal(['BR_CLEANUP']), 0),
+      totalVariance: Math.max(-movementTotal(['BR_CLEANUP_VARIANCE']), 0),
     }
   }).sort((left, right) =>
     (left.buildingName || left.buildingCode).localeCompare(right.buildingName || right.buildingCode, undefined, { numeric: true }),

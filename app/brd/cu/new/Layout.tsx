@@ -25,8 +25,12 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       warehouseScope="line"
       allowImmediatePost
       showLineRemarks
+      showRemarksInActionRow
       lineQuantityLabel="Clean up Quantity"
       showLineOnHandQuantity={false}
+      showLineVariance
+      lockedLineQuantityEditable
+      showLineQuantityAllocationWarnings={false}
     />
   )
 }

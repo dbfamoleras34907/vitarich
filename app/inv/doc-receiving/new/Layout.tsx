@@ -89,12 +89,6 @@ import CycleInformationModal, {
   type CycleInformationForm,
 } from './CycleInformationModal'
 
-const FMS_TYPE_OPTIONS = [
-  { value: 'broiler', label: 'Broiler' },
-  { value: 'breeder', label: 'Breeder' },
-  { value: 'hatchery', label: 'Hatchery' },
-]
-
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Date Receive' },
   { code: 'receive_time', name: 'Time Receive' },
@@ -324,6 +318,7 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   farmCode: '',
   farmName: '',
   defaultWarehouseId: null,
+  remarks: '',
   status: 'Draft',
   lines: Array.from({ length: 1 }, newLine),
   docDetails: [],
@@ -506,7 +501,7 @@ function GoodsReceiveLoadingShell() {
         <div className="h-9 w-24 rounded-md bg-stone-100" />
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="grid gap-y-3 p-5">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -1914,7 +1909,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </Button>
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-col items-start gap-1 p-5">
           <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">DOC Placement No.</label>
@@ -1941,25 +1936,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
           </div>
 
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">FMS Type</label>
-            <select
-              value={receipt.fmsType}
-              disabled
-              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
-            >
-              <option value="">Select FMS type...</option>
-              {FMS_TYPE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
         </div>
 
-        <div className="border-t">
+        <div className="flex flex-1 flex-col border-t">
           <FormTable
             title="DOC Details"
             description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
@@ -2754,7 +2733,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </DialogContent>
           </Dialog>
 
-          <div className="mx-2 mb-4 mt-4 flex flex-col items-stretch gap-3 sm:mx-4">
+          <div className="mx-2 mb-4 mt-auto flex flex-col items-stretch gap-3 pt-4 sm:mx-4">
             <div className="w-full rounded-lg border bg-card text-card-foreground">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div>
@@ -2781,22 +2760,34 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
 
             {canEditDraft ? (
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleSave('Draft')}
-                  disabled={saving}
-                >
-                  <Save className="size-4" />
-                  {saving ? 'Saving...' : 'Save as Draft'}
-                </Button>
-                {canPostDocument && (
-                  <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="w-full space-y-2 sm:max-w-xl">
+                  <Label htmlFor="doc-receiving-remarks">Remarks</Label>
+                  <Input
+                    id="doc-receiving-remarks"
+                    value={receipt.remarks}
+                    onChange={event => setReceipt(current => current ? { ...current, remarks: event.target.value } : current)}
+                    placeholder="Enter remarks..."
+                    disabled={saving}
+                  />
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleSave('Draft')}
+                    disabled={saving}
+                  >
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Saving...' : 'Save as Draft'}
                   </Button>
-                )}
+                  {canPostDocument && (
+                    <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
+                      <Save className="size-4" />
+                      {saving ? 'Posting...' : 'Post Document'}
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>

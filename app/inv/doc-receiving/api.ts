@@ -70,6 +70,7 @@ export type GoodsReceipt = {
   farmCode: string
   farmName: string
   defaultWarehouseId: number | null
+  remarks: string
   status: GoodsReceiptDbStatus
   lines: GoodsReceiptLine[]
   docDetails: GoodsReceiptDocLine[]
@@ -86,6 +87,7 @@ type GoodsReceiptRow = {
   farm_code: string | null
   farm_name: string | null
   default_warehouse_id: number | null
+  remarks: string | null
   status: GoodsReceiptStatus
   created_at: string
 }
@@ -230,6 +232,7 @@ const toReceipt = (
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   defaultWarehouseId: row.default_warehouse_id,
+  remarks: row.remarks ?? '',
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptLine),
   docDetails: docDetails.map(toReceiptDocLine),
@@ -269,6 +272,7 @@ const toReceiptListItem = (
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   defaultWarehouseId: row.default_warehouse_id,
+  remarks: row.remarks ?? '',
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptListLine),
   docDetails: [],
@@ -431,7 +435,7 @@ export async function getGoodsReceipts({
 
   let receiptQuery = db
     .from('goods_receipt')
-    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
+    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, remarks, status, created_at')
     .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -541,6 +545,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
     farm_code: receipt.farmCode || null,
     farm_name: receipt.farmName || null,
     default_warehouse_id: receipt.defaultWarehouseId,
+    remarks: receipt.remarks.trim() || null,
     status: saveStatus,
     ...(receipt.id ? { updated_by: userId } : { created_by: userId }),
   }

@@ -23,6 +23,8 @@ export type GoodsIssueLine = {
   fromWarehouseName: string
   onHandQty: number
   requestedAltQty?: number
+  batchTotalQty?: number
+  varianceQty?: number
 }
 
 export type GoodsIssue = {
@@ -38,7 +40,7 @@ export type GoodsIssue = {
   fromWarehouseName: string
   remarks: string
   haulerName: string
-  plateNumber: number | null
+  plateNumber: string | null
   truckSeal: number | null
   destination: string
   status: GoodsIssueStatus
@@ -59,7 +61,7 @@ type GoodsIssueRow = {
   triggered_by: string | null
   remarks: string | null
   hauler_name?: string | null
-  plate_number?: number | null
+  plate_number?: string | null
   truck_seal?: number | null
   destination?: string | null
   status: GoodsIssueStatus
@@ -75,6 +77,8 @@ type GoodsIssueItemRow = {
   item_code: string
   description: string | null
   remarks?: string | null
+  batch_total_qty?: number | null
+  variance_qty?: number | null
   batch_rule_id: number | null
   batch_number: string | null
   manufacturing_date: string | null
@@ -126,6 +130,14 @@ type InventoryPostingRow = {
   batch_number?: string | null
 }
 
+export type CleanupVariancePosting = {
+  id: number
+  itemCode: string
+  warehouseCode: string
+  batchNumber: string
+  qty: number
+}
+
 const dedicatedIssueTables = {
   'BR-DR': { header: 'br_delivery', lines: 'br_delivery_lines', lineForeignKey: 'br_delivery_id' },
   'BR-CU': { header: 'br_cleanup', lines: 'br_cleanup_lines', lineForeignKey: 'br_cleanup_id' },
@@ -172,6 +184,8 @@ const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
   fromWarehouseCode: row.from_warehouse_code ?? '',
   fromWarehouseName: row.from_warehouse_name ?? '',
   onHandQty: 0,
+  batchTotalQty: Number(row.batch_total_qty ?? 0),
+  varianceQty: Number(row.variance_qty ?? 0),
 })
 
 const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
@@ -187,7 +201,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   fromWarehouseName: row.from_warehouse_name ?? '',
   remarks: row.remarks ?? '',
   haulerName: row.hauler_name ?? '',
-  plateNumber: row.plate_number == null ? null : Number(row.plate_number),
+  plateNumber: row.plate_number == null ? null : String(row.plate_number),
   truckSeal: row.truck_seal == null ? null : Number(row.truck_seal),
   destination: row.destination ?? '',
   status: row.status,
@@ -213,6 +227,8 @@ const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
   fromWarehouseCode: '',
   fromWarehouseName: '',
   onHandQty: 0,
+  batchTotalQty: 0,
+  varianceQty: 0,
 })
 
 const toIssueListItem = (
@@ -560,6 +576,10 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       item_code: line.itemCode,
       description: line.description || null,
       ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
+      ...(issue.triggeredBy === 'BR-CU' ? {
+        batch_total_qty: Number(line.batchTotalQty ?? 0),
+        variance_qty: Number(line.varianceQty ?? 0),
+      } : {}),
       batch_rule_id: line.batchRuleId,
       batch_number: line.batchNumber.trim() || null,
       manufacturing_date: line.manufacturingDate || null,
@@ -613,6 +633,27 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   }
 
   return getGoodsIssueById(header.id, issue.triggeredBy)
+}
+
+export async function getCleanupVariancePostings(documentId: number): Promise<CleanupVariancePosting[]> {
+  if (!Number.isFinite(documentId) || documentId <= 0) return []
+
+  const { data, error } = await db
+    .from('inventory_postings')
+    .select('id, item_code, warehouse_code, batch_number, ref, qty')
+    .eq('source_doc_type', 'BR_CLEANUP_VARIANCE')
+    .eq('source_docentry', documentId)
+    .eq('transfer_type', 'OUT')
+    .order('id', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map(row => ({
+    id: Number(row.id),
+    itemCode: String(row.item_code ?? ''),
+    warehouseCode: String(row.warehouse_code ?? ''),
+    batchNumber: String(row.batch_number ?? row.ref ?? ''),
+    qty: Number(row.qty ?? 0),
+  }))
 }
 
 export async function createGoodsIssueNumber(prefix = 'GI') {

@@ -13,7 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { getGoodsIssueById, type GoodsIssue } from '@/app/inv/gi/api'
+import {
+  getCleanupVariancePostings,
+  getGoodsIssueById,
+  type CleanupVariancePosting,
+  type GoodsIssue,
+} from '@/app/inv/gi/api'
 
 type DeliveryReceiptProps = {
   deliveryId: number | null
@@ -44,6 +49,7 @@ export default function DeliveryReceipt({
   const [delivery, setDelivery] = useState<GoodsIssue | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [variancePostings, setVariancePostings] = useState<CleanupVariancePosting[]>([])
   const printRef = useRef<HTMLDivElement>(null)
   const isCleanup = triggeredBy.trim().toUpperCase() === 'BR-CU'
 
@@ -58,13 +64,18 @@ export default function DeliveryReceipt({
     let cancelled = false
     const timer = window.setTimeout(() => {
       setDelivery(null)
+      setVariancePostings([])
       setLoading(true)
       setError('')
 
-      getGoodsIssueById(deliveryId, triggeredBy)
-        .then(result => {
+      Promise.all([
+        getGoodsIssueById(deliveryId, triggeredBy),
+        isCleanup ? getCleanupVariancePostings(deliveryId) : Promise.resolve([]),
+      ])
+        .then(([result, varianceRows]) => {
           if (cancelled) return
           setDelivery(result)
+          setVariancePostings(varianceRows)
           if (!result) setError('Delivery could not be found.')
         })
         .catch(loadError => {
@@ -80,11 +91,15 @@ export default function DeliveryReceipt({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [deliveryId, open, triggeredBy])
+  }, [deliveryId, isCleanup, open, triggeredBy])
 
   const totalQuantity = useMemo(
     () => delivery?.lines.reduce((total, line) => total + Number(line.baseQty || 0), 0) ?? 0,
     [delivery],
+  )
+  const totalVariance = useMemo(
+    () => variancePostings.reduce((total, posting) => total + Number(posting.qty || 0), 0),
+    [variancePostings],
   )
 
   return (
@@ -151,6 +166,7 @@ export default function DeliveryReceipt({
                   <thead>
                     <tr className="bg-stone-200">
                       <th className="w-10 border border-black px-2 py-2 text-center">#</th>
+                      {isCleanup && <th className="border border-black px-2 py-2 text-left">Type</th>}
                       <th className="border border-black px-2 py-2 text-left">Item</th>
                       <th className="border border-black px-2 py-2 text-left">Description</th>
                       <th className="border border-black px-2 py-2 text-left">Batch</th>
@@ -164,6 +180,7 @@ export default function DeliveryReceipt({
                     {delivery.lines.map((line, index) => (
                       <tr key={line.id}>
                         <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
+                        {isCleanup && <td className="border border-black px-2 py-2 font-medium">Clean up</td>}
                         <td className="border border-black px-2 py-2 font-medium">{line.itemCode}</td>
                         <td className="border border-black px-2 py-2">{line.description || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.batchNumber || '-'}</td>
@@ -173,12 +190,38 @@ export default function DeliveryReceipt({
                         {isCleanup && <td className="border border-black px-2 py-2">{line.lineRemarks || '-'}</td>}
                       </tr>
                     ))}
+                    {isCleanup && variancePostings.map((posting, index) => {
+                      const matchingLine = delivery.lines.find(line =>
+                        line.itemCode === posting.itemCode && line.batchNumber === posting.batchNumber,
+                      ) ?? delivery.lines.find(line => line.itemCode === posting.itemCode)
+                      return (
+                        <tr key={`variance-${posting.id}`}>
+                          <td className="border border-black px-2 py-2 text-center">{delivery.lines.length + index + 1}</td>
+                          <td className="border border-black px-2 py-2 font-medium">Variance</td>
+                          <td className="border border-black px-2 py-2 font-medium">{posting.itemCode}</td>
+                          <td className="border border-black px-2 py-2">{matchingLine?.description || '-'}</td>
+                          <td className="border border-black px-2 py-2">{posting.batchNumber || '-'}</td>
+                          <td className="border border-black px-2 py-2">{posting.warehouseCode || '-'}</td>
+                          <td className="border border-black px-2 py-2 text-right tabular-nums">{formatQuantity(posting.qty)}</td>
+                          <td className="border border-black px-2 py-2 text-center">{matchingLine?.baseUom || '-'}</td>
+                          <td className="border border-black px-2 py-2">{matchingLine?.lineRemarks || '-'}</td>
+                        </tr>
+                      )
+                    })}
                     <tr>
-                      <td colSpan={5} className="border border-black px-2 py-2 text-right font-bold uppercase">Total</td>
+                      <td colSpan={isCleanup ? 6 : 5} className="border border-black px-2 py-2 text-right font-bold uppercase">{isCleanup ? 'Total Clean up' : 'Total'}</td>
                       <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalQuantity)}</td>
                       <td className="border border-black px-2 py-2" />
                       {isCleanup && <td className="border border-black px-2 py-2" />}
                     </tr>
+                    {isCleanup && (
+                      <tr>
+                        <td colSpan={6} className="border border-black px-2 py-2 text-right font-bold uppercase">Total Variance</td>
+                        <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalVariance)}</td>
+                        <td className="border border-black px-2 py-2" />
+                        <td className="border border-black px-2 py-2" />
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </section>

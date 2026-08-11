@@ -1,5 +1,6 @@
-import { type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { PackageCheck, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Button } from '@/components/ui/button'
@@ -26,7 +27,10 @@ type DeliveryIssueLinesTableProps = {
   lockCycleCloseout?: boolean
   showLineRemarks?: boolean
   quantityLabel?: string
+  showQuantityAllocationWarnings?: boolean
   showOnHandQuantity?: boolean
+  showVariance?: boolean
+  lockedQuantityEditable?: boolean
   getItemsForLine: (line: GoodsIssueLine) => Items[]
   itemNeedsBatch: (line: GoodsIssueLine) => boolean
   lineHasPlacementBatchOptions: (line: GoodsIssueLine) => boolean
@@ -60,7 +64,10 @@ export default function DeliveryIssueLinesTable({
   lockCycleCloseout = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
+  showQuantityAllocationWarnings = true,
   showOnHandQuantity = true,
+  showVariance = false,
+  lockedQuantityEditable = false,
   getItemsForLine,
   itemNeedsBatch,
   lineHasPlacementBatchOptions,
@@ -81,9 +88,11 @@ export default function DeliveryIssueLinesTable({
   numberValue,
   formatQuantity,
 }: DeliveryIssueLinesTableProps) {
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+
   return (
     <div className="overflow-x-auto">
-      <table className={`${showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
+      <table className={`${showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
@@ -94,6 +103,7 @@ export default function DeliveryIssueLinesTable({
             <th className="w-[8%] border-r px-3 py-2">Weight g</th>
             <th className="w-[16%] border-r px-3 py-2">Item</th>
             <th className="w-[11%] border-r px-3 py-2">{quantityLabel}</th>
+            {showVariance && <th className="w-[11%] border-r px-3 py-2">Variance</th>}
             <th className="w-[16%] border-r px-3 py-2">Batch</th>
             <th className="w-[10%] border-r px-3 py-2">UOM</th>
             {showOnHandQuantity && <th className="w-[11%] border-r px-3 py-2">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand Qty'}</th>}
@@ -137,7 +147,19 @@ export default function DeliveryIssueLinesTable({
             const totalTransferQty = line.requestedAltQty ?? allocationLines.reduce((total, allocation) => total + Number(allocation.altQty || 0), 0)
             const allocationDifference = totalTransferQty - allocatedTransferQty
             const hasAllocationMismatch = Boolean(line.batchNumber && Math.abs(allocationDifference) > 0.000001)
-            const totalAvailableQty = getTotalBatchOnHandForLine(line)
+            const totalAvailableQty = activeDocumentIsPosted && Number(line.batchTotalQty ?? 0) > 0
+              ? Number(line.batchTotalQty)
+              : getTotalBatchOnHandForLine(line)
+            const baseQtyPerAltQty = calculateBaseQty(1, line.altUom, line.baseUom)
+            const maxTransferQty = baseQtyPerAltQty > 0 ? totalAvailableQty / baseQtyPerAltQty : totalAvailableQty
+            const cleanUpBaseQty = totalTransferQty * baseQtyPerAltQty
+            const varianceQty = activeDocumentIsPosted
+              ? Number(line.varianceQty ?? Math.max(totalAvailableQty - cleanUpBaseQty, 0))
+              : Math.max(totalAvailableQty - cleanUpBaseQty, 0)
+            const quantityDraftKey = String(line.id)
+            const quantityInputValue = showVariance
+              ? quantityDrafts[quantityDraftKey] ?? String(totalTransferQty)
+              : totalTransferQty
             const batchSummary = allocationLines
               .filter(allocation => allocation.batchNumber)
               .map(allocation => `${allocation.batchNumber} (${formatQuantity(allocation.altQty)})`)
@@ -220,13 +242,23 @@ export default function DeliveryIssueLinesTable({
                 </td>
                 <td className="border-r p-1 align-middle">
                   <Input
-                    type="number"
-                    min="0"
+                    type={showVariance ? 'text' : 'number'}
+                    inputMode={showVariance ? 'decimal' : undefined}
+                    min={showVariance ? 1 : 0}
+                    max={showVariance ? maxTransferQty : undefined}
                     step="any"
-                    value={totalTransferQty}
-                    readOnly={lockCycleCloseout}
+                    value={quantityInputValue}
+                    readOnly={activeDocumentIsPosted || (lockCycleCloseout && !lockedQuantityEditable)}
                     onChange={event => {
-                      const requestedTotal = Math.max(numberValue(event.target.value), 0)
+                      if (showVariance) {
+                        setQuantityDrafts(current => ({ ...current, [quantityDraftKey]: event.target.value }))
+                        return
+                      }
+                      const minimumQty = showVariance ? 1 : 0
+                      const requestedTotal = Math.min(
+                        Math.max(numberValue(event.target.value), minimumQty),
+                        showVariance ? maxTransferQty : Number.POSITIVE_INFINITY,
+                      )
                       updateLine(line.id, {
                         requestedAltQty: requestedTotal,
                         ...(!line.batchNumber ? {
@@ -235,11 +267,50 @@ export default function DeliveryIssueLinesTable({
                         } : {}),
                       })
                     }}
-                    onBlur={() => onTransferQuantityChange(line, totalTransferQty)}
-                    className={`h-8 rounded-sm text-right shadow-none focus-visible:ring-1 ${hasAllocationMismatch ? 'border-red-300 bg-red-50/70 font-semibold text-red-700 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-0 bg-transparent'}`}
-                    title={line.batchNumber ? `${formatQuantity(allocatedTransferQty)} allocated` : undefined}
+                    onBlur={() => {
+                      if (!showVariance) {
+                        onTransferQuantityChange(line, totalTransferQty)
+                        return
+                      }
+
+                      const rawValue = quantityDrafts[quantityDraftKey] ?? String(totalTransferQty)
+                      const requestedTotal = Number(rawValue.trim())
+                      const clearDraft = () => setQuantityDrafts(current => {
+                        const next = { ...current }
+                        delete next[quantityDraftKey]
+                        return next
+                      })
+
+                      if (!rawValue.trim() || !Number.isFinite(requestedTotal)) {
+                        toast('Clean up Quantity must be a valid number.')
+                        clearDraft()
+                        return
+                      }
+                      if (requestedTotal < 1) {
+                        toast('Clean up Quantity must be at least 1.')
+                        clearDraft()
+                        return
+                      }
+                      if (requestedTotal > maxTransferQty) {
+                        toast(`Clean up Quantity cannot exceed batch quantity (${formatQuantity(maxTransferQty)}).`)
+                        clearDraft()
+                        return
+                      }
+
+                      updateLine(line.id, {
+                        requestedAltQty: requestedTotal,
+                        ...(!line.batchNumber ? {
+                          altQty: requestedTotal,
+                          baseQty: calculateBaseQty(requestedTotal, line.altUom, line.baseUom),
+                        } : {}),
+                      })
+                      clearDraft()
+                      onTransferQuantityChange(line, requestedTotal)
+                    }}
+                    className={`h-8 rounded-sm text-right shadow-none focus-visible:ring-1 ${showQuantityAllocationWarnings && hasAllocationMismatch ? 'border-red-300 bg-red-50/70 font-semibold text-red-700 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-0 bg-transparent'}`}
+                    title={showQuantityAllocationWarnings && line.batchNumber ? `${formatQuantity(allocatedTransferQty)} allocated` : undefined}
                   />
-                  {hasAllocationMismatch && (
+                  {showQuantityAllocationWarnings && hasAllocationMismatch && (
                     <div className="mt-0.5 truncate px-2 text-right text-[11px] font-medium text-red-600">
                       {allocationDifference > 0
                         ? `${formatQuantity(allocationDifference)} remaining to allocate`
@@ -247,6 +318,15 @@ export default function DeliveryIssueLinesTable({
                     </div>
                   )}
                 </td>
+                {showVariance && (
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={formatQuantity(varianceQty)}
+                      readOnly
+                      className="h-8 rounded-sm border-0 bg-transparent text-right font-medium shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                )}
                 <td className="border-r p-1 align-middle">
                   {needsBatch ? (
                     <div className="space-y-1">

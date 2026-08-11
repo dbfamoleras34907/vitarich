@@ -25,6 +25,8 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       warehouseScope="line"
       allowImmediatePost
       lineQuantityLabel="Harvest Quantity"
+      showLineQuantityAllocationWarnings={false}
+      showRemarksInActionRow
     />
   )
 }

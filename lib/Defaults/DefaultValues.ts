@@ -1043,6 +1043,22 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
 
+          // {
+          //   id: 74,
+          //   type: "Report",
+          //   title: "Clean Up Report",
+          //   url: "/brd/cu/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          //   approval: false,
+          // },
+
+        ],
+      },
+      {
+        group: "Report",
+        children: [
           {
             id: 74,
             type: "Report",
@@ -1053,7 +1069,6 @@ export const NavFolders: NavFolder[] = [
             edit: false,
             approval: false,
           },
-
         ],
       },
       {
