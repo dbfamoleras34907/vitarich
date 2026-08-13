@@ -154,9 +154,12 @@ export async function updateUserProfile(
   userProfileData: UserInsert,
   defaultFarms: string[] = []
 ) {
+  const { data: sessionData } = await db.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new Error('Authentication required.')
   const response = await fetch('/api/admin/updateUserProfile', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       userProfileData,
       defaultFarms,
@@ -302,16 +305,14 @@ export async function getUserInfoAuthSession() {
 
 
 export async function GetUserList() {
-  const { data, error } = await db
-    .from('users')
-    .select('*')
+  const { data: sessionData } = await db.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new Error('Authentication required.')
 
-  console.log({ data, error })
-  // .order('posting_date', { ascending: false })
-
-  if (error) {
-    throw error
-  }
-  console.log({ data })
-  return data as UserRow[]
+  const response = await fetch('/api/admin/getUser', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const result = await response.json() as { user?: UserRow[]; error?: string }
+  if (!response.ok) throw new Error(result.error || 'Unable to load users.')
+  return result.user ?? []
 }

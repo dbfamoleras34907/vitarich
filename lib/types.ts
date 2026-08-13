@@ -101,6 +101,7 @@ export interface UserInsert {
   archipelago?: string | null;
   fms_type?: string | null;
   users_group_id?: string | number | null;
+  user_type?: number | null;
 }
 
 
@@ -133,6 +134,7 @@ export interface UserRow {
   archipelago?: string | null;
   fms_type?: string | null;
   users_group_id?: string | number | null;
+  user_type?: number | null;
 
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';
@@ -607,6 +609,7 @@ export interface NavFolder extends NavPermission {
   title: string;
   url: string;
   icon: LucideIcon;
+  fmsTypes?: Array<'Broiler' | 'Breeder' | 'Hatchery'>;
   items?: NavGroup[];
 }
 

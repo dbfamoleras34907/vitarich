@@ -37,7 +37,8 @@ export default function Layout() {
       { key: 'email', label: 'Email', type: 'text', disabled: true },
       { key: 'firstname', label: 'First name', type: 'text', disabled: true },
       { key: 'lastname', label: 'Last name', type: 'text', disabled: true },
-      { key: 'issuper', label: 'Supervisor', type: 'text', disabled: true },
+      { key: 'user_type', label: 'User Type', type: 'text', disabled: true },
+      { key: 'fms_type', label: 'FMS Type', type: 'text', disabled: true },
       { key: 'update', label: 'Update', type: 'button', disabled: false },
     ],
     [/*sourceList, itemListSource*/]
@@ -158,6 +159,10 @@ export default function Layout() {
               }
 
               const value = row[col.key]
+
+              if (col.key === 'user_type') {
+                return ({ 1: 'Super Admin', 2: 'Admin / Supervisor', 3: 'User' } as Record<number, string>)[Number(value ?? 3)] || 'User'
+              }
 
               if (col.key === 'issuper') {
                 return value === '1' ? 'Yes' : 'No'

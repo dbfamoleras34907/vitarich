@@ -54,10 +54,11 @@ export function AppSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
   const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
+  const [accessProfile, setAccessProfile] = useState<{ user_type?: number | null; fms_type?: string | null } | null>(null)
 
   const filteredNavFolders = useMemo(
-    () => filterNavFolders(NavFolders, userPermissions || []),
-    [userPermissions],
+    () => filterNavFolders(NavFolders, userPermissions || [], accessProfile),
+    [accessProfile, userPermissions],
   )
 
   const activeFolder = filteredNavFolders.find(folder => folder.id === activeFolderId)
@@ -95,6 +96,7 @@ export function AppSidebar() {
 
       try {
         const profile = await getProfileByAuthId(session.user.id)
+        setAccessProfile(profile)
         const fmsType = String(profile?.fms_type ?? "").trim().toLowerCase()
         setPreferredFmsFolder(FMS_FOLDER_TITLES.has(fmsType) ? fmsType : null)
       } catch (error) {
@@ -370,7 +372,21 @@ interface Permission {
   is_visible: boolean
 }
 
-export function filterNavFolders(navFolders: NavFolder[], permissions: Permission[]): FilteredNavFolder[] {
+export function filterNavFolders(
+  navFolders: NavFolder[],
+  permissions: Permission[],
+  profile?: { user_type?: number | null; fms_type?: string | null } | null,
+): FilteredNavFolder[] {
+  const userType = Number(profile?.user_type ?? 3)
+  const roleFolders = navFolders.filter(folder =>
+    userType === 1 || (userType === 2 && Boolean(profile?.fms_type && folder.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery"))))
+
+  if (userType === 1 || userType === 2) {
+    return roleFolders
+      .map(folder => ({ ...folder, items: folder.items ?? [] }))
+      .filter((folder): folder is FilteredNavFolder => Boolean(folder.items.length))
+  }
+
   return navFolders
     .map(folder => ({
       ...folder,

@@ -405,6 +405,7 @@ export const NavFolders: NavFolder[] = [
     title: "Home",
     url: "/home",
     icon: Home,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Reports",
@@ -428,6 +429,7 @@ export const NavFolders: NavFolder[] = [
     title: "Breeder",
     url: "/jmb/breeder",
     icon: BirdIcon,
+    fmsTypes: ["Breeder"],
     items: [
       {
         group: "Breeder Masters",
@@ -516,6 +518,7 @@ export const NavFolders: NavFolder[] = [
     title: "Hatchery",
     url: "/a_dean/hatchery",
     icon: EggIcon,
+    fmsTypes: ["Hatchery"],
     items: [
       {
         group: "Hatchery Masters",
@@ -706,6 +709,7 @@ export const NavFolders: NavFolder[] = [
     title: "Inventory",
     url: "/a_dean/inventory",
     icon: Boxes,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Item Management",
@@ -955,6 +959,7 @@ export const NavFolders: NavFolder[] = [
     title: "Broiler",
     url: "#",
     icon: Drumstick,
+    fmsTypes: ["Broiler"],
     view: false,
     insert: false,
     edit: false,
@@ -1126,6 +1131,7 @@ export const NavFolders: NavFolder[] = [
     title: "Settings",
     url: "/admin",
     icon: FileSliders,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Modules",
@@ -1138,6 +1144,17 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 75,
+            type: "Module",
+            title: "User Permissions",
+            url: "/admin/user-permissions",
+            view: true,
+            insert: false,
+            edit: true,
             approval: false,
           },
 
@@ -1239,17 +1256,8 @@ export const NavFolders: NavFolder[] = [
           //   edit: false,
           // },
 
-          {
-            id: 43,
-            type: "Module",
-            title: "Permission Template",
-            url: "/admin/permissions",
-            view: true,
-            void: false,
-            insert: false,
-            edit: false,
-            approval: false,
-          },
+          // Permission Template is intentionally hidden while permission
+          // assignment is managed from /admin/user-permissions.
         ],
       },
     ],

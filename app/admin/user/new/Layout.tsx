@@ -50,10 +50,19 @@ type UserGroupOption = {
 const normalizeFarmCode = (value: unknown) => String(value ?? '').trim()
 
 const FMS_TYPES = [
+  { code: '', name: 'None (All FMS)' },
   { code: 'Broiler', name: 'Broiler' },
   { code: 'Breeder', name: 'Breeder' },
   { code: 'Hatchery', name: 'Hatchery' },
 ]
+
+const USER_TYPES = [
+  { code: '1', name: 'Super Admin' },
+  { code: '2', name: 'Admin / Supervisor' },
+  { code: '3', name: 'User' },
+]
+
+const SHOW_LEGACY_PERMISSIONS = false
 
 const uniqueFarmCodes = (values: unknown[]) => {
   const seen = new Set<string>()
@@ -114,6 +123,7 @@ export default function Layout() {
   const [userGroups, setUserGroups] = useState<UserGroupOption[]>([])
 
   const [loggedInUser, setLoggedInUser] = useState<User | null>(null)
+  const [loggedInProfile, setLoggedInProfile] = useState<UserRow | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -158,7 +168,17 @@ export default function Layout() {
       name: 'name',
     },
     {
-      required: false,
+      required: true,
+      key: 'user_type',
+      label: 'User Type',
+      type: 'list',
+      list: USER_TYPES,
+      code: 'code',
+      name: 'name',
+      showNameOnly: true,
+    },
+    {
+      required: Number(form.user_type ?? 3) !== 1,
       key: 'fms_type',
       label: 'FMS Type',
       type: 'list',
@@ -237,7 +257,7 @@ export default function Layout() {
     {
       title: 'Access',
       icon: ShieldCheck,
-      fields: ['fms_type', 'default_farm', 'assigned_farms', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
+      fields: ['user_type', 'fms_type', 'default_farm', 'assigned_farms', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
     },
   ]
 
@@ -247,7 +267,11 @@ export default function Layout() {
 
   const handleChange = useCallback(
     (key: keyof UserInsert, value: any) => {
-      setForm((prev) => ({ ...prev, [key]: value }))
+      setForm((prev) => ({
+        ...prev,
+        [key]: value,
+        ...(key === 'user_type' ? { issuper: Number(value) === 3 ? '0' : '1' } : {}),
+      }))
     },
     []
   )
@@ -317,6 +341,7 @@ export default function Layout() {
         users_group_id: profile?.users_group_id
           ? String(profile.users_group_id)
           : '',
+        user_type: String(profile?.user_type ?? 3) as unknown as number,
       })
     } catch {
       toast.error('Failed to load profile')
@@ -373,6 +398,9 @@ export default function Layout() {
     const init = async () => {
       const { data } = await db.auth.getSession()
       setLoggedInUser(data.session?.user ?? null)
+      if (data.session?.user.id) {
+        setLoggedInProfile(await getProfileByAuthId(data.session.user.id))
+      }
 
       const farms =
         await getvwdmf_get_farmlist_code_name_farmtype()
@@ -408,6 +436,8 @@ export default function Layout() {
 
   const renderField = (field: typeof fields[number]) => {
     const value = (form as any)[field.key] || ''
+    const superAdminOnly = field.key === 'user_type' || field.key === 'fms_type'
+    const fieldDisabled = superAdminOnly && Number(loggedInProfile?.user_type ?? 3) !== 1
     let control: ReactNode
 
     if (field.component === 'textarea') {
@@ -424,6 +454,7 @@ export default function Layout() {
           <Switch
             id={field.key}
             checked={value === '1'}
+            disabled
             onCheckedChange={(checked) =>
               handleChange(field.key as any, checked ? '1' : '0')
             }
@@ -437,6 +468,7 @@ export default function Layout() {
           codeLabel={(field.code || '') as keyof Record<string, unknown>}
           nameLabel={(field.name || '') as keyof Record<string, unknown>}
           value={value}
+          disabled={fieldDisabled}
           placeholder={field.label}
           showNameOnly={Boolean(field.showNameOnly)}
           onChange={(v) => handleChange(field.key as any, v)}
@@ -490,7 +522,7 @@ export default function Layout() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {tab === 'Permissions' && (
+            {SHOW_LEGACY_PERMISSIONS && tab === 'Permissions' && (
               <>
                 <Button
                   variant="secondary"
@@ -525,7 +557,7 @@ export default function Layout() {
           <div className="border-b border-stone-200 px-4 pt-3">
             <TabsList variant="line" className="h-9">
               <TabsTrigger value="account" className="px-3">Account</TabsTrigger>
-              <TabsTrigger value="Permissions" className="px-3">Permissions</TabsTrigger>
+              {SHOW_LEGACY_PERMISSIONS && <TabsTrigger value="Permissions" className="px-3">Permissions</TabsTrigger>}
             </TabsList>
           </div>
 
@@ -568,9 +600,9 @@ export default function Layout() {
             </form>
           </TabsContent>
 
-          <TabsContent value="Permissions" className="m-0 p-4">
+          {SHOW_LEGACY_PERMISSIONS && <TabsContent value="Permissions" className="m-0 p-4">
             <Permissions userId={authSelected?.auth_id || '0'} />
-          </TabsContent>
+          </TabsContent>}
         </Tabs>
       </div>
     </div>
