@@ -6,24 +6,29 @@ const GROWING_TABLE = "tbl_growing";
 const EGG_LAYING_TABLE = "tbl_egglaying";
 const BREEDER_SOURCE_TABLE = "tbl_breeder_source";
 const BREEDER_FARM_VIEW = "view_breeder_farm";
-const FARM_LOCATION_LOOKUP_VIEW = "view_farm_location_lookup";
-const FARM_PEN_TABLE = "farm_pens";
-const LAST_PEN_CODE_VIEW = "v_last_pen_code";
+const FARM_LOCATION_LOOKUP_VIEW = "view_farm_new_lookup";
+const FARM_PEN_TABLE = "i_warehouse";
 
 export type FarmLocationLookup = {
-  pen_id: number;
-  pen_code: string | null;
-  pen_no: string;
-  building_id: number;
-  building_code: string | null;
-  building_no: string;
   farm_id: number;
   farm_code: string | null;
   farm_name: string;
-  farm_address: string | null;
-  region: string | null;
-  assigned_ta: string | null;
-  full_location: string;
+  farm_type: string | null;
+  building_id: number;
+  building_type: string | null;
+  building_code: string | null;
+  building_name: string;
+  building_capacity: number | null;
+  pen_id: number;
+  pen_code: string | null;
+  pen_name: string;
+  pen_type: string | null;
+  pen_capacity: number | null;
+  warehouse_type: string | null;
+  /** Compatibility alias used by tbl_placement and the existing placement form. */
+  pen_no: string;
+  /** Compatibility alias used by tbl_placement and the existing placement form. */
+  building_no: string;
 };
 
 export type BreederFarm = {
@@ -282,14 +287,19 @@ export async function listFarmLocationLookup() {
   const { data, error } = await db
     .from(FARM_LOCATION_LOOKUP_VIEW)
     .select(
-      "pen_id, pen_code, pen_no, building_id, building_code, building_no, farm_id, farm_code, farm_name, farm_address, region, assigned_ta, full_location",
+      "farm_id, farm_code, farm_name, farm_type, building_id, building_type, building_code, building_name, building_capacity, pen_id, pen_type, pen_code, pen_name, pen_capacity, warehouse_type",
     )
     .order("farm_name", { ascending: true })
-    .order("building_no", { ascending: true })
-    .order("pen_no", { ascending: true });
+    .order("building_name", { ascending: true })
+    .order("pen_name", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as FarmLocationLookup[];
+  return (data ?? []).map((row) => ({
+    ...row,
+    // tbl_placement still stores these values as building_no and pen_no.
+    building_no: row.building_name ?? "",
+    pen_no: row.pen_name ?? "",
+  })) as FarmLocationLookup[];
 }
 
 export async function listBreederFarms() {
@@ -302,31 +312,18 @@ export async function listBreederFarms() {
   return (data ?? []) as BreederFarm[];
 }
 
-function formatCode(prefix: string, number: number, pad: number = 6) {
-  return `${prefix}${number.toString().padStart(pad, "0")}`;
-}
-
-async function getLastPenCodeNumber() {
-  const { data, error } = await db
-    .from(LAST_PEN_CODE_VIEW)
-    .select("last_number")
-    .single();
-
-  if (error) throw error;
-  return Number(data?.last_number ?? 0);
-}
-
 export async function createFarmPen({ buildingId, penNo }: CreateFarmPenInput) {
   const normalizedPenNo = String(Number(penNo));
   const { data: existingPens, error: existingPensError } = await db
     .from(FARM_PEN_TABLE)
-    .select("name")
-    .eq("building_id", buildingId);
+    .select("whse_name")
+    .eq("warehouse_type", "Pen")
+    .eq("father_id", buildingId);
 
   if (existingPensError) throw existingPensError;
 
   const duplicate = (existingPens ?? []).some((pen) => {
-    const existingPenNo = String(pen.name ?? "").trim();
+    const existingPenNo = String(pen.whse_name ?? "").trim();
     return /^\d+$/.test(existingPenNo)
       ? String(Number(existingPenNo)) === normalizedPenNo
       : existingPenNo === normalizedPenNo;
@@ -336,17 +333,16 @@ export async function createFarmPen({ buildingId, penNo }: CreateFarmPenInput) {
     throw new Error(`Pen ${normalizedPenNo} already exists for this building.`);
   }
 
-  const nextCode = formatCode("PEN", (await getLastPenCodeNumber()) + 1);
-
   const { data, error } = await db
     .from(FARM_PEN_TABLE)
     .insert({
-      building_id: buildingId,
-      code: nextCode,
-      name: normalizedPenNo,
-      status: "Active",
+      father_id: buildingId,
+      whse_name: normalizedPenNo,
+      fms_type: "Breeder",
+      warehouse_type: "Pen",
+      is_active: true,
     })
-    .select("id, building_id, code, name, status")
+    .select("id, father_id, whse_code, whse_name, fms_type, warehouse_type, is_active")
     .single();
 
   if (error) throw error;

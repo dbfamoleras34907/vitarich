@@ -460,12 +460,12 @@ export const NavFolders: NavFolder[] = [
             url: "/home",
           },
 
-          // {
-          //   id: 6,
-          //   type: "Module",
-          //   title: "Stock In/Out",
-          //   url: "/home",
-          // },
+          {
+            id: 6,
+            type: "Module",
+            title: "Clean-Up",
+            url: "/home",
+          },
 
           {
             id: 7,
@@ -478,7 +478,7 @@ export const NavFolders: NavFolder[] = [
             id: 8,
             type: "Module",
             title: "Medication",
-            url: "/home",
+            url: "/jmb/medication",
           },
 
           {
@@ -1031,7 +1031,6 @@ export const NavFolders: NavFolder[] = [
             edit: true,
             approval: false,
           },
-
         ],
       },
       {
