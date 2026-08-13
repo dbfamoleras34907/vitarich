@@ -405,6 +405,7 @@ export const NavFolders: NavFolder[] = [
     title: "Home",
     url: "/home",
     icon: Home,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Reports",
@@ -428,6 +429,7 @@ export const NavFolders: NavFolder[] = [
     title: "Breeder",
     url: "/jmb/breeder",
     icon: BirdIcon,
+    fmsTypes: ["Breeder"],
     items: [
       {
         group: "Breeder Masters",
@@ -516,6 +518,7 @@ export const NavFolders: NavFolder[] = [
     title: "Hatchery",
     url: "/a_dean/hatchery",
     icon: EggIcon,
+    fmsTypes: ["Hatchery"],
     items: [
       {
         group: "Hatchery Masters",
@@ -706,6 +709,7 @@ export const NavFolders: NavFolder[] = [
     title: "Inventory",
     url: "/a_dean/inventory",
     icon: Boxes,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Item Management",
@@ -884,7 +888,7 @@ export const NavFolders: NavFolder[] = [
             id: 32,
             type: "Report",
             title: "Warehouse Content List",
-            url: "#",
+            url: "/inv/whse-report",
             view: false,
             insert: false,
             edit: false,
@@ -955,6 +959,7 @@ export const NavFolders: NavFolder[] = [
     title: "Broiler",
     url: "#",
     icon: Drumstick,
+    fmsTypes: ["Broiler"],
     view: false,
     insert: false,
     edit: false,
@@ -974,9 +979,20 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 73,
+            type: "Module",
+            title: "Cycle Master",
+            url: "/brd/cycle-master",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
             id: 57,
             type: "Module",
-            title: "DOC Receiving",
+            title: "DOC Placement",
             url: "/inv/doc-receiving",
             newDocumentUrl: "/inv/doc-receiving/new",
             inventoriable: true,
@@ -990,7 +1006,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 61,
             type: "Module",
-            title: "Flock Card",
+            title: "Growing & Farm Condition",
             url: "/brd/fc",
             view: false,
             insert: false,
@@ -998,20 +1014,20 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
 
-          {
-            id: 67,
-            type: "Report",
-            title: "Flock Card Report",
-            url: "/brd/fc/report",
-            view: true,
-            insert: false,
-            edit: false,
-          },
+          // {
+          //   id: 67,
+          //   type: "Report",
+          //   title: "Growing & Farm Condition Report",
+          //   url: "/brd/fc/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          // },
 
           {
             id: 62,
             type: "Module",
-            title: "Delivery",
+            title: "Harvest & Delivery",
             url: "/brd/dr",
             newDocumentUrl: "/brd/dr/new",
             view: true,
@@ -1031,6 +1047,32 @@ export const NavFolders: NavFolder[] = [
             edit: true,
             approval: false,
           },
+
+          // {
+          //   id: 74,
+          //   type: "Report",
+          //   title: "Clean Up Report",
+          //   url: "/brd/cu/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          //   approval: false,
+          // },
+        ],
+      },
+      {
+        group: "Report",
+        children: [
+          {
+            id: 74,
+            type: "Report",
+            title: "Clean Up Report",
+            url: "/brd/cu/report",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
         ],
       },
       {
@@ -1039,7 +1081,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 65,
             type: "Module",
-            title: "DOC Receiving Settings",
+            title: "DOC Placement Settings",
             url: "/a_dean/doc-receiving-settings",
             view: false,
             insert: true,
@@ -1050,7 +1092,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 66,
             type: "Module",
-            title: "Flock Card Settings",
+            title: "Growing & Farm Condition Settings",
             url: "/brd/fc/settings",
             view: false,
             insert: false,
@@ -1061,8 +1103,18 @@ export const NavFolders: NavFolder[] = [
           {
             id: 71,
             type: "Module",
-            title: "Delivery Settings",
+            title: "Harvest & Delivery Settings",
             url: "/brd/dr/settings",
+            view: false,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 72,
+            type: "Module",
+            title: "Clean up Settings",
+            url: "/brd/cu/settings",
             view: false,
             insert: false,
             edit: true,
@@ -1078,6 +1130,7 @@ export const NavFolders: NavFolder[] = [
     title: "Settings",
     url: "/admin",
     icon: FileSliders,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Modules",
@@ -1090,6 +1143,17 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 75,
+            type: "Module",
+            title: "User Permissions",
+            url: "/admin/user-permissions",
+            view: true,
+            insert: false,
+            edit: true,
             approval: false,
           },
 
@@ -1191,17 +1255,8 @@ export const NavFolders: NavFolder[] = [
           //   edit: false,
           // },
 
-          {
-            id: 43,
-            type: "Module",
-            title: "Permission Template",
-            url: "/admin/permissions",
-            view: true,
-            void: false,
-            insert: false,
-            edit: false,
-            approval: false,
-          },
+          // Permission Template is intentionally hidden while permission
+          // assignment is managed from /admin/user-permissions.
         ],
       },
     ],

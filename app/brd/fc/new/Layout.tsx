@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import {
@@ -83,6 +84,7 @@ import {
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
   feedGuidelineColumnIndex,
+  waterGuidelineColumnIndex,
   feedIntakeColumnIndexes,
   footerBorderClasses,
   getZeroInputRow,
@@ -212,6 +214,78 @@ function getMortalityThinningTotal(row: string[]) {
     getNumericValue(row[1] ?? "") +
     getNumericValue(row[3] ?? "") +
     getNumericValue(row[4] ?? "");
+}
+
+function FlockCardPageSkeleton() {
+  const skeletonColumns = [
+    "w-16",
+    "w-24",
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-32",
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-32",
+  ];
+
+  return (
+    <div
+      className="h-screen w-full bg-slate-100 p-4 dark:bg-background"
+      role="status"
+      aria-label="Loading flock card"
+    >
+      <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-white dark:bg-card">
+        <div className="flex min-h-14 items-center gap-3 border-b px-4 pb-4 pt-2">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-full max-w-md" />
+            <Skeleton className="h-3 w-full max-w-2xl" />
+          </div>
+          <Skeleton className="hidden h-3 w-24 md:block" />
+          <Skeleton className="size-9 shrink-0" />
+          <Skeleton className="h-9 w-24 shrink-0" />
+          <Skeleton className="h-9 w-20 shrink-0" />
+        </div>
+
+        <div className="relative flex-1 overflow-hidden">
+          <div className="min-w-[1180px]">
+            {[0, 1, 2].map((headerRow) => (
+              <div
+                key={headerRow}
+                className="flex h-10 gap-px border-b bg-border px-px pt-px"
+              >
+                {skeletonColumns.map((width, columnIndex) => (
+                  <div
+                    key={columnIndex}
+                    className={`${width} flex shrink-0 items-center justify-center bg-slate-100 px-2 dark:bg-muted/50`}
+                  >
+                    <Skeleton className={`h-3 ${columnIndex % 3 === 0 ? "w-10" : "w-16"}`} />
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {Array.from({ length: 12 }, (_, rowIndex) => (
+              <div key={rowIndex} className="flex h-10 gap-px border-b bg-border px-px">
+                {skeletonColumns.map((width, columnIndex) => (
+                  <div
+                    key={columnIndex}
+                    className={`${width} flex shrink-0 items-center justify-center bg-white px-2 dark:bg-card`}
+                  >
+                    <Skeleton
+                      className={`h-4 ${columnIndex === 0 ? "w-8" : rowIndex % 3 === 0 ? "w-16" : "w-12"}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <span className="sr-only">Loading flock card data...</span>
+    </div>
+  );
 }
 
 export default function StickyTablePage({ devMode }: { devMode: boolean }) {
@@ -1005,6 +1079,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         feedDailyKgColumnIndex,
         feedDailyPerBirdColumnIndex,
         feedGuidelineColumnIndex,
+        waterGuidelineColumnIndex,
         cumulativeTotalColumnIndex,
         breed: selectedBreed,
       }),
@@ -1023,7 +1098,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     () => computeColumnTotals({
       computedGridValues,
       dataColumnCount,
-      excludedColumnIndexes: [cumulativeTotalColumnIndex, feedGuidelineColumnIndex],
+      excludedColumnIndexes: [
+        cumulativeTotalColumnIndex,
+        feedGuidelineColumnIndex,
+        waterGuidelineColumnIndex,
+        15,
+      ],
     }),
     [computedGridValues]
   );
@@ -2103,6 +2183,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       feedDailyKgColumnIndex,
       feedDailyPerBirdColumnIndex,
       feedGuidelineColumnIndex,
+      waterGuidelineColumnIndex,
       cumulativeTotalColumnIndex,
       breed: selectedBreed,
     });
@@ -2539,14 +2620,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   if (isDatabaseLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-100 p-4 dark:bg-background">
-        <div className="flex min-w-[260px] items-center gap-3 rounded-lg border bg-white px-5 py-4 text-sm font-medium text-muted-foreground shadow-sm dark:bg-card">
-          <Loader2 className="size-5 animate-spin text-primary" />
-          Loading flock card data...
-        </div>
-      </div>
-    );
+    return <FlockCardPageSkeleton />;
   }
 
   return (

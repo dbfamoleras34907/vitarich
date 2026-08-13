@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -44,10 +45,13 @@ import {
   getDeliveryFlockCardInfo,
   getDeliveryFlockCardPlacementBatches,
   getBrDeliveryAgeShortage,
+  getBrCleanupAgeShortage,
+  getCleanupCycleSummaries,
   getAvailableDeliveryFlockCards,
   getAssociatedWarehouseCode,
   getGoodsIssueReferences,
   GoodsIssueFlockCardInfo,
+  type CleanupCycleSummary,
 } from './api'
 import {
   GoodsReceiptBatchRule,
@@ -57,6 +61,7 @@ import {
   UomGroupOption,
 } from '@/app/inv/gr/new/api'
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
+import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -79,6 +84,7 @@ const newLine = (): GoodsIssueLine => ({
   itemId: null,
   itemCode: '',
   description: '',
+  lineRemarks: '',
   batchRuleId: null,
   batchNumber: '',
   manufacturingDate: '',
@@ -92,6 +98,8 @@ const newLine = (): GoodsIssueLine => ({
   fromWarehouseName: '',
   onHandQty: 0,
   requestedAltQty: 1,
+  batchTotalQty: 0,
+  varianceQty: 0,
 })
 
 const emptyIssue = (giNo: string): GoodsIssue => ({
@@ -106,6 +114,10 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   fromWarehouseCode: '',
   fromWarehouseName: '',
   remarks: '',
+  haulerName: '',
+  plateNumber: null,
+  truckSeal: null,
+  destination: '',
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
   createdAt: new Date().toISOString(),
@@ -253,6 +265,13 @@ type NewGoodsIssueProps = {
   showFlockCardInformation?: boolean
   warehouseScope?: 'header' | 'line'
   allowImmediatePost?: boolean
+  showLineRemarks?: boolean
+  lineQuantityLabel?: string
+  showLineQuantityAllocationWarnings?: boolean
+  showLineOnHandQuantity?: boolean
+  showLineVariance?: boolean
+  lockedLineQuantityEditable?: boolean
+  showRemarksInActionRow?: boolean
 }
 
 function GoodsIssueLoadingShell() {
@@ -292,6 +311,13 @@ export default function NewGoodsIssue({
   showFlockCardInformation = false,
   warehouseScope = 'header',
   allowImmediatePost = false,
+  showLineRemarks = false,
+  lineQuantityLabel = 'To Transfer',
+  showLineQuantityAllocationWarnings = true,
+  showLineOnHandQuantity = true,
+  showLineVariance = false,
+  lockedLineQuantityEditable = false,
+  showRemarksInActionRow = false,
 }: NewGoodsIssueProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -344,7 +370,12 @@ export default function NewGoodsIssue({
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
+  const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
+  const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
+  const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
+  const isCleanup = triggeredBy === 'BR-CU'
 
   useEffect(() => {
     setCollapsed(true)
@@ -480,19 +511,19 @@ export default function NewGoodsIssue({
     [selectedFarm, warehouses, warehouseTypeFilter],
   )
   const deliveryFarmWarehouses = useMemo(
-    () => triggeredBy !== 'BR-DR'
+    () => !isBroilerCycleIssue
       ? farmWarehouses
       : farmWarehouses.filter(warehouse =>
           eligibleDeliveryBuildingCodes?.has(String(warehouse.whse_code ?? '').trim().toUpperCase()),
         ),
-    [eligibleDeliveryBuildingCodes, farmWarehouses, triggeredBy],
+    [eligibleDeliveryBuildingCodes, farmWarehouses, isBroilerCycleIssue],
   )
 
   useEffect(() => {
     let cancelled = false
 
     async function loadDeliverySettings() {
-      if (triggeredBy !== 'BR-DR' || !issue?.farmId) {
+      if (!isBroilerCycleIssue || !issue?.farmId) {
         setDeliveryBatchAutoSelection(false)
         setEligibleDeliveryBuildingCodes(null)
         setNoAvailableDeliveryBuildings(false)
@@ -502,10 +533,17 @@ export default function NewGoodsIssue({
 
       setEligibleDeliveryBuildingCodes(new Set())
       try {
-        const settings = await getBrDeliverySettings(Number(issue.farmId))
+        const cleanupSettings = triggeredBy === 'BR-CU'
+          ? await getBrCleanupSettings(Number(issue.farmId))
+          : null
+        const deliverySettings = triggeredBy === 'BR-DR'
+          ? await getBrDeliverySettings(Number(issue.farmId))
+          : null
         if (cancelled) return
 
-        setDeliveryBatchAutoSelection(Boolean(settings?.batch_auto_selection))
+        setDeliveryBatchAutoSelection(
+          triggeredBy === 'BR-CU' || Boolean(deliverySettings?.batch_auto_selection),
+        )
 
         const farmKey = String(issue.farmId)
         const shouldInitializeBuildings =
@@ -517,7 +555,7 @@ export default function NewGoodsIssue({
 
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
-          targetAge: Number(settings?.target_delivery_age ?? 0),
+          targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
         })
         if (cancelled) return
 
@@ -579,6 +617,7 @@ export default function NewGoodsIssue({
     issue?.status,
     loadingReferences,
     triggeredBy,
+    isBroilerCycleIssue,
   ])
 
   const lineWarehouseSignature = useMemo(
@@ -604,6 +643,55 @@ export default function NewGoodsIssue({
       }),
     [lineWarehouseSignature],
   )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCleanupSummaries() {
+      if (!isCleanup || !issue?.farmId) {
+        setCleanupSummaries([])
+        setCleanupSummaryError('')
+        return
+      }
+
+      const buildings = Array.from(new Map(
+        lineWarehouseLookups
+          .filter(line => line.fromWarehouseCode)
+          .map(line => [
+            `${line.fromWarehouseId ?? ''}|${line.fromWarehouseCode.trim().toUpperCase()}`,
+            { warehouseId: line.fromWarehouseId, warehouseCode: line.fromWarehouseCode },
+          ]),
+      ).values())
+
+      if (buildings.length === 0) {
+        setCleanupSummaries([])
+        setCleanupSummaryError('')
+        return
+      }
+
+      setLoadingCleanupSummaries(true)
+      setCleanupSummaryError('')
+      try {
+        const summaries = await getCleanupCycleSummaries({
+          farmId: Number(issue.farmId),
+          cleanupDocumentId: issue.id,
+          buildings,
+        })
+        if (!cancelled) setCleanupSummaries(summaries)
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) {
+          setCleanupSummaries([])
+          setCleanupSummaryError(error instanceof Error ? error.message : 'Unable to load Clean up summary.')
+        }
+      } finally {
+        if (!cancelled) setLoadingCleanupSummaries(false)
+      }
+    }
+
+    void loadCleanupSummaries()
+    return () => { cancelled = true }
+  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups])
 
   useEffect(() => {
     let cancelled = false
@@ -640,6 +728,10 @@ export default function NewGoodsIssue({
       cancelled = true
     }
   }, [issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
+
+  useEffect(() => {
+    if (isCleanup) lineFlockCardCacheRef.current = {}
+  }, [isCleanup, issue?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -735,6 +827,7 @@ export default function NewGoodsIssue({
               farmId: params.farmId,
               buildingWarehouseId: params.buildingWarehouseId,
               buildingCode: params.buildingCode,
+              cleanupDocumentId: isCleanup ? issue.id : null,
             })
             return { lookupKey, info }
           } catch (error) {
@@ -827,7 +920,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [issue?.farmId, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
+  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -853,8 +946,8 @@ export default function NewGoodsIssue({
     )
   }
 
-  const getSelectedItem = (line: GoodsIssueLine) =>
-    items.find(item => item.id === line.itemId)
+  const getSelectedItem = useCallback((line: GoodsIssueLine) =>
+    items.find(item => item.id === line.itemId), [items])
 
   const getItemGroupId = (item: Items) => {
     const rawGroup = String(item.item_group ?? '').trim()
@@ -888,7 +981,7 @@ export default function NewGoodsIssue({
     return itemUsesBatchManagement(item)
   }
 
-  const calculateBaseQty = (altQty: number, altUom: string, groupCode: string) => {
+  const calculateBaseQty = useCallback((altQty: number, altUom: string, groupCode: string) => {
     if (!altUom || !groupCode) return 0
 
     const conversion = conversions.find(
@@ -898,7 +991,7 @@ export default function NewGoodsIssue({
     )
 
     return conversion ? altQty * conversion.baseQty : 0
-  }
+  }, [conversions])
 
   const getLineWithRecalculatedQuantity = (line: GoodsIssueLine): GoodsIssueLine => {
     const altQty = Number(line.altQty || 0)
@@ -917,7 +1010,7 @@ export default function NewGoodsIssue({
   const lineHasInvalidQuantity = (line: GoodsIssueLine) =>
     !line.baseUom || !line.altUom || line.altQty <= 0 || line.baseQty <= 0
 
-  const getGroupUoms = (groupCode: string) => {
+  const getGroupUoms = useCallback((groupCode: string) => {
     const seen = new Set<string>()
     return conversions
       .filter(conversion => conversion.groupCode === groupCode)
@@ -927,7 +1020,7 @@ export default function NewGoodsIssue({
         seen.add(code)
         return true
       })
-  }
+  }, [conversions])
 
   const getSelectedGroup = (groupCode: string) =>
     uomGroups.find(group => group.code === groupCode)
@@ -939,8 +1032,8 @@ export default function NewGoodsIssue({
         conversion.uomCode.toUpperCase() === uomCode.toUpperCase(),
     )
 
-  const getDefaultAltUom = (groupCode: string) =>
-    getGroupUoms(groupCode)[0]?.uomCode ?? ''
+  const getDefaultAltUom = useCallback((groupCode: string) =>
+    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms])
 
   const refreshLineOnHand = async (line: GoodsIssueLine) => {
     if (!canSearchLineInventory(line)) return
@@ -1175,7 +1268,7 @@ export default function NewGoodsIssue({
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
     if (altQty <= 0) {
-      toast(remainingAltQty <= 0 ? 'To Transfer is already fully allocated.' : 'This batch has no available quantity.')
+      toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
     }
     const updatedLine = {
@@ -1242,7 +1335,7 @@ export default function NewGoodsIssue({
       0,
     )
     if (requestedAltQty <= 0) {
-      toast('Enter To Transfer before using Auto Select.')
+      toast(`Enter ${lineQuantityLabel} before using Auto Select.`)
       return
     }
 
@@ -1292,7 +1385,7 @@ export default function NewGoodsIssue({
     })
 
     if (allocations.length === 0) {
-      toast('No available batches can fulfill To Transfer.')
+      toast(`No available batches can fulfill ${lineQuantityLabel}.`)
       return
     }
     if (remainingAltQty > 0) {
@@ -1323,6 +1416,38 @@ export default function NewGoodsIssue({
     if (!deliveryBatchAutoSelection || issue?.status !== 'Draft') return
     autoSelectDeliveryBatches({ ...line, requestedAltQty })
   }
+
+  useEffect(() => {
+    if (!issue || issue.status !== 'Draft' || !isCleanup) return
+
+    const processedGroups = new Set<string>()
+    issue.lines.forEach(line => {
+      if (!line.fromWarehouseCode || !line.itemCode || line.batchNumber) return
+      const groupKey = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+      if (processedGroups.has(groupKey)) return
+      processedGroups.add(groupKey)
+
+      const options = linePlacementBatches[String(line.id)]
+        ?.filter(option => option.itemCode.trim().toUpperCase() === line.itemCode.trim().toUpperCase())
+        .filter(option => option.onHandQty > 0) ?? []
+      if (options.length === 0 || loadingLinePlacementBatches[String(line.id)]) return
+
+      const selectedItem = getSelectedItem(line)
+      const baseUom = selectedItem?.inventory_uom || selectedItem?.unit_measure || line.baseUom
+      const altUom = line.altUom || getDefaultAltUom(baseUom)
+      const baseQtyPerAltQty = calculateBaseQty(1, altUom, baseUom)
+      if (baseQtyPerAltQty <= 0) return
+
+      const fullBaseQty = options.reduce((total, option) => total + Number(option.onHandQty || 0), 0)
+      const requestedAltQty = fullBaseQty / baseQtyPerAltQty
+      if (requestedAltQty <= 0) return
+
+      const signature = options.map(option => `${option.itemCode}:${option.batchNumber}:${option.onHandQty}`).join('|')
+      if (handledAutoBatchSelectionRef.current[String(line.id)] === `CLEANUP:${signature}`) return
+      handledAutoBatchSelectionRef.current[String(line.id)] = `CLEANUP:${signature}`
+      batchSelectionActionsRef.current.autoSelectDeliveryBatches?.({ ...line, requestedAltQty })
+    })
+  }, [calculateBaseQty, getDefaultAltUom, getSelectedItem, isCleanup, issue, linePlacementBatches, loadingLinePlacementBatches])
 
   itemSelectionActionsRef.current = {
     getItemsForLine,
@@ -1391,6 +1516,20 @@ export default function NewGoodsIssue({
     (total, line) => total + Number(line.baseQty || 0),
     0,
   )
+  const cleanupVarianceTotal = isCleanup
+    ? Array.from(completedLines.reduce((groups, line) => {
+        const key = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+        groups.set(key, [...(groups.get(key) ?? []), line])
+        return groups
+      }, new Map<string, GoodsIssueLine[]>()).values()).reduce((total, group) => {
+        const firstLine = group[0]
+        if (!firstLine) return total
+        if (issue?.status === 'Posted') return total + Number(firstLine.varianceQty ?? 0)
+        const batchTotal = getTotalBatchOnHandForLine(firstLine)
+        const cleanUpTotal = group.reduce((sum, line) => sum + Number(line.baseQty || 0), 0)
+        return total + Math.max(batchTotal - cleanUpTotal, 0)
+      }, 0)
+    : 0
   const canEditDraft = issue?.status === 'Draft'
   const canPostDocument = allowImmediatePost || isPostMode || Boolean(issue?.id)
 
@@ -1410,7 +1549,20 @@ export default function NewGoodsIssue({
       toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
     }
-    const linesToSave = completedLines
+    const linesToSave = isCleanup
+      ? completedLines.map(line => {
+          const group = completedLines.filter(candidate =>
+            candidate.fromWarehouseCode === line.fromWarehouseCode && candidate.itemCode === line.itemCode,
+          )
+          const batchTotalQty = getTotalBatchOnHandForLine(line)
+          const cleanedQty = group.reduce((total, candidate) => total + Number(candidate.baseQty || 0), 0)
+          return {
+            ...line,
+            batchTotalQty,
+            varianceQty: Math.max(batchTotalQty - cleanedQty, 0),
+          }
+        })
+      : completedLines
 
     if (linesToSave.length === 0) {
       toast('Please select at least one item.')
@@ -1433,9 +1585,9 @@ export default function NewGoodsIssue({
         return
       }
     }
-    if (posting && triggeredBy === 'BR-DR') {
+    if (posting && isBroilerCycleIssue) {
       try {
-        const ageShortage = await getBrDeliveryAgeShortage({
+        const ageShortage = await (triggeredBy === 'BR-CU' ? getBrCleanupAgeShortage : getBrDeliveryAgeShortage)({
           farmId: Number(issue.farmId),
           lines: linesToSave,
         })
@@ -1444,13 +1596,13 @@ export default function NewGoodsIssue({
             ? 'has no saved flock card'
             : `is only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'} old`
           toast(
-            `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for delivery.`,
+            `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for ${isCleanup ? 'clean up' : 'delivery'}.`,
           )
           return
         }
       } catch (error) {
         console.error(error)
-        toast('Error: ' + (error instanceof Error ? error.message : 'Unable to validate the DOC delivery age.'))
+        toast('Error: ' + (error instanceof Error ? error.message : `Unable to validate the DOC ${isCleanup ? 'clean-up' : 'delivery'} age.`))
         return
       }
     }
@@ -1460,7 +1612,7 @@ export default function NewGoodsIssue({
     }
     const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
     if (overOnHandLine) {
-      toast(`To Transfer for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
+      toast(`${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
       return
     }
     const missingWarehouseLine = usesLineWarehouse
@@ -1498,7 +1650,7 @@ export default function NewGoodsIssue({
         const requestedQty = incompleteAllocation.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
           ?? incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
         const selectedQty = incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
-        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal To Transfer (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
+        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal ${lineQuantityLabel} (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
         return
       }
     }
@@ -1627,6 +1779,16 @@ export default function NewGoodsIssue({
       )}
     </div>
   )
+  const cleanupSummaryTotals = cleanupSummaries.reduce(
+    (totals, row) => ({
+      placement: totals.placement + row.totalPlacement,
+      mortality: totals.mortality + row.totalMortality,
+      delivered: totals.delivered + row.totalDelivered,
+      cleaned: totals.cleaned + row.totalCleaned,
+      variance: totals.variance + row.totalVariance,
+    }),
+    { placement: 0, mortality: 0, delivered: 0, cleaned: 0, variance: 0 },
+  )
   const flockCardInformationContent = showFlockCardInformation
     ? renderFlockCardInformation(flockCardInfo, loadingFlockCardInfo, Boolean(issue.fromWarehouseCode))
     : null
@@ -1709,18 +1871,72 @@ export default function NewGoodsIssue({
           content: flockCardInformationContent,
         }]
       : []),
-    {
-      key: 'remarks',
-      label: 'Remarks',
-      className: 'sm:col-span-2 sm:grid-cols-[112px_minmax(0,1fr)]',
-      content: (
-        <Input
-          value={issue.remarks}
-          onChange={event => setIssue(current => current ? { ...current, remarks: event.target.value } : current)}
-          placeholder="Optional remarks"
-        />
-      ),
-    },
+    ...(triggeredBy === 'BR-DR'
+      ? [
+          {
+            key: 'hauler-name',
+            label: 'Hauler Name',
+            content: (
+              <Input
+                type="text"
+                value={issue.haulerName}
+                onChange={event => setIssue(current => current ? { ...current, haulerName: event.target.value } : current)}
+                placeholder="Enter hauler name"
+              />
+            ),
+          },
+          {
+            key: 'plate-number',
+            label: 'Plate Number',
+            content: (
+              <Input
+                type="text"
+                value={issue.plateNumber ?? ''}
+                onChange={event => setIssue(current => current ? { ...current, plateNumber: event.target.value || null } : current)}
+                placeholder="Enter plate number"
+              />
+            ),
+          },
+          {
+            key: 'truck-seal',
+            label: 'Truck Seal',
+            content: (
+              <Input
+                type="number"
+                value={issue.truckSeal ?? ''}
+                onChange={event => setIssue(current => current ? { ...current, truckSeal: event.target.value === '' ? null : Number(event.target.value) } : current)}
+                placeholder="Enter truck seal"
+              />
+            ),
+          },
+          {
+            key: 'destination',
+            label: 'Destination',
+            content: (
+              <Input
+                type="text"
+                value={issue.destination}
+                onChange={event => setIssue(current => current ? { ...current, destination: event.target.value } : current)}
+                placeholder="Enter destination"
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(!showRemarksInActionRow
+      ? [{
+          key: 'remarks',
+          label: 'Remarks',
+          className: 'sm:col-span-2 sm:grid-cols-[112px_minmax(0,1fr)]',
+          content: (
+            <Input
+              value={issue.remarks}
+              onChange={event => setIssue(current => current ? { ...current, remarks: event.target.value } : current)}
+              placeholder="Optional remarks"
+            />
+          ),
+        }]
+      : []),
   ]
 
   return (
@@ -1743,6 +1959,14 @@ export default function NewGoodsIssue({
         <GoodsIssueHeaderSection fields={headerComponentList} />
 
         <div className="border-t p-5">
+          <Tabs defaultValue="lines" className="space-y-3">
+            {isCleanup && (
+              <TabsList>
+                <TabsTrigger value="lines">Clean up Lines</TabsTrigger>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+              </TabsList>
+            )}
+            <TabsContent value="lines" className="mt-0">
           <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -1750,8 +1974,10 @@ export default function NewGoodsIssue({
                 {usesLineWarehouse && showFlockCardInformation && (
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
-                      ? 'No buildings meet the Delivery age and available-batch requirements. Add a line and select a building manually to confirm.'
-                      : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
+                      ? `No buildings meet the ${isCleanup ? 'Clean-up' : 'Delivery'} age and available-batch requirements.`
+                      : isCleanup
+                        ? 'Eligible buildings load their full placement-batch balance by default. Clean up Quantity can be reduced, and Variance shows the remaining difference.'
+                        : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
                   </span>
                 )}
               </div>
@@ -1767,6 +1993,13 @@ export default function NewGoodsIssue({
                 lineFlockCardInfo={lineFlockCardInfo}
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
+                lockCycleCloseout={isCleanup}
+                showLineRemarks={showLineRemarks}
+                quantityLabel={lineQuantityLabel}
+                showQuantityAllocationWarnings={showLineQuantityAllocationWarnings}
+                showOnHandQuantity={showLineOnHandQuantity}
+                showVariance={showLineVariance}
+                lockedQuantityEditable={lockedLineQuantityEditable}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}
                 lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
@@ -2025,7 +2258,7 @@ export default function NewGoodsIssue({
             </div>
             )}
 
-            <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
+            {!isCleanup && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
               <Input
                 type="number"
                 min="1"
@@ -2046,8 +2279,82 @@ export default function NewGoodsIssue({
                 <Plus className="size-4" />
                 Add Lines
               </Button>
-            </div>
+            </div>}
           </section>
+            </TabsContent>
+
+            {isCleanup && (
+              <TabsContent value="summary" className="mt-0">
+                <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+                  <div className="border-b border-stone-200 bg-white px-4 py-3">
+                    <h2 className="text-base font-semibold">Cycle Summary</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Posted bird movements from placement through mortality, Harvest & Delivery, and Clean up.
+                      Clean up and variance are shown separately from their posted inventory movements.
+                    </p>
+                  </div>
+
+                  {loadingCleanupSummaries ? (
+                    <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Loading inventory summary...
+                    </div>
+                  ) : cleanupSummaryError ? (
+                    <div className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                      {cleanupSummaryError}
+                    </div>
+                  ) : cleanupSummaries.length === 0 ? (
+                    <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
+                      No Flock Card cycle summary is available for the selected buildings.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[1120px] w-full border-collapse text-sm">
+                        <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="border-r px-3 py-3">Building</th>
+                            <th className="border-r px-3 py-3">Flock Card</th>
+                            <th className="border-r px-3 py-3 text-right">Growing #</th>
+                            <th className="border-r px-3 py-3 text-right">Age</th>
+                            <th className="border-r px-3 py-3 text-right">Total Placement</th>
+                            <th className="border-r px-3 py-3 text-right">Total Mortality</th>
+                            <th className="border-r px-3 py-3 text-right">Total Delivered</th>
+                            <th className="border-r px-3 py-3 text-right">Total (TO) Cleaned</th>
+                            <th className="px-3 py-3 text-right">Total Variance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cleanupSummaries.map(row => (
+                            <tr key={row.flockCardId} className="border-t odd:bg-white even:bg-stone-50/70">
+                              <td className="border-r px-3 py-3 font-medium">{row.buildingName || row.buildingCode}</td>
+                              <td className="border-r px-3 py-3">{row.flockCard || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleCount || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.age}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalPlacement)}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalMortality)}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalDelivered)}</td>
+                              <td className="border-r px-3 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.totalCleaned)}</td>
+                              <td className="px-3 py-3 text-right font-semibold tabular-nums">{formatQuantity(row.totalVariance)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 bg-stone-100 font-semibold">
+                          <tr>
+                            <td colSpan={4} className="border-r px-3 py-3 text-right uppercase">Total</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.placement)}</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.mortality)}</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.delivered)}</td>
+                            <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.cleaned)}</td>
+                            <td className="px-3 py-3 text-right tabular-nums">{formatQuantity(cleanupSummaryTotals.variance)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </TabsContent>
+            )}
+          </Tabs>
 
           <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
@@ -2383,33 +2690,60 @@ export default function NewGoodsIssue({
           </Dialog>
 
           <div className="mt-6 flex flex-col items-end gap-4">
-            <div className="w-full rounded-xl border p-4 sm:w-[34rem]">
-              <h3 className="text-sm font-semibold">Issue Summary</h3>
-              <div className="mt-3 flex justify-between text-sm">
-                <span>Total Base Quantity</span>
-                <span className="font-medium tabular-nums">
-                  {formatQuantity(totalQuantity)}
-                </span>
+            <div className="w-full rounded-lg border bg-card text-card-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Issue Summary</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Quantity summary</p>
+                </div>
+                <div className={`grid gap-2 text-right text-xs ${isCleanup ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  <div className="rounded-md border px-3 py-2">
+                    <div className="text-muted-foreground">
+                      {isCleanup ? 'Total Clean up Quantity' : 'Total Base Quantity'}
+                    </div>
+                    <div className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</div>
+                  </div>
+                  {isCleanup && (
+                    <div className="rounded-md border px-3 py-2">
+                      <div className="text-muted-foreground">Total Variance</div>
+                      <div className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             {canEditDraft ? (
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleSave('Draft')}
-                  disabled={!canSave}
-                >
-                  <Save className="size-4" />
-                  {saving ? 'Saving...' : 'Save as Draft'}
-                </Button>
-                {canPostDocument && (
-                  <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
-                    <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
-                  </Button>
+              <div className={`w-full ${showRemarksInActionRow ? 'flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between' : ''}`}>
+                {showRemarksInActionRow && (
+                  <div className="w-full space-y-2 sm:max-w-xl">
+                    <Label htmlFor="goods-issue-remarks">Remarks</Label>
+                    <Input
+                      id="goods-issue-remarks"
+                      value={issue.remarks}
+                      onChange={event => setIssue(current => current ? { ...current, remarks: event.target.value } : current)}
+                      placeholder="Enter remarks..."
+                      disabled={saving}
+                    />
+                  </div>
                 )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleSave('Draft')}
+                    disabled={!canSave}
+                  >
+                    <Save className="size-4" />
+                    {saving ? 'Saving...' : 'Save as Draft'}
+                  </Button>
+                  {canPostDocument && (
+                    <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
+                      <Save className="size-4" />
+                      {saving ? 'Posting...' : 'Post Document'}
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
@@ -2428,10 +2762,23 @@ export default function NewGoodsIssue({
           </DialogHeader>
 
           <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-stone-500">Total Base Quantity</span>
-              <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
-            </div>
+            {isCleanup ? (
+              <div className="space-y-2">
+                <div className="flex justify-between gap-3">
+                  <span className="text-stone-500">Total Clean up Quantity</span>
+                  <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-stone-500">Total Variance</span>
+                  <span className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between gap-3">
+                <span className="text-stone-500">Total Base Quantity</span>
+                <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

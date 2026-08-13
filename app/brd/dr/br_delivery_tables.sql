@@ -20,6 +20,10 @@ create table if not exists public.br_delivery (
   triggered_by text not null default 'BR-DR',
   status text not null default 'Draft',
   remarks text null,
+  hauler_name text null,
+  plate_number text null,
+  truck_seal numeric null,
+  destination text null,
   constraint br_delivery_status_check check (status in ('Draft', 'Posted', 'Cancelled'))
 );
 
@@ -58,6 +62,16 @@ create index if not exists br_delivery_lines_item_id_idx on public.br_delivery_l
 create index if not exists br_delivery_lines_batch_number_idx on public.br_delivery_lines (batch_number);
 create index if not exists br_delivery_lines_warehouse_id_idx on public.br_delivery_lines (from_warehouse_id);
 create index if not exists br_delivery_lines_void_idx on public.br_delivery_lines (void);
+
+alter table public.br_delivery
+  add column if not exists hauler_name text null,
+  add column if not exists plate_number text null,
+  add column if not exists truck_seal numeric null,
+  add column if not exists destination text null;
+
+alter table public.br_delivery
+  alter column hauler_name type text using hauler_name::text,
+  alter column plate_number type text using plate_number::text;
 
 insert into public.br_delivery (
   id, created_by, created_at, updated_by, updated_at, gi_no, issue_date,

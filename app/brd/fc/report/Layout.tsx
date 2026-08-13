@@ -484,7 +484,7 @@ export default function Layout() {
         <Breadcrumb
           SecondPreviewPageName="Broiler"
           SecondPreviewPageLink="/brd"
-          FirstPreviewsPageName="Flock Card"
+          FirstPreviewsPageName="Growing & Farm Condition"
           FirstPreviewsPageLink="/brd/fc"
           CurrentPageName="Report"
         />
@@ -506,7 +506,7 @@ export default function Layout() {
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold">
               <BarChart3 className="size-4" />
-              Flock Card Report
+              Growing &amp; Farm Condition Report
             </div>
             <p className="mt-1 text-xs text-muted-foreground">Filter by age range for reusable report parameters.</p>
           </div>

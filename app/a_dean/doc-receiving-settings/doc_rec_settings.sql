@@ -24,3 +24,5 @@ create index if not exists doc_rec_settings_bad_doc_idx
 
 create index if not exists doc_rec_settings_reject_doc_idx
   on public.doc_rec_settings (reject_doc);
+
+-- Apply doc_farm_cycles.sql after this base settings migration.

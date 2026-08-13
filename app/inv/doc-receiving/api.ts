@@ -5,7 +5,7 @@ import { db } from '@/lib/Supabase/supabaseClient'
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
-const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
 
 const localToday = () => {
   const date = new Date()
@@ -45,6 +45,7 @@ export type GoodsReceiptDocLine = {
   receive_date: string
   receive_time: string
   mnf_date: string
+  doc_source: string
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string
@@ -69,6 +70,7 @@ export type GoodsReceipt = {
   farmCode: string
   farmName: string
   defaultWarehouseId: number | null
+  remarks: string
   status: GoodsReceiptDbStatus
   lines: GoodsReceiptLine[]
   docDetails: GoodsReceiptDocLine[]
@@ -85,6 +87,7 @@ type GoodsReceiptRow = {
   farm_code: string | null
   farm_name: string | null
   default_warehouse_id: number | null
+  remarks: string | null
   status: GoodsReceiptStatus
   created_at: string
 }
@@ -119,6 +122,7 @@ type GoodsReceiptDocRow = {
   receive_date: string | null
   receive_time: string | null
   mnf_date: string | null
+  doc_source: string | null
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string | null
@@ -197,6 +201,7 @@ const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
   receive_date: row.receive_date ?? '',
   receive_time: row.receive_time ?? '',
   mnf_date: row.mnf_date ?? '',
+  doc_source: row.doc_source ?? '',
   building_warehouse_id: row.building_warehouse_id ?? null,
   flock_card_id: row.flock_card_id ?? null,
   transfer_slip: row.transfer_slip ?? '',
@@ -227,6 +232,7 @@ const toReceipt = (
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   defaultWarehouseId: row.default_warehouse_id,
+  remarks: row.remarks ?? '',
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptLine),
   docDetails: docDetails.map(toReceiptDocLine),
@@ -266,6 +272,7 @@ const toReceiptListItem = (
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   defaultWarehouseId: row.default_warehouse_id,
+  remarks: row.remarks ?? '',
   status: normalizeReceiptStatus(row.status),
   lines: lines.map(toReceiptListLine),
   docDetails: [],
@@ -428,7 +435,7 @@ export async function getGoodsReceipts({
 
   let receiptQuery = db
     .from('goods_receipt')
-    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, status, created_at')
+    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, remarks, status, created_at')
     .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -538,6 +545,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
     farm_code: receipt.farmCode || null,
     farm_name: receipt.farmName || null,
     default_warehouse_id: receipt.defaultWarehouseId,
+    remarks: receipt.remarks.trim() || null,
     status: saveStatus,
     ...(receipt.id ? { updated_by: userId } : { created_by: userId }),
   }
@@ -651,6 +659,7 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
       receive_date: row.receive_date || null,
       receive_time: row.receive_time || null,
       mnf_date: row.mnf_date || null,
+      doc_source: row.doc_source.trim() || null,
       building_warehouse_id: row.building_warehouse_id,
       flock_card_id: row.flock_card_id,
       transfer_slip: row.transfer_slip.trim() || null,

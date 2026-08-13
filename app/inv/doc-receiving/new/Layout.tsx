@@ -80,25 +80,22 @@ import {
   type FarmBuildingListRow,
 } from '@/app/brd/fc/api'
 import {
-  getNextFlockCardCycleCount,
+  ensureActiveDocFarmCycle,
+  isDocCycleBuildingExcluded,
+  previewDocFarmCycle,
   saveFlockCardPlacement,
 } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import CycleInformationModal, {
   type CycleInformationForm,
 } from './CycleInformationModal'
 
-const FMS_TYPE_OPTIONS = [
-  { value: 'broiler', label: 'Broiler' },
-  { value: 'breeder', label: 'Breeder' },
-  { value: 'hatchery', label: 'Hatchery' },
-]
-
 const DOC_RECEIVING_DETAIL_COLUMNS = [
-  { code: 'receive_date', name: 'Receive Date' },
-  { code: 'receive_time', name: 'Receive Time' },
+  { code: 'receive_date', name: 'Date Receive' },
+  { code: 'receive_time', name: 'Time Receive' },
   { code: 'mnf_date', name: 'Production Date' },
+  { code: 'doc_source', name: 'DOC Source' },
   { code: 'building', name: 'Building' },
-  { code: 'transfer_slip', name: 'Transfer Slip' },
+  { code: 'transfer_slip', name: 'Hatchery Ref' },
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
   { code: 'doa_quantity', name: 'DOA Count' },
@@ -113,7 +110,7 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
 const DOC_RECEIVING_MODAL_GROUPS = [
   {
     key: 'receiving',
-    codes: ['receive_date', 'receive_time', 'mnf_date', 'building', 'transfer_slip'],
+    codes: ['receive_date', 'receive_time', 'mnf_date', 'doc_source', 'building', 'transfer_slip'],
   },
   {
     key: 'quantities',
@@ -165,6 +162,7 @@ const DOC_RECEIVING_ALIGNED_HEADER_CODES = new Set([
   'receive_date',
   'receive_time',
   'mnf_date',
+  'doc_source',
   'building',
   'transfer_slip',
   'short_count_remarks',
@@ -177,6 +175,7 @@ type DocDetailRow = GoodsReceiptDocLine & {
   receive_date: string
   receive_time: string
   mnf_date: string
+  doc_source: string
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string
@@ -235,6 +234,7 @@ const normalizeDocDetailRow = (
     receive_date: row.receive_date || receiveDate,
     receive_time: row.receive_time ?? '',
     mnf_date: row.mnf_date ?? '',
+    doc_source: row.doc_source ?? '',
     building_warehouse_id: row.building_warehouse_id ?? null,
     flock_card_id: row.flock_card_id ?? null,
     transfer_slip: row.transfer_slip ?? '',
@@ -270,7 +270,7 @@ const today = () => {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
 }
 
-const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Receiving dates cannot be advanced/future-dated.'
+const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
 
 const isFutureReceivingDate = (value: string) => Boolean(value) && value > today()
 
@@ -318,6 +318,7 @@ const emptyReceipt = (grNo: string): GoodsReceipt => ({
   farmCode: '',
   farmName: '',
   defaultWarehouseId: null,
+  remarks: '',
   status: 'Draft',
   lines: Array.from({ length: 1 }, newLine),
   docDetails: [],
@@ -500,7 +501,7 @@ function GoodsReceiveLoadingShell() {
         <div className="h-9 w-24 rounded-md bg-stone-100" />
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="grid gap-y-3 p-5">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -568,6 +569,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [cycleTarget, setCycleTarget] = useState<{ kind: 'row'; rowId: number | string } | { kind: 'modal' } | null>(null)
   const [cycleForm, setCycleForm] = useState<CycleInformationForm>(emptyCycleForm)
   const [savingCycle, setSavingCycle] = useState(false)
+  const [cycleIsExcluded, setCycleIsExcluded] = useState(false)
   const separateBatchByReference = true
   const batchReferenceColumn = 'transfer_slip'
   const [loadingReferences, setLoadingReferences] = useState(true)
@@ -674,7 +676,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
         setReceipt(nextReceipt)
         setDocDetailRows(nextReceipt.docDetails.length > 0
-          ? nextReceipt.docDetails.map(row => normalizeDocDetailRow(row, nextReceipt.receiveDate))
+          ? nextReceipt.docDetails.map(row => normalizeDocDetailRow({
+              ...row,
+              doc_source: row.doc_source || nextReceipt.vendor,
+            }, nextReceipt.receiveDate))
           : [])
         setItems(references.items)
         setWarehouses(references.warehouses)
@@ -1371,7 +1376,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : {
           id: 0,
           code: 'GR',
-          name: 'DOC Receiving',
+          name: 'DOC Placement',
           prefix: 'FD',
           suffix: null,
           separator: '-',
@@ -1392,7 +1397,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const expPart = includesExpiryDate ? formatBatchDatePart(dateFormat, line.expiryDate) : ''
 
     return {
-      templateSource: series ? `${series.code} - ${series.name}` : 'DOC Receiving fallback template',
+      templateSource: series ? `${series.code} - ${series.name}` : 'DOC Placement fallback template',
       prefix: numberedSeries.prefix ?? '',
       mfgPart,
       expPart,
@@ -1521,15 +1526,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     setCycleBuilding(building)
     setCycleTarget(target)
     setCycleForm(nextForm)
+    setCycleIsExcluded(false)
     setCycleModalOpen(true)
 
     try {
-      const cycleNumber = await getNextFlockCardCycleCount({
-        farmId: receipt.farmId,
-        buildingWarehouseId: building.id,
-        buildingKey: building.key,
-      })
-      setCycleForm(current => ({ ...current, cycleNumber }))
+      const excluded = await isDocCycleBuildingExcluded(receipt.farmId, Number(building.id))
+      setCycleIsExcluded(excluded)
+      if (excluded) {
+        setCycleForm(current => ({ ...current, cycleNumber: '' }))
+      } else {
+        const farmCycle = await previewDocFarmCycle(receipt.farmId)
+        setCycleForm(current => ({ ...current, cycleNumber: farmCycle.cycleNumber }))
+      }
     } catch (error) {
       toast.error(`Unable to calculate Cycle Count: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
@@ -1611,6 +1619,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast.error('Complete the Cycle Date range and Breed.')
       return
     }
+    if (cycleIsExcluded && (!/^\d+$/.test(cycleForm.cycleNumber.trim()) || Number(cycleForm.cycleNumber) <= 0)) {
+      toast.error('Enter a positive whole-number Cycle Count for the excluded building.')
+      return
+    }
 
     const cycleAge = calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)
     const targetRow = cycleTarget.kind === 'row'
@@ -1619,6 +1631,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     setSavingCycle(true)
     try {
+      const farmCycle = cycleIsExcluded ? null : await ensureActiveDocFarmCycle(receipt.farmId)
       const saved = await saveFlockCardPlacement({
         farmId: receipt.farmId,
         farmCode: receipt.farmCode,
@@ -1631,7 +1644,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age: cycleAge,
         startDate: cycleForm.startDate,
         breed: cycleForm.breed,
-        cycleNumber: cycleForm.cycleNumber,
+        cycleNumber: farmCycle?.cycleNumber ?? cycleForm.cycleNumber,
+        farmCycleId: farmCycle?.id ?? null,
         animalQty: calculateActualReceived(targetRow ?? {}),
         extra: {
           cycleAsOfDate: cycleForm.asOfDate,
@@ -1689,6 +1703,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast.error('Enter the Production Date before adding the DOC Details line.')
       return
     }
+    if (!modalDocDetailRow.doc_source.trim()) {
+      toast.error('Enter the DOC Source before adding the DOC Details line.')
+      return
+    }
     if (!modalDocDetailRow.building_warehouse_id || !modalDocDetailRow.flock_card_id) {
       toast.error('Select a building with an active flock-card cycle.')
       return
@@ -1740,8 +1758,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (!receipt.vendor.trim()) {
-      toast('Please enter a vendor.')
+    if (docDetailRows.length === 0 || docDetailRows.some(row => !row.doc_source.trim())) {
+      toast('Please enter a DOC source for every DOC Details row.')
       return
     }
     if (!receipt.fmsType) {
@@ -1822,6 +1840,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     try {
       const savedReceipt = await saveGoodsReceipt({
         ...receipt,
+        vendor: docDetailRows.find(row => row.doc_source.trim())?.doc_source.trim() || receipt.vendor,
         status: targetStatus,
         docDetails: docDetailRows.map(row => normalizeDocDetailRow(row, receipt.receiveDate)),
         lines: (posting ? completedLines : completeLines).map(line => ({
@@ -1867,7 +1886,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const activeBatchStatus = activeBatchMatch
     ? 'Existing database batch'
     : activeLineBatchMatch
-      ? 'Reusing current DOC Receiving batch'
+      ? 'Reusing current DOC Placement batch'
       : activeBatchNumber
         ? 'New batch to create'
         : activeBatchRequirement?.needsExpiryDate
@@ -1880,20 +1899,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="DOC Receiving"
+          FirstPreviewsPageName="DOC Placement"
           FirstPreviewsPageLink="/inv/doc-receiving"
-          CurrentPageName={isPostMode ? 'Post DOC Receiving' : 'New DOC Receiving'}
+          CurrentPageName={isPostMode ? 'Post DOC Placement' : 'New DOC Placement'}
         />
         <Button type="button" variant="outline" onClick={() => router.push('/inv/doc-receiving')}>
           <List className="size-4" />
-          DOC Receiving List
+          DOC Placement List
         </Button>
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-col items-start gap-1 p-5">
           <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">DOC Receiving No.</label>
+            <label className="text-sm font-semibold">DOC Placement No.</label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
@@ -1917,33 +1936,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
           </div>
 
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">FMS Type</label>
-            <select
-              value={receipt.fmsType}
-              disabled
-              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
-            >
-              <option value="">Select FMS type...</option>
-              {FMS_TYPE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">Vendor</label>
-            <Input
-              value={receipt.vendor}
-              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
-              placeholder="Enter vendor"
-            />
-          </div>
         </div>
 
-        <div className="border-t">
+        <div className="flex flex-1 flex-col border-t">
           <FormTable
             title="DOC Details"
             description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
@@ -2173,7 +2168,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             : 'space-y-2'
                         }
                       >
-                        <Label required={['mnf_date', 'building'].includes(column.code)}>
+                        <Label required={['mnf_date', 'doc_source', 'building'].includes(column.code)}>
                           <span className="flex flex-col items-start">
                             {DOC_RECEIVING_DETAIL_UNITS[column.code] && (
                               <span className="text-xs font-normal text-muted-foreground">
@@ -2738,7 +2733,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </DialogContent>
           </Dialog>
 
-          <div className="mx-2 mb-4 mt-4 flex flex-col items-stretch gap-3 sm:mx-4">
+          <div className="mx-2 mb-4 mt-auto flex flex-col items-stretch gap-3 pt-4 sm:mx-4">
             <div className="w-full rounded-lg border bg-card text-card-foreground">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div>
@@ -2765,22 +2760,34 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
 
             {canEditDraft ? (
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleSave('Draft')}
-                  disabled={saving}
-                >
-                  <Save className="size-4" />
-                  {saving ? 'Saving...' : 'Save as Draft'}
-                </Button>
-                {canPostDocument && (
-                  <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="w-full space-y-2 sm:max-w-xl">
+                  <Label htmlFor="doc-receiving-remarks">Remarks</Label>
+                  <Input
+                    id="doc-receiving-remarks"
+                    value={receipt.remarks}
+                    onChange={event => setReceipt(current => current ? { ...current, remarks: event.target.value } : current)}
+                    placeholder="Enter remarks..."
+                    disabled={saving}
+                  />
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleSave('Draft')}
+                    disabled={saving}
+                  >
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Saving...' : 'Save as Draft'}
                   </Button>
-                )}
+                  {canPostDocument && (
+                    <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
+                      <Save className="size-4" />
+                      {saving ? 'Posting...' : 'Post Document'}
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
@@ -2795,6 +2802,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         form={cycleForm}
         age={calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)}
         saving={savingCycle}
+        cycleNumberEditable={cycleIsExcluded}
+        farmCycle={!cycleIsExcluded}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}
         onCancel={() => {

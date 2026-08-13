@@ -20,6 +20,10 @@ export type DocReceivingSettings = {
   updated_at?: string | null
 }
 
+export type DocCycleExcludedBuilding = {
+  building_whse_id: number
+}
+
 export async function getDocItemOptions() {
   const { data, error } = await db
     .from('items')
@@ -92,4 +96,23 @@ export async function updateDocReceivingSettings(id: number, payload: DocReceivi
 
   if (error) throw error
   return data as DocReceivingSettings
+}
+
+export async function getDocCycleExcludedBuildingIds(farmId: number) {
+  if (!Number.isFinite(farmId) || farmId <= 0) return []
+  const { data, error } = await db
+    .from('doc_cycle_excluded_buildings')
+    .select('building_whse_id')
+    .eq('farm_id', farmId)
+  if (error) throw error
+  return (data as DocCycleExcludedBuilding[]).map(row => Number(row.building_whse_id))
+}
+
+export async function saveDocCycleExcludedBuildingIds(farmId: number, buildingIds: number[]) {
+  const { error } = await db.rpc('save_doc_cycle_excluded_buildings', {
+    p_farm_id: farmId,
+    p_building_whse_ids: buildingIds,
+  })
+  if (error) throw error
+  return getDocCycleExcludedBuildingIds(farmId)
 }

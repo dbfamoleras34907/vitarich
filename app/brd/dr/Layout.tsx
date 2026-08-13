@@ -9,7 +9,7 @@ export default function Layout() {
         basePath: '/brd/dr',
         permissionPath: '/brd/dr',
         parentLabel: 'Broiler',
-        title: 'Delivery',
+        title: 'Harvest & Delivery',
         listDescription: 'delivery transaction(s)',
         searchPlaceholder: 'Search delivery transactions...',
         emptyMessage: 'No delivery transactions found',

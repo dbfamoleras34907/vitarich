@@ -15,8 +15,11 @@ import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
+import { getProfileByAuthId } from "@/app/admin/user/api"
 
 type FilteredNavFolder = NavFolder & { items: NavGroup[] }
+
+const FMS_FOLDER_TITLES = new Set(["broiler", "hatchery", "breeder"])
 
 const ACTIVE_NAV_ITEM_CLASS =
   "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
@@ -50,23 +53,28 @@ export function AppSidebar() {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
+  const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
+  const [accessProfile, setAccessProfile] = useState<{ user_type?: number | null; fms_type?: string | null } | null>(null)
 
   const filteredNavFolders = useMemo(
-    () => filterNavFolders(NavFolders, userPermissions || []),
-    [userPermissions],
+    () => filterNavFolders(NavFolders, userPermissions || [], accessProfile),
+    [accessProfile, userPermissions],
   )
 
   const activeFolder = filteredNavFolders.find(folder => folder.id === activeFolderId)
 
   useEffect(() => {
     const routeFolder = filteredNavFolders.find(folder => folderContainsRoute(folder, pathname))
+    const fmsFolder = pathname === "/home"
+      ? filteredNavFolders.find(folder => folder.title.toLowerCase() === preferredFmsFolder)
+      : undefined
 
     // Keep the visible group aligned when navigation or permissions change.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveFolderId(currentId =>
-      routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
+      fmsFolder?.id ?? routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
     )
-  }, [filteredNavFolders, pathname])
+  }, [filteredNavFolders, pathname, preferredFmsFolder])
 
   // ===============================
   // INIT
@@ -83,6 +91,17 @@ export function AppSidebar() {
     const getUser = async () => {
       const { data: { session } } = await db.auth.getSession()
       setSession(session)
+
+      if (!session?.user.id) return
+
+      try {
+        const profile = await getProfileByAuthId(session.user.id)
+        setAccessProfile(profile)
+        const fmsType = String(profile?.fms_type ?? "").trim().toLowerCase()
+        setPreferredFmsFolder(FMS_FOLDER_TITLES.has(fmsType) ? fmsType : null)
+      } catch (error) {
+        console.error("Unable to load the user's FMS type:", error)
+      }
     }
     getUser()
   }, [])
@@ -353,7 +372,21 @@ interface Permission {
   is_visible: boolean
 }
 
-export function filterNavFolders(navFolders: NavFolder[], permissions: Permission[]): FilteredNavFolder[] {
+export function filterNavFolders(
+  navFolders: NavFolder[],
+  permissions: Permission[],
+  profile?: { user_type?: number | null; fms_type?: string | null } | null,
+): FilteredNavFolder[] {
+  const userType = Number(profile?.user_type ?? 3)
+  const roleFolders = navFolders.filter(folder =>
+    userType === 1 || (userType === 2 && Boolean(profile?.fms_type && folder.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery"))))
+
+  if (userType === 1 || userType === 2) {
+    return roleFolders
+      .map(folder => ({ ...folder, items: folder.items ?? [] }))
+      .filter((folder): folder is FilteredNavFolder => Boolean(folder.items.length))
+  }
+
   return navFolders
     .map(folder => ({
       ...folder,

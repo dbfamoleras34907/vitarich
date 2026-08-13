@@ -167,6 +167,9 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
   const rawPermissions = getValue("UserPermission")
+  const rawSession = getValue("UserInfoAuthSession")
+  const accessProfile = Array.isArray(rawSession) ? rawSession[0] : null
+  const userType = Number(accessProfile?.user_type ?? 3)
   let userPermissions: Array<{
     group_name: string
     title: string
@@ -184,15 +187,16 @@ export default function GlobalSearch({ collapsed }: collapsed) {
 
   const filteredFolders = filterNavFolders(
     NavFolders,
-    userPermissions
+    userPermissions,
+    accessProfile,
   ) as NavCommandFolder[]
 
   const canInsertDocument = (child: NavCommandChild) =>
     child.insert === true &&
     Boolean(child.newDocumentUrl) &&
-    userPermissions.some(
+    (userType < 3 || userPermissions.some(
       (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
-    )
+    ))
 
   /**
    * INTERNAL COMMANDS

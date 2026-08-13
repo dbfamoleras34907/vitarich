@@ -61,6 +61,7 @@ const DOCUMENT_CONFIG: Record<string, DocumentConfig> = {
   INVENTORY_TRANSFER: { table: 'inventory_transfer', numberColumn: 'it_no', url: id => `/inv/it/post?id=${id}` },
   BR_DELIVERY: { table: 'br_delivery', numberColumn: 'gi_no', url: id => `/brd/dr/post?id=${id}` },
   BR_CLEANUP: { table: 'br_cleanup', numberColumn: 'gi_no', url: id => `/brd/cu/post?id=${id}` },
+  BR_CLEANUP_VARIANCE: { table: 'br_cleanup', numberColumn: 'gi_no', url: id => `/brd/cu/post?id=${id}` },
 }
 
 const PAGE_SIZE = 1000

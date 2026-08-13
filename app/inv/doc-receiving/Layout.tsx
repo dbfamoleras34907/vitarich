@@ -97,7 +97,7 @@ export default function GoodsReceiveHistory() {
   const columns = useMemo<Column<GoodsReceiptTableRow>[]>(
     () => [
       {
-        key: 'grNo', label: 'DOC Receiving No.', render: row => (
+        key: 'grNo', label: 'DOC Placement No.', render: row => (
           <>
             <span className='bg-sidebar-accent p-1 px-2 font-semibold rounded-md'>{row.grNo}</span>
           </>
@@ -180,7 +180,7 @@ export default function GoodsReceiveHistory() {
       <div className="mt-2 flex items-center justify-between gap-3">
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
-          CurrentPageName="DOC Receiving"
+          CurrentPageName="DOC Placement"
         />
 
         <div className='flex gap-2'>
@@ -193,7 +193,7 @@ export default function GoodsReceiveHistory() {
 
           <Button type="button" onClick={openNewGoodsReceipt} disabled={canInsert}>
             <Plus className="size-4" />
-            New DOC Receiving
+            New DOC Placement
           </Button>
         </div>
       </div>
@@ -233,14 +233,14 @@ export default function GoodsReceiveHistory() {
         <DynamicTable
           loading={loading}
           initialFilters={[]}
-          title="DOC Receiving"
-          description={`${rows.length} DOC receiving document(s)`}
+          title="DOC Placement"
+          description={`${rows.length} DOC placement document(s)`}
           columns={columns}
           data={rows}
           rowKey={row => row.id ?? row.grNo}
-          searchPlaceholder="Search DOC receiving documents..."
-          emptyMessage="No DOC receiving documents found"
-          noResultsMessage="No matching DOC receiving documents found"
+          searchPlaceholder="Search DOC placement documents..."
+          emptyMessage="No DOC placement documents found"
+          noResultsMessage="No matching DOC placement documents found"
           onRowClick={row => {
             if (row.id !== null && !canView) router.push(`/inv/doc-receiving/post?id=${row.id}`)
           }}

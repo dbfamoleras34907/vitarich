@@ -77,6 +77,7 @@ export type FlockCardPlacementPayload = {
   flockCode?: string | null;
   trialCode?: string | null;
   cycleNumber?: string | null;
+  farmCycleId?: number | null;
   animalQty: number;
   feedMill?: string | null;
   stockingDensity?: number | null;
@@ -133,6 +134,7 @@ type FlockCardHeaderRow = {
   flock_code: string | null;
   trial_code: string | null;
   cycle_no: string | null;
+  farm_cycle_id: number | null;
   animal_qty: number | null;
   feedmill: string | null;
   stock_density: number | null;
@@ -253,6 +255,39 @@ async function getNextCycleCount(payload: Pick<
   return String(highestCycleCount + 1);
 }
 
+export type ActiveDocFarmCycle = {
+  id: number;
+  cycleNumber: string;
+  status: string;
+};
+
+export async function ensureActiveDocFarmCycle(farmId: number): Promise<ActiveDocFarmCycle> {
+  const { data, error } = await db.rpc("ensure_active_doc_farm_cycle", { p_farm_id: farmId });
+  if (error) throwDbError(error, "Unable to create the farm cycle");
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.id) throw new Error("Unable to create the farm cycle: missing cycle id");
+  return { id: Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+}
+
+export async function previewDocFarmCycle(farmId: number): Promise<Omit<ActiveDocFarmCycle, "id"> & { id: number | null }> {
+  const { data, error } = await db.rpc("preview_doc_farm_cycle", { p_farm_id: farmId });
+  if (error) throwDbError(error, "Unable to calculate the farm Cycle Count");
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.cycle_no) throw new Error("Unable to calculate the farm Cycle Count");
+  return { id: row.id == null ? null : Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+}
+
+export async function isDocCycleBuildingExcluded(farmId: number, buildingWarehouseId: number) {
+  const { data, error } = await db
+    .from("doc_cycle_excluded_buildings")
+    .select("id")
+    .eq("farm_id", farmId)
+    .eq("building_whse_id", buildingWarehouseId)
+    .maybeSingle();
+  if (error) throwDbError(error, "Unable to check the building cycle setting");
+  return Boolean(data);
+}
+
 export async function getNextFlockCardCycleCount(payload: Pick<
   FlockCardPlacementPayload,
   "farmId" | "buildingId" | "buildingWarehouseId" | "buildingKey"
@@ -307,6 +342,7 @@ function placementPayloadToRow(
     flock_code: payload.flockCode?.trim() || null,
     trial_code: payload.trialCode?.trim() || null,
     cycle_no: payload.cycleNumber?.trim() || null,
+    farm_cycle_id: payload.farmCycleId ?? null,
     animal_qty: toNumberOrNull(payload.animalQty) ?? 0,
     feedmill: payload.feedMill?.trim() || null,
     stock_density: toNumberOrNull(payload.stockingDensity),
@@ -472,7 +508,7 @@ export async function getFlockCardPlacement(
   const [headerResult, originResult] = await Promise.all([
     db
       .from("flock_card")
-      .select("id, card_no, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, age, start_date, broiler_type, breed, guideline, cocci_prg_id, other_prg_id, vacc_prg_id, flock_code, trial_code, cycle_no, animal_qty, feedmill, stock_density, stock_density_wt, sex, remarks, extra")
+      .select("id, card_no, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, age, start_date, broiler_type, breed, guideline, cocci_prg_id, other_prg_id, vacc_prg_id, flock_code, trial_code, cycle_no, farm_cycle_id, animal_qty, feedmill, stock_density, stock_density_wt, sex, remarks, extra")
       .eq("id", id)
       .eq("void", "1")
       .single(),
@@ -530,6 +566,7 @@ export async function getFlockCardPlacement(
     flockCode: header.flock_code,
     trialCode: header.trial_code,
     cycleNumber: header.cycle_no,
+    farmCycleId: header.farm_cycle_id,
     animalQty: Number(header.animal_qty ?? 0),
     feedMill: header.feedmill,
     stockingDensity: header.stock_density,
@@ -545,10 +582,23 @@ export async function saveFlockCardPlacement(
   payload: FlockCardPlacementPayload,
 ): Promise<SavedFlockCardPlacement> {
   const userId = await getSessionUserId();
+  if (!payload.id && !payload.farmCycleId && payload.farmId && payload.buildingWarehouseId) {
+    const excluded = await isDocCycleBuildingExcluded(payload.farmId, payload.buildingWarehouseId);
+    if (excluded) {
+      const cycleNumber = String(payload.cycleNumber ?? "").trim();
+      if (!/^\d+$/.test(cycleNumber) || Number(cycleNumber) <= 0) {
+        throw new Error("Enter a positive whole-number Cycle Count for the excluded building.");
+      }
+      const duplicate = await db.from("flock_card").select("id").eq("farm_id", payload.farmId)
+        .eq("building_whse_id", payload.buildingWarehouseId).eq("cycle_no", cycleNumber).eq("void", "1").limit(1);
+      if (duplicate.error) throwDbError(duplicate.error, "Unable to validate Cycle Count");
+      if ((duplicate.data ?? []).length > 0) throw new Error("Cycle Count already exists for this building.");
+    }
+  }
   const cardNo = payload.cardNo?.trim() || nextCardNo();
   const cycleNumber = payload.id
     ? payload.cycleNumber
-    : await getNextCycleCount(payload);
+    : payload.cycleNumber?.trim() || await getNextCycleCount(payload);
   const headerPayload = placementPayloadToRow({ ...payload, cycleNumber }, userId, cardNo);
   const previousPlacement = payload.id ? await getFlockCardPlacement(Number(payload.id)) : null;
   if (payload.id && !previousPlacement) {

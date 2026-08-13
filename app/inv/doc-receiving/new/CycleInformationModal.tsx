@@ -24,6 +24,8 @@ type CycleInformationModalProps = {
   form: CycleInformationForm
   age: number
   saving: boolean
+  cycleNumberEditable: boolean
+  farmCycle: boolean
   onOpenChange: (open: boolean) => void
   onFormChange: (changes: Partial<CycleInformationForm>) => void
   onCancel: () => void
@@ -36,6 +38,8 @@ export default function CycleInformationModal({
   form,
   age,
   saving,
+  cycleNumberEditable,
+  farmCycle,
   onOpenChange,
   onFormChange,
   onCancel,
@@ -45,10 +49,10 @@ export default function CycleInformationModal({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Create Flock-Card Cycle"
+      title={farmCycle ? 'Create Farm Cycle' : 'Create Building Cycle'}
       description={
         building
-          ? `${building.code} - ${building.name} does not have an active cycle.`
+          ? `${building.code} - ${building.name} does not have an active cycle${farmCycle ? ' and will copy the active farm Cycle Count.' : '.'}`
           : 'Complete the cycle information for the selected building.'
       }
       className="max-w-2xl"
@@ -71,7 +75,15 @@ export default function CycleInformationModal({
               </div>
               <div className="space-y-2">
                 <Label>Cycle Count</Label>
-                <Input value={form.cycleNumber} readOnly className="bg-stone-50" />
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.cycleNumber}
+                  readOnly={!cycleNumberEditable}
+                  className={!cycleNumberEditable ? 'bg-stone-50' : undefined}
+                  onChange={event => onFormChange({ cycleNumber: event.target.value })}
+                />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label required>Cycle Date</Label>

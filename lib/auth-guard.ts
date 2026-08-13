@@ -19,6 +19,12 @@ export async function checkAuth() {
         .select('group_name, title, is_visible,ilink')
         .eq('user_id', user.id);
 
+    const { data: profile } = await db
+        .from('users')
+        .select('user_type, fms_type')
+        .eq('auth_id', user.id)
+        .maybeSingle();
+
     let activeModuleTitle: string | null = null;
     for (const folder of NavFolders) {
         for (const item of folder.items || []) {
@@ -31,7 +37,13 @@ export async function checkAuth() {
     }
 
     if (activeModuleTitle) {
-        const hasPermission = userPermissions?.some(
+        const folder = NavFolders.find(item => item.items?.some(group =>
+            group.children.some(child => child.title === activeModuleTitle)));
+        const userType = Number(profile?.user_type ?? 3);
+        const hasRoleAccess = userType === 1 || (
+            userType === 2 && Boolean(profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery"))
+        );
+        const hasPermission = hasRoleAccess || userPermissions?.some(
             (p) => p.title === activeModuleTitle && p.is_visible
         );
 

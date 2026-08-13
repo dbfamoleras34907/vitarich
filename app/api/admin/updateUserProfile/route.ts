@@ -3,6 +3,8 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { NavFolders } from "@/lib/Defaults/DefaultValues";
+import { USER_TYPE, adminAccessError, canManageUser, requireAdminActor } from "@/lib/auth/adminAccess";
 
 type UserProfilePayload = {
   auth_id?: string;
@@ -21,7 +23,9 @@ type UserProfilePayload = {
   issuper?: string | null;
   archipelago?: string | null;
   region?: string | null;
+  fms_type?: string | null;
   users_group_id?: string | number | null;
+  user_type?: number | null;
 };
 
 type RequestBody = {
@@ -50,8 +54,11 @@ const uniqueFarmCodes = (values: unknown[]) => Array.from(
   )
 );
 
+const FMS_TYPES = new Set(["Broiler", "Breeder", "Hatchery"]);
+
 export async function POST(req: Request) {
   try {
+    const actor = await requireAdminActor(req);
     const body = await req.json() as RequestBody;
     const userProfileData = body.userProfileData;
 
@@ -60,6 +67,33 @@ export async function POST(req: Request) {
     }
 
     const assignedFarmCodes = uniqueFarmCodes(body.defaultFarms ?? []);
+    const { data: current, error: currentError } = await admin_db
+      .from("users")
+      .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
+      .eq("auth_id", userProfileData.auth_id)
+      .single();
+    if (currentError || !current) {
+      return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    const target = { ...current, user_type: Number(current.user_type ?? USER_TYPE.USER) };
+    if (!canManageUser(actor, target)) throw new Error("FORBIDDEN");
+
+    const isSuperAdmin = actor.user_type === USER_TYPE.SUPER_ADMIN;
+    const userType = isSuperAdmin ? Number(userProfileData.user_type ?? target.user_type) : target.user_type;
+    const fmsType = isSuperAdmin ? normalizeText(userProfileData.fms_type) : target.fms_type;
+
+    if (![1, 2, 3].includes(userType)) {
+      return NextResponse.json({ error: "Invalid user type." }, { status: 400 });
+    }
+
+    if (fmsType && !FMS_TYPES.has(fmsType)) {
+      return NextResponse.json({ error: "Invalid FMS type." }, { status: 400 });
+    }
+    if (userType !== USER_TYPE.SUPER_ADMIN && !fmsType) {
+      return NextResponse.json({ error: "FMS type is required for Admin and User accounts." }, { status: 400 });
+    }
+
     const userPayload = {
       firstname: normalizeText(userProfileData.firstname),
       middlename: normalizeText(userProfileData.middlename),
@@ -72,12 +106,14 @@ export async function POST(req: Request) {
       remarks: normalizeText(userProfileData.remarks),
       default_farm: normalizeText(userProfileData.default_farm),
       supervisor: normalizeNumber(userProfileData.supervisor),
-      issuper: userProfileData.issuper === "1" ? "1" : "0",
+      issuper: userType === USER_TYPE.USER ? "0" : "1",
       archipelago: normalizeText(userProfileData.archipelago),
       region: normalizeText(userProfileData.region),
+      fms_type: fmsType,
       users_group_id: normalizeNumber(userProfileData.users_group_id),
+      user_type: userType,
       updated_at: new Date().toISOString(),
-      updated_by: userProfileData.created_by,
+      updated_by: actor.auth_id,
     };
 
     const { data: updatedUser, error: userError } = await admin_db
@@ -93,6 +129,35 @@ export async function POST(req: Request) {
 
     if (!updatedUser?.id) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    if (isSuperAdmin && target.fms_type !== fmsType && fmsType) {
+      const allowed = new Set<string>();
+      NavFolders
+        .filter(folder => !folder.fmsTypes?.length || folder.fmsTypes.includes(fmsType as "Broiler" | "Breeder" | "Hatchery"))
+        .forEach(folder => folder.items?.forEach(group => group.children.forEach(child => {
+          allowed.add(`${group.group}|${child.title}`);
+          (["view", "insert", "edit", "void", "approval"] as const).forEach(action => {
+            if (child[action]) allowed.add(`${group.group}|${child.title}/${action}`);
+          });
+        })));
+
+      const { data: permissionRows, error: permissionError } = await admin_db
+        .from("user_permissions")
+        .select("group_name, title")
+        .eq("user_id", userProfileData.auth_id)
+        .eq("is_visible", true);
+      if (permissionError) throw permissionError;
+
+      for (const permission of permissionRows ?? []) {
+        if (allowed.has(`${permission.group_name}|${permission.title}`)) continue;
+        const { error } = await admin_db.from("user_permissions")
+          .update({ is_visible: false, updated_by: actor.auth_id, updated_at: new Date().toISOString() })
+          .eq("user_id", userProfileData.auth_id)
+          .eq("group_name", permission.group_name)
+          .eq("title", permission.title);
+        if (error) throw error;
+      }
     }
 
     const { error: voidFarmsError } = await admin_db
@@ -156,7 +221,7 @@ export async function POST(req: Request) {
           users_id: updatedUser.id,
           farm_code: farm.code,
           farm_id: farm.id,
-          created_by: userProfileData.created_by,
+          created_by: actor.auth_id,
           void: "1",
         }));
 
@@ -188,8 +253,8 @@ export async function POST(req: Request) {
       activeFarmCodes,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Internal Server Error";
     console.error("Update user profile API error:", error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const response = adminAccessError(error);
+    return NextResponse.json({ error: response.status === 500 && error instanceof Error ? error.message : response.message }, { status: response.status });
   }
 }

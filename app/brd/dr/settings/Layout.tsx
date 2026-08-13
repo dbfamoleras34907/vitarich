@@ -1,11 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +10,7 @@ import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/co
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { ModuleSettingsHeader, SettingRow, SettingsCategory } from "@/components/settings/ModuleSettingsLayout";
 import {
   getBrDeliverySettings,
   saveBrDeliverySettings,
@@ -40,6 +38,7 @@ export default function BrDeliverySettingsLayout() {
   const [targetDeliveryAge, setTargetDeliveryAge] = useState("0");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState("");
 
   const singleAllowedFarm = useMemo(() => {
     const allowedFarms = getAllowedUserFarms(
@@ -52,6 +51,8 @@ export default function BrDeliverySettingsLayout() {
 
   const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
   const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+  const currentSnapshot = JSON.stringify({ farmId: activeFarmId, batchAutoSelection, targetDeliveryAge });
+  const isDirty = Boolean(savedSnapshot) && currentSnapshot !== savedSnapshot;
 
   const canSave = useMemo(
     () => !saving && !loading && !canEdit && Boolean(activeFarmId),
@@ -62,6 +63,7 @@ export default function BrDeliverySettingsLayout() {
     setSettings(null);
     setBatchAutoSelection(false);
     setTargetDeliveryAge("0");
+    setSavedSnapshot("");
   }, []);
 
   const fetchSettings = useCallback(async () => {
@@ -77,6 +79,11 @@ export default function BrDeliverySettingsLayout() {
       setSettings(nextSettings);
       setBatchAutoSelection(Boolean(nextSettings?.batch_auto_selection));
       setTargetDeliveryAge(String(nextSettings?.target_delivery_age ?? 0));
+      setSavedSnapshot(JSON.stringify({
+        farmId: activeFarmId,
+        batchAutoSelection: Boolean(nextSettings?.batch_auto_selection),
+        targetDeliveryAge: String(nextSettings?.target_delivery_age ?? 0),
+      }));
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to load BR Delivery settings"));
       resetSettingsForm();
@@ -88,6 +95,20 @@ export default function BrDeliverySettingsLayout() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  const handleRefresh = () => {
+    if (isDirty && !window.confirm("Discard unsaved settings?")) return;
+    void fetchSettings();
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -121,7 +142,12 @@ export default function BrDeliverySettingsLayout() {
       setSettings(saved);
       setBatchAutoSelection(Boolean(saved.batch_auto_selection));
       setTargetDeliveryAge(String(saved.target_delivery_age));
-      toast("BR Delivery settings saved successfully");
+      setSavedSnapshot(JSON.stringify({
+        farmId: activeFarmId,
+        batchAutoSelection: Boolean(saved.batch_auto_selection),
+        targetDeliveryAge: String(saved.target_delivery_age),
+      }));
+      toast("Harvest & Delivery settings saved");
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to save BR Delivery settings"));
     } finally {
@@ -130,37 +156,43 @@ export default function BrDeliverySettingsLayout() {
   };
 
   return (
-    <main className="mx-auto p-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <main className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
+      <div>
         <Breadcrumb
           FirstPreviewsPageName="Settings"
-          CurrentPageName="BR Delivery Settings"
+          CurrentPageName="Harvest & Delivery Settings"
         />
-        <Button type="button" variant="secondary" onClick={fetchSettings} disabled={loading || saving || !activeFarmId}>
-          <RefreshCcw className={loading ? "size-4 animate-spin" : "size-4"} />
-        </Button>
       </div>
 
-      <Card className="border-border/70 shadow-sm">
-        <CardHeader>
-          <CardTitle>BR Delivery Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="grid gap-x-12 gap-y-6 lg:grid-cols-2">
-              <div className="space-y-6">
+      <ModuleSettingsHeader
+        title="Harvest & Delivery Settings"
+        description="Configure Harvest & Delivery defaults and operational behavior."
+        formId="harvest-delivery-settings-form"
+        loading={loading}
+        saving={saving}
+        disableRefresh={!activeFarmId}
+        disableSave={!canSave}
+        onRefresh={handleRefresh}
+      />
+
+      <form id="harvest-delivery-settings-form" onSubmit={handleSubmit} className="space-y-3">
+        <SettingsCategory title="Scope" description="Select the farm whose harvest and delivery rules you want to maintain.">
+          <SettingRow label="Farm" description="Settings are stored independently for each authorized farm." settingKey="FARM_ID" required>
                 <UserFarmSearchCombobox
                   label="Farm"
                   required
                   value={activeFarmId}
                   onValueChange={(farmId, farm) => {
+                    if (farmId !== activeFarmId && isDirty && !window.confirm("Discard unsaved settings?")) return;
                     setSelectedFarmId(farmId);
                     setSelectedFarm(farm ?? null);
                   }}
                 />
+          </SettingRow>
+        </SettingsCategory>
 
-                <div className="space-y-2">
-                  <Label htmlFor="target-delivery-age">Target Delivery Age</Label>
+        <SettingsCategory title="Harvest Validation" description="Define when a flock becomes eligible for harvest and delivery.">
+          <SettingRow label="Target Delivery Age" description="Minimum DOC age in days required before a Harvest & Delivery document can be posted." settingKey="TARGET_DELIVERY_AGE" required>
                   <Input
                     id="target-delivery-age"
                     type="number"
@@ -171,12 +203,11 @@ export default function BrDeliverySettingsLayout() {
                     disabled={loading || saving || canEdit || !activeFarmId}
                     onChange={(event) => setTargetDeliveryAge(event.target.value)}
                   />
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Minimum DOC age in days required before a BR Delivery can be posted.
-                  </p>
-                </div>
+          </SettingRow>
+        </SettingsCategory>
 
-                <div className="space-y-3">
+        <SettingsCategory title="Batch Selection" description="Control how available placement batches are presented during delivery.">
+          <SettingRow label="Batch auto selection" description="Selects the batch automatically when one is available and opens batch selection when multiple batches are available." settingKey="BATCH_AUTO_SELECTION">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="batch-auto-selection"
@@ -184,27 +215,11 @@ export default function BrDeliverySettingsLayout() {
                       disabled={loading || saving || canEdit || !activeFarmId}
                       onCheckedChange={(checked) => setBatchAutoSelection(checked === true)}
                     />
-                    <Label htmlFor="batch-auto-selection" className="text-sm font-medium">
-                      Batch Auto selection
-                    </Label>
+                    <Label htmlFor="batch-auto-selection">{batchAutoSelection ? "Enabled" : "Disabled"}</Label>
                   </div>
-                  <div className="space-y-1 pl-7 text-sm leading-relaxed text-muted-foreground">
-                    <p>Automatically selects the batch when only one available batch is found.</p>
-                    <p>Displays batch selection when multiple available batches are found.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 border-t pt-6">
-              <Button type="submit" disabled={!canSave}>
-                <Save className="mr-2 size-4" />
-                {saving ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </SettingRow>
+        </SettingsCategory>
+      </form>
     </main>
   );
 }
