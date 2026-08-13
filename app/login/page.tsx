@@ -6,7 +6,7 @@ import poultryHero from "./fms-poultry-hero.png"
 
 export default function LoginPage() {
     return (
-        <main className="min-h-screen bg-[#f6f4ee] text-[#1d2d25]">
+        <main className="min-h-screen bg-background text-foreground">
             <div className="grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
                 <section className="relative hidden overflow-hidden bg-[#075d38] px-12 py-12 text-white lg:flex lg:flex-col xl:px-16">
                     <Image
@@ -68,10 +68,10 @@ export default function LoginPage() {
                             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#00754a]">
                                 Welcome back
                             </p>
-                            <h2 className="mt-3 text-3xl font-semibold text-[#123524]">
+                            <h2 className="mt-3 text-3xl font-semibold text-foreground">
                                 Sign in to your account
                             </h2>
-                            <p className="mt-3 text-sm leading-6 text-[#617167]">
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
                                 Continue to the Vitarich Farm Management System.
                             </p>
                         </div>

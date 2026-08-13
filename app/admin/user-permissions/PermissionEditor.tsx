@@ -24,7 +24,7 @@ function permissionKey(row: PermissionRow, action: PermissionAction) {
 
 function PermissionEditorSkeleton() {
   return <div className="space-y-4" aria-label="Loading user permissions">
-    {[5, 4].map((rowCount, sectionIndex) => <section key={sectionIndex} className="overflow-hidden rounded-md border bg-white">
+    {[5, 4].map((rowCount, sectionIndex) => <section key={sectionIndex} className="overflow-hidden rounded-md border bg-card">
       <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
         <div className="space-y-2">
           <Skeleton className="h-4 w-28" />
@@ -140,7 +140,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
     {NavFolders.map(folder => {
       const folderRows = rows.filter(row => row.folder === folder.title)
       if (!folderRows.length) return null
-      return <section key={folder.id} className="overflow-hidden rounded-md border bg-white">
+      return <section key={folder.id} className="overflow-hidden rounded-md border bg-card">
         <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">{folder.title}</h2>

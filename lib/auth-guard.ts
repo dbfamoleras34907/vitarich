@@ -40,12 +40,12 @@ export async function checkAuth() {
         const folder = NavFolders.find(item => item.items?.some(group =>
             group.children.some(child => child.title === activeModuleTitle)));
         const userType = Number(profile?.user_type ?? 3);
-        const hasRoleAccess = userType === 1 || (
-            userType === 2 && Boolean(profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery"))
+        const hasFmsAccess = userType === 1 || Boolean(
+            profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery")
         );
-        const hasPermission = hasRoleAccess || userPermissions?.some(
+        const hasPermission = userType === 1 || (hasFmsAccess && userPermissions?.some(
             (p) => p.title === activeModuleTitle && p.is_visible
-        );
+        ));
 
         if (!hasPermission) {
             redirect("/404");

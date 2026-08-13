@@ -81,16 +81,16 @@ export function LoginForm({
 
   return (
     <form className={cn("flex flex-col gap-4", className)} {...props} onSubmit={handleLogin}>
-      <div className="grid gap-5 rounded-md border border-[#ded7cd] bg-white p-5 shadow-[0_18px_45px_rgba(20,55,38,0.12)] sm:p-6">
+      <div className="grid gap-5 rounded-md border bg-card p-5 text-card-foreground shadow-[0_18px_45px_rgba(20,55,38,0.12)] sm:p-6">
         <div className="grid gap-3">
-          <Label className="text-[#243c2f]">Email</Label>
+          <Label className="text-foreground">Email</Label>
           <div className="relative">
-            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6d7b72]" />
+            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-11 bg-[#fffdf8] pl-9"
+              className="h-11 pl-9"
               placeholder="name@vitarich.com"
               required
             />
@@ -99,7 +99,7 @@ export function LoginForm({
 
         <div className="grid gap-3">
           <div className="flex items-center">
-            <Label className="text-[#243c2f]">Password</Label>
+            <Label className="text-foreground">Password</Label>
             <span
               onClick={() => setOpenModal(true)}
               className="ml-auto cursor-pointer text-sm font-semibold text-primary underline-offset-4 hover:underline"
@@ -108,12 +108,12 @@ export function LoginForm({
             </span>
           </div>
           <div className="relative">
-            <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6d7b72]" />
+            <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-11 bg-[#fffdf8] pl-9"
+              className="h-11 pl-9"
               placeholder="Enter your password"
               required
             />
@@ -124,7 +124,7 @@ export function LoginForm({
           {loading ? <LoaderIcon className="animate-spin" /> : <>Login <ArrowRight className="size-4" /></>}
         </Button>
       </div>
-      <div className="rounded-md border border-[#ded7cd] bg-white/75 p-4 text-center text-sm text-[#617167] shadow-[var(--starbucks-card-shadow)]">
+      <div className="rounded-md border bg-card/75 p-4 text-center text-sm text-muted-foreground shadow-[var(--starbucks-card-shadow)]">
         <div className="mx-auto flex flex-wrap justify-center gap-2">
           <span>New to FMS?</span><a href="/signup" className="font-semibold text-primary">Create an account</a>
         </div>

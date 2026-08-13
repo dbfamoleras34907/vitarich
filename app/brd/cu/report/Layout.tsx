@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { BarChart3, CalendarRange, Loader2, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -85,21 +85,55 @@ export default function Layout() {
     <main className="mx-auto max-w-7xl space-y-4 p-3 sm:p-4">
       <Breadcrumb FirstPreviewsPageName="Broiler" CurrentPageName="Clean Up Report" />
       <section className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-        <div className="border-b border-stone-200 p-4">
-          <h1 className="text-xl font-semibold">Clean Up Report</h1>
-          <p className="mt-1 text-sm text-stone-500">Posted Clean Up cycles filtered by flock placement date.</p>
+        <div className="flex flex-col gap-3 border-b border-stone-200 bg-stone-50/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-700 shadow-sm">
+              <BarChart3 className="size-4" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-stone-900">Clean Up Report</h1>
+              <p className="mt-0.5 text-sm text-stone-500">Posted Clean Up cycles grouped by flock placement period.</p>
+            </div>
+          </div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            Posted records only
+          </div>
         </div>
-        <div className="grid gap-3 border-b border-stone-200 p-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
-          <div className="lg:col-span-2"><UserFarmSearchCombobox label="Farm" required value={farmId} onValueChange={setFarmId} /></div>
-          <label className="space-y-1 lg:col-span-2">
-            <span className="text-sm font-medium">Building <span className="font-normal text-stone-500">(Optional)</span></span>
-            <SearchableDropdown list={buildingOptions} codeLabel="code" nameLabel="name" showNameOnly value={buildingCode || '__ALL__'} disabled={!farmId || loadingBuildings} placeholder={farmId ? 'All Buildings' : 'Select farm first'} width={360} onChange={value => { setRows([]); setBuildingCode(value === '__ALL__' ? '' : value) }} />
-          </label>
-          <label className="space-y-1"><span className="text-sm font-medium">Period</span><Select value={periodMode} onValueChange={value => { setRows([]); setPeriodMode(value as PeriodMode) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="yearly">Yearly</SelectItem><SelectItem value="monthly">Monthly</SelectItem></SelectContent></Select></label>
-          <label className="space-y-1"><span className="text-sm font-medium">Year</span><Select value={year} onValueChange={value => { setRows([]); setYear(value) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{years.map(value => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select></label>
-          {periodMode === 'monthly' && <label className="space-y-1"><span className="text-sm font-medium">Month</span><Select value={month} onValueChange={value => { setRows([]); setMonth(value) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{months.map(value => <SelectItem key={value.value} value={value.value}>{value.label}</SelectItem>)}</SelectContent></Select></label>}
-          <div className="text-xs text-stone-500 lg:col-span-2">Placement Date: {period.from} to {period.to}</div>
-          <Button type="button" onClick={() => void generate()} disabled={loading || !farmId}>{loading && <Loader2 className="size-4 animate-spin" />}Generate</Button>
+
+        <div className="border-b border-stone-200 px-4 py-4 sm:px-5">
+          <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.35fr)_130px_110px_150px_auto]">
+            <div><UserFarmSearchCombobox label="Farm" required value={farmId} onValueChange={setFarmId} /></div>
+            <label className="grid gap-1.5">
+              <span className="text-sm font-medium text-stone-700">Building <span className="font-normal text-stone-500">(Optional)</span></span>
+              <SearchableDropdown list={buildingOptions} codeLabel="code" nameLabel="name" showNameOnly value={buildingCode || '__ALL__'} disabled={!farmId || loadingBuildings} placeholder={farmId ? 'All Buildings' : 'Select farm first'} width={320} onChange={value => { setRows([]); setBuildingCode(value === '__ALL__' ? '' : value) }} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-sm font-medium text-stone-700">Period</span>
+              <Select value={periodMode} onValueChange={value => { setRows([]); setPeriodMode(value as PeriodMode) }}><SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="yearly">Yearly</SelectItem><SelectItem value="monthly">Monthly</SelectItem></SelectContent></Select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-sm font-medium text-stone-700">Year</span>
+              <Select value={year} onValueChange={value => { setRows([]); setYear(value) }}><SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger><SelectContent>{years.map(value => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select>
+            </label>
+            {periodMode === 'monthly' ? (
+              <label className="grid gap-1.5">
+                <span className="text-sm font-medium text-stone-700">Month</span>
+                <Select value={month} onValueChange={value => { setRows([]); setMonth(value) }}><SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger><SelectContent>{months.map(value => <SelectItem key={value.value} value={value.value}>{value.label}</SelectItem>)}</SelectContent></Select>
+              </label>
+            ) : <div className="hidden xl:block" />}
+            <Button className="h-9 w-full px-5 sm:w-auto" type="button" onClick={() => void generate()} disabled={loading || !farmId}>
+              {loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+              Generate
+            </Button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+            <CalendarRange className="size-4 shrink-0 text-stone-500" />
+            <span className="font-medium text-stone-700">Placement date coverage</span>
+            <span className="text-stone-400">|</span>
+            <span className="tabular-nums">{period.from} to {period.to}</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-[1180px]">

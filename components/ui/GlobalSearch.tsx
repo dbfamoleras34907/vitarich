@@ -194,7 +194,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const canInsertDocument = (child: NavCommandChild) =>
     child.insert === true &&
     Boolean(child.newDocumentUrl) &&
-    (userType < 3 || userPermissions.some(
+    (userType === 1 || userPermissions.some(
       (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
     ))
 

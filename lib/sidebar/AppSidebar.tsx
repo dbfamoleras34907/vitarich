@@ -378,16 +378,18 @@ export function filterNavFolders(
   profile?: { user_type?: number | null; fms_type?: string | null } | null,
 ): FilteredNavFolder[] {
   const userType = Number(profile?.user_type ?? 3)
-  const roleFolders = navFolders.filter(folder =>
-    userType === 1 || (userType === 2 && Boolean(profile?.fms_type && folder.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery"))))
-
-  if (userType === 1 || userType === 2) {
-    return roleFolders
+  if (userType === 1) {
+    return navFolders
       .map(folder => ({ ...folder, items: folder.items ?? [] }))
       .filter((folder): folder is FilteredNavFolder => Boolean(folder.items.length))
   }
 
+  if (!profile?.fms_type) return []
+
+  const fmsType = profile.fms_type as "Broiler" | "Breeder" | "Hatchery"
+
   return navFolders
+    .filter(folder => Boolean(folder.fmsTypes?.includes(fmsType)))
     .map(folder => ({
       ...folder,
       items: folder.items
