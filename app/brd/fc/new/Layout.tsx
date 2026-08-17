@@ -96,6 +96,7 @@ import {
   mortalityBatchMaxColumnWidth,
   mortalityBatchMinColumnWidth,
   rows,
+  standardAdgColumnIndex,
   topHeaderCells,
   visibleColumnIndexes,
 } from "./flockCardGridConfig";
@@ -1102,6 +1103,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         cumulativeTotalColumnIndex,
         feedGuidelineColumnIndex,
         waterGuidelineColumnIndex,
+        standardAdgColumnIndex,
         15,
       ],
     }),

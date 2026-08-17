@@ -11,9 +11,17 @@ import type { FarmBuildingListRow } from '@/app/brd/fc/api'
 import { flockCardBreedComboOptions } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import { Modal } from '@/lib/Moda'
 
+const expectedCycleEndDate = (startDate: string) => {
+  const [year, month, day] = startDate.split('-').map(Number)
+  if (!year || !month || !day) return ''
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + 45)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 export type CycleInformationForm = {
   startDate: string
-  asOfDate: string
   breed: string
   cycleNumber: string
 }
@@ -76,34 +84,29 @@ export default function CycleInformationModal({
               <div className="space-y-2">
                 <Label>Cycle Count</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  step="1"
+                  type={cycleNumberEditable ? 'text' : 'number'}
                   value={form.cycleNumber}
                   readOnly={!cycleNumberEditable}
                   className={!cycleNumberEditable ? 'bg-stone-50' : undefined}
                   onChange={event => onFormChange({ cycleNumber: event.target.value })}
                 />
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label required>Cycle Date</Label>
-                <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
-                  <Input
-                    type="date"
-                    aria-label="Cycle date from"
-                    value={form.startDate}
-                    max={form.asOfDate || undefined}
-                    onChange={event => onFormChange({ startDate: event.target.value })}
-                  />
-                  <span className="text-center text-sm text-stone-500">to</span>
-                  <Input
-                    type="date"
-                    aria-label="Cycle date to"
-                    value={form.asOfDate}
-                    min={form.startDate || undefined}
-                    onChange={event => onFormChange({ asOfDate: event.target.value })}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label required>Cycle Start</Label>
+                <Input
+                  type="date"
+                  value={form.startDate}
+                  onChange={event => onFormChange({ startDate: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Expected Clean up date</Label>
+                <Input
+                  type="date"
+                  value={expectedCycleEndDate(form.startDate)}
+                  readOnly
+                  className="bg-stone-50"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Age</Label>

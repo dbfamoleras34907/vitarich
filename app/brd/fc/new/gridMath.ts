@@ -1,15 +1,20 @@
 import docStandard from "@/app/json/doc_standard.json";
 import { bodyWeightByReferenceProfile } from "./broilerBodyWeightStandards";
+import { standardAdgColumnIndex as defaultStandardAdgColumnIndex } from "./flockCardGridConfig";
 
 export type GridValues = string[][];
 
 type BreedStandard = {
   breed: string;
   reference_profile_id: string;
+};
+
+type ReferenceProfile = {
   daily_feed_intake_g_per_bird_by_day: Record<string, number>;
 };
 
 const breedStandards = docStandard.breed_standards as BreedStandard[];
+const referenceProfiles = docStandard.reference_profiles as Record<string, ReferenceProfile>;
 
 export function calculateFeedDailyPerBird({
   numberOfAnimals,
@@ -43,7 +48,10 @@ function getBreedStandard(breed: string) {
 }
 
 export function getFeedGuidelineGramsPerBird(age: number, breed: string) {
-  return getBreedStandard(breed)?.daily_feed_intake_g_per_bird_by_day[String(age)] ?? 0;
+  const profileId = getBreedStandard(breed)?.reference_profile_id;
+  return profileId
+    ? referenceProfiles[profileId]?.daily_feed_intake_g_per_bird_by_day[String(age)] ?? 0
+    : 0;
 }
 
 export function calculateWaterDailyPerBird({
@@ -72,6 +80,16 @@ export function getBodyWeightGuidelineGrams(age: number, breed: string) {
   return profileId ? bodyWeightByReferenceProfile[profileId]?.[age] ?? 0 : 0;
 }
 
+export function getAverageDailyGainGuidelineGrams(age: number, breed: string) {
+  if (age <= 0) return 0;
+
+  const placementWeight = getBodyWeightGuidelineGrams(0, breed);
+  const bodyWeight = getBodyWeightGuidelineGrams(age, breed);
+  if (placementWeight <= 0 || bodyWeight <= 0) return 0;
+
+  return Number(((bodyWeight - placementWeight) / age).toFixed(1));
+}
+
 export function computeGridValues({
   gridValues,
   numberOfAnimals,
@@ -80,6 +98,7 @@ export function computeGridValues({
   feedGuidelineColumnIndex,
   waterGuidelineColumnIndex,
   bodyGuidelineColumnIndex = 15,
+  standardAdgColumnIndex = defaultStandardAdgColumnIndex,
   waterDailyLitersColumnIndex = 12,
   waterDailyPerBirdColumnIndex = 13,
   cumulativeTotalColumnIndex = 6,
@@ -92,6 +111,7 @@ export function computeGridValues({
   feedGuidelineColumnIndex: number;
   waterGuidelineColumnIndex: number;
   bodyGuidelineColumnIndex?: number;
+  standardAdgColumnIndex?: number;
   waterDailyLitersColumnIndex?: number;
   waterDailyPerBirdColumnIndex?: number;
   cumulativeTotalColumnIndex?: number;
@@ -130,6 +150,9 @@ export function computeGridValues({
     );
     computedRow[bodyGuidelineColumnIndex] = formatComputedValue(
       getBodyWeightGuidelineGrams(rowIndex, breed)
+    );
+    computedRow[standardAdgColumnIndex] = formatComputedValue(
+      getAverageDailyGainGuidelineGrams(rowIndex, breed)
     );
 
     if ((row[feedDailyKgColumnIndex] ?? "").trim() !== "") {

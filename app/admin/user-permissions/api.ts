@@ -23,10 +23,25 @@ export type PermissionUser = {
   user_type: number
 }
 
+export type PermissionAction = "list" | "view" | "insert" | "edit" | "void" | "approval"
+
+export type PermissionRow = {
+  group: string
+  title: string
+  actions: PermissionAction[]
+}
+
+export type PermissionFolder = {
+  id: number
+  title: string
+  fmsTypes?: string[]
+  rows: PermissionRow[]
+}
+
 export async function getManageableUsers() {
   const response = await fetch("/api/admin/user-permissions", { headers: await authHeaders() })
   return parseResponse<{
-    actor: { user_type: number; fms_type: string | null }
+    actor: { auth_id: string; user_type: number; fms_type: string | null }
     users: PermissionUser[]
   }>(response)
 }

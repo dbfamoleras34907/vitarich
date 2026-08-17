@@ -556,11 +556,11 @@ export default function Layout() {
             </div>
             <div className="grid gap-1">
               <Label htmlFor="age-from" className="text-xs">Age from</Label>
-              <Input id="age-from" type="number" min="0" value={ageFrom} onChange={event => setAgeFrom(event.target.value)} className="h-9 w-28" />
+              <Input id="age-from" type="number" min="0" max="45" value={ageFrom} onChange={event => setAgeFrom(event.target.value)} className="h-9 w-28" />
             </div>
             <div className="grid gap-1">
               <Label htmlFor="age-to" className="text-xs">Age to</Label>
-              <Input id="age-to" type="number" min="0" value={ageTo} onChange={event => setAgeTo(event.target.value)} className="h-9 w-28" />
+              <Input id="age-to" type="number" min="0" max="45" value={ageTo} onChange={event => setAgeTo(event.target.value)} className="h-9 w-28" />
             </div>
             <Button type="button" size="sm" onClick={() => void loadReport(ageFrom, ageTo)}>
               <Search className="size-4" />

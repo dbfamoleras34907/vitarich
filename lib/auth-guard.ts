@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { db } from "./Supabase/supabaseClient";
 import { NavFolders } from "./Defaults/DefaultValues";
+import { getNavigationPermissionTitle } from "./sidebar/navigationPermissions";
 
 export async function checkAuth() {
     const headerList = await headers();
@@ -25,26 +26,34 @@ export async function checkAuth() {
         .eq('auth_id', user.id)
         .maybeSingle();
 
-    let activeModuleTitle: string | null = null;
+    let activeModule: { group: string; title: string; view?: boolean } | null = null;
     for (const folder of NavFolders) {
         for (const item of folder.items || []) {
             const match = item.children.find((child) => child.url === pathname);
             if (match) {
-                activeModuleTitle = match.title;
+                activeModule = {
+                    group: item.group,
+                    title: match.title,
+                    view: match.view,
+                };
                 break;
             }
         }
     }
 
-    if (activeModuleTitle) {
+    if (activeModule) {
         const folder = NavFolders.find(item => item.items?.some(group =>
-            group.children.some(child => child.title === activeModuleTitle)));
+            group.group === activeModule.group &&
+            group.children.some(child => child.title === activeModule.title)));
         const userType = Number(profile?.user_type ?? 3);
         const hasFmsAccess = userType === 1 || Boolean(
             profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery")
         );
         const hasPermission = userType === 1 || (hasFmsAccess && userPermissions?.some(
-            (p) => p.title === activeModuleTitle && p.is_visible
+            (p) =>
+                p.group_name === activeModule.group &&
+                p.title === getNavigationPermissionTitle(activeModule) &&
+                p.is_visible
         ));
 
         if (!hasPermission) {

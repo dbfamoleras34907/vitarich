@@ -6,17 +6,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NavFolders } from "@/lib/Defaults/DefaultValues"
-import { getManagedUserPermissions, setManagedUserPermission, type PermissionUser } from "./api"
-
-type PermissionAction = "list" | "view" | "insert" | "edit" | "void" | "approval"
-
-type PermissionRow = {
-  folder: string
-  group: string
-  title: string
-  actions: PermissionAction[]
-}
+import {
+  getManagedUserPermissions,
+  setManagedUserPermission,
+  type PermissionAction,
+  type PermissionFolder,
+  type PermissionRow,
+  type PermissionUser,
+} from "./api"
 
 function permissionKey(row: PermissionRow, action: PermissionAction) {
   return `${row.group}|${action === "list" ? row.title : `${row.title}/${action}`}`
@@ -59,20 +56,15 @@ export type PermissionEditorHandle = {
   setAll: (checked: boolean) => Promise<void>
 }
 
-const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUser }>(function PermissionEditor({ user }, ref) {
+const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUser; permissionFolders: PermissionFolder[] }>(function PermissionEditor({ user, permissionFolders }, ref) {
   const [permissions, setPermissions] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
 
-  const rows = useMemo<PermissionRow[]>(() => NavFolders
+  const folders = useMemo(() => permissionFolders
     .filter(folder => !user.fms_type || !folder.fmsTypes?.length || folder.fmsTypes.includes(user.fms_type as "Broiler" | "Breeder" | "Hatchery"))
-    .flatMap(folder => (folder.items ?? []).flatMap(group => group.children.map(child => ({
-      folder: folder.title,
-      group: group.group,
-      title: child.title,
-      actions: (["list", "view", "insert", "edit", "void", "approval"] as PermissionAction[])
-        .filter(action => action === "list" || Boolean(child[action])),
-    })))), [user.fms_type])
+    .filter(folder => folder.rows.length), [permissionFolders, user.fms_type])
+  const rows = useMemo<PermissionRow[]>(() => folders.flatMap(folder => folder.rows), [folders])
 
   useEffect(() => {
     let active = true
@@ -137,9 +129,8 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
   if (loading) return <PermissionEditorSkeleton />
 
   return <div className="space-y-4">
-    {NavFolders.map(folder => {
-      const folderRows = rows.filter(row => row.folder === folder.title)
-      if (!folderRows.length) return null
+    {folders.map(folder => {
+      const folderRows = folder.rows
       return <section key={folder.id} className="overflow-hidden rounded-md border bg-card">
         <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
           <div>

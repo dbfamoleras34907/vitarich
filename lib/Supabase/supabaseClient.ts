@@ -1,7 +1,7 @@
 
 export const runtime = "nodejs";
 import { createBrowserClient } from '@supabase/ssr'
-import { INTERNET_ERROR_MESSAGE, isInternetError, notifyInternetError } from '@/lib/networkError'
+import { isInternetError, notifyInternetError } from '@/lib/networkError'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -12,7 +12,9 @@ const fetchWithInternetErrorNotice: typeof fetch = async (...args) => {
   } catch (error) {
     if (isInternetError(error)) {
       notifyInternetError(error)
-      throw new Error(INTERNET_ERROR_MESSAGE)
+      // Keep the original rejection so Supabase callers can handle the failed
+      // request without turning it into a new application error.
+      throw error
     }
     throw error
   }

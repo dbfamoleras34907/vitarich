@@ -586,8 +586,8 @@ export async function saveFlockCardPlacement(
     const excluded = await isDocCycleBuildingExcluded(payload.farmId, payload.buildingWarehouseId);
     if (excluded) {
       const cycleNumber = String(payload.cycleNumber ?? "").trim();
-      if (!/^\d+$/.test(cycleNumber) || Number(cycleNumber) <= 0) {
-        throw new Error("Enter a positive whole-number Cycle Count for the excluded building.");
+      if (!cycleNumber) {
+        throw new Error("Enter the Cycle Count for the exempted building.");
       }
       const duplicate = await db.from("flock_card").select("id").eq("farm_id", payload.farmId)
         .eq("building_whse_id", payload.buildingWarehouseId).eq("cycle_no", cycleNumber).eq("void", "1").limit(1);

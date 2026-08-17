@@ -130,6 +130,34 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Keep every project form field visually consistent, including native fields
+     that do not use the shared UI components. */
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+    textarea,
+    select,
+    [data-slot="select-trigger"],
+    [data-slot="combobox-chips"],
+    [data-slot="input-group"],
+    [data-slot="command-input-wrapper"]
+  ) {
+    background-color: #ffffff !important;
+  }
+
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):disabled,
+    textarea:disabled,
+    select:disabled,
+    [data-slot="select-trigger"]:disabled,
+    [data-slot="combobox-chips"]:has(input:disabled),
+    [data-slot="input-group"]:has(input:disabled),
+    [data-slot="input-group"]:has(textarea:disabled)
+  ) {
+    background-color: #f3f4f6 !important;
+    cursor: not-allowed;
+    opacity: 1;
+  }
+
   body {
     @apply bg-background text-foreground;
     letter-spacing: -0.01em;
@@ -142,6 +170,30 @@
 }
 
 @media screen {
+  .dark :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+    textarea,
+    select,
+    [data-slot="select-trigger"],
+    [data-slot="combobox-chips"],
+    [data-slot="input-group"],
+    [data-slot="command-input-wrapper"]
+  ) {
+    background-color: color-mix(in srgb, var(--input) 30%, transparent) !important;
+  }
+
+  .dark :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):disabled,
+    textarea:disabled,
+    select:disabled,
+    [data-slot="select-trigger"]:disabled,
+    [data-slot="combobox-chips"]:has(input:disabled),
+    [data-slot="input-group"]:has(input:disabled),
+    [data-slot="input-group"]:has(textarea:disabled)
+  ) {
+    background-color: color-mix(in srgb, var(--input) 20%, transparent) !important;
+  }
+
   .dark .bg-white {
     background-color: var(--card);
   }

@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { actualAdgColumnIndex } from "./flockCardGridConfig";
 
 export type FeedBatchOnHand = {
   id: string;
@@ -248,9 +249,11 @@ function normalizeMortalityAllocations(line: FlockCardLinePayload) {
 
 function getLineExtra(line: FlockCardLinePayload) {
   const mortalityAllocations = normalizeMortalityAllocations(line);
+  const actualAdg = line.values[actualAdgColumnIndex]?.trim() || null;
 
-  return mortalityAllocations.length > 0
-    ? {
+  return {
+    ...(mortalityAllocations.length > 0
+      ? {
       mortalityBatchAllocations: mortalityAllocations.map(allocation => ({
         lineNo: allocation.lineNo,
         itemCode: allocation.itemCode,
@@ -261,8 +264,10 @@ function getLineExtra(line: FlockCardLinePayload) {
         onHandSnapshot: allocation.onHandSnapshot,
         source: allocation.source ?? "MANUAL",
       })),
-    }
-    : {};
+      }
+      : {}),
+    ...(actualAdg ? { actualAdg } : {}),
+  };
 }
 
 function nextFlockCardNo() {
@@ -459,7 +464,7 @@ function linePayloadToBaseInsertRow(line: FlockCardLinePayload, fcId: number, us
   const row = linePayloadToRow(line, fcId, userId);
 
   return lineNeedsFeedIntakeRpc(line)
-    ? omitFeedIntakeColumns(row)
+    ? { ...omitFeedIntakeColumns(row), is_locked: false }
     : row;
 }
 
@@ -788,10 +793,15 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           line.skin_b,
           line.skin_a,
           line.skin_l,
+          String(rawExtra.actualAdg ?? rawExtra.addAlw ?? ""),
           null,
           null,
           null,
-        ].map(formatDbValue),
+        ].map((value, columnIndex) =>
+          columnIndex === actualAdgColumnIndex
+            ? String(value ?? "")
+            : formatDbValue(value)
+        ),
         allocations: allocationsByLineId.get(lineId) ?? [],
         mortalityAllocations: rawMortalityAllocations.flatMap((allocation) => {
           if (!allocation || typeof allocation !== "object") return [];

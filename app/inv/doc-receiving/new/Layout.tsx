@@ -47,6 +47,7 @@ import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
+  getFirstDocPlacementDates,
   getGoodsReceiptById,
   GoodsReceipt,
   GoodsReceiptDocLine,
@@ -274,16 +275,56 @@ const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/fu
 
 const isFutureReceivingDate = (value: string) => Boolean(value) && value > today()
 
+const calendarDayNumber = (value: string) => {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return null
+
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null
+
+  return Math.floor(date.getTime() / 86_400_000)
+}
+
 const calculateCycleRange = (startDate: string, asOfDate: string) => {
-  const start = new Date(`${startDate}T00:00:00`)
-  const end = new Date(`${asOfDate}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
-  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86_400_000))
+  const start = calendarDayNumber(startDate)
+  const end = calendarDayNumber(asOfDate)
+  if (start == null || end == null) return 0
+  return Math.max(0, end - start)
+}
+
+const placementAge = (firstPlacementDate: string, receiveDate: string) => {
+  const start = calendarDayNumber(firstPlacementDate)
+  const placement = calendarDayNumber(receiveDate)
+  if (start == null || placement == null) return Number.POSITIVE_INFINITY
+  return placement - start
+}
+
+const DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET = 6
+
+const isOutsideDocPlacementWindow = (age: number) => (
+  age < 0 || age > DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET
+)
+
+const formatCalendarDate = (value: string) => {
+  const [year, month, day] = value.slice(0, 10).split('-')
+  return year && month && day ? `${month}/${day}/${year}` : value
+}
+
+const addDaysToDate = (value: string, days: number) => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return ''
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 const emptyCycleForm = (): CycleInformationForm => ({
   startDate: '',
-  asOfDate: '',
   breed: '',
   cycleNumber: '1',
 })
@@ -548,6 +589,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
   const [farmBuildings, setFarmBuildings] = useState<FarmBuildingListRow[]>([])
+  const [firstPlacementDates, setFirstPlacementDates] = useState<Record<number, string>>({})
   const [buildingRefreshKey, setBuildingRefreshKey] = useState(0)
   const [uomGroups, setUomGroups] = useState<UomGroupOption[]>([])
   const [conversions, setConversions] = useState<UomConversionOption[]>([])
@@ -583,13 +625,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const farmId = Number(receipt?.farmId ?? 0)
     if (!farmId) {
       setFarmBuildings([])
+      setFirstPlacementDates({})
       return
     }
 
     let cancelled = false
     getFarmBuildingsForFlockCard(farmId)
-      .then(rows => {
-        if (!cancelled) setFarmBuildings(rows.filter(row => row.source === 'WAREHOUSE'))
+      .then(async rows => {
+        const buildings = rows.filter(row => row.source === 'WAREHOUSE')
+        const dates = await getFirstDocPlacementDates(buildings.flatMap(building =>
+          building.flockCard ? [building.flockCard.id] : []
+        ))
+        if (!cancelled) {
+          setFarmBuildings(buildings)
+          setFirstPlacementDates(dates)
+        }
       })
       .catch(error => {
         if (!cancelled) toast.error(`Unable to load farm buildings: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -1028,9 +1078,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [loadingReferences, receipt?.farmId, receipt?.fmsType, selectedFarm])
 
   useEffect(() => {
-    if (loadingReferences || receipt?.farmId || farms.length !== 1) return
+    if (loadingReferences || receipt?.farmId || farms.length === 0) return
 
-    const [farm] = farms
+    const defaultFarmId = getValue('DefaultFarmId')
+    const farm = farms.find(candidate => String(candidate.id) === String(defaultFarmId))
+      ?? (farms.length === 1 ? farms[0] : null)
+    if (!farm) return
+
     setReceipt(current => {
       if (!current || current.farmId) return current
 
@@ -1043,7 +1097,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         defaultWarehouseId: null,
       }
     })
-  }, [farms, loadingReferences, receipt?.farmId])
+  }, [farms, getValue, loadingReferences, receipt?.farmId])
 
   useEffect(() => {
     if (shouldDeriveReceiptLines) return
@@ -1517,6 +1571,23 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
+  const getFirstPlacementDate = (flockCardId: number, fallbackDate: string) => {
+    const persistedDate = firstPlacementDates[flockCardId]
+    if (persistedDate) return persistedDate
+
+    const localDates = [
+      ...docDetailRows
+        .filter(row => row.flock_card_id === flockCardId)
+        .map(row => row.receive_date || receipt.receiveDate),
+      ...(modalDocDetailRow?.flock_card_id === flockCardId
+        ? [modalDocDetailRow.receive_date || receipt.receiveDate]
+        : []),
+      fallbackDate,
+    ].filter(Boolean).sort()
+
+    return localDates[0] ?? fallbackDate
+  }
+
   const beginCycleCreation = async (
     building: FarmBuildingListRow,
     target: { kind: 'row'; rowId: number | string } | { kind: 'modal' },
@@ -1559,11 +1630,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (building && building.cycleAge > 7) {
-      toast.error(
-        `${building.warehouseCode} has a flock-cycle age of ${building.cycleAge} days. DOC placement is only allowed through age 7.`,
-      )
-    }
   }
 
   const addDocDetailsUsingModal = () => {
@@ -1606,25 +1672,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (building && building.cycleAge > 7) {
-      toast.error(
-        `${building.warehouseCode} has a flock-cycle age of ${building.cycleAge} days. DOC placement is only allowed through age 7.`,
-      )
-    }
   }
 
   const createCycle = async () => {
     if (!receipt?.farmId || !cycleBuilding || !cycleTarget) return
-    if (!cycleForm.startDate || !cycleForm.asOfDate || !cycleForm.breed.trim()) {
-      toast.error('Complete the Cycle Date range and Breed.')
+    if (!cycleForm.startDate || !cycleForm.breed.trim()) {
+      toast.error('Complete the Cycle / Age Start and Breed.')
       return
     }
-    if (cycleIsExcluded && (!/^\d+$/.test(cycleForm.cycleNumber.trim()) || Number(cycleForm.cycleNumber) <= 0)) {
-      toast.error('Enter a positive whole-number Cycle Count for the excluded building.')
+    if (cycleIsExcluded && !cycleForm.cycleNumber.trim()) {
+      toast.error('Enter the Cycle Count for the exempted building.')
       return
     }
 
-    const cycleAge = calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)
+    const cycleAge = Math.min(calculateCycleRange(cycleForm.startDate, today()), 45)
     const targetRow = cycleTarget.kind === 'row'
       ? docDetailRows.find(row => row.id === cycleTarget.rowId)
       : modalDocDetailRow
@@ -1648,7 +1709,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         farmCycleId: farmCycle?.id ?? null,
         animalQty: calculateActualReceived(targetRow ?? {}),
         extra: {
-          cycleAsOfDate: cycleForm.asOfDate,
+          cycleAsOfDate: today(),
+          expectedCycleEndDate: addDaysToDate(cycleForm.startDate, 45),
           createdFrom: 'DOC_RECEIVING',
           goodsReceiptNo: receipt.grNo,
         },
@@ -1793,9 +1855,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         building.warehouseId === row.building_warehouse_id &&
         building.flockCardId === row.flock_card_id
       ))
-      .find(building => building && building.cycleAge > 7)
+      .find((building, index) => building && isOutsideDocPlacementWindow(placementAge(
+        getFirstPlacementDate(building.flockCardId, rowsWithReceivedChicks[index]?.receive_date || receipt.receiveDate),
+        rowsWithReceivedChicks[index]?.receive_date || receipt.receiveDate,
+      )))
     if (posting && ageIssue) {
-      toast(`${ageIssue.warehouseCode} has a flock-cycle age of ${ageIssue.cycleAge} days. DOC placement is only allowed through age 7.`)
       return
     }
     if (
@@ -1892,6 +1956,22 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         : activeBatchRequirement?.needsExpiryDate
           ? 'Waiting for dates'
           : 'Waiting for MFG date'
+
+  const docPlacementWindowError = docDetailRows.flatMap(row => {
+    if (numberValue(row.quantity_received) <= 0) return []
+    const building = farmOpenFlockBuildings.find(candidate =>
+      candidate.warehouseId === row.building_warehouse_id &&
+      candidate.flockCardId === row.flock_card_id
+    )
+    if (!building) return []
+
+    const receiveDate = row.receive_date || receipt.receiveDate
+    const firstDate = getFirstPlacementDate(building.flockCardId, receiveDate)
+    const day = placementAge(firstDate, receiveDate)
+    return isOutsideDocPlacementWindow(day)
+      ? [`${building.warehouseCode}: Date Receive must be from ${firstDate} through ${addDaysToDate(firstDate, DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET)} (7 calendar dates including the first placement date).`]
+      : []
+  })[0] ?? ''
 
   return (
     <main className="min-h-[calc(100vh-80rem)]">
@@ -2019,7 +2099,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 )}
                 {docDetailRows.map(row => (
                   <tr key={row.id} className="odd:bg-card even:bg-secondary/40">
-                    <td className="px-1 py-1 align-middle">
+                    <td className="px-1 py-1 align-top">
                       <div className="flex items-center justify-center gap-1">
                       <button
                         type="button"
@@ -2043,16 +2123,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       </div>
                     </td>
                     {DOC_RECEIVING_DETAIL_COLUMNS.map(column => {
-                      const selectedRowBuilding = column.code === 'building'
-                        ? farmOpenFlockBuildings.find(building =>
-                            building.warehouseId === row.building_warehouse_id &&
-                            building.flockCardId === row.flock_card_id
-                          )
-                        : null
-                      const hasAgeIssue = Boolean(selectedRowBuilding && selectedRowBuilding.cycleAge > 7)
+                      const selectedRowBuilding = farmOpenFlockBuildings.find(building =>
+                        building.warehouseId === row.building_warehouse_id &&
+                        building.flockCardId === row.flock_card_id
+                      )
+                      const rowReceiveDate = row.receive_date || receipt.receiveDate
+                      const firstPlacementDate = selectedRowBuilding
+                        ? getFirstPlacementDate(selectedRowBuilding.flockCardId, rowReceiveDate)
+                        : ''
+                      const hasAgeIssue = Boolean(firstPlacementDate && isOutsideDocPlacementWindow(placementAge(
+                        firstPlacementDate,
+                        rowReceiveDate,
+                      )))
 
                       return (
-                      <td key={column.code} className="px-1 py-1 align-middle">
+                      <td key={column.code} className="px-1 py-1 align-top">
                         {column.code === 'building' ? (
                           <div className="min-w-80">
                             <select
@@ -2078,41 +2163,41 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 <option
                                   key={building.key}
                                   value={building.id ?? ''}
-                                  className={activeCycle && activeCycle.cycleAge > 7 ? 'text-red-700' : ''}
                                 >
                                   {building.code} - {building.name}
                                   {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
-                                  {activeCycle && activeCycle.cycleAge > 7 ? ' · AGE ISSUE' : ''}
                                 </option>
                               ))}
                             </select>
                             {hasAgeIssue && (
                               <p className="mt-1 text-xs font-medium text-red-700">
-                                Cycle age exceeds 7 days.
+                                Date Receive is outside the 7-calendar-date placement window from : {formatCalendarDate(firstPlacementDate)}
                               </p>
                             )}
                           </div>
                         ) : (
-                        <Input
-                          type={
-                            DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
-                              ? 'date'
-                              : column.code === 'receive_time'
-                                ? 'time'
-                              : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
-                                ? 'number'
-                                : 'text'
-                          }
-                          value={getDocDetailValue(row, column.code)}
-                          readOnly={column.code === 'actual_received'}
-                          disabled={!canEditDocDetails}
-                          onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
-                          min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
-                          max={column.code === 'receive_date' ? today() : undefined}
-                          step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
-                          className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
-                          aria-label={column.name}
-                        />
+                        <div>
+                          <Input
+                            type={
+                              DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
+                                ? 'date'
+                                : column.code === 'receive_time'
+                                  ? 'time'
+                                : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
+                                  ? 'number'
+                                  : 'text'
+                            }
+                            value={getDocDetailValue(row, column.code)}
+                            readOnly={column.code === 'actual_received'}
+                            disabled={!canEditDocDetails}
+                            onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
+                            min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                            max={column.code === 'receive_date' ? today() : undefined}
+                            step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
+                            className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
+                            aria-label={column.name}
+                          />
+                        </div>
                         )}
                       </td>
                       )
@@ -2122,6 +2207,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </tbody>
             </table>
           </FormTable>
+          {docPlacementWindowError && (
+            <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {docPlacementWindowError}
+            </div>
+          )}
 
           <Dialog
             open={docDetailsModalOpen}
@@ -2151,13 +2241,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       {groupIndex > 0 && <Separator />}
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {group.columns.map(column => {
-                    const selectedModalBuilding = column.code === 'building'
-                      ? farmOpenFlockBuildings.find(building =>
-                          building.warehouseId === modalDocDetailRow.building_warehouse_id &&
-                          building.flockCardId === modalDocDetailRow.flock_card_id
-                        )
-                      : null
-                    const hasAgeIssue = Boolean(selectedModalBuilding && selectedModalBuilding.cycleAge > 7)
+                    const selectedModalBuilding = farmOpenFlockBuildings.find(building =>
+                      building.warehouseId === modalDocDetailRow.building_warehouse_id &&
+                      building.flockCardId === modalDocDetailRow.flock_card_id
+                    )
+                    const modalReceiveDate = modalDocDetailRow.receive_date || receipt.receiveDate
+                    const firstPlacementDate = selectedModalBuilding
+                      ? getFirstPlacementDate(selectedModalBuilding.flockCardId, modalReceiveDate)
+                      : ''
+                    const hasAgeIssue = Boolean(firstPlacementDate && isOutsideDocPlacementWindow(placementAge(
+                      firstPlacementDate,
+                      modalReceiveDate,
+                    )))
 
                     return (
                       <div
@@ -2197,41 +2292,43 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 <option
                                   key={building.key}
                                   value={building.id ?? ''}
-                                  className={activeCycle && activeCycle.cycleAge > 7 ? 'text-red-700' : ''}
                                 >
                                   {building.code} - {building.name}
                                   {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
-                                  {activeCycle && activeCycle.cycleAge > 7 ? ' · AGE ISSUE' : ''}
                                 </option>
                               ))}
                             </select>
                             {hasAgeIssue && (
-                              <p className="text-xs font-medium text-red-700">Cycle age exceeds 7 days.</p>
+                              <p className="text-xs font-medium text-red-700">
+                                Date Receive is outside the 7-calendar-date placement window from : {formatCalendarDate(firstPlacementDate)}
+                              </p>
                             )}
                           </>
                         ) : (
-                          <Input
-                            type={
-                              DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
-                                ? 'date'
-                                : column.code === 'receive_time'
-                                  ? 'time'
-                                  : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
-                                    ? 'number'
-                                    : 'text'
-                            }
-                            value={getDocDetailValue(modalDocDetailRow, column.code)}
-                            readOnly={column.code === 'actual_received'}
-                            onChange={event => updateModalDocDetail(column.code, event.target.value)}
-                            min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
-                            max={column.code === 'receive_date' ? today() : undefined}
-                            step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
-                            className={`h-9 rounded-md border-stone-300 px-3 py-2 text-sm text-stone-950 shadow-none focus-visible:border-stone-400 focus-visible:ring-stone-200 dark:text-stone-950 ${
-                              column.code === 'actual_received'
-                                ? 'bg-stone-50 dark:bg-stone-50'
-                                : 'bg-white dark:bg-white'
-                            }`}
-                          />
+                          <div>
+                            <Input
+                              type={
+                                DOC_RECEIVING_DATE_DETAIL_CODES.has(column.code)
+                                  ? 'date'
+                                  : column.code === 'receive_time'
+                                    ? 'time'
+                                    : DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code)
+                                      ? 'number'
+                                      : 'text'
+                              }
+                              value={getDocDetailValue(modalDocDetailRow, column.code)}
+                              readOnly={column.code === 'actual_received'}
+                              onChange={event => updateModalDocDetail(column.code, event.target.value)}
+                              min={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? '0' : undefined}
+                              max={column.code === 'receive_date' ? today() : undefined}
+                              step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
+                              className={`h-9 rounded-md border-stone-300 px-3 py-2 text-sm text-stone-950 shadow-none focus-visible:border-stone-400 focus-visible:ring-stone-200 dark:text-stone-950 ${
+                                column.code === 'actual_received'
+                                  ? 'bg-stone-50 dark:bg-stone-50'
+                                  : 'bg-white dark:bg-white'
+                              }`}
+                            />
+                          </div>
                         )}
                       </div>
                     )
@@ -2800,7 +2897,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         open={cycleModalOpen}
         building={cycleBuilding}
         form={cycleForm}
-        age={calculateCycleRange(cycleForm.startDate, cycleForm.asOfDate)}
+        age={Math.min(calculateCycleRange(cycleForm.startDate, today()), 45)}
         saving={savingCycle}
         cycleNumberEditable={cycleIsExcluded}
         farmCycle={!cycleIsExcluded}

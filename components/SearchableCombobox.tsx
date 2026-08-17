@@ -226,7 +226,7 @@ export default function SearchableCombobox(props: Props) {
         <ComboboxChips
           ref={anchor}
           className={cn(
-            "min-h-10 border-[#b8b2aa] bg-[#fffdfb] px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
+            "min-h-10 border-[#b8b2aa] bg-white px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
             props.multiple && "items-start",
             className
           )}

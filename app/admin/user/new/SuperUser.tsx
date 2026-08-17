@@ -18,7 +18,7 @@ export default function SuperUser() {
         const existingProfile = await getProfileByAuthId(authId)
         setusersInfo(existingProfile)
     }
-
+// 
 
     const handleCheckboxChange = (isChecked: boolean) => {
         // const isChecked = e.target.checked

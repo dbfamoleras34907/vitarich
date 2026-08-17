@@ -16,6 +16,9 @@ import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
 import { getProfileByAuthId } from "@/app/admin/user/api"
+import { getNavigationPermissionTitle } from "./navigationPermissions"
+
+export { getNavigationPermissionTitle } from "./navigationPermissions"
 
 type FilteredNavFolder = NavFolder & { items: NavGroup[] }
 
@@ -399,7 +402,7 @@ export function filterNavFolders(
               p =>
                 p.is_visible &&
                 p.group_name === group.group &&
-                p.title === child.title
+                p.title === getNavigationPermissionTitle(child)
             )
           )
 

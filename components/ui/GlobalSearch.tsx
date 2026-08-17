@@ -25,6 +25,7 @@ interface collapsed {
 }
 
 type NavCommandChild = {
+  id?: number | string
   title: string
   url: string
   type?: string
@@ -247,7 +248,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             group.children.flatMap((child, childIndex) => {
               const navigationItem: RankedSearchItem = {
                 kind: "navigation",
-                key: `${child.url}-${child.title}`,
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-navigation`,
                 title: child.title,
                 description: `${folder.title} > ${group.group}`,
                 type: child.type,
@@ -261,7 +262,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
               const newDocumentTitle = `${child.title} New Document`
               const newDocumentItem: RankedSearchItem = {
                 kind: "navigation",
-                key: `${child.newDocumentUrl}-${newDocumentTitle}`,
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-new-document`,
                 title: newDocumentTitle,
                 description: `${folder.title} > ${group.group} > New Document`,
                 type: child.type,

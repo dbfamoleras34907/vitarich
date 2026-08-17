@@ -177,7 +177,7 @@ function calculateAge(startDate: string) {
   const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const diffMs = localToday.getTime() - start.getTime();
 
-  return Math.max(0, Math.floor(diffMs / 86400000));
+  return Math.min(Math.max(0, Math.floor(diffMs / 86400000)), 45);
 }
 
 async function getDailyHeader(params: ReportParams) {
@@ -325,7 +325,8 @@ async function getDailyLines(fcId: number, ageFrom?: number | null, ageTo?: numb
     .from("brd_fc_line")
     .select("id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_bird, feed_guideline, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max")
     .eq("fc_id", fcId)
-    .eq("void", "1");
+    .eq("void", "1")
+    .lte("age", 45);
 
   if (Number.isFinite(Number(ageFrom))) {
     query = query.gte("age", Number(ageFrom));
@@ -405,7 +406,7 @@ export async function getFlockCardReport(params: ReportParams): Promise<FlockCar
   const originCount = placement ? await getPlacementOriginCount(Number(placement.id)) : 0;
   const startingPopulation = originCount || toNumber(dailyHeader?.animal_qty) || toNumber(placement?.animal_qty);
   const totalDepletion = lines.reduce((sum, line) => sum + line.depletionTotal, 0);
-  const latestAge = latestSavedAge ?? calculateAge(String(placement?.start_date ?? ""));
+  const latestAge = Math.min(latestSavedAge ?? calculateAge(String(placement?.start_date ?? "")), 45);
   const reportFromAge = lines[0]?.age ?? 0;
   const reportToAge = lines[lines.length - 1]?.age ?? latestAge;
   const placementDate = String(placement?.start_date ?? "");
