@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Pill, Plus, Save } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2, Save, X } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
   createMedication,
   getDefaultFarm,
+  getMedicationById,
   listMedicationLocations,
   MEDICATION_ROUTES,
+  updateMedication,
   type FarmLocation,
   type MedicationScope,
 } from "./api";
@@ -67,7 +68,10 @@ const initialForm = (): FormState => ({
 
 export default function MedicationForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setValue } = useGlobalContext();
+  const medicationId = Number(searchParams.get("id"));
+  const isEdit = Number.isInteger(medicationId) && medicationId > 0;
   const [locations, setLocations] = useState<FarmLocation[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [selectedPenIds, setSelectedPenIds] = useState<number[]>([]);
@@ -76,6 +80,9 @@ export default function MedicationForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [documentNo, setDocumentNo] = useState("");
+  const [recordStatus, setRecordStatus] = useState<"Posted" | "Cancelled" | "">("");
+  const readOnly = isEdit && recordStatus === "Cancelled";
 
   useEffect(() => {
     void refreshSessionx(router);
@@ -83,10 +90,37 @@ export default function MedicationForm() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listMedicationLocations(), getDefaultFarm().catch(() => null)])
-      .then(([rows, defaultFarm]) => {
+    Promise.all([
+      listMedicationLocations(),
+      isEdit ? getMedicationById(medicationId) : getDefaultFarm().catch(() => null),
+    ])
+      .then(([rows, recordOrDefaultFarm]) => {
         if (cancelled) return;
         setLocations(rows);
+        if (isEdit) {
+          const record = recordOrDefaultFarm as Awaited<ReturnType<typeof getMedicationById>>;
+          setDocumentNo(record.document_no);
+          setRecordStatus(record.status);
+          setForm({
+            medication_date: record.medication_date.slice(0, 10),
+            farm_id: String(record.farm_id),
+            scope: record.scope,
+            building_id: record.building_id == null ? "" : String(record.building_id),
+            medication_brand: record.medication_brand,
+            medication_type: record.medication_type,
+            dosage: String(record.dosage),
+            unit: record.unit,
+            indication: record.indication,
+            treatment_period_days: String(record.treatment_period_days),
+            route: record.route,
+            prescribed_by: record.prescribed_by ?? "",
+            administered_by: record.administered_by ?? "",
+            remarks: record.remarks ?? "",
+          });
+          setSelectedPenIds(record.targets.map((target) => target.pen_id));
+          return;
+        }
+        const defaultFarm = recordOrDefaultFarm as Awaited<ReturnType<typeof getDefaultFarm>>;
         const defaultId = Number(defaultFarm?.id);
         const available = rows.some((row) => row.farm_id === defaultId);
         const firstFarmId = rows[0]?.farm_id;
@@ -103,7 +137,7 @@ export default function MedicationForm() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isEdit, medicationId]);
 
   useEffect(() => setValue("loading_g", loading || saving), [loading, saving, setValue]);
 
@@ -140,6 +174,14 @@ export default function MedicationForm() {
       ? `${building.building_code} - ${building.building_name}`
       : building.building_name,
   }));
+  const selectedFarm = farms.find((farm) => String(farm.farm_id) === form.farm_id) ?? null;
+  const selectedBuilding = buildings.find((building) => String(building.building_id) === form.building_id) ?? null;
+  const targetPenCount = form.scope === "All Pens" ? pens.length : form.scope === "Selected Pens" ? selectedPenIds.length : 0;
+  const locationSummary = form.scope === "Farm"
+    ? "Entire farm"
+    : form.scope === "Building"
+      ? selectedBuilding?.building_name || "Select building"
+      : `${selectedBuilding?.building_name || "Select building"} · ${targetPenCount} pen${targetPenCount === 1 ? "" : "s"}`;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -185,6 +227,7 @@ export default function MedicationForm() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     const validationError = validate();
     if (validationError) {
       setError(validationError);
@@ -203,7 +246,7 @@ export default function MedicationForm() {
     setError("");
     setSuccess("");
     try {
-      const saved = await createMedication({
+      const payload = {
         medication_date: form.medication_date,
         farm_id: farm.farm_id,
         farm_code: farm.farm_code,
@@ -230,9 +273,12 @@ export default function MedicationForm() {
           pen_code: pen.pen_code,
           pen_name: pen.pen_name,
         })),
-      });
+      };
+      const saved = isEdit
+        ? await updateMedication(medicationId, payload)
+        : await createMedication(payload);
 
-      if (!addAnother) {
+      if (isEdit || !addAnother) {
         router.push("/jmb/medication");
         router.refresh();
         return;
@@ -258,82 +304,86 @@ export default function MedicationForm() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] pb-10">
-      <div className="mt-4 px-4">
-        <Breadcrumb SecondPreviewPageName="Medication" CurrentPageName="Add Medication" />
-      </div>
-
-      <form onSubmit={submit} className="mx-auto mt-6 max-w-5xl overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="flex items-center gap-3 border-b bg-muted/30 px-6 py-5">
-          <div className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"><Pill className="size-5" /></div>
-          <div>
-            <h1 className="text-xl font-semibold">Add medication</h1>
-            <p className="text-sm text-muted-foreground">Record a breeder medication by farm, building, or pen.</p>
+    <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
+      <form onSubmit={submit} className="flex h-full flex-col overflow-hidden rounded-lg border bg-white dark:bg-card">
+        <header className="shrink-0 border-b bg-white px-4 py-3 dark:bg-card">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Farm / Medication</div>
+              <h1 className="truncate text-lg font-semibold text-foreground">{readOnly ? "View Medication" : isEdit ? "Edit Medication" : "New Medication"}</h1>
+              <p className="truncate text-xs text-muted-foreground">
+                {selectedFarm?.farm_name || "Select farm"} &gt; {locationSummary}
+                {form.indication ? ` · ${form.indication}` : ""}
+                {documentNo ? ` · ${documentNo}` : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {!isEdit ? <Label className="mr-2 flex cursor-pointer gap-2 font-normal"><Checkbox checked={addAnother} onCheckedChange={(checked) => setAddAnother(checked === true)} />Add another</Label> : null}
+              <Button type="button" variant="outline" onClick={() => router.push("/jmb/medication")} disabled={saving}><X className="size-4" />{readOnly ? "Close" : "Cancel"}</Button>
+              {!readOnly ? <Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{saving ? "Saving..." : isEdit ? "Update" : "Save"}</Button> : null}
+            </div>
           </div>
-        </div>
+        </header>
 
-        <div className="space-y-7 p-6">
-          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-          {success ? <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"><CheckCircle2 className="size-4" />{success}</div> : null}
+        <fieldset disabled={loading || saving || readOnly} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-slate-50/60 p-4 [scrollbar-color:#a8a29e_transparent] [scrollbar-width:thin] dark:bg-background/40 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/70 [&::-webkit-scrollbar-track]:bg-transparent">
+          <div className="mx-auto max-w-[1800px] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm dark:border-border dark:bg-card">
+            {error ? <div className="m-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+            {success ? <div className="m-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div> : null}
 
-          <section className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="medication-date" required>Date</Label><Input id="medication-date" type="date" value={form.medication_date} onChange={(e) => update("medication_date", e.target.value)} /></div>
-            <div className="space-y-2"><Label required>Breeder farm</Label><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={changeFarm} placeholder={loading ? "Loading farms..." : "Select farm"} showCode className="w-full" /></div>
-          </section>
+            <section className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="Medication date" required><Input type="date" value={form.medication_date} onChange={(e) => update("medication_date", e.target.value)} /></Field>
+              <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={changeFarm} placeholder={loading ? "Loading farms..." : "Select farm"} showCode className="w-full" /></Field>
+              <Field label="Indication" required><Input maxLength={250} placeholder="Reason for medication" value={form.indication} onChange={(e) => update("indication", e.target.value)} /></Field>
+            </section>
 
-          <section className="space-y-4 rounded-lg border bg-muted/20 p-4">
-            <div><h2 className="font-semibold">Medication coverage</h2><p className="text-sm text-muted-foreground">Choose where this medication applies.</p></div>
-            <RadioGroup value={form.scope} onValueChange={(value) => changeScope(value as MedicationScope)} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {(["Farm", "Building", "Selected Pens", "All Pens"] as MedicationScope[]).map((scope) => (
-                <Label key={scope} htmlFor={`scope-${scope}`} className="flex cursor-pointer items-center gap-3 rounded-md border bg-background p-3 font-normal">
-                  <RadioGroupItem id={`scope-${scope}`} value={scope} />{scope}
-                </Label>
-              ))}
-            </RadioGroup>
+            <SectionDivider />
+            <section className="space-y-4 p-5">
+              <SectionHeading title="Medication Coverage" description="Choose the farm, building, or pens covered by this medication." />
+              <RadioGroup value={form.scope} onValueChange={(value) => changeScope(value as MedicationScope)} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {(["Farm", "Building", "Selected Pens", "All Pens"] as MedicationScope[]).map((scope) => <Label key={scope} className="flex cursor-pointer items-center gap-3 rounded-md border bg-slate-50 p-3 font-normal dark:bg-background/40"><RadioGroupItem value={scope} />{scope}</Label>)}
+              </RadioGroup>
+              {form.scope !== "Farm" ? <div className="max-w-xl"><Field label="Building" required><SearchableCombobox items={buildingOptions} value={form.building_id} onValueChange={(value) => { update("building_id", value); setSelectedPenIds([]); }} placeholder="Select building" showCode className="w-full" /></Field></div> : null}
+              {form.scope === "All Pens" && form.building_id ? <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">All {pens.length} current pen{pens.length === 1 ? "" : "s"} will be included.</div> : null}
+              {form.scope === "Selected Pens" && form.building_id ? <div className="space-y-3"><div className="flex items-center justify-between"><Label required>Select pens</Label><span className="text-xs text-muted-foreground">{selectedPenIds.length} selected</span></div><div className="grid max-h-52 gap-2 overflow-y-auto rounded-md border bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 dark:bg-background/40">{pens.map((pen) => <Label key={pen.pen_id} className="flex cursor-pointer gap-2 rounded-md border bg-white p-3 font-normal dark:bg-card"><Checkbox checked={selectedPenIds.includes(pen.pen_id)} onCheckedChange={(checked) => togglePen(pen.pen_id, checked === true)} /><span>{pen.pen_code ? `${pen.pen_code} - ` : ""}{pen.pen_name}</span></Label>)}{!pens.length ? <p className="text-sm text-muted-foreground">No pens found.</p> : null}</div></div> : null}
+            </section>
 
-            {form.scope !== "Farm" ? (
-              <div className="space-y-2"><Label required>Building</Label><SearchableCombobox items={buildingOptions} value={form.building_id} onValueChange={(value) => { update("building_id", value); setSelectedPenIds([]); }} placeholder="Select building" showCode className="w-full" /></div>
-            ) : null}
-
-            {form.scope === "All Pens" && form.building_id ? (
-              <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">This medication will be applied to all {pens.length} current pen{pens.length === 1 ? "" : "s"} in the selected building.</div>
-            ) : null}
-
-            {form.scope === "Selected Pens" && form.building_id ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between"><Label required>Select pens</Label><span className="text-xs text-muted-foreground">{selectedPenIds.length} selected</span></div>
-                <div className="grid max-h-52 gap-2 overflow-y-auto rounded-md border bg-background p-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {pens.map((pen) => (
-                    <Label key={pen.pen_id} htmlFor={`pen-${pen.pen_id}`} className="flex cursor-pointer gap-2 rounded-md border p-3 font-normal">
-                      <Checkbox id={`pen-${pen.pen_id}`} checked={selectedPenIds.includes(pen.pen_id)} onCheckedChange={(checked) => togglePen(pen.pen_id, checked === true)} />
-                      <span>{pen.pen_code ? `${pen.pen_code} - ` : ""}{pen.pen_name}</span>
-                    </Label>
-                  ))}
-                  {!pens.length ? <p className="text-sm text-muted-foreground">No pens found.</p> : null}
-                </div>
+            <SectionDivider />
+            <section className="space-y-4 p-5">
+              <SectionHeading title="Medication Details" description="Record the product, dosage, treatment period, and administration route." />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Medication brand" required><Input maxLength={150} placeholder="Medication brand" value={form.medication_brand} onChange={(e) => update("medication_brand", e.target.value)} /></Field>
+                <Field label="Medication type" required><Input maxLength={100} placeholder="e.g. Antibiotic, vitamin, dewormer" value={form.medication_type} onChange={(e) => update("medication_type", e.target.value)} /></Field>
+                <Field label="Route" required><Select value={form.route} onValueChange={(value) => update("route", value)}><SelectTrigger className="w-full"><SelectValue placeholder="Select route" /></SelectTrigger><SelectContent>{MEDICATION_ROUTES.map((route) => <SelectItem key={route} value={route}>{route}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="Dosage" required><Input type="number" min="0" step="any" placeholder="Dosage" value={form.dosage} onChange={(e) => update("dosage", e.target.value)} /></Field>
+                <Field label="Unit" required><Input maxLength={100} placeholder="e.g. mL/bird, g/L water" value={form.unit} onChange={(e) => update("unit", e.target.value)} /><p className="text-xs text-muted-foreground">{form.unit.length}/100 characters</p></Field>
+                <Field label="Treatment period (days)" required><Input type="number" min="1" step="1" value={form.treatment_period_days} onChange={(e) => update("treatment_period_days", e.target.value)} /></Field>
               </div>
-            ) : null}
-          </section>
+            </section>
 
-          <section className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="brand" required>Medication brand</Label><Input id="brand" maxLength={150} placeholder="Medication brand" value={form.medication_brand} onChange={(e) => update("medication_brand", e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="type" required>Medication type</Label><Input id="type" maxLength={100} placeholder="e.g. Antibiotic, vitamin, dewormer" value={form.medication_type} onChange={(e) => update("medication_type", e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="dosage" required>Dosage</Label><Input id="dosage" type="number" min="0" step="any" placeholder="Dosage" value={form.dosage} onChange={(e) => update("dosage", e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="unit" required>Unit</Label><Input id="unit" maxLength={100} placeholder="e.g. mL/bird, g/L water" value={form.unit} onChange={(e) => update("unit", e.target.value)} /><p className="text-xs text-muted-foreground">{form.unit.length}/100 characters</p></div>
-            <div className="space-y-2 md:col-span-2"><Label htmlFor="indication" required>Indication</Label><Input id="indication" maxLength={250} placeholder="Reason for medication" value={form.indication} onChange={(e) => update("indication", e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="period" required>Treatment period (days)</Label><Input id="period" type="number" min="1" step="1" value={form.treatment_period_days} onChange={(e) => update("treatment_period_days", e.target.value)} /></div>
-            <div className="space-y-2"><Label required>Route</Label><Select value={form.route} onValueChange={(value) => update("route", value)}><SelectTrigger className="w-full"><SelectValue placeholder="Select route" /></SelectTrigger><SelectContent>{MEDICATION_ROUTES.map((route) => <SelectItem key={route} value={route}>{route}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="prescribed">Prescribed by</Label><Input id="prescribed" maxLength={150} placeholder="Veterinarian or authorized prescriber" value={form.prescribed_by} onChange={(e) => update("prescribed_by", e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="administered">Administered by</Label><Input id="administered" maxLength={150} placeholder="Person who administered medication" value={form.administered_by} onChange={(e) => update("administered_by", e.target.value)} /></div>
-            <div className="space-y-2 md:col-span-2"><Label htmlFor="remarks">Remarks</Label><Textarea id="remarks" maxLength={500} placeholder="Additional instructions or observations" value={form.remarks} onChange={(e) => update("remarks", e.target.value)} /></div>
-          </section>
-        </div>
-
-        <div className="flex flex-col-reverse gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <Label htmlFor="add-another" className="flex cursor-pointer gap-2 font-normal"><Checkbox id="add-another" checked={addAnother} onCheckedChange={(checked) => setAddAnother(checked === true)} />Add another after saving</Label>
-          <div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => router.push("/jmb/medication")} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="size-4 animate-spin" /> : addAnother ? <Plus className="size-4" /> : <Save className="size-4" />}{saving ? "Saving..." : "Add medication"}</Button></div>
-        </div>
+            <SectionDivider />
+            <section className="space-y-4 p-5">
+              <SectionHeading title="Administration" description="Identify the prescriber and person responsible for administering the medication." />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="Prescribed by"><Input maxLength={150} placeholder="Veterinarian or authorized prescriber" value={form.prescribed_by} onChange={(e) => update("prescribed_by", e.target.value)} /></Field>
+                <Field label="Administered by"><Input maxLength={150} placeholder="Person who administered medication" value={form.administered_by} onChange={(e) => update("administered_by", e.target.value)} /></Field>
+                <Field label="Remarks" wide><Textarea maxLength={500} placeholder="Additional instructions or observations" value={form.remarks} onChange={(e) => update("remarks", e.target.value)} className="min-h-20" /></Field>
+              </div>
+            </section>
+          </div>
+        </fieldset>
       </form>
-    </main>
+    </div>
   );
+}
+
+function Field({ label, required, wide, children }: { label: string; required?: boolean; wide?: boolean; children: React.ReactNode }) {
+  return <div className={`space-y-2 ${wide ? "md:col-span-2" : ""}`}><Label required={required}>{label}</Label>{children}</div>;
+}
+
+function SectionHeading({ title, description }: { title: string; description: string }) {
+  return <div><h3 className="text-sm font-medium">{title}</h3><p className="text-xs text-muted-foreground">{description}</p></div>;
+}
+
+function SectionDivider() {
+  return <div className="h-px bg-border" />;
 }

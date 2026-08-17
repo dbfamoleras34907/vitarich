@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, CalendarDays, Eye, Loader2, MapPin, Pill, Plus, RefreshCw, Search } from "lucide-react";
+import { Ban, CalendarDays, Loader2, MapPin, Pencil, Pill, Plus, RefreshCw, Search } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
@@ -35,28 +35,6 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-PH");
 }
 
-function details(record: MedicationRecord) {
-  return [
-    ["Document", record.document_no],
-    ["Date", formatDate(record.medication_date)],
-    ["Treatment end", formatDate(record.treatment_end_date)],
-    ["Farm", record.farm_code ? `${record.farm_code} - ${record.farm_name}` : record.farm_name],
-    ["Coverage", record.scope],
-    ["Building", record.building_name || "All farm buildings"],
-    ["Target pens", record.target_names || "-"],
-    ["Medication brand", record.medication_brand],
-    ["Medication type", record.medication_type],
-    ["Dosage", `${record.dosage} ${record.unit}`],
-    ["Indication", record.indication],
-    ["Treatment period", `${record.treatment_period_days} day${record.treatment_period_days === 1 ? "" : "s"}`],
-    ["Route", record.route],
-    ["Prescribed by", record.prescribed_by || "-"],
-    ["Administered by", record.administered_by || "-"],
-    ["Remarks", record.remarks || "-"],
-    ["Status", record.status],
-  ];
-}
-
 export default function MedicationTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
@@ -66,7 +44,6 @@ export default function MedicationTable() {
   const [search, setSearch] = useState("");
   const [farmFilter, setFarmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("Posted");
-  const [viewRecord, setViewRecord] = useState<MedicationRecord | null>(null);
   const [cancelRecord, setCancelRecord] = useState<MedicationRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -192,7 +169,7 @@ export default function MedicationTable() {
                 <TableCell className="whitespace-nowrap">{row.treatment_period_days} day{row.treatment_period_days === 1 ? "" : "s"}</TableCell>
                 <TableCell>{row.route}</TableCell>
                 <TableCell><span className={`rounded-full px-2 py-1 text-xs font-medium ${row.status === "Posted" ? "bg-emerald-100 text-emerald-700" : "bg-stone-200 text-stone-600"}`}>{row.status}</span></TableCell>
-                <TableCell><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => setViewRecord(row)}><Eye className="size-4" />View</Button>{row.status === "Posted" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelRecord(row); setCancelReason(""); }}><Ban className="size-4" />Cancel</Button> : null}</div></TableCell>
+                <TableCell><div className="flex justify-end gap-2"><Button type="button" size="sm" variant="outline" onClick={() => router.push(`/jmb/medication/new?id=${row.id}`)} className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"><Pencil className="size-4" />Edit/View</Button>{row.status === "Posted" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelRecord(row); setCancelReason(""); }}><Ban className="size-4" />Cancel</Button> : null}</div></TableCell>
               </TableRow>
             ))}
             {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
@@ -200,10 +177,6 @@ export default function MedicationTable() {
         </Table>
         <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} records</div>
       </section>
-
-      <Dialog open={Boolean(viewRecord)} onOpenChange={(open) => !open && setViewRecord(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Medication details</DialogTitle><DialogDescription>Complete treatment record and coverage.</DialogDescription></DialogHeader>{viewRecord ? <div className="grid gap-x-6 gap-y-4 py-2 sm:grid-cols-2">{details(viewRecord).map(([label, value]) => <div key={label} className={label === "Remarks" || label === "Target pens" ? "sm:col-span-2" : ""}><div className="text-xs font-medium uppercase text-muted-foreground">{label}</div><div className="mt-1 whitespace-pre-wrap text-sm">{value}</div></div>)}</div> : null}<DialogFooter><Button variant="outline" onClick={() => setViewRecord(null)}>Close</Button></DialogFooter></DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(cancelRecord)} onOpenChange={(open) => { if (!open && !cancelling) setCancelRecord(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Cancel medication record?</DialogTitle><DialogDescription>This preserves the record in history but marks it cancelled. Create a new record for corrections.</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor="cancel-reason" required>Cancellation reason</Label><Textarea id="cancel-reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Why is this record being cancelled?" /></div><DialogFooter><Button variant="outline" onClick={() => setCancelRecord(null)} disabled={cancelling}>Keep record</Button><Button variant="destructive" onClick={() => void confirmCancel()} disabled={cancelling || !cancelReason.trim()}>{cancelling ? <Loader2 className="size-4 animate-spin" /> : <Ban className="size-4" />}Cancel record</Button></DialogFooter></DialogContent>

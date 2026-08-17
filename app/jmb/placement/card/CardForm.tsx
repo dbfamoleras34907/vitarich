@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronUp, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +36,21 @@ type NumericKey = keyof Pick<
   | "avg_body_weight_female" | "feed_consumption_male"
   | "feed_consumption_female"
 >;
+
+const gridColumnByField: Partial<Record<NumericKey, number>> = {
+  mc_male: 0,
+  mc_female: 1,
+  cull_male: 2,
+  cull_female: 3,
+  trans_in_male: 4,
+  trans_in_female: 5,
+  trans_out_male: 6,
+  trans_out_female: 7,
+  avg_body_weight_male: 8,
+  avg_body_weight_female: 9,
+};
+
+const gridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 const zeroFields = {
   mc_male: 0,
@@ -102,24 +117,51 @@ function buildDailyRows(
   savedRows: BreederDailyPerformance[] = [],
 ) {
   const savedByDate = new Map(savedRows.map((row) => [row.daterec, row]));
-  let previous: EditableRow | undefined;
-
-  return Array.from({ length: 31 }, (_, age): EditableRow => {
+  const sourceRows = Array.from({ length: 31 }, (_, age): EditableRow => {
     const daterec = addDays(placement.placement_date, age);
     const saved = savedByDate.get(daterec);
-    const row: EditableRow = saved ?? {
-      placement_id: placement.id,
-      daterec,
-      inv_male: previous ? Math.max(0, liveInventory(previous, "male")) : placementInventory(placement, "male"),
-      inv_female: previous ? Math.max(0, liveInventory(previous, "female")) : placementInventory(placement, "female"),
-      ...zeroFields,
-      male_feedtype_id: null,
-      female_feedtype_id: null,
-      isactive: true,
+    return {
+      ...(saved ?? {
+        placement_id: placement.id,
+        daterec,
+        inv_male: 0,
+        inv_female: 0,
+        ...zeroFields,
+        male_feedtype_id: null,
+        female_feedtype_id: null,
+        isactive: true,
+      }),
+      inv_male: 0,
+      inv_female: 0,
     };
-    previous = row;
+  });
+  return recalculateInventories(placement, sourceRows);
+}
+
+function recalculateInventories(placement: Placement, sourceRows: EditableRow[]) {
+  let maleInventory = placementInventory(placement, "male");
+  let femaleInventory = placementInventory(placement, "female");
+
+  return sourceRows.map((sourceRow) => {
+    const row = {
+      ...sourceRow,
+      inv_male: maleInventory,
+      inv_female: femaleInventory,
+    };
+    maleInventory = liveInventory(row, "male");
+    femaleInventory = liveInventory(row, "female");
     return row;
   });
+}
+
+function negativeInventoryMessage(sourceRows: EditableRow[]) {
+  const index = sourceRows.findIndex(
+    (row) => liveInventory(row, "male") < 0 || liveInventory(row, "female") < 0,
+  );
+  if (index < 0) return "";
+  const row = sourceRows[index];
+  const sex = liveInventory(row, "male") < 0 ? "Male" : "Female";
+  return `${sex} inventory cannot be below zero on ${row.daterec}.`;
 }
 
 function headerClass(groupEnd = false) {
@@ -138,6 +180,69 @@ export default function CardForm() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(true);
+  const [explicitZeroCells, setExplicitZeroCells] = useState<Set<string>>(() => new Set());
+  const gridRef = useRef<HTMLTableElement>(null);
+
+  function numericCellKey(rowIndex: number, field: NumericKey) {
+    return `${rowIndex}:${field}`;
+  }
+
+  function updateNumericCell(rowIndex: number, field: NumericKey, rawValue: string) {
+    const parsedValue = rawValue === "" ? 0 : Number(rawValue);
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) return;
+    const cellKey = numericCellKey(rowIndex, field);
+    setExplicitZeroCells((current) => {
+      const next = new Set(current);
+      if (rawValue !== "" && parsedValue === 0) next.add(cellKey);
+      else next.delete(cellKey);
+      return next;
+    });
+    updateRow(rowIndex, field, parsedValue);
+  }
+
+  function focusGridCell(rowIndex: number, columnIndex: number) {
+    const element = gridRef.current?.querySelector<HTMLElement>(
+      `[data-pop-row="${rowIndex}"][data-pop-column="${columnIndex}"]:not(:disabled)`,
+    );
+    if (!element) return false;
+    element.focus();
+    if (element instanceof HTMLInputElement) element.select();
+    return true;
+  }
+
+  function moveGridFocus(rowIndex: number, columnIndex: number, rowStep: number, columnStep: number) {
+    let nextRow = rowIndex + rowStep;
+    let nextColumn = columnIndex + columnStep;
+    if (columnStep !== 0) {
+      if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
+      if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+    }
+    while (nextRow >= 0 && nextRow < rows.length) {
+      if (focusGridCell(nextRow, nextColumn)) return;
+      if (columnStep !== 0) {
+        nextColumn += columnStep;
+        if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
+        if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+      } else {
+        nextRow += rowStep;
+      }
+    }
+  }
+
+  function handleGridKeyDown(event: KeyboardEvent<HTMLElement>, rowIndex: number, columnIndex: number) {
+    const movements: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      Enter: [event.shiftKey ? -1 : 1, 0],
+      Tab: [0, event.shiftKey ? -1 : 1],
+    };
+    const movement = movements[event.key];
+    if (!movement) return;
+    event.preventDefault();
+    moveGridFocus(rowIndex, columnIndex, movement[0], movement[1]);
+  }
 
   useEffect(() => { refreshSessionx(router); }, [router]);
 
@@ -160,6 +265,7 @@ export default function CardForm() {
         setFeedTypes(feedRows);
         setPenPlacements(penRows);
         setRows(buildDailyRows(placementRow, dailyRows));
+        setExplicitZeroCells(new Set());
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Unable to load breeder pen card."))
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -230,11 +336,24 @@ export default function CardForm() {
   })), [rows]);
 
   function updateRow(index: number, key: keyof EditableRow, value: string | number | null) {
-    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
+    if (!placement) return;
+    const updated = rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row);
+    const recalculated = recalculateInventories(placement, updated);
+    const inventoryError = negativeInventoryMessage(recalculated);
+    if (inventoryError) {
+      toast.error(inventoryError);
+      return;
+    }
+    setRows(recalculated);
   }
 
   async function save() {
     if (!placement || !rows.length) return;
+    const inventoryError = negativeInventoryMessage(rows);
+    if (inventoryError) {
+      toast.error(inventoryError);
+      return;
+    }
     if (new Set(rows.map((row) => row.daterec)).size !== rows.length) {
       toast.error("Each record date must be unique on this placement card.");
       return;
@@ -345,11 +464,6 @@ export default function CardForm() {
         });
 
         const typed = values as Record<Exclude<(typeof BREEDER_IMPORT_HEADERS)[number], "daterec">, number | null>;
-        const maleOutflow = Number(typed.mc_male) + Number(typed.cull_male) + Number(typed.trans_out_male);
-        const femaleOutflow = Number(typed.mc_female) + Number(typed.cull_female) + Number(typed.trans_out_female);
-        if (maleOutflow > Number(typed.inv_male) + Number(typed.trans_in_male)) errors.push(`Row ${rowNumber}: male outflow exceeds available male inventory.`);
-        if (femaleOutflow > Number(typed.inv_female) + Number(typed.trans_in_female)) errors.push(`Row ${rowNumber}: female outflow exceeds available female inventory.`);
-
         return {
           ...(rows[index]?.id ? { id: rows[index].id } : {}),
           placement_id: placement.id,
@@ -367,9 +481,16 @@ export default function CardForm() {
         };
       });
 
+      const recalculatedImportedRows = recalculateInventories(placement, importedRows);
+      const inventoryError = negativeInventoryMessage(recalculatedImportedRows);
+      if (inventoryError) errors.push(inventoryError);
+
       if (errors.length) throw new Error(errors.slice(0, 15).join("\n"));
       const today = localDate();
-      setRows((current) => importedRows.map((row, index) => row.daterec <= today ? row : current[index]));
+      setRows((current) => recalculateInventories(
+        placement,
+        recalculatedImportedRows.map((row, index) => row.daterec <= today ? row : current[index]),
+      ));
       const ignoredFutureCount = importedRows.filter((row) => row.daterec > today).length;
       toast.success(`Excel imported for ${placement.pen_no || `Pen ${placement.id}`}.${ignoredFutureCount ? ` ${ignoredFutureCount} future rows were validated but left unchanged.` : ""}`);
     } catch (error) {
@@ -387,16 +508,26 @@ export default function CardForm() {
   ) {
     const decimal = field.includes("weight") || field.includes("consumption");
     const future = row.daterec > localDate();
+    const readOnly = field === "inv_male" || field === "inv_female";
+    const gridColumn = gridColumnByField[field];
     return (
-      <td key={`${rowIndex}-${field}`} className={`fc-grid-cell ${future ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} p-0 ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+      <td key={`${rowIndex}-${field}`} className={`fc-grid-cell ${future || readOnly ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} p-0 ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
         <Input
           type="number"
           min="0"
           step={decimal ? "0.001" : "1"}
-          value={row[field]}
+          value={
+            !readOnly && Number(row[field]) === 0 && !explicitZeroCells.has(numericCellKey(rowIndex, field))
+              ? ""
+              : row[field]
+          }
+          readOnly={readOnly}
           disabled={future}
-          onChange={(event) => updateRow(rowIndex, field, Math.max(0, Number(event.target.value)))}
-          className="h-8 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+          data-pop-row={!readOnly ? rowIndex : undefined}
+          data-pop-column={!readOnly ? gridColumn : undefined}
+          onKeyDown={!readOnly && gridColumn != null ? (event) => handleGridKeyDown(event, rowIndex, gridColumn) : undefined}
+          onChange={readOnly ? undefined : (event) => updateNumericCell(rowIndex, field, event.target.value)}
+          className={`h-8 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
         />
       </td>
     );
@@ -426,16 +557,26 @@ export default function CardForm() {
             type="number"
             min="0"
             step="0.001"
-            value={row[consumptionField]}
+            value={
+              Number(row[consumptionField]) === 0 && !explicitZeroCells.has(numericCellKey(rowIndex, consumptionField))
+                ? ""
+                : row[consumptionField]
+            }
             disabled={future}
+            data-pop-row={rowIndex}
+            data-pop-column={sex === "male" ? 10 : 12}
             title="Feed consumption"
-            onChange={(event) => updateRow(rowIndex, consumptionField, Math.max(0, Number(event.target.value)))}
-            className="h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0"
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 10 : 12)}
+            onChange={(event) => updateNumericCell(rowIndex, consumptionField, event.target.value)}
+            className={`h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
           />
           <select
             value={row[feedTypeField] ?? ""}
             disabled={future}
+            data-pop-row={rowIndex}
+            data-pop-column={sex === "male" ? 11 : 13}
             title="Feed type"
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 11 : 13)}
             onChange={(event) => updateRow(rowIndex, feedTypeField, event.target.value ? Number(event.target.value) : null)}
             className="h-8 w-[52%] min-w-0 border-l bg-transparent px-1 text-[10px] outline-none disabled:cursor-not-allowed"
           >
@@ -475,7 +616,8 @@ export default function CardForm() {
             <div className="relative border-b bg-white px-4 pb-6 pt-3 dark:bg-card">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Farm / Pen</div>
+                  <h1 className="text-lg font-semibold text-foreground">Population Record</h1>
+                  <div className="mb-2 mt-1 text-xs font-semibold uppercase text-muted-foreground">Farm / Pen</div>
                   <div className="grid items-end gap-3 md:grid-cols-3">
                     <label className="block min-w-0">
                       <span className="text-xs font-medium text-muted-foreground">Farm</span>
@@ -574,7 +716,7 @@ export default function CardForm() {
         </Collapsible>
 
         <div className="relative flex-1 overflow-auto">
-          <table className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 1780 }}>
+          <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 1780 }}>
             <colgroup>
               <col style={{ width: 132 }} /><col style={{ width: 52 }} />
               {[92, 92, 76, 76, 92, 92, 76, 76, 82, 82, 82, 82, 100, 100, 180, 180].map((width, index) => <col key={index} style={{ width }} />)}

@@ -36,9 +36,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className="h-full overflow-hidden print:h-auto print:overflow-visible"
+    >
       <body
-        className={`  font-sans antialiased`}
+        className="h-full overflow-hidden font-sans antialiased print:h-auto print:overflow-visible"
       >
         <NextTopLoader color="#00754A" showSpinner={false} />
         <GlobalProvider>
@@ -56,9 +60,9 @@ export default function RootLayout({
                 {/* <GlobalLoading /> */}
 
                 <SidebarProvider>
-                  <div className="flex h-screen bg-background">
+                  <div className="flex h-dvh overflow-hidden bg-background print:h-auto print:overflow-visible">
                     <AppSideBarControler />
-                    <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+                    <main className="h-full min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto print:h-auto print:overflow-visible">
                         {children}
                     </main>
                   </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,12 @@ const IMPORT_HEADERS = [
 const productionNumberFields: Array<Exclude<keyof ProductionRow, "date_laying">> = [
   "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
 ];
+
+const historyNumberFields = [
+  "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
+] as const satisfies ReadonlyArray<keyof EggLaying>;
+
+const productionGridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 function createProductionRow(dateLaying = getToday()): ProductionRow {
   return {
@@ -158,6 +164,14 @@ function getEggTotal(
   );
 }
 
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return getToday();
+  date.setDate(date.getDate() + days);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function getNetPlacement(placement: LayingPlacement | null) {
   if (!placement) return 0;
   return (
@@ -201,6 +215,7 @@ export default function EggLayingForm() {
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() => [createProductionRow()]);
   const [importError, setImportError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const productionGridRef = useRef<HTMLTableElement>(null);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -212,6 +227,9 @@ export default function EggLayingForm() {
   const displayedNetPlacement = Number.isFinite(netPlacementFromTable)
     ? netPlacementFromTable
     : getNetPlacement(selectedPlacement);
+  const productionTotals = useMemo(() => productionNumberFields.map((field) =>
+    productionRows.reduce((total, row) => total + asNumber(row[field]), 0),
+  ), [productionRows]);
 
   function applyPlacement(
     placement: LayingPlacement,
@@ -347,8 +365,47 @@ export default function EggLayingForm() {
     ));
   }
 
+  function addProductionRow() {
+    setProductionRows((current) => {
+      const lastDate = current.at(-1)?.date_laying;
+      return [...current, createProductionRow(lastDate ? addDays(lastDate, 1) : getToday())];
+    });
+  }
+
+  function focusProductionCell(rowIndex: number, columnIndex: number) {
+    const input = productionGridRef.current?.querySelector<HTMLInputElement>(
+      `[data-production-row="${rowIndex}"][data-production-column="${columnIndex}"]:not(:disabled)`,
+    );
+    if (!input) return false;
+    input.focus();
+    input.select();
+    return true;
+  }
+
+  function moveProductionFocus(rowIndex: number, columnIndex: number, rowStep: number, columnStep: number) {
+    let nextRow = rowIndex + rowStep;
+    let nextColumn = columnIndex + columnStep;
+    const lastColumn = productionNumberFields.length;
+
+    if (columnStep !== 0) {
+      if (nextColumn > lastColumn) { nextColumn = 0; nextRow += 1; }
+      if (nextColumn < 0) { nextColumn = lastColumn; nextRow -= 1; }
+    }
+
+    while (nextRow >= 0 && nextRow < productionRows.length) {
+      if (focusProductionCell(nextRow, nextColumn)) return;
+      if (columnStep !== 0) {
+        nextColumn += columnStep;
+        if (nextColumn > lastColumn) { nextColumn = 0; nextRow += 1; }
+        if (nextColumn < 0) { nextColumn = lastColumn; nextRow -= 1; }
+      } else {
+        nextRow += rowStep;
+      }
+    }
+  }
+
   function handleProductionCellKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement>,
+    event: KeyboardEvent<HTMLInputElement>,
     rowIndex: number,
     columnIndex: number,
   ) {
@@ -357,27 +414,13 @@ export default function EggLayingForm() {
       ArrowRight: [0, 1],
       ArrowUp: [-1, 0],
       ArrowDown: [1, 0],
+      Enter: [event.shiftKey ? -1 : 1, 0],
+      Tab: [0, event.shiftKey ? -1 : 1],
     };
     const offset = movement[event.key];
     if (!offset) return;
-
-    const nextRow = rowIndex + offset[0];
-    const nextColumn = columnIndex + offset[1];
-    if (
-      nextRow < 0 ||
-      nextRow >= productionRows.length ||
-      nextColumn < 0 ||
-      nextColumn > productionNumberFields.length
-    ) return;
-
-    const nextInput = document.querySelector<HTMLInputElement>(
-      `[data-production-cell="${nextRow}-${nextColumn}"]`,
-    );
-    if (!nextInput) return;
-
     event.preventDefault();
-    nextInput.focus();
-    nextInput.select();
+    moveProductionFocus(rowIndex, columnIndex, offset[0], offset[1]);
   }
 
   async function exportTemplate() {
@@ -632,7 +675,7 @@ export default function EggLayingForm() {
                       const file = event.target.files?.[0];
                       if (file) void importExcel(file);
                     }} />
-                    <Button type="button" size="sm" onClick={() => setProductionRows((rows) => [...rows, createProductionRow()])}>
+                    <Button type="button" size="sm" onClick={addProductionRow}>
                       <Plus className="size-4" /> Add Date
                     </Button>
                   </div>
@@ -643,12 +686,21 @@ export default function EggLayingForm() {
                   <strong>Import rejected.</strong>{"\n"}{importError}
                 </div>
               ) : null}
-              <div className="overflow-x-auto border border-slate-300 bg-white">
+              <div className="max-h-[520px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
                 <table
-                  className="w-full min-w-[1420px] table-fixed border-collapse text-sm"
+                  ref={productionGridRef}
+                  className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm"
                 >
+                  <colgroup>
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "10%" }} />
+                    {Array.from({ length: 7 }, (_, index) => <col key={index} style={{ width: "8%" }} />)}
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "5%" }} />
+                  </colgroup>
                   <thead>
-                    <tr>
+                    <tr style={{ height: 36 }}>
                       {[
                         "Date Laying *",
                         "Age",
@@ -662,8 +714,12 @@ export default function EggLayingForm() {
                         "Condemn",
                         "Total Egg Classification",
                         "Action",
-                      ].map((label) => (
-                        <th key={label} className="border border-slate-300 bg-emerald-50 px-2 py-2 text-center text-xs font-semibold text-slate-700">
+                      ].map((label, index) => (
+                        <th
+                          key={label}
+                          style={index === 1 ? { left: "11%" } : undefined}
+                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-border-r" : index === 1 ? "z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
+                        >
                           {label}
                         </th>
                       ))}
@@ -671,49 +727,64 @@ export default function EggLayingForm() {
                   </thead>
                   <tbody>
                     {productionRows.map((row, rowIndex) => (
-                    <tr key={`${row.date_laying}-${rowIndex}`}>
-                      <td className="border border-slate-300 p-0">
-                        <Input type="date" value={row.date_laying} data-production-cell={`${rowIndex}-0`}
+                    <tr key={`${row.date_laying}-${rowIndex}`} className="fc-grid-row border-0">
+                      <td className={`fc-grid-cell fc-grid-cell-editable sticky left-0 z-20 p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <Input type="date" value={row.date_laying}
+                          data-production-row={rowIndex} data-production-column={0}
                           onChange={(event) => updateProductionRow(rowIndex, "date_laying", event.target.value)}
                           onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}
-                          className="h-11 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-inset focus-visible:ring-offset-0" />
+                          className="h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-[10px] shadow-none focus-visible:ring-0" />
                       </td>
-                      <td className="border border-slate-300 bg-slate-50 p-0 text-center font-medium">
-                        {formatAgeWeeks(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
+                      <td style={{ left: "11%" }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <div className="flex h-8 items-center justify-center">
+                          {formatAgeWeeks(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
+                        </div>
                       </td>
-                      {productionNumberFields.map((field) => (
-                        <td key={field} className="border border-slate-300 p-0">
+                      {productionNumberFields.map((field, fieldIndex) => (
+                        <td key={field} className={`fc-grid-cell fc-grid-cell-editable p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                           <Input
-                            type="text"
-                            inputMode="numeric"
-                            value={formatNumber(row[field])}
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={row[field]}
                             onChange={(event) => updateProductionRow(rowIndex, field, clampInteger(event.target.value))}
                             onFocus={(event) => event.target.select()}
-                            onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, productionNumberFields.indexOf(field) + 1)}
-                            data-production-cell={`${rowIndex}-${productionNumberFields.indexOf(field) + 1}`}
+                            onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, fieldIndex + 1)}
+                            data-production-row={rowIndex}
+                            data-production-column={fieldIndex + 1}
                             disabled={disabledAll}
-                            className="h-11 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-inset focus-visible:ring-offset-0"
+                            className={`h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-xs shadow-none focus-visible:ring-0 ${productionGridInputClass}`}
                           />
                         </td>
                       ))}
-                      <td className="border border-slate-300 bg-slate-50 p-0">
-                        <Input
-                          value={getProductionTotal(row).toLocaleString("en-US")}
-                          readOnly
-                          disabled
-                          className="h-11 rounded-none border-0 bg-slate-50 text-center font-semibold shadow-none disabled:opacity-100"
-                        />
+                      <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-semibold tabular-nums fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        {getProductionTotal(row).toLocaleString("en-US")}
                       </td>
-                      <td className="border border-slate-300 p-0 text-center">
-                        <Button type="button" variant="ghost" size="icon" disabled={disabledAll || isEdit || productionRows.length === 1}
+                      <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={disabledAll || isEdit || productionRows.length === 1}
                           onClick={() => setProductionRows((rows) => rows.filter((_, index) => index !== rowIndex))}
-                          className="text-red-600 hover:bg-red-50 hover:text-red-700">
+                          className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700">
                           <Trash2 className="size-4" />
                         </Button>
                       </td>
                     </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">Total</td>
+                      <td style={{ left: "11%" }} className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 z-40 text-center text-xs font-semibold">{productionRows.length} row{productionRows.length === 1 ? "" : "s"}</td>
+                      {productionTotals.map((value, index) => (
+                        <td key={productionNumberFields[index]} className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
+                          {value.toLocaleString("en-US")}
+                        </td>
+                      ))}
+                      <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
+                        {productionTotals.slice(1).reduce((total, value) => total + value, 0).toLocaleString("en-US")}
+                      </td>
+                      <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0" />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -742,95 +813,63 @@ export default function EggLayingForm() {
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full min-w-245 text-sm">
-                  <thead className="bg-green-50">
-                    <tr className="border-b">
-                      <th className="px-3 py-2 text-left font-medium">
-                        Date Laying
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Farm Name
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Building
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">Age</th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        TEP Collection
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Hatching Egg
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Class B
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Table Egg
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Crack
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Junior
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Jumbo
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Condemn
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Total
-                      </th>
+              <div className="max-h-[420px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
+                <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
+                  <colgroup>
+                    {[9, 12, 8, 5, 9, 8, 7, 7, 6, 6, 6, 7, 10].map((width, index) => (
+                      <col key={index} style={{ width: `${width}%` }} />
+                    ))}
+                  </colgroup>
+                  <thead>
+                    <tr style={{ height: 36 }}>
+                      {[
+                        "Date Laying", "Farm Name", "Building", "Age", "TEP Collection",
+                        "Hatching Egg", "Table Egg", "Class B", "Crack", "Junior", "Jumbo",
+                        "Condemn", "Total Egg Classification",
+                      ].map((label, index) => (
+                        <th
+                          key={label}
+                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
+                        >
+                          {label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {history.length ? (
-                      history.map((row) => (
-                        <tr key={row.id} className="border-b last:border-0">
-                          <td className="px-3 py-2">
-                            {formatDate(row.date_laying)}
+                      history.map((row, rowIndex) => {
+                        const rowDivider = rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
+                        return (
+                        <tr key={row.id} className="fc-grid-row border-0">
+                          <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider}`}>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">{formatDate(row.date_laying)}</div>
                           </td>
-                          <td className="px-3 py-2">{row.farm_name ?? ""}</td>
-                          <td className="px-3 py-2">{row.building ?? ""}</td>
-                          <td className="px-3 py-2">
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
+                            <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.farm_name ?? ""}>{row.farm_name ?? ""}</div>
+                          </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
+                            <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.building ?? ""}>{row.building ?? ""}</div>
+                          </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold ${rowDivider}`}>
                             {formatAgeWeeks(row.age)}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.tep_collection)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.hatching_egg)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.classb)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.table_egg)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.crack)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.junior)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.jumbo)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.condemn)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium">
+                          {historyNumberFields.map((field) => (
+                            <td key={field} className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs tabular-nums ${rowDivider}`}>
+                              {formatNumber(row[field])}
+                            </td>
+                          ))}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
                             {getEggTotal(row).toLocaleString("en-US")}
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     ) : (
                       <tr>
                         <td
                           colSpan={13}
-                          className="px-3 py-6 text-center text-muted-foreground"
+                          className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
                           No farm history found.
                         </td>

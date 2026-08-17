@@ -459,21 +459,22 @@ export const NavFolders: NavFolder[] = [
             id: 5,
             type: "Module",
             title: "Breeder Dispatch",
-            url: "/home",
+            url: "/jmb/breederdispatch",
+            newDocumentUrl: "/jmb/breederdispatch/new",
           },
 
           {
             id: 6,
             type: "Module",
             title: "Clean-Up",
-            url: "/home",
+            url: "/jmb/breedercleanup",
           },
 
           {
             id: 7,
             type: "Module",
             title: "Vaccination",
-            url: "/home",
+            url: "/jmb/vaccination",
           },
 
           {
@@ -487,7 +488,7 @@ export const NavFolders: NavFolder[] = [
             id: 9,
             type: "Module",
             title: "Reports",
-            url: "/home",
+            url: "/jmb/breederreports",
           },
         ],
       },

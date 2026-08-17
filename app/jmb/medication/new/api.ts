@@ -82,6 +82,9 @@ export type MedicationInput = {
   targets: Array<Pick<FarmLocation, "building_id" | "building_code" | "building_name" | "pen_id" | "pen_code" | "pen_name">>;
 };
 
+export type MedicationTarget = MedicationInput["targets"][number];
+export type MedicationEditRecord = MedicationRecord & { targets: MedicationTarget[] };
+
 async function currentUserId() {
   const { data, error } = await db.auth.getUser();
   if (error) throw error;
@@ -136,6 +139,20 @@ export async function listMedications() {
   return (data ?? []) as MedicationRecord[];
 }
 
+export async function getMedicationById(id: number) {
+  const [{ data: record, error: recordError }, { data: targets, error: targetError }] = await Promise.all([
+    db.from(REGISTER_VIEW).select("*").eq("id", id).single(),
+    db
+      .from(TARGET_TABLE)
+      .select("building_id, building_code, building_name, pen_id, pen_code, pen_name")
+      .eq("medication_id", id)
+      .order("line_no"),
+  ]);
+  if (recordError) throw recordError;
+  if (targetError) throw targetError;
+  return { ...record, targets: targets ?? [] } as MedicationEditRecord;
+}
+
 export async function createMedication(input: MedicationInput) {
   const userId = await currentUserId();
   if (input.scope === "Selected Pens" && input.targets.length === 0) {
@@ -167,6 +184,42 @@ export async function createMedication(input: MedicationInput) {
       await db.from(TABLE).delete().eq("id", data.id);
       throw targetError;
     }
+  }
+  return data as MedicationRecord;
+}
+
+export async function updateMedication(id: number, input: MedicationInput) {
+  const userId = await currentUserId();
+  if (input.scope === "Selected Pens" && input.targets.length === 0) {
+    throw new Error("Select at least one pen.");
+  }
+  if (input.scope === "All Pens" && input.targets.length === 0) {
+    throw new Error("The selected building has no pens.");
+  }
+
+  const { targets, ...header } = input;
+  const { data, error } = await db
+    .from(TABLE)
+    .update({ ...header, updated_by: userId })
+    .eq("id", id)
+    .eq("status", "Posted")
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const { error: deleteError } = await db.from(TARGET_TABLE).delete().eq("medication_id", id);
+  if (deleteError) throw deleteError;
+
+  if (targets.length) {
+    const { error: targetError } = await db.from(TARGET_TABLE).insert(
+      targets.map((target, index) => ({
+        medication_id: id,
+        line_no: index + 1,
+        created_by: userId,
+        ...target,
+      })),
+    );
+    if (targetError) throw targetError;
   }
   return data as MedicationRecord;
 }
