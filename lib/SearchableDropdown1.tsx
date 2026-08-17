@@ -19,7 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Check, Search } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props<T> = {
@@ -34,6 +34,7 @@ type Props<T> = {
   width?: number;
   disabled?: boolean;
   triggerClassName?: string;
+  clearable?: boolean;
 };
 
 export default function SearchableDropdown<T extends Record<string, unknown>>({
@@ -48,6 +49,7 @@ export default function SearchableDropdown<T extends Record<string, unknown>>({
   triggerClassName,
   onChange,
   multiple = false,
+  clearable = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -158,6 +160,19 @@ export default function SearchableDropdown<T extends Record<string, unknown>>({
           <CommandEmpty>No results found.</CommandEmpty>
 
           <CommandGroup>
+            {clearable && value.length > 0 ? (
+              <CommandItem
+                onSelect={() => {
+                  onChange([]);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className="flex items-center gap-2 px-4 text-muted-foreground"
+              >
+                <X size={16} />
+                Clear selection
+              </CommandItem>
+            ) : null}
             {filtered.map((item, idx) => {
               const val = String(item[codeLabel]);
               const isSelected = value.includes(val);

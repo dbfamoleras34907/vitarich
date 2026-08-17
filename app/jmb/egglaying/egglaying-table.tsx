@@ -179,25 +179,20 @@ export default function EggLayingTable() {
       id: "action",
       header: "Action",
       enableSorting: false,
-      cell: ({ row }) => {
-        const isLaying = row.original.age_days >= 26 * 7;
-
-        return (
+      cell: ({ row }) => (
           <Button
             type="button"
             size="sm"
-            disabled={!isLaying}
             onClick={() =>
               router.push(
                 `/jmb/egglaying/new?placementId=${row.original.id}&netPlacement=${row.original.net_placement}`,
               )
             }
-            className="h-8 bg-green-600 px-3 text-white hover:bg-green-700 disabled:bg-slate-100 disabled:text-slate-400"
+            className="h-8 bg-green-600 px-3 text-white hover:bg-green-700"
           >
             Egg Collection
           </Button>
-        );
-      },
+      ),
     },
     {
       accessorKey: "placement_date",
