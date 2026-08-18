@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -118,6 +119,7 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   plateNumber: null,
   truckSeal: null,
   destination: '',
+  liveSalesCustomerName: '',
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
   createdAt: new Date().toISOString(),
@@ -253,6 +255,8 @@ type NewGoodsIssueProps = {
   mode?: GoodsIssueFormMode
   triggeredBy?: string
   documentPrefix?: string
+  documentNumberLabel?: string
+  issueDateLabel?: string
   basePath?: string
   permissionPath?: string
   parentLabel?: string
@@ -299,6 +303,8 @@ export default function NewGoodsIssue({
   mode = 'draft',
   triggeredBy = 'GI',
   documentPrefix = 'GI',
+  documentNumberLabel,
+  issueDateLabel = 'Issue Date',
   basePath = '/inv/gi',
   permissionPath = '/inv/gi',
   parentLabel = 'Inventory',
@@ -1795,7 +1801,7 @@ export default function NewGoodsIssue({
   const headerComponentList: GoodsIssueHeaderField[] = [
     {
       key: 'gi-no',
-      label: `${documentPrefix} No.`,
+      label: documentNumberLabel ?? `${documentPrefix} No.`,
       content:
         (
           <div className='flex items-center gap-1'>
@@ -1809,7 +1815,7 @@ export default function NewGoodsIssue({
     },
     {
       key: 'issue-date',
-      label: 'Issue Date',
+      label: issueDateLabel,
       content: (
         <label className="relative">
           <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
@@ -1898,26 +1904,43 @@ export default function NewGoodsIssue({
             ),
           },
           {
+            key: 'destination',
+            label: 'Destination',
+            className: 'sm:grid-cols-[112px_minmax(0,1fr)] lg:col-start-1',
+            content: (
+              <div className="flex w-full items-center gap-2">
+                <Select
+                  value={issue.destination}
+                  onValueChange={value => setIssue(current => current ? { ...current, destination: value } : current)}
+                >
+                  <SelectTrigger className="w-fit  shrink-0">
+                    <SelectValue placeholder="Select destination" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Dressing Plant">Dressing Plant</SelectItem>
+                    <SelectItem value="Live Sales">Live Sales</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="text"
+                  value={issue.liveSalesCustomerName}
+                  onChange={event => setIssue(current => current ? { ...current, liveSalesCustomerName: event.target.value } : current)}
+                  placeholder="Live Sales Customer Name"
+                  className="min-w-0 max-w-sm"
+                />
+              </div>
+            ),
+          },
+          {
             key: 'truck-seal',
             label: 'Truck Seal',
+            className: 'sm:grid-cols-[112px_minmax(0,300px)] lg:col-start-2',
             content: (
               <Input
                 type="number"
                 value={issue.truckSeal ?? ''}
                 onChange={event => setIssue(current => current ? { ...current, truckSeal: event.target.value === '' ? null : Number(event.target.value) } : current)}
                 placeholder="Enter truck seal"
-              />
-            ),
-          },
-          {
-            key: 'destination',
-            label: 'Destination',
-            content: (
-              <Input
-                type="text"
-                value={issue.destination}
-                onChange={event => setIssue(current => current ? { ...current, destination: event.target.value } : current)}
-                placeholder="Enter destination"
               />
             ),
           },

@@ -6,9 +6,9 @@ import poultryHero from "./fms-poultry-hero.png"
 
 export default function LoginPage() {
     return (
-        <main className="min-h-screen bg-background text-foreground">
-            <div className="grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
-                <section className="relative hidden overflow-hidden bg-[#075d38] px-12 py-12 text-white lg:flex lg:flex-col xl:px-16">
+        <main className="min-h-full bg-background text-foreground lg:h-full lg:min-h-0 lg:overflow-hidden">
+            <div className="grid min-h-full lg:h-full lg:min-h-0 lg:grid-cols-[1.08fr_0.92fr]">
+                <section className="relative hidden min-h-0 overflow-hidden bg-[#075d38] px-12 py-[clamp(1.5rem,4vh,3rem)] text-white lg:flex lg:h-full lg:flex-col xl:px-16">
                     <Image
                         src={poultryHero}
                         alt=""
@@ -33,23 +33,23 @@ export default function LoginPage() {
                         </span>
                     </div>
 
-                    <div className="relative z-10 mt-auto max-w-3xl pb-56">
-                        <p className="mb-8 text-2xl font-semibold uppercase tracking-[0.24em] text-[#f1d99b]">
+                    <div className="relative z-10 mt-auto max-w-3xl pb-[clamp(5rem,20vh,14rem)]">
+                        <p className="mb-[clamp(1rem,3vh,2rem)] text-[clamp(1.125rem,2.5vh,1.5rem)] font-semibold uppercase tracking-[0.24em] text-[#f1d99b]">
                             Welcome to
                         </p>
-                        <h1 className="max-w-3xl text-6xl font-semibold leading-[1.02] text-white drop-shadow-[0_5px_18px_rgba(0,0,0,0.22)] xl:text-7xl">
+                        <h1 className="max-w-3xl text-[clamp(3rem,7.5vh,4.5rem)] font-semibold leading-[1.02] text-white drop-shadow-[0_5px_18px_rgba(0,0,0,0.22)]">
                             Farm Management System
                         </h1>
-                        <p className="mt-7 text-2xl font-semibold uppercase tracking-[0.22em] text-[#f1d99b]">
+                        <p className="mt-[clamp(1rem,2.5vh,1.75rem)] text-[clamp(1.125rem,2.5vh,1.5rem)] font-semibold uppercase tracking-[0.22em] text-[#f1d99b]">
                             of Vitarich Corporation
                         </p>
-                        <p className="mt-10 max-w-3xl text-xl leading-9 text-white">
+                        <p className="mt-[clamp(1.5rem,4vh,2.5rem)] max-w-3xl text-[clamp(1rem,2.1vh,1.25rem)] leading-relaxed text-white">
                             Sign in to continue managing farm operations, inventory, and daily workflows with the Vitarich team.
                         </p>
                     </div>
                 </section>
 
-                <section className="flex min-h-screen items-center justify-center px-5 py-8 sm:px-8">
+                <section className="flex min-h-full items-center justify-center px-5 py-8 sm:px-8 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:py-[clamp(1.5rem,4vh,2rem)]">
                     <div className="w-full max-w-md">
                         <div className="mb-8 flex items-center justify-center lg:hidden">
                             <div className="rounded-md bg-[#0f5132] px-5 py-3 shadow-[var(--starbucks-card-shadow)]">

@@ -515,7 +515,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               </DropdownMenu>
 
               {enableSearch && (
-                <label className="flex h-8 min-w-0 max-w-full items-center gap-2 rounded-md border border-input bg-[#fffdfb] px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/30 sm:w-72">
+                <label className="flex h-10 min-w-0 max-w-full items-center gap-2 rounded-md border border-[#b8b2aa] bg-white px-3 shadow-none transition-[color,box-shadow,border-color] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:border-input dark:bg-input/30 sm:w-72">
                   <Search className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="sr-only">Search table</span>
                   <input

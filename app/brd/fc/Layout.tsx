@@ -136,6 +136,7 @@ export default function Layout() {
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState("");
+  const [openingAction, setOpeningAction] = useState<string | null>(null);
 
   const farmMaster = useMemo(() => {
     const goodsReceiptReferences = getValue("goodsReceiptReferences") as
@@ -270,6 +271,8 @@ export default function Layout() {
   function openFlockForm(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
 
+    setOpeningAction(`flock:${building.key}`);
+
     const encryptedBuildingId = encryptData([
       selectedFarm.id,
       building.key,
@@ -281,6 +284,8 @@ export default function Layout() {
 
   function openFlockCardSheet(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
+
+    setOpeningAction(`growing:${building.key}`);
 
     setValue("brdFcNewContext", {
       farmId: selectedFarm.id,
@@ -437,6 +442,10 @@ export default function Layout() {
                   const hasFlockCard = Boolean(flockCard);
                   const displayStatus = flockCard ? "Occupied" : building.status;
                   const canOpenCard = hasFlockCard && !isActiveBuildingStatus(displayStatus);
+                  const growingActionKey = `growing:${building.key}`;
+                  const flockActionKey = `flock:${building.key}`;
+                  const openingGrowing = openingAction === growingActionKey;
+                  const openingFlock = openingAction === flockActionKey;
 
                   return (
                     <TableRow
@@ -480,9 +489,15 @@ export default function Layout() {
                               size="sm"
                               variant="outline"
                               onClick={() => openFlockCardSheet(building)}
+                              disabled={openingAction !== null}
+                              aria-busy={openingGrowing}
                             >
-                              <FileSpreadsheet className="size-4" />
-                              Growing
+                              {openingGrowing ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <FileSpreadsheet className="size-4" />
+                              )}
+                              {openingGrowing ? "Opening..." : "Growing"}
                             </Button>
                           ) : null}
                           <Button
@@ -490,9 +505,17 @@ export default function Layout() {
                             size="sm"
                             variant="outline"
                             onClick={() => openFlockForm(building)}
+                            disabled={openingAction !== null}
+                            aria-busy={openingFlock}
                           >
-                            {hasFlockCard ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                            {hasFlockCard ? "Edit/View" : "Add Flock"}
+                            {openingFlock ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : hasFlockCard ? (
+                              <Pencil className="size-4" />
+                            ) : (
+                              <Plus className="size-4" />
+                            )}
+                            {openingFlock ? "Opening..." : hasFlockCard ? "Edit/View" : "Add Flock"}
                           </Button>
                         </div>
                       </TableCell>

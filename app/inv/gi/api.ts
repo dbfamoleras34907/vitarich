@@ -43,6 +43,7 @@ export type GoodsIssue = {
   plateNumber: string | null
   truckSeal: number | null
   destination: string
+  liveSalesCustomerName: string
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
   createdAt: string
@@ -64,6 +65,7 @@ type GoodsIssueRow = {
   plate_number?: string | null
   truck_seal?: number | null
   destination?: string | null
+  live_sales_customer_name?: string | null
   status: GoodsIssueStatus
   created_at: string
 }
@@ -204,6 +206,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   plateNumber: row.plate_number == null ? null : String(row.plate_number),
   truckSeal: row.truck_seal == null ? null : Number(row.truck_seal),
   destination: row.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? '',
   status: row.status,
   lines: lines.map(toIssueLine),
   createdAt: row.created_at,
@@ -520,6 +523,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       plate_number: issue.plateNumber,
       truck_seal: issue.truckSeal,
       destination: issue.destination.trim() || null,
+      live_sales_customer_name: issue.liveSalesCustomerName.trim() || null,
     } : {}),
     status: saveStatus,
     ...(issue.id ? { updated_by: userId } : { created_by: userId }),
