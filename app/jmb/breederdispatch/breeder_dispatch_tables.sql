@@ -97,8 +97,8 @@ create or replace function public.brd_flock_balance(
     0
   ) + coalesce(sum(
     case when p_sex = 'male'
-      then daily.trans_in_male - daily.mc_male - daily.cull_male - daily.trans_out_male
-      else daily.trans_in_female - daily.mc_female - daily.cull_female - daily.trans_out_female
+      then daily.trans_in_male - daily.mc_male - daily.cull_male - daily.trans_out_male - daily.kitchen_male - daily.condem_male
+      else daily.trans_in_female - daily.mc_female - daily.cull_female - daily.trans_out_female - daily.kitchen_female - daily.condem_female
     end
   ), 0))
   from public.tbl_placement placement

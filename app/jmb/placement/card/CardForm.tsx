@@ -32,7 +32,8 @@ type NumericKey = keyof Pick<
   EditableRow,
   | "inv_male" | "inv_female" | "mc_male" | "mc_female"
   | "cull_male" | "cull_female" | "trans_in_male" | "trans_in_female"
-  | "trans_out_male" | "trans_out_female" | "avg_body_weight_male"
+  | "trans_out_male" | "trans_out_female" | "kitchen_male" | "kitchen_female"
+  | "condem_male" | "condem_female" | "avg_body_weight_male"
   | "avg_body_weight_female" | "feed_consumption_male"
   | "feed_consumption_female"
 >;
@@ -46,8 +47,12 @@ const gridColumnByField: Partial<Record<NumericKey, number>> = {
   trans_in_female: 5,
   trans_out_male: 6,
   trans_out_female: 7,
-  avg_body_weight_male: 8,
-  avg_body_weight_female: 9,
+  kitchen_male: 8,
+  kitchen_female: 9,
+  condem_male: 10,
+  condem_female: 11,
+  avg_body_weight_male: 12,
+  avg_body_weight_female: 13,
 };
 
 const gridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -61,11 +66,24 @@ const zeroFields = {
   trans_in_female: 0,
   trans_out_male: 0,
   trans_out_female: 0,
+  kitchen_male: 0,
+  kitchen_female: 0,
+  condem_male: 0,
+  condem_female: 0,
   avg_body_weight_male: 0,
   avg_body_weight_female: 0,
   feed_consumption_male: 0,
   feed_consumption_female: 0,
 };
+
+const dailyEntryFields = Object.keys(zeroFields) as Array<keyof typeof zeroFields>;
+
+function hasDailyRecord(row: EditableRow) {
+  return row.id != null
+    || dailyEntryFields.some((field) => Number(row[field]) !== 0)
+    || row.male_feedtype_id != null
+    || row.female_feedtype_id != null;
+}
 
 function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -108,8 +126,8 @@ function ageOn(placementDate: string | undefined, recordDate: string) {
 function liveInventory(row: EditableRow | undefined, sex: "male" | "female") {
   if (!row) return 0;
   return sex === "male"
-    ? row.inv_male + row.trans_in_male - row.mc_male - row.cull_male - row.trans_out_male
-    : row.inv_female + row.trans_in_female - row.mc_female - row.cull_female - row.trans_out_female;
+    ? row.inv_male + row.trans_in_male - row.mc_male - row.cull_male - row.trans_out_male - row.kitchen_male - row.condem_male
+    : row.inv_female + row.trans_in_female - row.mc_female - row.cull_female - row.trans_out_female - row.kitchen_female - row.condem_female;
 }
 
 function buildDailyRows(
@@ -214,15 +232,15 @@ export default function CardForm() {
     let nextRow = rowIndex + rowStep;
     let nextColumn = columnIndex + columnStep;
     if (columnStep !== 0) {
-      if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
-      if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+      if (nextColumn > 17) { nextColumn = 0; nextRow += 1; }
+      if (nextColumn < 0) { nextColumn = 17; nextRow -= 1; }
     }
     while (nextRow >= 0 && nextRow < rows.length) {
       if (focusGridCell(nextRow, nextColumn)) return;
       if (columnStep !== 0) {
         nextColumn += columnStep;
-        if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
-        if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+        if (nextColumn > 17) { nextColumn = 0; nextRow += 1; }
+        if (nextColumn < 0) { nextColumn = 17; nextRow -= 1; }
       } else {
         nextRow += rowStep;
       }
@@ -278,15 +296,19 @@ export default function CardForm() {
     cullFemale: total.cullFemale + row.cull_female,
     inFemale: total.inFemale + row.trans_in_female,
     outFemale: total.outFemale + row.trans_out_female,
+    kitchenFemale: total.kitchenFemale + row.kitchen_female,
+    condemFemale: total.condemFemale + row.condem_female,
     feedFemale: total.feedFemale + row.feed_consumption_female,
     mcMale: total.mcMale + row.mc_male,
     cullMale: total.cullMale + row.cull_male,
     inMale: total.inMale + row.trans_in_male,
     outMale: total.outMale + row.trans_out_male,
+    kitchenMale: total.kitchenMale + row.kitchen_male,
+    condemMale: total.condemMale + row.condem_male,
     feedMale: total.feedMale + row.feed_consumption_male,
   }), {
-    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, feedFemale: 0,
-    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, feedMale: 0,
+    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, kitchenFemale: 0, condemFemale: 0, feedFemale: 0,
+    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, kitchenMale: 0, condemMale: 0, feedMale: 0,
   }), [rows]);
   const cumulativeMortality = useMemo(() => {
     let male = 0;
@@ -309,6 +331,8 @@ export default function CardForm() {
         row.cull_male, row.cull_female,
         row.trans_in_male, row.trans_in_female,
         row.trans_out_male, row.trans_out_female,
+        row.kitchen_male, row.kitchen_female,
+        row.condem_male, row.condem_female,
         row.avg_body_weight_male, row.avg_body_weight_female,
         `${row.feed_consumption_male}${row.male_feedtype_id ? ` / ${feedTypeById.get(row.male_feedtype_id) ?? ""}` : ""}`,
         `${row.feed_consumption_female}${row.female_feedtype_id ? ` / ${feedTypeById.get(row.female_feedtype_id) ?? ""}` : ""}`,
@@ -327,6 +351,10 @@ export default function CardForm() {
     trans_in_female: row.trans_in_female,
     trans_out_male: row.trans_out_male,
     trans_out_female: row.trans_out_female,
+    kitchen_male: row.kitchen_male,
+    kitchen_female: row.kitchen_female,
+    condem_male: row.condem_male,
+    condem_female: row.condem_female,
     avg_body_weight_male: row.avg_body_weight_male,
     avg_body_weight_female: row.avg_body_weight_female,
     feed_consumption_male: row.feed_consumption_male,
@@ -416,6 +444,7 @@ export default function CardForm() {
       const integerFields = new Set<string>([
         "inv_male", "inv_female", "mc_male", "mc_female", "cull_male", "cull_female",
         "trans_in_male", "trans_in_female", "trans_out_male", "trans_out_female",
+        "kitchen_male", "kitchen_female", "condem_male", "condem_female",
       ]);
       const nullableFeedFields = new Set<string>(["male_feedtype_id", "female_feedtype_id"]);
       const importedRows = dataRows.map((excelRow, index): EditableRow => {
@@ -473,6 +502,8 @@ export default function CardForm() {
           cull_male: Number(typed.cull_male), cull_female: Number(typed.cull_female),
           trans_in_male: Number(typed.trans_in_male), trans_in_female: Number(typed.trans_in_female),
           trans_out_male: Number(typed.trans_out_male), trans_out_female: Number(typed.trans_out_female),
+          kitchen_male: Number(typed.kitchen_male), kitchen_female: Number(typed.kitchen_female),
+          condem_male: Number(typed.condem_male), condem_female: Number(typed.condem_female),
           avg_body_weight_male: Number(typed.avg_body_weight_male), avg_body_weight_female: Number(typed.avg_body_weight_female),
           feed_consumption_male: Number(typed.feed_consumption_male), feed_consumption_female: Number(typed.feed_consumption_female),
           male_feedtype_id: typed.male_feedtype_id == null ? null : Number(typed.male_feedtype_id),
@@ -533,10 +564,16 @@ export default function CardForm() {
     );
   }
 
-  function renderCumulativeCell(rowIndex: number, sex: "male" | "female", groupEnd = false) {
+  function renderCumulativeCell(row: EditableRow, rowIndex: number, sex: "male" | "female", groupEnd = false) {
+    const value = hasDailyRecord(row) ? cumulativeMortality[rowIndex]?.[sex] ?? 0 : "";
     return (
-      <td key={`${rowIndex}-cumulative-${sex}`} className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-semibold tabular-nums ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
-        {count(cumulativeMortality[rowIndex]?.[sex] ?? 0)}
+      <td key={`${rowIndex}-cumulative-${sex}`} className={`fc-grid-cell fc-grid-cell-readonly p-0 ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+        <Input
+          value={value}
+          readOnly
+          tabIndex={-1}
+          className="h-8 rounded-none border-0 bg-transparent text-center font-semibold tabular-nums shadow-none focus-visible:ring-0"
+        />
       </td>
     );
   }
@@ -564,9 +601,9 @@ export default function CardForm() {
             }
             disabled={future}
             data-pop-row={rowIndex}
-            data-pop-column={sex === "male" ? 10 : 12}
+            data-pop-column={sex === "male" ? 14 : 16}
             title="Feed consumption"
-            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 10 : 12)}
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 14 : 16)}
             onChange={(event) => updateNumericCell(rowIndex, consumptionField, event.target.value)}
             className={`h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
           />
@@ -574,9 +611,9 @@ export default function CardForm() {
             value={row[feedTypeField] ?? ""}
             disabled={future}
             data-pop-row={rowIndex}
-            data-pop-column={sex === "male" ? 11 : 13}
+            data-pop-column={sex === "male" ? 15 : 17}
             title="Feed type"
-            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 11 : 13)}
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 15 : 17)}
             onChange={(event) => updateRow(rowIndex, feedTypeField, event.target.value ? Number(event.target.value) : null)}
             className="h-8 w-[52%] min-w-0 border-l bg-transparent px-1 text-[10px] outline-none disabled:cursor-not-allowed"
           >
@@ -671,11 +708,11 @@ export default function CardForm() {
                 </div>
                 <div className="w-[190px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Female live / losses</div>
-                  <div className="text-sm font-semibold tabular-nums">{count(liveFemale)} / {count(totals.mcFemale + totals.cullFemale)}</div>
+                  <div className="text-sm font-semibold tabular-nums">{count(liveFemale)} / {count(totals.mcFemale + totals.cullFemale + totals.kitchenFemale + totals.condemFemale)}</div>
                 </div>
                 <div className="w-[190px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Male live / losses</div>
-                  <div className="text-sm font-semibold tabular-nums">{count(liveMale)} / {count(totals.mcMale + totals.cullMale)}</div>
+                  <div className="text-sm font-semibold tabular-nums">{count(liveMale)} / {count(totals.mcMale + totals.cullMale + totals.kitchenMale + totals.condemMale)}</div>
                 </div>
                 <div className="w-[170px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Daily rows</div>
@@ -716,10 +753,10 @@ export default function CardForm() {
         </Collapsible>
 
         <div className="relative flex-1 overflow-auto">
-          <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 1780 }}>
+          <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 2108 }}>
             <colgroup>
               <col style={{ width: 132 }} /><col style={{ width: 52 }} />
-              {[92, 92, 76, 76, 92, 92, 76, 76, 82, 82, 82, 82, 100, 100, 180, 180].map((width, index) => <col key={index} style={{ width }} />)}
+              {[92, 92, 76, 76, 92, 92, 76, 76, 82, 82, 82, 82, 82, 82, 82, 82, 100, 100, 180, 180].map((width, index) => <col key={index} style={{ width }} />)}
             </colgroup>
             <thead>
               <tr style={{ height: 28 }}>
@@ -727,13 +764,13 @@ export default function CardForm() {
                 <th rowSpan={2} className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-[132px] top-0 z-40 text-center text-xs" style={{ minWidth: 52 }}>Age</th>
                 {[
                   "Inventory", "MC", "Cumm M/C", "Culls", "Transfer In",
-                  "Transfer Out", "Grams/Birds", "FC",
+                  "Transfer Out", "Kitchen", "Condem", "Grams/Birds", "FC",
                 ].map((label) => (
                   <th key={label} colSpan={2} className={`${headerClass(true)} fc-grid-header-group capitalize`} style={{ top: 0 }}>{label}</th>
                 ))}
               </tr>
               <tr style={{ height: 28 }}>
-                {Array.from({ length: 8 }, (_, groupIndex) => ["Male", "Female"].map((label, sexIndex) => (
+                {Array.from({ length: 10 }, (_, groupIndex) => ["Male", "Female"].map((label, sexIndex) => (
                   <th key={`${groupIndex}-${label}`} className={headerClass(sexIndex === 1)} style={{ top: 28 }}>{label}</th>
                 )))}
               </tr>
@@ -747,14 +784,18 @@ export default function CardForm() {
                   {renderNumericCell(row, rowIndex, "inv_female", true)}
                   {renderNumericCell(row, rowIndex, "mc_male")}
                   {renderNumericCell(row, rowIndex, "mc_female", true)}
-                  {renderCumulativeCell(rowIndex, "male")}
-                  {renderCumulativeCell(rowIndex, "female", true)}
+                  {renderCumulativeCell(row, rowIndex, "male")}
+                  {renderCumulativeCell(row, rowIndex, "female", true)}
                   {renderNumericCell(row, rowIndex, "cull_male")}
                   {renderNumericCell(row, rowIndex, "cull_female", true)}
                   {renderNumericCell(row, rowIndex, "trans_in_male")}
                   {renderNumericCell(row, rowIndex, "trans_in_female", true)}
                   {renderNumericCell(row, rowIndex, "trans_out_male")}
                   {renderNumericCell(row, rowIndex, "trans_out_female", true)}
+                  {renderNumericCell(row, rowIndex, "kitchen_male")}
+                  {renderNumericCell(row, rowIndex, "kitchen_female", true)}
+                  {renderNumericCell(row, rowIndex, "condem_male")}
+                  {renderNumericCell(row, rowIndex, "condem_female", true)}
                   {renderNumericCell(row, rowIndex, "avg_body_weight_male")}
                   {renderNumericCell(row, rowIndex, "avg_body_weight_female", true)}
                   {renderFeedCell(row, rowIndex, "male")}
@@ -773,6 +814,8 @@ export default function CardForm() {
                   totals.cullMale, totals.cullFemale,
                   totals.inMale, totals.inFemale,
                   totals.outMale, totals.outFemale,
+                  totals.kitchenMale, totals.kitchenFemale,
+                  totals.condemMale, totals.condemFemale,
                   latest?.avg_body_weight_male ?? 0, latest?.avg_body_weight_female ?? 0,
                   totals.feedMale, totals.feedFemale,
                 ].map((value, index) => <td key={index} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}

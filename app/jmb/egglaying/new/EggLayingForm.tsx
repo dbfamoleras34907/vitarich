@@ -140,11 +140,11 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
   return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
 }
 
-function formatAgeWeeks(days: number | null | undefined) {
+function formatAge(days: number | null | undefined) {
   const safeDays = Number(days ?? 0);
-  const weeks = Math.floor(safeDays / 7);
-  const weekDay = safeDays % 7;
-  return `${weeks}.7/${weekDay}`;
+  if (!Number.isFinite(safeDays)) return "0/0";
+  const wholeDays = Math.max(0, Math.floor(safeDays));
+  return `${Math.floor(wholeDays / 7)}/${wholeDays % 7}`;
 }
 
 function getEggTotal(
@@ -577,7 +577,9 @@ export default function EggLayingForm() {
       farm_id: form.farm_id ? asNumber(form.farm_id) : null,
       farm_name: form.farm_name || null,
       building: form.building || null,
-      age: selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age),
+      age: selectedPlacement
+        ? getAgeInDays(selectedPlacement.placement_date, row.date_laying)
+        : Math.max(0, Math.floor(asNumber(form.age))),
       tep_collection: row.tep_collection
         ? asNumber(row.tep_collection)
         : null,
@@ -737,7 +739,7 @@ export default function EggLayingForm() {
                       </td>
                       <td style={{ left: "11%" }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                         <div className="flex h-8 items-center justify-center">
-                          {formatAgeWeeks(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
+                          {formatAge(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
                         </div>
                       </td>
                       {productionNumberFields.map((field, fieldIndex) => (
@@ -852,7 +854,7 @@ export default function EggLayingForm() {
                             <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.building ?? ""}>{row.building ?? ""}</div>
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold ${rowDivider}`}>
-                            {formatAgeWeeks(row.age)}
+                            {formatAge(row.age)}
                           </td>
                           {historyNumberFields.map((field) => (
                             <td key={field} className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs tabular-nums ${rowDivider}`}>

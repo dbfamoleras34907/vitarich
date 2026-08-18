@@ -27,6 +27,10 @@ export type BreederDailyPerformance = {
   trans_in_female: number;
   trans_out_male: number;
   trans_out_female: number;
+  kitchen_male: number;
+  kitchen_female: number;
+  condem_male: number;
+  condem_female: number;
   avg_body_weight_male: number;
   avg_body_weight_female: number;
   feed_consumption_male: number;

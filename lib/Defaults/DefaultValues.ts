@@ -441,12 +441,12 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/placement",
           },
 
-          {
-            id: 3,
-            type: "Module",
-            title: "Population Record",
-            url: "/jmb/growing",
-          },
+          // {
+          //   id: 3,
+          //   type: "Module",
+          //   title: "Population Record",
+          //   url: "/jmb/growing",
+          // },
 
           {
             id: 4,

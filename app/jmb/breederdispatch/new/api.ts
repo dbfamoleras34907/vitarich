@@ -86,6 +86,10 @@ type DailyPerformance = {
   trans_in_female: number;
   trans_out_male: number;
   trans_out_female: number;
+  kitchen_male: number;
+  kitchen_female: number;
+  condem_male: number;
+  condem_female: number;
   avg_body_weight_male: number;
   avg_body_weight_female: number;
 };
@@ -160,7 +164,7 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
     const { data, error } = await db
       .from("tbl_breeder_daily_performance")
       .select(
-        "placement_id, daterec, inv_male, inv_female, mc_male, mc_female, cull_male, cull_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female, avg_body_weight_male, avg_body_weight_female",
+        "placement_id, daterec, inv_male, inv_female, mc_male, mc_female, cull_male, cull_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female, kitchen_male, kitchen_female, condem_male, condem_female, avg_body_weight_male, avg_body_weight_female",
       )
       .in("placement_id", placementIds)
       .eq("isactive", true)
@@ -184,8 +188,8 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
       let male = placementBalance(placement, "male");
       let female = placementBalance(placement, "female");
       rows.forEach((row) => {
-        male += count(row.trans_in_male) - count(row.mc_male) - count(row.cull_male) - count(row.trans_out_male);
-        female += count(row.trans_in_female) - count(row.mc_female) - count(row.cull_female) - count(row.trans_out_female);
+        male += count(row.trans_in_male) - count(row.mc_male) - count(row.cull_male) - count(row.trans_out_male) - count(row.kitchen_male) - count(row.condem_male);
+        female += count(row.trans_in_female) - count(row.mc_female) - count(row.cull_female) - count(row.trans_out_female) - count(row.kitchen_female) - count(row.condem_female);
       });
       const latest = rows.at(-1);
       return {

@@ -64,10 +64,11 @@ function getAgeInDays(placementDate?: string | null, endDate = new Date()) {
   return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
 }
 
-function formatAgeWeeks(days: number) {
-  const weeks = Math.floor(days / 7);
-  const weekDay = days % 7;
-  return `${weeks}.7/${weekDay}`;
+function formatAge(days: number) {
+  const safeDays = Number(days);
+  if (!Number.isFinite(safeDays)) return "0/0";
+  const wholeDays = Math.max(0, Math.floor(safeDays));
+  return `${Math.floor(wholeDays / 7)}/${wholeDays % 7}`;
 }
 
 function getPlacementNet(row: LayingPlacement) {
@@ -214,7 +215,7 @@ export default function EggLayingTable() {
     {
       id: "age",
       header: "Age",
-      cell: ({ row }) => formatAgeWeeks(row.original.age_days),
+      cell: ({ row }) => formatAge(row.original.age_days),
     },
     {
       id: "status",

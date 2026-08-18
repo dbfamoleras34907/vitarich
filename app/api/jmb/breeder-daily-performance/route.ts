@@ -7,6 +7,7 @@ const TABLE = "tbl_breeder_daily_performance";
 const numericFields = [
   "inv_male", "inv_female", "mc_male", "mc_female", "cull_male", "cull_female",
   "trans_in_male", "trans_in_female", "trans_out_male", "trans_out_female",
+  "kitchen_male", "kitchen_female", "condem_male", "condem_female",
   "avg_body_weight_male", "avg_body_weight_female", "feed_consumption_male",
   "feed_consumption_female",
 ] as const;

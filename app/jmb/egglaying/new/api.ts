@@ -34,6 +34,12 @@ export type EggLayingInsert = Omit<
 
 export type EggLayingUpdate = Partial<EggLayingInsert>;
 
+function normalizeAge(age: number | null | undefined) {
+  if (age == null) return null;
+  const numericAge = Number(age);
+  return Number.isFinite(numericAge) ? Math.max(0, Math.floor(numericAge)) : null;
+}
+
 export type LayingPlacement = {
   id: number;
   placement_date: string;
@@ -95,7 +101,7 @@ export async function getEggLayingById(id: number) {
 export async function createEggLaying(payload: EggLayingInsert) {
   const { data, error } = await db
     .from(EGG_LAYING_TABLE)
-    .insert(payload)
+    .insert({ ...payload, age: normalizeAge(payload.age) })
     .select("*")
     .single();
 
@@ -106,7 +112,7 @@ export async function createEggLaying(payload: EggLayingInsert) {
 export async function createEggLayingBatch(payloads: EggLayingInsert[]) {
   const { data, error } = await db
     .from(EGG_LAYING_TABLE)
-    .insert(payloads)
+    .insert(payloads.map((payload) => ({ ...payload, age: normalizeAge(payload.age) })))
     .select("*");
 
   if (error) throw error;
@@ -118,6 +124,7 @@ export async function updateEggLaying(id: number, payload: EggLayingUpdate) {
     .from(EGG_LAYING_TABLE)
     .update({
       ...payload,
+      ...(payload.age !== undefined ? { age: normalizeAge(payload.age) } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
