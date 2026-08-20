@@ -137,7 +137,8 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
     start.getDate(),
   );
   const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
+  const elapsedDays = Math.floor((endUtc - startUtc) / 86_400_000);
+  return elapsedDays >= 0 ? elapsedDays + 1 : 0;
 }
 
 function formatAge(days: number | null | undefined) {
@@ -366,10 +367,13 @@ export default function EggLayingForm() {
   }
 
   function addProductionRow() {
-    setProductionRows((current) => {
-      const lastDate = current.at(-1)?.date_laying;
-      return [...current, createProductionRow(lastDate ? addDays(lastDate, 1) : getToday())];
-    });
+    const lastDate = productionRows.at(-1)?.date_laying;
+    const nextDate = lastDate ? addDays(lastDate, 1) : getToday();
+    if (nextDate > getToday()) {
+      alert("Advance recording is not allowed. Date Laying cannot be later than today.");
+      return;
+    }
+    setProductionRows((current) => [...current, createProductionRow(nextDate)]);
   }
 
   function focusProductionCell(rowIndex: number, columnIndex: number) {
@@ -493,6 +497,7 @@ export default function EggLayingForm() {
         if (raw.every((value) => value == null || String(value).trim() === "")) return;
         const dateLaying = normalizeImportedDate(raw[0]);
         if (!dateLaying) errors.push(`Row ${rowNumber}: Date Laying is invalid.`);
+        if (dateLaying && dateLaying > getToday()) errors.push(`Row ${rowNumber}: advance recording is not allowed. Date Laying cannot be later than today.`);
         if (dateLaying && dates.has(dateLaying)) errors.push(`Row ${rowNumber}: duplicate Date Laying ${dateLaying}.`);
         if (dateLaying && existingDates.has(dateLaying)) errors.push(`Row ${rowNumber}: Date Laying ${dateLaying} already has a saved record.`);
         if (dateLaying) dates.add(dateLaying);
@@ -548,6 +553,10 @@ export default function EggLayingForm() {
     for (const [index, row] of productionRows.entries()) {
       if (!row.date_laying) {
         alert(`Row ${index + 1}: Date Laying is required.`);
+        return;
+      }
+      if (row.date_laying > getToday()) {
+        alert(`Row ${index + 1}: advance recording is not allowed. Date Laying cannot be later than today.`);
         return;
       }
       if (dates.has(row.date_laying)) {
@@ -677,7 +686,7 @@ export default function EggLayingForm() {
                       const file = event.target.files?.[0];
                       if (file) void importExcel(file);
                     }} />
-                    <Button type="button" size="sm" onClick={addProductionRow}>
+                    <Button type="button" size="sm" onClick={addProductionRow} disabled={(productionRows.at(-1)?.date_laying ?? getToday()) >= getToday()}>
                       <Plus className="size-4" /> Add Date
                     </Button>
                   </div>
@@ -731,7 +740,7 @@ export default function EggLayingForm() {
                     {productionRows.map((row, rowIndex) => (
                     <tr key={`${row.date_laying}-${rowIndex}`} className="fc-grid-row border-0">
                       <td className={`fc-grid-cell fc-grid-cell-editable sticky left-0 z-20 p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
-                        <Input type="date" value={row.date_laying}
+                        <Input type="date" value={row.date_laying} max={getToday()}
                           data-production-row={rowIndex} data-production-column={0}
                           onChange={(event) => updateProductionRow(rowIndex, "date_laying", event.target.value)}
                           onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}

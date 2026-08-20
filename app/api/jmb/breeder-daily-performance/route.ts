@@ -6,7 +6,6 @@ export const runtime = "nodejs";
 const TABLE = "tbl_breeder_daily_performance";
 const numericFields = [
   "inv_male", "inv_female", "mc_male", "mc_female", "cull_male", "cull_female",
-  "trans_in_male", "trans_in_female", "trans_out_male", "trans_out_female",
   "kitchen_male", "kitchen_female", "condem_male", "condem_female",
   "avg_body_weight_male", "avg_body_weight_female", "feed_consumption_male",
   "feed_consumption_female",
@@ -65,12 +64,20 @@ export async function POST(req: Request) {
 
     const { data: existing, error: findError } = await admin_db
       .from(TABLE)
-      .select("id")
+      .select("id, trans_in_male, trans_in_female, trans_out_male, trans_out_female")
       .eq("placement_id", placementId)
       .eq("daterec", daterec)
       .eq("isactive", true)
       .maybeSingle();
     if (findError) throw findError;
+    Object.assign(payload, existing ? {
+      trans_in_male: Number(existing.trans_in_male ?? 0),
+      trans_in_female: Number(existing.trans_in_female ?? 0),
+      trans_out_male: Number(existing.trans_out_male ?? 0),
+      trans_out_female: Number(existing.trans_out_female ?? 0),
+    } : {
+      trans_in_male: 0, trans_in_female: 0, trans_out_male: 0, trans_out_female: 0,
+    });
 
     const query = existing
       ? admin_db.from(TABLE).update({ ...payload, updated_at: new Date().toISOString(), updated_by: user.id }).eq("id", existing.id)

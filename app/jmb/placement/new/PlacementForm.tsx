@@ -21,6 +21,7 @@ import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
   createPlacement,
   createPlacementBatch,
+  ensureBreederCycles,
   getPlacementById,
   getUserInfo,
   listBreederSources,
@@ -45,12 +46,13 @@ type PlacementRow = {
   m_doa: string;
   m_reject: string;
   m_shortcount: string;
-  avg_bodyw: string;
+  f_avg_bodyw: string;
+  m_avg_bodyw: string;
 };
 
 type FormState = {
   placement_date: string;
-  dr_no: string;
+  cycle_no: string;
   file_attached: string;
   farm_id: string;
   farm_name: string;
@@ -80,7 +82,8 @@ function createEmptyRow(index: number): PlacementRow {
     m_doa: "0",
     m_reject: "0",
     m_shortcount: "0",
-    avg_bodyw: "0",
+    f_avg_bodyw: "0",
+    m_avg_bodyw: "0",
   };
 }
 
@@ -133,9 +136,22 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 function withoutPlacementDate(payload: PlacementInsert) {
-  const { placement_date: placementDate, ...rest } = payload;
+  const {
+    placement_date: placementDate,
+    cycle_id: cycleId,
+    ...rest
+  } = payload;
   void placementDate;
+  void cycleId;
   return rest;
+}
+
+function clampDecimal(raw: string, decimalPlaces: number) {
+  if (raw === "") return "";
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  const [integerPart, ...decimalParts] = cleaned.split(".");
+  if (!decimalParts.length) return integerPart;
+  return `${integerPart}.${decimalParts.join("").slice(0, decimalPlaces)}`;
 }
 
 const TableWidths = {
@@ -165,6 +181,7 @@ export default function PlacementForm() {
   const idParam = searchParams.get("id");
   const farmIdParam = searchParams.get("farmId");
   const buildingIdParam = searchParams.get("buildingId");
+  const cycleNoParam = searchParams.get("cycleNo");
   const isEdit = !!idParam;
 
   const [saving, setSaving] = useState(false);
@@ -179,7 +196,7 @@ export default function PlacementForm() {
   const [headerOpen, setHeaderOpen] = useState(true);
   const [form, setForm] = useState<FormState>({
     placement_date: getToday(),
-    dr_no: "",
+    cycle_no: "1",
     file_attached: "",
     farm_id: "",
     farm_name: "",
@@ -343,7 +360,7 @@ export default function PlacementForm() {
         setHasDependentRecords(lockedIds.size > 0);
         setForm({
           placement_date: record.placement_date ?? getToday(),
-          dr_no: record.dr_no ?? "",
+          cycle_no: record.cycle_no == null ? "1" : String(record.cycle_no),
           file_attached: record.file_attached ?? "",
           farm_id: String(record.farm_id),
           farm_name: record.farm_name ?? "",
@@ -367,7 +384,8 @@ export default function PlacementForm() {
             m_doa: String(candidate.m_doa ?? 0),
             m_reject: String(candidate.m_reject ?? 0),
             m_shortcount: String(candidate.m_shortcount ?? 0),
-            avg_bodyw: String(candidate.avg_bodyw ?? 0),
+            f_avg_bodyw: String(candidate.f_avg_bodyw ?? candidate.avg_bodyw ?? 0),
+            m_avg_bodyw: String(candidate.m_avg_bodyw ?? candidate.avg_bodyw ?? 0),
           })),
         );
       } catch (error: unknown) {
@@ -433,11 +451,15 @@ export default function PlacementForm() {
         building_id: String(location.building_id),
         building_no: location.building_no,
         pen_count: String(nextRows.length),
+        cycle_no:
+          cycleNoParam && Number(cycleNoParam) > 0
+            ? String(Math.trunc(Number(cycleNoParam)))
+            : prev.cycle_no,
       };
       return nextForm;
     });
     setRows(nextRows);
-  }, [buildingIdParam, farmIdParam, isEdit, locations]);
+  }, [buildingIdParam, cycleNoParam, farmIdParam, isEdit, locations]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
     if (form.source.trim()) values.add(form.source.trim());
@@ -470,9 +492,10 @@ export default function PlacementForm() {
                 field.includes("_beg") ||
                 field.includes("_doa") ||
                 field.includes("_reject") ||
-                field.includes("shortcount") ||
-                field === "avg_bodyw"
+                field.includes("shortcount")
                   ? clampInteger(value)
+                  : field === "f_avg_bodyw" || field === "m_avg_bodyw"
+                    ? clampDecimal(value, 2)
                   : value,
             }
           : row,
@@ -554,8 +577,9 @@ export default function PlacementForm() {
       alert("Placement date is required.");
       return;
     }
-    if (!form.dr_no.trim()) {
-      alert("DR No. is required.");
+    const cycleNumber = Number(form.cycle_no);
+    if (!Number.isInteger(cycleNumber) || cycleNumber <= 0) {
+      alert("Cycle number must be a positive whole number.");
       return;
     }
     if (!form.farm_name.trim()) {
@@ -587,32 +611,41 @@ export default function PlacementForm() {
       return;
     }
 
-    const payloads: PlacementInsert[] = rows.map((row) => ({
-      placement_date: form.placement_date,
-      dr_no: form.dr_no.trim(),
-      file_attached: form.file_attached.trim() || null,
-      farm_id: asNumber(form.farm_id),
-      building_id: asNumber(form.building_id),
-      pen_id: asNumber(row.pen_id),
-      farm_name: form.farm_name.trim(),
-      building_no: form.building_no.trim(),
-      pen_no: row.pen_no.trim(),
-      f_source: form.source.trim() || null,
-      f_beg: asNumber(row.f_beg),
-      f_doa: asNumber(row.f_doa),
-      f_reject: asNumber(row.f_reject),
-      f_shortcount: asNumber(row.f_shortcount),
-      m_source: form.source.trim() || null,
-      m_beg: asNumber(row.m_beg),
-      m_doa: asNumber(row.m_doa),
-      m_reject: asNumber(row.m_reject),
-      m_shortcount: asNumber(row.m_shortcount),
-      avg_bodyw: asNumber(row.avg_bodyw),
-      remarks: form.remarks.trim() || null,
-    }));
-
     setSaving(true);
     try {
+      const cycleIdByPenId = await ensureBreederCycles({
+        farmId: asNumber(form.farm_id),
+        buildingId: asNumber(form.building_id),
+        penIds: rows.map((row) => asNumber(row.pen_id)),
+        cycleNumber,
+      });
+      const payloads: PlacementInsert[] = rows.map((row) => ({
+        placement_date: form.placement_date,
+        dr_no: "",
+        file_attached: form.file_attached.trim() || null,
+        farm_id: asNumber(form.farm_id),
+        building_id: asNumber(form.building_id),
+        pen_id: asNumber(row.pen_id),
+        farm_name: form.farm_name.trim(),
+        building_no: form.building_no.trim(),
+        pen_no: row.pen_no.trim(),
+        f_source: form.source.trim() || null,
+        f_beg: asNumber(row.f_beg),
+        f_doa: asNumber(row.f_doa),
+        f_reject: asNumber(row.f_reject),
+        f_shortcount: asNumber(row.f_shortcount),
+        m_source: form.source.trim() || null,
+        m_beg: asNumber(row.m_beg),
+        m_doa: asNumber(row.m_doa),
+        m_reject: asNumber(row.m_reject),
+        m_shortcount: asNumber(row.m_shortcount),
+        avg_bodyw: Math.round((asNumber(row.f_avg_bodyw) + asNumber(row.m_avg_bodyw)) / 2),
+        f_avg_bodyw: asNumber(row.f_avg_bodyw),
+        m_avg_bodyw: asNumber(row.m_avg_bodyw),
+        remarks: form.remarks.trim() || null,
+        cycle_id: cycleIdByPenId.get(asNumber(row.pen_id)) ?? null,
+      }));
+
       if (isEdit) {
         if (rows.some((row) => row.placement_id == null)) {
           throw new Error("One or more placement rows are missing their record id.");
@@ -702,9 +735,9 @@ export default function PlacementForm() {
               <div className="text-xs font-medium text-muted-foreground">Placement date</div>
               <div className="text-sm font-semibold tabular-nums">{form.placement_date || "-"}</div>
             </div>
-            <div className="min-w-[160px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">DR number</div>
-              <div className="truncate text-sm font-semibold">{form.dr_no || "-"}</div>
+            <div className="min-w-[140px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+              <div className="text-xs font-medium text-muted-foreground">Cycle number</div>
+              <div className="text-sm font-semibold tabular-nums">{form.cycle_no || "-"}</div>
             </div>
           </div>
 
@@ -729,7 +762,7 @@ export default function PlacementForm() {
                   {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"} &gt; {isEdit ? "Edit Placement" : "New Placement"}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {totalPens.toLocaleString("en-PH")} pens | Date {form.placement_date || "-"} | DR {form.dr_no || "-"}
+                  {totalPens.toLocaleString("en-PH")} pens | Date {form.placement_date || "-"} | Cycle {form.cycle_no || "-"}
                 </div>
               </div>
               <Button
@@ -770,7 +803,7 @@ export default function PlacementForm() {
           <div className="mx-auto max-w-[1800px] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm dark:border-border dark:bg-card">
             <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
-                <RequiredLabel>Date</RequiredLabel>
+                <RequiredLabel>Placement Date</RequiredLabel>
                 <Input
                   type="date"
                   value={form.placement_date}
@@ -785,16 +818,23 @@ export default function PlacementForm() {
               </div>
 
               <div className="space-y-2">
-                <RequiredLabel>DR Number</RequiredLabel>
+                <RequiredLabel>Cycle Number</RequiredLabel>
                 <Input
-                  value={form.dr_no}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.cycle_no}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      dr_no: e.target.value,
+                      cycle_no: clampInteger(e.target.value),
                     }))
                   }
-                  disabled={disabledAll}
+                  disabled={
+                    disabledAll ||
+                    !!cycleNoParam ||
+                    (isEdit && hasDependentRecords)
+                  }
                 />
               </div>
 
@@ -1079,14 +1119,16 @@ export default function PlacementForm() {
                               className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
                             >
                               <Input
-                                type="text"
-                                inputMode="numeric"
-                                value={asNumber(row.avg_bodyw).toLocaleString("en-US")}
+                                type="number"
+                                inputMode="decimal"
+                                min="0"
+                                step="0.01"
+                                value={row.f_avg_bodyw}
                                 onChange={(e) =>
                                   handleRowChange(
                                     index,
-                                    "avg_bodyw",
-                                    e.target.value.replace(/,/g, ""),
+                                    "f_avg_bodyw",
+                                    e.target.value,
                                   )
                                 }
                                 disabled={disabledAll}
@@ -1187,14 +1229,16 @@ export default function PlacementForm() {
                               className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
                             >
                               <Input
-                                type="text"
-                                inputMode="numeric"
-                                value={asNumber(row.avg_bodyw).toLocaleString("en-US")}
+                                type="number"
+                                inputMode="decimal"
+                                min="0"
+                                step="0.01"
+                                value={row.m_avg_bodyw}
                                 onChange={(e) =>
                                   handleRowChange(
                                     index,
-                                    "avg_bodyw",
-                                    e.target.value.replace(/,/g, ""),
+                                    "m_avg_bodyw",
+                                    e.target.value,
                                   )
                                 }
                                 disabled={disabledAll}
@@ -1236,7 +1280,7 @@ export default function PlacementForm() {
                   <thead className="bg-emerald-50">
                     <tr className="border-b">
                       <th className="px-3 py-2 text-left font-medium">Date</th>
-                      <th className="px-3 py-2 text-left font-medium">DR Number</th>
+                      <th className="px-3 py-2 text-left font-medium">Cycle #</th>
                       <th className="px-3 py-2 text-left font-medium">Pen</th>
                       <th className="px-3 py-2 text-left font-medium">Source of Birds</th>
                       <th className="px-3 py-2 text-right font-medium">Female Placement</th>
@@ -1256,7 +1300,7 @@ export default function PlacementForm() {
                         return (
                           <tr key={record.id} className="border-b last:border-0">
                             <td className="px-3 py-2 tabular-nums">{formatHistoryDate(record.placement_date)}</td>
-                            <td className="px-3 py-2 font-medium">{record.dr_no}</td>
+                            <td className="px-3 py-2 font-medium tabular-nums">{record.cycle_no ?? "-"}</td>
                             <td className="px-3 py-2">{record.pen_no}</td>
                             <td className="px-3 py-2">{record.f_source ?? record.m_source ?? ""}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(record.f_beg)}</td>

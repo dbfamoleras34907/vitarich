@@ -40,6 +40,12 @@ function normalizeAge(age: number | null | undefined) {
   return Number.isFinite(numericAge) ? Math.max(0, Math.floor(numericAge)) : null;
 }
 
+function validateDateLaying(dateLaying: string) {
+  const today = new Date().toLocaleDateString("en-CA");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateLaying)) throw new Error("Date Laying is required.");
+  if (dateLaying > today) throw new Error("Advance recording is not allowed. Date Laying cannot be later than today.");
+}
+
 export type LayingPlacement = {
   id: number;
   placement_date: string;
@@ -99,6 +105,7 @@ export async function getEggLayingById(id: number) {
 }
 
 export async function createEggLaying(payload: EggLayingInsert) {
+  validateDateLaying(payload.date_laying);
   const { data, error } = await db
     .from(EGG_LAYING_TABLE)
     .insert({ ...payload, age: normalizeAge(payload.age) })
@@ -109,7 +116,37 @@ export async function createEggLaying(payload: EggLayingInsert) {
   return data as EggLaying;
 }
 
+export async function listEggLayingsByPlacement(placementId: number) {
+  const { data, error } = await db
+    .from(EGG_LAYING_TABLE)
+    .select("*")
+    .eq("placement_id", placementId)
+    .eq("is_active", true)
+    .order("date_laying", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as EggLaying[];
+}
+
+export async function listEggLayingsByPlacements(placementIds: number[]) {
+  const validPlacementIds = [...new Set(placementIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!validPlacementIds.length) return [];
+
+  const { data, error } = await db
+    .from(EGG_LAYING_TABLE)
+    .select("*")
+    .in("placement_id", validPlacementIds)
+    .eq("is_active", true)
+    .order("date_laying", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as EggLaying[];
+}
+
 export async function createEggLayingBatch(payloads: EggLayingInsert[]) {
+  payloads.forEach((payload) => validateDateLaying(payload.date_laying));
   const { data, error } = await db
     .from(EGG_LAYING_TABLE)
     .insert(payloads.map((payload) => ({ ...payload, age: normalizeAge(payload.age) })))
@@ -120,6 +157,7 @@ export async function createEggLayingBatch(payloads: EggLayingInsert[]) {
 }
 
 export async function updateEggLaying(id: number, payload: EggLayingUpdate) {
+  if (payload.date_laying !== undefined) validateDateLaying(payload.date_laying);
   const { data, error } = await db
     .from(EGG_LAYING_TABLE)
     .update({

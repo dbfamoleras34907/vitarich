@@ -71,12 +71,12 @@ export const BREEDER_IMPORT_HEADERS = [
 
 const headers = [
   "Date", "Age",
-  "Inventory Male", "Inventory Female",
-  "MC Male", "MC Female", "Cumulative MC Male", "Cumulative MC Female",
-  "Culls Male", "Culls Female", "Transfer In Male", "Transfer In Female",
-  "Transfer Out Male", "Transfer Out Female", "Kitchen Male", "Kitchen Female",
-  "Condem Male", "Condem Female", "Grams/Birds Male", "Grams/Birds Female",
-  "FC Male", "FC Female",
+  "Inventory Male (pc)", "Inventory Female (pc)",
+  "Mortality Male (pc)", "Mortality Female (pc)", "Cumm Mortality Male (pc)", "Cumm Mortality Female (pc)",
+  "Culls Male (pc)", "Culls Female (pc)", "Transfer In Male (pc)", "Transfer In Female (pc)",
+  "Transfer Out Male (pc)", "Transfer Out Female (pc)", "Kitchen Male (pc)", "Kitchen Female (pc)",
+  "Condem Male (pc)", "Condem Female (pc)", "Grams/Birds Male (kg/pc)", "Grams/Birds Female (kg/pc)",
+  "Feeds Consumption Male (kg)", "Feeds Consumption Female (kg)",
 ];
 
 function clean(value: unknown) {
@@ -174,7 +174,7 @@ export default function BreederCardExportMenu(props: Props) {
       return {
         value: value ?? undefined,
         type: Number,
-        format: field.includes("weight") || field.includes("consumption") ? "0.000" : "0",
+        format: field.includes("consumption") ? "0.00" : field.includes("weight") ? "0.000" : "0",
       };
     }));
     const workbook = writeXlsxFile([header, ...body], {
