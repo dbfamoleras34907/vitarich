@@ -583,6 +583,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const canInsert = usePermission('/inv/doc-receiving/insert')
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
+  const notificationFarmId = searchParams.get('farmId')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
   const [items, setItems] = useState<Items[]>([])
@@ -1081,7 +1082,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     if (loadingReferences || receipt?.farmId || farms.length === 0) return
 
     const defaultFarmId = getValue('DefaultFarmId')
-    const farm = farms.find(candidate => String(candidate.id) === String(defaultFarmId))
+    const farm = farms.find(candidate => String(candidate.id) === String(notificationFarmId))
+      ?? farms.find(candidate => String(candidate.id) === String(defaultFarmId))
       ?? (farms.length === 1 ? farms[0] : null)
     if (!farm) return
 
@@ -1097,7 +1099,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         defaultWarehouseId: null,
       }
     })
-  }, [farms, getValue, loadingReferences, receipt?.farmId])
+  }, [farms, getValue, loadingReferences, notificationFarmId, receipt?.farmId])
 
   useEffect(() => {
     if (shouldDeriveReceiptLines) return

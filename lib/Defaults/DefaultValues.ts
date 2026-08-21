@@ -1203,6 +1203,17 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 76,
+            type: "Module",
+            title: "Notification Setup",
+            url: "/admin/notifications",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
             id: 39,
             type: "Module",
             title: "Farm Management",

@@ -139,7 +139,7 @@ export async function listEggReferences() {
   if (error) throw error;
 
   return [
-    ...new Set((data ?? []).map((r: any) => r.egg_ref_no).filter(Boolean)),
+    ...new Set((data ?? []).map((row) => row.egg_ref_no).filter(Boolean)),
   ] as string[];
 }
 
@@ -206,5 +206,8 @@ export async function getRemainingDocClassificationInventory(eggRefNo: string) {
 
   if (error) throw error;
 
-  return Number(data ?? 0);
+  const result = Array.isArray(data) ? data[0]?.remaining : data;
+  const remaining = Number(result ?? 0);
+
+  return Number.isFinite(remaining) ? remaining : 0;
 }

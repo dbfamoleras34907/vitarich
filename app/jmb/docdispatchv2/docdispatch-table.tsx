@@ -72,6 +72,7 @@ type Row = {
   number_of_fans: number | null;
 
   remarks: string | null;
+  status: "Draft" | "Posted";
 };
 
 export default function DocdispatchTable() {
@@ -159,6 +160,7 @@ export default function DocdispatchTable() {
                 item.number_of_fans || "-",
 
               remarks: item.remarks || "-",
+              status: item.status || "Draft",
             }),
           )
           : [];
@@ -239,7 +241,14 @@ export default function DocdispatchTable() {
 
         {
           key: "farm_name",
-          label: "Farm Name",
+          label: "Destination Farm",
+          type: "text",
+          disabled: true,
+        },
+
+        {
+          key: "status",
+          label: "Status",
           type: "text",
           disabled: true,
         },

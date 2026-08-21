@@ -17,6 +17,7 @@ import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
 import { getProfileByAuthId } from "@/app/admin/user/api"
 import { getNavigationPermissionTitle } from "./navigationPermissions"
+import NotificationCenter from "@/components/notifications/NotificationCenter"
 
 export { getNavigationPermissionTitle } from "./navigationPermissions"
 
@@ -270,6 +271,8 @@ export function AppSidebar() {
                 {renderExpandedNavigation()}
               </div>
               <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+                <NotificationCenter />
+                <div className="my-2 border-t border-sidebar-border" />
                 <UserAccountMenu session={session} collapsed={false} />
               </div>
             </aside>
@@ -358,6 +361,8 @@ export function AppSidebar() {
       </nav>
       <div className="shrink-0 px-3 pb-3 pt-3">
         <div className="rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+          <NotificationCenter collapsed={collapsed} />
+          <div className="my-2 border-t border-sidebar-border" />
           <UserAccountMenu session={session} collapsed={collapsed} />
         </div>
       </div>

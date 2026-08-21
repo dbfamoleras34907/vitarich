@@ -50,7 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+import { Loader2, Save, Send, Trash2, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -60,32 +60,32 @@ import {
 } from "@/components/ui/select";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import FormActionButtons from "@/components/FormActionButtons";
 
 import {
   createDispatchDoc,
   getDispatchDocById,
+  postDispatchDoc,
   updateDispatchDoc,
   listDistinctHaulers,
   type DispatchDocItemInsert,
   type SkuClassification,
   type UomType,
-  type BoilerFarmOption,
   generateNextDrNo,
   listDocBatchCodes,
-  listBoilerFarmOptions,
 } from "./api";
-import { Trash2 } from "lucide-react";
 import type { ChickGradingQtyRow } from "./api";
 import { getChickGradingQtyByBatchCode } from "./api";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import RequiredLabel from "@/components/RequiredLabel";
 import SearchableDropdown from "@/lib/SearchableDropdown";
+import { listBroilerFarmOptions, type BroilerFarmOption } from "@/lib/data/repositories/farmOptions.client";
 
 type FormState = {
   doc_date: string; // YYYY-MM-DD
   dr_no: string;
   farm_name: string;
+  destination_farm_id: number | null;
+  destination_farm_code: string;
   address: string;
   hauler_name: string;
   hauler_plate_no: string;
@@ -149,7 +149,7 @@ function todayYMD() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function clampNonNegStringToNumberOrNull(v: any): number | null {
+function clampNonNegStringToNumberOrNull(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
@@ -183,6 +183,8 @@ export default function DocdispatchForm() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<"Draft" | "Posted">("Draft");
+  const readOnly = status === "Posted";
 
   const [haulers, setHaulers] = useState<string[]>([]);
   const [haulersLoading, setHaulersLoading] = useState(false);
@@ -190,7 +192,7 @@ export default function DocdispatchForm() {
   const [docBatchCodes, setDocBatchCodes] = useState<string[]>([]);
   const [docBatchLoading, setDocBatchLoading] = useState(false);
 
-  const [boilerFarms, setBoilerFarms] = useState<BoilerFarmOption[]>([]);
+  const [boilerFarms, setBoilerFarms] = useState<BroilerFarmOption[]>([]);
   const [boilerFarmsLoading, setBoilerFarmsLoading] = useState(false);
 
   // if user manually edits DR no, we stop auto-overwriting
@@ -200,6 +202,8 @@ export default function DocdispatchForm() {
     doc_date: todayYMD(),
     dr_no: "",
     farm_name: "",
+    destination_farm_id: null,
+    destination_farm_code: "",
     address: "",
     hauler_name: "",
     hauler_plate_no: "",
@@ -234,14 +238,13 @@ export default function DocdispatchForm() {
     setItemDraft((p) => ({ ...p, [k]: v }));
   }
 
-  function handleFarmChange(boilerName: string) {
-    const selected = boilerFarms.find(
-      (farm) => farm.boiler_name === boilerName,
-    );
+  function handleFarmChange(farmCode: string, selected: BroilerFarmOption) {
 
     setForm((prev) => ({
       ...prev,
-      farm_name: boilerName,
+      destination_farm_id: selected.id,
+      destination_farm_code: farmCode,
+      farm_name: selected.name,
       address: selected?.address ?? "",
     }));
   }
@@ -273,7 +276,7 @@ export default function DocdispatchForm() {
         const [h, b, farms] = await Promise.all([
           listDistinctHaulers(),
           listDocBatchCodes(),
-          listBoilerFarmOptions(),
+          listBroilerFarmOptions(),
         ]);
 
         if (!alive) return;
@@ -320,6 +323,8 @@ export default function DocdispatchForm() {
           doc_date: header.doc_date,
           dr_no: header.dr_no ?? "",
           farm_name: header.farm_name ?? "",
+          destination_farm_id: header.destination_farm_id ?? null,
+          destination_farm_code: header.destination_farm_code ?? "",
           address: header.address ?? "",
           hauler_name: header.hauler_name ?? "",
           hauler_plate_no: header.hauler_plate_no ?? "",
@@ -332,8 +337,9 @@ export default function DocdispatchForm() {
             header.number_of_fans == null ? "" : String(header.number_of_fans),
           remarks: header.remarks ?? "",
         });
+        setStatus(header.status ?? "Draft");
         setItems(
-          (items ?? []).map((it: any) => ({
+          (items ?? []).map((it) => ({
             doc_batch_code: it.doc_batch_code,
             sku_name: it.sku_name,
             classification: it.classification,
@@ -424,8 +430,8 @@ export default function DocdispatchForm() {
       {
         doc_batch_code,
         sku_name,
-        classification: itemDraft.classification as any,
-        uom: (itemDraft.uom || null) as any,
+        classification: itemDraft.classification as SkuClassification,
+        uom: itemDraft.uom || null,
         qty: qtyN,
       },
     ]);
@@ -442,18 +448,22 @@ export default function DocdispatchForm() {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  async function onSave() {
+  async function onSave(post = false) {
     if (!form.doc_date) return alert("Date is required.");
     if (!form.dr_no.trim()) return alert("Delivery Receipt No. is required.");
-    if (!form.farm_name.trim()) return alert("Farm Name is required.");
+    if (!form.farm_name.trim()) return alert("Destination Farm is required.");
+    if (!form.destination_farm_code.trim()) return alert("Select a valid destination farm code.");
     if (!items.length) return alert("Please add at least 1 item.");
+    if (post && !window.confirm("Post this DOC Dispatch? Posted dispatches can no longer be edited.")) return;
 
     setSaving(true);
+    let draftSaved = false;
     try {
       const payload = {
         doc_date: form.doc_date,
         dr_no: form.dr_no.trim(),
         farm_name: form.farm_name.trim(),
+        destination_farm_code: form.destination_farm_code.trim(),
         address: form.address.trim() || null,
         hauler_name: form.hauler_name.trim() || null,
         hauler_plate_no: form.hauler_plate_no.trim() || null,
@@ -466,19 +476,26 @@ export default function DocdispatchForm() {
         items,
       };
 
+      let savedId = editId;
       if (isEdit && editId) {
         await updateDispatchDoc(editId, payload);
-        alert("Updated successfully.");
       } else {
-        await createDispatchDoc(payload);
-        alert("Saved successfully.");
+        savedId = await createDispatchDoc(payload);
       }
+      draftSaved = true;
+
+      if (post && savedId) await postDispatchDoc(savedId);
+
+      alert(post ? "DOC Dispatch posted successfully." : isEdit ? "Draft updated successfully." : "Draft saved successfully.");
 
       router.push("/jmb/docdispatchv2");
       router.refresh();
     } catch (e) {
       console.error(e);
-      alert("Failed to save. Please check console for error.");
+      alert(post && draftSaved
+        ? "The draft was saved, but posting failed. No notification was created. Open the draft and try posting again."
+        : "Failed to save. Please check console for error.");
+      if (post && draftSaved) router.push("/jmb/docdispatchv2");
     } finally {
       setSaving(false);
     }
@@ -523,20 +540,20 @@ export default function DocdispatchForm() {
                       onChange={(e) => {
                         setField("doc_date", e.target.value);
                       }}
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
 
                   <div className="space-y-1 max-w-xl">
-                    <RequiredLabel>Farm Name</RequiredLabel>
+                    <RequiredLabel>Destination Farm</RequiredLabel>
                     <SearchableDropdown
                       list={boilerFarms}
-                      codeLabel="boiler_name"
-                      nameLabel="boiler_name"
+                      codeLabel="code"
+                      nameLabel="name"
                       showNameOnly
-                      value={form.farm_name}
-                      onChange={(val) => handleFarmChange(val)}
-                      disabled={saving || boilerFarmsLoading}
+                      value={form.destination_farm_code}
+                      onChange={(val, item) => handleFarmChange(val, item)}
+                      disabled={saving || readOnly || boilerFarmsLoading}
                     />
                     {/* <Select
                       value={form.farm_name}
@@ -577,7 +594,7 @@ export default function DocdispatchForm() {
                       onChange={(e) =>
                         setField("hauler_plate_no", e.target.value)
                       }
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
 
@@ -597,7 +614,7 @@ export default function DocdispatchForm() {
                         )
                       }
                       placeholder="°C"
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
                 </div>
@@ -609,7 +626,7 @@ export default function DocdispatchForm() {
                     <Input
                       value={form.hauler_name}
                       onChange={(e) => setField("hauler_name", e.target.value)}
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
 
@@ -621,7 +638,7 @@ export default function DocdispatchForm() {
                         setField("truck_seal_no", e.target.value)
                       }
                       placeholder=""
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
 
@@ -641,7 +658,7 @@ export default function DocdispatchForm() {
                         )
                       }
                       placeholder=""
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
                 </div>
@@ -702,7 +719,7 @@ export default function DocdispatchForm() {
                     <Select
                       value={itemDraft.sku_name}
                       onValueChange={handleSkuChange}
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select SKU name" />
@@ -733,8 +750,8 @@ export default function DocdispatchForm() {
                     <Label>UoM</Label>
                     <Select
                       value={itemDraft.uom}
-                      onValueChange={(v) => setDraft("uom", v as any)}
-                      disabled={saving}
+                      onValueChange={(v) => setDraft("uom", v as UomType)}
+                      disabled={saving || readOnly}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select UoM" />
@@ -759,7 +776,7 @@ export default function DocdispatchForm() {
                       onBlur={(e) =>
                         setDraft("qty", clampNonNegString(e.target.value))
                       }
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     />
                   </div>
                 </div>
@@ -770,7 +787,7 @@ export default function DocdispatchForm() {
                     className="w-full md:w-auto h-full md:h-auto"
                     type="button"
                     onClick={addItem}
-                    disabled={saving}
+                    disabled={saving || readOnly}
                   >
                     Add item
                   </Button>
@@ -807,7 +824,7 @@ export default function DocdispatchForm() {
                               variant="ghost"
                               title="Remove"
                               onClick={() => removeItem(idx)}
-                              disabled={saving}
+                              disabled={saving || readOnly}
                               className="
                             text-red-500 
                             hover:bg-red-100 
@@ -836,7 +853,7 @@ export default function DocdispatchForm() {
                           </div>
 
                           <div className="col-span-2">
-                            {labelClassification(it.classification as any)}
+                            {labelClassification(it.classification)}
                           </div>
 
                           <div className="col-span-1 text-right tabular-nums">
@@ -865,16 +882,28 @@ export default function DocdispatchForm() {
                   onChange={(e) => setField("remarks", e.target.value)}
                   placeholder=""
                   className="min-h-30"
-                  disabled={saving}
+                  disabled={saving || readOnly}
                 />
               </div>
               <div className="space-y-1">
-                <FormActionButtons
-                  saving={saving}
-                  isEdit={isEdit}
-                  cancelPath="/jmb/docdispatchv2"
-                  onSave={onSave}
-                />
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {!readOnly && (
+                    <>
+                      <Button type="button" variant="outline" onClick={() => void onSave(false)} disabled={saving}>
+                        {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                        Save as Draft
+                      </Button>
+                      <Button type="button" onClick={() => void onSave(true)} disabled={saving}>
+                        {saving ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                        Post Dispatch
+                      </Button>
+                    </>
+                  )}
+                  <Button type="button" variant="outline" onClick={() => router.push("/jmb/docdispatchv2")} disabled={saving}>
+                    <X className="size-4" />{readOnly ? "Close" : "Cancel"}
+                  </Button>
+                  <span className="ml-auto rounded-full border px-2.5 py-1 text-xs font-medium">{status}</span>
+                </div>
               </div>
             </div>
           )}

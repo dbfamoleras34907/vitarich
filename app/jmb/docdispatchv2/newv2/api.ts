@@ -14,6 +14,8 @@ export type DispatchDoc = {
   dr_no: string;
 
   farm_name: string;
+  destination_farm_id: number | null;
+  destination_farm_code: string | null;
   address: string | null;
   hauler_name: string | null;
   hauler_plate_no: string | null;
@@ -24,6 +26,10 @@ export type DispatchDoc = {
 
   remarks: string | null;
   is_active: boolean;
+  status: "Draft" | "Posted";
+  posted_at: string | null;
+  posted_by: string | null;
+  posting_version: number;
 };
 
 export type DispatchDocItem = {
@@ -52,6 +58,7 @@ export type DispatchDocUpsertPayload = {
   doc_date: string;
   dr_no: string;
   farm_name: string;
+  destination_farm_code: string;
   address: string | null;
   hauler_name: string | null;
   hauler_plate_no: string | null;
@@ -76,7 +83,7 @@ async function getRequiredAccessToken() {
 }
 
 async function requestDocDispatchWrite<T>(
-  method: "POST" | "PUT" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body: unknown,
 ): Promise<T> {
   const token = await getRequiredAccessToken();
@@ -102,7 +109,7 @@ export async function listDispatchDocs() {
   const { data, error } = await db
     .from("dispatch_doc")
     .select(
-      "id, doc_date, dr_no, farm_name, hauler_name, hauler_plate_no, truck_seal_no, chick_van_temp_c, number_of_fans, remarks, is_active, created_at",
+      "id, doc_date, dr_no, farm_name, destination_farm_id, destination_farm_code, hauler_name, hauler_plate_no, truck_seal_no, chick_van_temp_c, number_of_fans, remarks, is_active, status, posted_at, posting_version, created_at",
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -149,6 +156,10 @@ export async function updateDispatchDoc(
   payload: DispatchDocUpsertPayload,
 ) {
   await requestDocDispatchWrite("PUT", { id, payload });
+}
+
+export async function postDispatchDoc(id: number) {
+  await requestDocDispatchWrite("PATCH", { id });
 }
 
 export async function softDeleteDispatchDoc(id: number) {
@@ -253,23 +264,4 @@ export async function getChickGradingQtyByBatchCode(batch_code: string) {
 
   if (error) throw error;
   return (data ?? null) as ChickGradingQtyRow | null;
-}
-export type BoilerFarmOption = {
-  boiler_name: string;
-  address: string | null;
-};
-
-export async function listBoilerFarmOptions(): Promise<BoilerFarmOption[]> {
-  const { data, error } = await db
-    .from("boiler_masterdata")
-    .select("boiler_name, address")
-    .eq("is_active", true)
-    .order("boiler_name", { ascending: true });
-
-  if (error) throw error;
-
-  return ((data ?? []) as BoilerFarmOption[]).map((row) => ({
-    boiler_name: row.boiler_name ?? "",
-    address: row.address ?? "",
-  }));
 }
