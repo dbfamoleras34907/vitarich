@@ -275,7 +275,7 @@ export default function NewProjectTask({
               }
             />
           </div>
-
+{/*  */}
           {/* COLOR */}
           <div>
             <Label className='mb-2'>Color</Label>
