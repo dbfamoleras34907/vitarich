@@ -91,6 +91,8 @@ export async function getEggReferenceMeta(eggRef: string) {
     .from("egg_hatchery_process")
     .select("egg_ref, farm_source, machine_no, hatch_window")
     .eq("egg_ref", eggRef)
+    .order("id", { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) throw error

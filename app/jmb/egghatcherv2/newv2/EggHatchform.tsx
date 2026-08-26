@@ -60,6 +60,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { usePermission } from "@/hooks/usePermission";
 import SearchableDropdown from "@/lib/SearchableDropdown";
+import { getHatcheryWizardClassificationHeader } from "@/lib/data/repositories/hatcheryProcessWizard";
 
 function toDatetimeLocalValue(v: string | null | undefined) {
   if (!v) return "";
@@ -112,6 +113,8 @@ export default function EggHatchform() {
   const sp = useSearchParams();
 
   const idParam = sp.get("id");
+  const wizardRef = sp.get("ref")?.trim() ?? "";
+  const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
 
   const editId = idParam ? Number(idParam) : null;
 
@@ -137,7 +140,7 @@ export default function EggHatchform() {
   }, [isEdit, canEdit, canView, router]);
 
   const [form, setForm] = useState({
-    egg_ref: "",
+    egg_ref: isWizard && !isEdit ? wizardRef : "",
     farm_source: "",
     daterec: "",
 
@@ -176,6 +179,23 @@ export default function EggHatchform() {
     refreshSessionx(router);
   }, []);
 
+  useEffect(() => {
+    if (!isWizard) return;
+    let active = true;
+    void getHatcheryWizardClassificationHeader(wizardRef)
+      .then((header) => {
+        if (!active || !header) return;
+        setForm((previous) => ({
+          ...previous,
+          farm_source: header.farmName || header.farmCode,
+        }));
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+    };
+  }, [isWizard, wizardRef]);
+
   // ✅ load ref dropdown options
   useEffect(() => {
     let alive = true;
@@ -184,7 +204,9 @@ export default function EggHatchform() {
       try {
         const refs = await listClassiRefNos();
         if (!alive) return;
-        setEggRefs(refs);
+        setEggRefs(
+          isWizard && !refs.includes(wizardRef) ? [wizardRef, ...refs] : refs,
+        );
       } catch (e: any) {
         console.error(e);
         if (!alive) return;
@@ -196,7 +218,7 @@ export default function EggHatchform() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isWizard, wizardRef]);
 
   // load edit record
   useEffect(() => {
@@ -240,7 +262,7 @@ export default function EggHatchform() {
     setForm((p) => ({ ...p, duration: mins == null ? "" : String(mins) }));
   }, [form.hatch_time_start, form.hatch_time_end]);
 
-  async function onSave() {
+  async function onSave(continueToNext = false) {
     // optional: enforce ref selection
     if (!form.egg_ref) {
       alert("Reference No. is required.");
@@ -283,7 +305,11 @@ export default function EggHatchform() {
         alert("Saved successfully.");
       }
 
-      router.push("/jmb/egghatcherv2");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=${continueToNext ? "pullout" : "hatcher"}`
+          : "/jmb/egghatcherv2",
+      );
       router.refresh();
     } catch (e: any) {
       alert(e?.message ?? "Save failed.");
@@ -333,7 +359,7 @@ export default function EggHatchform() {
                     showNameOnly
                     value={form.egg_ref}
                     onChange={(v) => setField("egg_ref", v)}
-                    disabled={eggRefsLoading || saving}
+                    disabled={eggRefsLoading || saving || isWizard}
                     placeholder={
                       eggRefsLoading ? "Loading..." : "Select Egg Reference No."
                     }
@@ -445,9 +471,16 @@ export default function EggHatchform() {
               <FormActionButtons
                 saving={saving}
                 isEdit={isEdit}
-                // disabled={disabledAll}
-                cancelPath="/jmb/egghatcherv2"
-                onSave={onSave}
+                disabled={saving}
+                cancelPath={
+                  isWizard
+                    ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=hatcher`
+                    : "/jmb/egghatcherv2"
+                }
+                onSave={() => void onSave(false)}
+                onSaveAndContinue={
+                  isWizard ? () => void onSave(true) : undefined
+                }
               />
 
               {/* <Button type="button" onClick={onSave} disabled={saving}>

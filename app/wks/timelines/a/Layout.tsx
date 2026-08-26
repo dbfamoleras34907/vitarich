@@ -73,8 +73,6 @@ export default function Layout() {
       try {
         const data = await getTimesheets()
 
-        console.log('Fetched Timesheets:', data)
-
         setInitialRows(data)
         setFilteredRows(data)
       } catch (err) {

@@ -381,6 +381,7 @@ export default function NewGoodsIssue({
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
+  const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
   const isCleanup = triggeredBy === 'BR-CU'
 
   useEffect(() => {
@@ -1301,7 +1302,7 @@ export default function NewGoodsIssue({
       candidate.batchNumber === updatedLine.batchNumber,
     )
     if (duplicateBatchLine) {
-      toast(`Batch ${updatedLine.batchNumber} is already selected for this building.`)
+      toast(`Batch ${updatedLine.batchNumber} is already selected for this ${warehouseLabel.toLowerCase()}.`)
       return
     }
 
@@ -1630,7 +1631,7 @@ export default function NewGoodsIssue({
     }
 
     const missingBatchLine = linesToSave.find(line =>
-      (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || usesLineWarehouse) &&
+      (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue) &&
       !line.batchNumber.trim(),
     )
     if (missingBatchLine) {
@@ -1640,10 +1641,12 @@ export default function NewGoodsIssue({
 
     if (usesLineWarehouse) {
       const allocationGroups = new Map<string, GoodsIssueLine[]>()
-      linesToSave.forEach(line => {
-        const key = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
-        allocationGroups.set(key, [...(allocationGroups.get(key) ?? []), line])
-      })
+      linesToSave
+        .filter(line => itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue)
+        .forEach(line => {
+          const key = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+          allocationGroups.set(key, [...(allocationGroups.get(key) ?? []), line])
+        })
       const incompleteAllocation = Array.from(allocationGroups.values()).find(group => {
         const requestedQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
           ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
@@ -2006,7 +2009,7 @@ export default function NewGoodsIssue({
               </div>
             </div>
 
-            {usesLineWarehouse ? (
+            {usesBroilerLineLayout ? (
               <DeliveryIssueLinesTable
                 issue={issue}
                 warehouseLabel={warehouseLabel}
@@ -2045,7 +2048,7 @@ export default function NewGoodsIssue({
               />
             ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1500px] w-full border-collapse text-sm">
+              <table className={`${usesLineWarehouse ? 'min-w-[1840px]' : 'min-w-[1500px]'} w-full border-collapse text-sm`}>
                 <thead className="bg-stone-100 text-left text-xs uppercase tracking-wide text-stone-600">
                   <tr>
                     <th className="w-12 px-3 py-3 text-center">#</th>
@@ -2053,11 +2056,11 @@ export default function NewGoodsIssue({
                     {usesLineWarehouse && (
                       <th className="w-[340px] px-3 py-3">{warehouseLabel}</th>
                     )}
-                    <th className="w-[240px] px-3 py-3">Batch</th>
                     <th className="w-[160px] px-3 py-3">UoM Group</th>
                     <th className="w-[120px] px-3 py-3">Qty</th>
                     <th className="w-[140px] px-3 py-3">Alt UoM</th>
                     <th className="w-[180px] px-3 py-3">Base Qty</th>
+                    <th className="w-[240px] px-3 py-3">Batch</th>
                     <th className="w-[130px] px-3 py-3">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand'}</th>
                     <th className="w-14 px-3 py-3" />
                   </tr>
@@ -2112,65 +2115,6 @@ export default function NewGoodsIssue({
                             </div>
                           </td>
                         )}
-                        <td className="px-3 py-2 align-middle">
-                          {needsBatch ? (
-                            <div className="space-y-1.5">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={!canSearchBatches}
-                                onClick={() => openBatchSelector(line)}
-                                className={`h-auto min-h-9 w-full justify-between border-stone-300 px-2 py-2 text-left font-normal hover:bg-stone-50 ${
-                                  line.batchNumber
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                                    : 'bg-white text-stone-800'
-                                }`}
-                              >
-                                <span className="min-w-0 flex-1">
-                                  {line.batchNumber ? (
-                                    <span className="block text-xs">
-                                      <span className="flex items-center gap-2 font-semibold">
-                                        <PackageCheck className="size-3.5" />
-                                        <span className="truncate">{line.batchNumber}</span>
-                                      </span>
-                                      <span className="mt-1 grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
-                                        <span className={isOver ? 'font-semibold text-red-700' : ''}>
-                                          {activeDocumentIsPosted ? 'Issued' : 'On hand'}:{' '}
-                                          {formatQuantity(activeDocumentIsPosted ? line.baseQty : line.onHandQty)}
-                                        </span>
-                                        <span>{warehouseLabel}: {line.fromWarehouseCode || '-'}</span>
-                                        <span>MFG: {formatDateValue(line.manufacturingDate)}</span>
-                                        <span>EXP: {formatDateValue(line.expiryDate)}</span>
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <span className="truncate">
-                                      {canSearchBatches ? 'Select on-hand batch' : `Select item and ${warehouseLabel.toLowerCase()} first`}
-                                    </span>
-                                  )}
-                                </span>
-                                {isLoadingBatches && (
-                                  <Loader2 className="ml-2 size-4 shrink-0 animate-spin text-stone-500" />
-                                )}
-                              </Button>
-
-                              {isLoadingBatches && (
-                                <div className="flex items-center gap-1.5 text-xs text-stone-500">
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                  <span>Searching on-hand batches for this item and {warehouseLabel.toLowerCase()}.</span>
-                                </div>
-                              )}
-
-                              {!isLoadingBatches && hasSearchedBatches && canSearchBatches && batches.length === 0 && (
-                                <div className="text-xs text-amber-700">
-                                  No on-hand batches found for this item in {line.fromWarehouseCode}.
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
-                          )}
-                        </td>
                         <td className="px-3 py-2 align-middle">
                           <select
                             value={line.baseUom}
@@ -2239,6 +2183,52 @@ export default function NewGoodsIssue({
                             </div>
                           ) : (
                             <span className="text-stone-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          {needsBatch ? (
+                            <div className="space-y-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={!canSearchBatches}
+                                onClick={() => openBatchSelector(line)}
+                                className={`h-9 w-full justify-start border-stone-300 px-2 text-left font-normal hover:bg-stone-50 ${
+                                  line.batchNumber
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                                    : 'bg-white text-stone-800'
+                                }`}
+                              >
+                                {line.batchNumber ? (
+                                  <span className="flex min-w-0 items-center gap-2 font-semibold">
+                                    <PackageCheck className="size-3.5 shrink-0" />
+                                    <span className="truncate">{line.batchNumber}</span>
+                                  </span>
+                                ) : (
+                                  <span className="truncate">
+                                    {canSearchBatches ? 'Select on-hand batch' : `Select item and ${warehouseLabel.toLowerCase()} first`}
+                                  </span>
+                                )}
+                                {isLoadingBatches && (
+                                  <Loader2 className="ml-auto size-4 shrink-0 animate-spin text-stone-500" />
+                                )}
+                              </Button>
+
+                              {isLoadingBatches && (
+                                <div className="flex items-center gap-1.5 text-xs text-stone-500">
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                  <span>Searching on-hand batches for this item and {warehouseLabel.toLowerCase()}.</span>
+                                </div>
+                              )}
+
+                              {!isLoadingBatches && hasSearchedBatches && canSearchBatches && batches.length === 0 && (
+                                <div className="text-xs text-amber-700">
+                                  No on-hand batches found for this item in {line.fromWarehouseCode}.
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
                           )}
                         </td>
                         <td className="px-3 py-3 align-middle">
@@ -2415,7 +2405,7 @@ export default function NewGoodsIssue({
                       {activeDocumentIsPosted
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
                         : usesLineWarehouse
-                          ? 'Choose one or more available batches. Additional selections are added to this building automatically.'
+                          ? `Choose one or more available batches. Additional selections are added to this ${warehouseLabel.toLowerCase()} automatically.`
                           : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
                     </p>
                     {!activeDocumentIsPosted && (

@@ -31,6 +31,7 @@ type NavCommandChild = {
   type?: string
   insert?: boolean
   newDocumentUrl?: string
+  hideFromNavigation?: boolean
 }
 
 type NavCommandGroup = {
@@ -190,7 +191,13 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     NavFolders,
     userPermissions,
     accessProfile,
-  ) as NavCommandFolder[]
+  ).map(folder => ({
+    ...folder,
+    items: folder.items?.map(group => ({
+      ...group,
+      children: group.children.filter(child => !child.hideFromNavigation),
+    })).filter(group => group.children.length > 0),
+  })).filter(folder => Boolean(folder.items?.length)) as NavCommandFolder[]
 
   const canInsertDocument = (child: NavCommandChild) =>
     child.insert === true &&

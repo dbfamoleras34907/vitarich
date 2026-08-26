@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { usePermission } from '@/hooks/usePermission'
 import { getItemById, getItemUomGroups, itemHasInventoryMovement, ItemInsert, ItemRow, ItemUomGroup, updateItem } from '../api'
-import { getItemGroups, ItemGroup } from '../../itemgroups/api'
+import { getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
 
 type ItemForm = {
   item_code: string
@@ -32,6 +32,7 @@ type ItemForm = {
   barcode: string
   uom_group_code: string
   item_group: string
+  sub_item_group_id: string
   fms_group: string
   is_inventory_item: boolean
   is_sales_item: boolean
@@ -77,6 +78,7 @@ const toForm = (item: ItemRow): ItemForm => ({
   barcode: item.barcode || '',
   uom_group_code: item.inventory_uom || '',
   item_group: item.item_group || item.group || '',
+  sub_item_group_id: item.sub_item_group_id == null ? '' : String(item.sub_item_group_id),
   fms_group: item.fms_group || '',
   is_inventory_item: item.is_inventory_item ?? true,
   is_sales_item: item.is_sales_item ?? true,
@@ -102,6 +104,7 @@ const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert 
   unit_measure: selectedUomGroup?.baseUomCode || form.uom_group_code,
   inventory_uom: form.uom_group_code,
   item_group: form.item_group,
+  sub_item_group_id: form.sub_item_group_id ? Number(form.sub_item_group_id) : null,
   fms_group: form.fms_group,
   group: form.item_group,
   is_inventory_item: form.is_inventory_item,
@@ -130,6 +133,7 @@ export default function EditItemPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([])
+  const [subItemGroups, setSubItemGroups] = useState<ItemGroup[]>([])
   const [uomGroups, setUomGroups] = useState<ItemUomGroup[]>([])
   const [form, setForm] = useState<ItemForm | null>(null)
   const [hasInventoryMovement, setHasInventoryMovement] = useState(false)
@@ -139,6 +143,24 @@ export default function EditItemPage() {
   const selectedGroup = useMemo(
     () => itemGroups.find(group => group.code === form?.item_group),
     [form?.item_group, itemGroups],
+  )
+  const availableSubItemGroups = useMemo(
+    () => subItemGroups.filter(group => Number(group.father) === selectedGroup?.id),
+    [selectedGroup?.id, subItemGroups],
+  )
+  const subItemGroupOptions = useMemo(
+    () => [
+      { id: '', label: 'No sub item group' },
+      ...availableSubItemGroups.map(group => ({
+        id: String(group.id),
+        label: `${group.code} - ${group.name}`,
+      })),
+    ],
+    [availableSubItemGroups],
+  )
+  const selectedSubItemGroup = useMemo(
+    () => availableSubItemGroups.find(group => String(group.id) === form?.sub_item_group_id),
+    [availableSubItemGroups, form?.sub_item_group_id],
   )
   const selectedUomGroup = useMemo(
     () => uomGroups.find(group => group.code === form?.uom_group_code),
@@ -163,9 +185,10 @@ export default function EditItemPage() {
 
     const load = async () => {
       try {
-        const [item, groups, uomGroupData] = await Promise.all([
+        const [item, groups, subGroups, uomGroupData] = await Promise.all([
           getItemById(Number(id)),
           getItemGroups(),
+          getSubItemGroups(),
           getItemUomGroups(),
         ])
 
@@ -176,8 +199,17 @@ export default function EditItemPage() {
 
         if (cancelled) return
 
-        setForm(toForm(itemRow))
+        const nextForm = toForm(itemRow)
+        const rootGroup = (groups || []).find(group => group.code === nextForm.item_group)
+        const selectedSubGroupIsValid = (subGroups || []).some(group =>
+          String(group.id) === nextForm.sub_item_group_id &&
+          Number(group.father) === rootGroup?.id,
+        )
+        if (!selectedSubGroupIsValid) nextForm.sub_item_group_id = ''
+
+        setForm(nextForm)
         setItemGroups((groups || []) as ItemGroup[])
+        setSubItemGroups((subGroups || []) as ItemGroup[])
         setUomGroups(uomGroupData)
         setHasInventoryMovement(movementExists)
       } catch (error) {
@@ -332,9 +364,26 @@ export default function EditItemPage() {
                 nameLabel="name"
                 value={form.item_group}
                 list={itemGroups}
-                onChange={value => updateForm('item_group', value)}
+                onChange={value => setForm(current => current ? ({
+                  ...current,
+                  item_group: value,
+                  sub_item_group_id: '',
+                }) : current)}
               />
             </Field>
+            {availableSubItemGroups.length > 0 && (
+              <Field label="Sub Item Group" hint={selectedSubItemGroup?.name}>
+                <SearchableDropdown
+                  codeLabel="id"
+                  nameLabel="label"
+                  list={subItemGroupOptions}
+                  value={form.sub_item_group_id}
+                  placeholder="Select sub item group"
+                  showNameOnly
+                  onChange={value => updateForm('sub_item_group_id', value)}
+                />
+              </Field>
+            )}
             <Field label="FMS Group" required>
               <SelectNative value={form.fms_group} onChange={value => updateForm('fms_group', value)}>
                 <option value="">Select FMS group</option>

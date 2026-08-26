@@ -19,7 +19,6 @@ import { format } from 'date-fns'
 import { CalendarIcon, EllipsisVertical } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { db } from '@/lib/Supabase/supabaseClient'
 import {
   Table,
   TableBody,
@@ -30,6 +29,10 @@ import {
 } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuShortcut, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { formatDateTime } from '@/lib/formatDate'
+import { getWorkspaceActivityTypes, getWorkspaceProjects, getWorkspaceTasksByProject } from '@/lib/data/repositories/workspace'
+import { saveTimesheet } from './api'
+import { toast } from 'sonner'
+import { usePermission } from '@/hooks/usePermission'
 
 type LineRow = {
   id?: number | null
@@ -49,8 +52,7 @@ export default function Layout() {
 
   const [isLoading, setIsLoading] = useState(false)
 
-  const [authUser, setAuthUser] =
-    useState<number | null>(null)
+  const insertDenied = usePermission('/wks/timelines/insert')
 
   const [activityTypes, setActivityTypes] =
     useState<ComboboxItemType[]>([])
@@ -119,12 +121,11 @@ export default function Layout() {
 
   const loadActivityTypes = async () => {
 
-    const { data } =
-      await db.from('activity_types').select('*')
+    const data = await getWorkspaceActivityTypes()
 
     setActivityTypes(
       (data || []).map(a => ({
-        code: a.id,
+        code: String(a.id),
         name: a.name
       }))
     )
@@ -132,34 +133,28 @@ export default function Layout() {
 
   const loadProjects = async () => {
 
-    const { data } =
-      await db.from('projects')
-        .select('*')
-        .eq('void', 1)
+    const data = await getWorkspaceProjects()
 
     setProjectsList(
       (data || []).map(p => ({
-        code: p.id,
+        code: String(p.id),
         name: p.project_name
       }))
     )
   }
 
   const loadTasksByProject = async (
-    projectId: any,
-    rowIndex: any
+    projectId: string,
+    rowIndex: number
   ) => {
 
-    const { data } =
-      await db.from('tasks')
-        .select('*')
-        .eq('project_id', projectId)
+    const data = await getWorkspaceTasksByProject(Number(projectId))
 
     setTasksList(prev => ({
       ...prev,
       [rowIndex]:
         (data || []).map(t => ({
-          code: t.id,
+          code: String(t.id),
           name: t.subject
         }))
     }))
@@ -171,8 +166,6 @@ export default function Layout() {
       await getValue('UserInfoAuthSession')
 
     const id = data?.[0]?.id ?? null
-
-    setAuthUser(id)
 
     setFormValues(prev => ({
       ...prev,
@@ -221,7 +214,10 @@ export default function Layout() {
 
     e.preventDefault()    
      
-    if (!formValues.assigned_to) return
+    if (!formValues.assigned_to) {
+      toast.error('Unable to resolve the timesheet owner')
+      return
+    }
 
     const filteredRows =
       rows.filter(r =>
@@ -230,7 +226,10 @@ export default function Layout() {
         r.activity_type
       )
 
-    if (!filteredRows.length) return
+    if (!filteredRows.length) {
+      toast.error('Add at least one complete timesheet line')
+      return
+    }
 
     setIsLoading(true)
 
@@ -252,20 +251,15 @@ export default function Layout() {
       }))
     }
 
-    const { data, error } =
-      await db.rpc(
-        'rpc_upsert_timesheet_full',
-        { payload }
-      )
-
-    if (error) {
-
+    try {
+      const data = await saveTimesheet(payload)
+      toast.success('Timesheet saved successfully')
+      router.push(`/wks/timelines/${data}`)
+    } catch (error) {
       console.error(error)
+      toast.error('Failed to save timesheet')
       setIsLoading(false)
-      return
     }
-
-    router.push(`/wks/timelines/${data}`)
   }
 
   useEffect(() => {
@@ -298,7 +292,7 @@ export default function Layout() {
 
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || insertDenied}
           >
             Save
           </Button>

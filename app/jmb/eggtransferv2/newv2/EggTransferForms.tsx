@@ -174,6 +174,8 @@ export default function EggTransferForm() {
   const sp = useSearchParams();
 
   const idParam = sp.get("id");
+  const wizardRef = sp.get("ref")?.trim() ?? "";
+  const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
 
   const editId = idParam ? Number(idParam) : null;
 
@@ -218,7 +220,7 @@ export default function EggTransferForm() {
   );
 
   const [form, setForm] = useState<FormState>({
-    ref_no: [],
+    ref_no: isWizard && !isEdit ? [wizardRef] : [],
     farm_source: "",
     trans_date_start: "",
     trans_date_end: "",
@@ -235,7 +237,7 @@ export default function EggTransferForm() {
       setRefLoading(true);
       try {
         const [refs, history] = await Promise.all([
-          listSetterInventoryRefs(),
+          listSetterInventoryRefs(isWizard ? [wizardRef] : []),
           listTransferHistory(),
         ]);
         if (!alive) return;
@@ -251,7 +253,7 @@ export default function EggTransferForm() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isWizard, wizardRef]);
 
   useEffect(() => {
     if (!isEdit || !editId) return;
@@ -436,7 +438,7 @@ export default function EggTransferForm() {
     );
   }
 
-  async function onSave() {
+  async function onSave(continueToNext = false) {
     if (!form.ref_no.length) {
       alert("Egg Reference Number is required.");
       return;
@@ -504,7 +506,11 @@ export default function EggTransferForm() {
         await createEggTransferBatch(payloads);
       }
 
-      router.push("/jmb/eggtransferv2");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=${continueToNext ? "hatcher" : "transfer"}`
+          : "/jmb/eggtransferv2",
+      );
       router.refresh();
     } catch (error: unknown) {
       alert(getErrorMessage(error, "Failed to save."));
@@ -539,7 +545,7 @@ export default function EggTransferForm() {
                   value={form.ref_no}
                   onChange={handleSelectRef}
                   multiple
-                  disabled={saving || refLoading || isEdit}
+                  disabled={saving || refLoading || isEdit || isWizard}
                 />
               </div>
 
@@ -687,8 +693,16 @@ export default function EggTransferForm() {
               <FormActionButtons
                 saving={saving}
                 isEdit={isEdit}
-                cancelPath="/jmb/eggtransferv2"
-                onSave={onSave}
+                disabled={saving}
+                cancelPath={
+                  isWizard
+                    ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=transfer`
+                    : "/jmb/eggtransferv2"
+                }
+                onSave={() => void onSave(false)}
+                onSaveAndContinue={
+                  isWizard ? () => void onSave(true) : undefined
+                }
               />
             </>
           )}

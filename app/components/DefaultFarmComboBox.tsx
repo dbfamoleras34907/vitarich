@@ -9,6 +9,7 @@ type FarmOption = ComboboxItemType & {
     farm_id?: number | string
     farm_code?: string
     farm_name?: string
+    farm_type?: string | null
 }
 
 type Params = {
@@ -17,6 +18,7 @@ type Params = {
     value?: string | number | null
     autoDefault?: boolean
     valueKey?: 'id' | 'code'
+    farmType?: string
 }
 
 export default function DefaultFarmComboBox({
@@ -25,6 +27,7 @@ export default function DefaultFarmComboBox({
     value,
     autoDefault = true,
     valueKey = 'code',
+    farmType,
 }: Params) {
     // commit to build
     const { getValue } = useGlobalContext()
@@ -33,6 +36,10 @@ export default function DefaultFarmComboBox({
     const [farmList, setFarmList] = useState<FarmOption[]>([])
 
     const getFarmId = useCallback((farm?: FarmOption) => farm?.id ?? farm?.farm_id, [])
+    const matchesFarmType = useCallback(
+        (farm: FarmOption) => !farmType || String(farm.farm_type ?? '').trim() === farmType,
+        [farmType],
+    )
 
     const normalizeFarm = useCallback((farm: FarmOption, masterList: FarmOption[] = []): FarmOption | null => {
         const code = farm.code ?? farm.farm_code ?? ''
@@ -57,6 +64,7 @@ export default function DefaultFarmComboBox({
             const farmDB = (getValue('getFarmDB') || []) as FarmOption[]
             const allowedFarms = farmDB
                 .filter((farm) => userFarmCodes.includes(farm.code))
+                .filter(matchesFarmType)
                 .map((farm) => normalizeFarm(farm, farmDB))
                 .filter((farm): farm is FarmOption => Boolean(farm))
 
@@ -68,6 +76,7 @@ export default function DefaultFarmComboBox({
             const farms = await getUserFarms(Number(selectedUser.id))
             const normalizedFarms = Array.isArray(farms)
                 ? (farms as FarmOption[])
+                    .filter(matchesFarmType)
                     .map((farm) => normalizeFarm(farm, farmDB))
                     .filter((farm): farm is FarmOption => Boolean(farm))
                 : []
@@ -76,7 +85,7 @@ export default function DefaultFarmComboBox({
         }
         init()
 
-    }, [getValue, normalizeFarm, selectedUser?.id])
+    }, [getValue, matchesFarmType, normalizeFarm, selectedUser?.id])
 
     const selectedFarm = farmList.find((farm) =>
         valueKey === 'id'

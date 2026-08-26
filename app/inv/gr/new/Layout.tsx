@@ -248,8 +248,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const currentDefaultWarehouse = receipt.defaultWarehouseId == null
       ? null
       : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    // The farm receiving warehouse is an initial fallback only. Once a user
+    // selects a valid warehouse for this receipt, preserve that choice.
     const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
-    const nextDefaultWarehouse = defaultWarehouse ?? currentDefaultWarehouse
+    const nextDefaultWarehouse = currentDefaultWarehouse ?? defaultWarehouse
     const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
     const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
 
@@ -508,6 +510,27 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     if (Number.isFinite(numericGroup) && numericGroup > 0) return numericGroup
 
     return itemGroupIdByCode.get(rawGroup.toUpperCase()) ?? null
+  }
+
+  const getItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    const rawGroup = String(item?.item_group ?? '').trim()
+    if (!item || !rawGroup) return '-'
+
+    const groupId = getItemGroupId(item)
+    const group = groupId == null
+      ? itemGroups.find(candidate => candidate.code.trim().toUpperCase() === rawGroup.toUpperCase())
+      : itemGroups.find(candidate => candidate.id === groupId)
+
+    return group ? `${group.code} - ${group.name}` : rawGroup
+  }
+
+  const getSubItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const subItemGroupId = Number(getSelectedItem(line)?.sub_item_group_id ?? 0)
+    if (!subItemGroupId) return 'No sub group'
+
+    const group = itemGroups.find(candidate => candidate.id === subItemGroupId)
+    return group ? `${group.code} - ${group.name}` : 'Sub group unavailable'
   }
 
   const getBatchRuleForLine = (line: GoodsReceiptLine) => {
@@ -803,7 +826,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   const canEditDraft = receipt.status === 'Draft'
-  const canPostDocument = isPostMode && receipt.status === 'Draft'
+  const canPostDocument = receipt.status === 'Draft'
 
   const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
     const completedLines = receipt.lines.filter(line => line.itemId)
@@ -821,19 +844,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (!receipt.vendor.trim()) {
+    if (posting && !receipt.vendor.trim()) {
       toast('Please enter a vendor.')
       return
     }
-    if (!receipt.drReference.trim()) {
+    if (posting && !receipt.drReference.trim()) {
       toast('Please enter a DR Reference.')
       return
     }
-    if (!receipt.fmsType) {
+    if (posting && !receipt.fmsType) {
       toast('Please select an FMS type.')
       return
     }
-    if (!receipt.farmId) {
+    if (posting && !receipt.farmId) {
       toast('Please select a farm.')
       return
     }
@@ -859,7 +882,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         (requirement.needsExpiryDate && !line.expiryDate)
     })
 
-    if (missingBatchLine) {
+    if (posting && missingBatchLine) {
       toast(`Please enter batch details for ${missingBatchLine.itemCode}.`)
       return
     }
@@ -932,7 +955,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </Button>
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">GR No.</label>
@@ -967,18 +990,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Farm</label>
-            <SearchableCombobox
-              items={farmOptions}
-              value={receipt.farmId == null ? '' : String(receipt.farmId)}
-              onValueChange={selectFarm}
-              showCode={false}
-              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
-              className="w-full"
-            />
-            {!loadingReferences && farms.length === 0 && (
-              <p className="text-xs text-stone-500">No assigned farms available.</p>
-            )}
+            <label className="text-sm font-semibold">FMS Type</label>
+            <select
+              value={receipt.fmsType}
+              disabled
+              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
+            >
+              <option value="">Select FMS type...</option>
+              {FMS_TYPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -992,6 +1016,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 className="pl-9"
               />
             </label>
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-sm font-semibold">Farm</label>
+            <SearchableCombobox
+              items={farmOptions}
+              value={receipt.farmId == null ? '' : String(receipt.farmId)}
+              onValueChange={selectFarm}
+              showCode={false}
+              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
+              className="w-full"
+            />
+            {!loadingReferences && farms.length === 0 && (
+              <p className="text-xs text-stone-500">No assigned farms available.</p>
+            )}
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
@@ -1018,22 +1057,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             {!loadingReferences && Boolean(receipt.farmId) && farmWarehouses.length === 0 && (
               <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
             )}
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
-            <label className="text-sm font-semibold">FMS Type</label>
-            <select
-              value={receipt.fmsType}
-              disabled
-              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
-            >
-              <option value="">Select FMS type...</option>
-              {FMS_TYPE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -1073,18 +1096,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
+              <table className="w-full min-w-[1840px] table-fixed border-collapse text-sm">
                 <thead>
                   <tr>
-                    <th className="w-12 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">#</th>
-                    <th className="w-80 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Item Code &amp; Description</th>
-                    <th className="w-72 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Batch</th>
-                    <th className="w-44 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Base UOM Group</th>
-                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt Qty</th>
-                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt UoM</th>
-                    <th className="w-52 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Conversion UoM</th>
-                    <th className="w-48 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Warehouse</th>
-                    <th className="w-20 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">Action</th>
+                    <th className="w-12 border border-border bg-muted px-2 py-2 text-center font-medium text-foreground">#</th>
+                    <th className="w-80 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Item Code &amp; Description</th>
+                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Group</th>
+                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Sub Group</th>
+                    <th className="w-72 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Batch</th>
+                    <th className="w-44 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Base UOM Group</th>
+                    <th className="w-28 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Alt Qty</th>
+                    <th className="w-28 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Alt UoM</th>
+                    <th className="w-52 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Conversion UoM</th>
+                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Warehouse</th>
+                    <th className="w-20 border border-border bg-muted px-2 py-2 text-center font-medium text-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1092,9 +1117,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     const batchRequirement = getBatchRequirement(line)
 
                     return (
-                      <tr key={line.id} className="even:bg-white odd:bg-emerald-50/40">
-                        <td className="border border-slate-200 bg-slate-50 p-1 text-center align-middle text-slate-600">{index + 1}</td>
-                        <td className="border border-slate-200 p-1 align-middle">
+                      <tr key={line.id} className="even:bg-card odd:bg-muted/50">
+                        <td className="border border-border bg-muted p-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={itemDropdownOptions}
                             codeLabel="item_code"
@@ -1105,21 +1130,31 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             onChange={(value) => selectItem(line, value)}
                           />
                         </td>
-                        <td className="border border-slate-200 p-1 align-top">
+                        <td className="border border-border p-2 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getItemGroupDisplay(line)}>
+                            {getItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border p-2 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getSubItemGroupDisplay(line)}>
+                            {getSubItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border p-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"
                               onClick={() => openBatchDialog(line)}
-                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-white px-3 py-2 text-left text-sm shadow-none transition hover:border-stone-500 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-200"
+                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-left text-sm shadow-none transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/20"
                             >
                               <span className="min-w-0">
-                                <span className="flex items-center gap-2 font-medium text-stone-900">
-                                  <PackageCheck className="size-4 shrink-0 text-stone-500" />
+                                <span className="flex items-center gap-2 font-medium text-foreground">
+                                  <PackageCheck className="size-4 shrink-0 text-muted-foreground" />
                                   <span className="truncate">
                                     {line.batchNumber || 'Batch details'}
                                   </span>
                                 </span>
-                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
+                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
                                   {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
@@ -1127,13 +1162,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                   )}
                                 </span>
                               </span>
-                              <Hash className="size-4 shrink-0 text-stone-400" />
+                              <Hash className="size-4 shrink-0 text-muted-foreground" />
                             </button>
                           ) : (
-                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
+                            <span className="inline-flex h-9 items-center text-muted-foreground">Not required</span>
                           )}
                         </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <select
                           value={line.baseUom}
                           disabled
@@ -1152,7 +1187,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-stone-300 bg-stone-100 px-2 text-sm text-stone-600 outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
+                          className="h-9 w-full rounded-md border border-border bg-muted px-2 text-sm text-muted-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
                         >
                           <option value="">Select UoM group</option>
                           {uomGroups.map(group => (
@@ -1162,7 +1197,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <Input
                           type="number"
                           min="0"
@@ -1176,10 +1211,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               line.baseUom,
                             ),
                           })}
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          className="border-border bg-background shadow-none focus-visible:ring-ring/20"
                         />
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <select
                           value={line.altUom}
                           disabled={!line.baseUom}
@@ -1190,7 +1225,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
+                          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
                         >
                           <option value="">
                             {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
@@ -1205,16 +1240,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="border border-slate-200 p-2 align-middle text-stone-800">
+                      <td className="border border-border p-2 align-middle text-foreground">
                         {line.baseUom && line.altUom ? (
                           <div className="whitespace-nowrap">
                             <span className="font-medium tabular-nums">
                               {line.baseQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
                             </span>{' '}
-                            <span className="text-stone-600">
+                            <span className="text-muted-foreground">
                               {getSelectedGroup(line.baseUom)?.baseUomCode}
                             </span>
-                            <div className="text-xs text-stone-500">
+                            <div className="text-xs text-muted-foreground">
                               {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
                               {line.altUom} ×{' '}
                               {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
@@ -1224,10 +1259,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             </div>
                           </div>
                         ) : (
-                          <span className="text-stone-400">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <SearchableDropdown
                           list={farmWarehouses}
                           codeLabel="whse_code"
@@ -1238,14 +1273,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           onChange={(value) => selectWarehouse(line.id, value)}
                         />
                       </td>
-                      <td className="border border-slate-200 p-1 text-center align-middle">
+                      <td className="border border-border p-1 text-center align-middle">
                         <button
                           type="button"
                           onClick={() => setReceipt(current => current ? {
                             ...current,
                             lines: current.lines.filter(candidate => candidate.id !== line.id),
                           } : current)}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                          className="inline-flex size-8 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive/20"
                           aria-label={`Delete line ${index + 1}`}
                         >
                           <Trash2 className="size-4" />

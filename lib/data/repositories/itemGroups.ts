@@ -11,7 +11,7 @@ export type ItemGroup = {
   updated_at?: string | null
 }
 
-export type NewSubItemGroup = Pick<ItemGroup, 'code' | 'name' | 'remarks'>
+export type NewSubItemGroup = Pick<ItemGroup, 'name' | 'remarks'>
 
 export async function getRootItemGroups() {
   const { data, error } = await db
@@ -56,13 +56,17 @@ export async function getItemGroupById(id: number) {
   return data as ItemGroup
 }
 
-export async function getSubItemGroups(fatherId: number) {
-  const { data, error } = await db
+export async function getSubItemGroups(fatherId?: number) {
+  let query = db
     .from('item_groups')
     .select('*')
-    .eq('father', fatherId)
+    .not('father', 'is', null)
     .eq('void', '1')
     .order('created_at', { ascending: true })
+
+  if (fatherId != null) query = query.eq('father', fatherId)
+
+  const { data, error } = await query
 
   if (error) throw error
 
@@ -70,55 +74,63 @@ export async function getSubItemGroups(fatherId: number) {
 }
 
 export async function addSubItemGroup(fatherId: number, payload: NewSubItemGroup) {
-  const { data, error } = await db
-    .from('item_groups')
-    .insert({
-      code: payload.code,
-      name: payload.name,
-      remarks: payload.remarks || null,
-      father: fatherId,
-      void: '1',
-    })
-    .select()
-    .single()
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
 
-  if (error) throw error
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  return data as ItemGroup
+  const response = await fetch('/api/a_dean/itemgroups/sub-item-groups', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ fatherId, ...payload }),
+  })
+
+  const result = await response.json() as { data?: ItemGroup; error?: string }
+  if (!response.ok || !result.data) {
+    throw new Error(result.error || 'Unable to add sub item group.')
+  }
+
+  return result.data
 }
 
 export async function updateItemGroup(
   id: number,
-  payload: Pick<ItemGroup, 'name' | 'remarks'>,
+  payload: Pick<ItemGroup, 'code' | 'name' | 'remarks'>,
 ) {
-  const { data, error } = await db
-    .from('item_groups')
-    .update({
-      name: payload.name,
-      remarks: payload.remarks || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single()
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
 
-  if (error) throw error
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  return data as ItemGroup
+  const response = await fetch('/api/a_dean/itemgroups/update', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id, ...payload }),
+  })
+
+  const result = await response.json() as { data?: ItemGroup; error?: string }
+  if (!response.ok || !result.data) {
+    throw new Error(result.error || 'Unable to update item group.')
+  }
+
+  return result.data
 }
 
 export async function voidItemGroup(id: number) {
-  const { data, error } = await db
+  const { error } = await db
     .from('item_groups')
     .update({
       void: '0',
-      updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .select()
-    .single()
 
   if (error) throw error
-
-  return data as ItemGroup
 }

@@ -8,11 +8,14 @@ import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { getProjects } from './api'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
   const route = useRouter()
   const [loading, setLoading] = useState(false)
   const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
+  const insertDenied = usePermission('/wks/projects/insert')
+  const viewDenied = usePermission('/wks/projects/view')
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -64,6 +67,7 @@ export default function Layout() {
         <div>
           <Button size="sm"
 
+            disabled={insertDenied}
             onClick={() => route.push("/wks/projects/new")}>
             <Plus /> New Project
           </Button>
@@ -85,6 +89,7 @@ export default function Layout() {
                   <Button
                     size={"sm"}
                     className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
+                    disabled={viewDenied}
                     onClick={() => {
                       route.push(`/wks/projects/${row.id}`)
                     }}
@@ -110,4 +115,4 @@ export default function Layout() {
 
     </div>
   )
-} 
+}

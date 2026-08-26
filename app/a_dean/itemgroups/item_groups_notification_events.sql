@@ -42,6 +42,9 @@ begin
     return new;
   end if;
 
+  if new.code is distinct from old.code then
+    v_changed_fields := array_append(v_changed_fields, 'code');
+  end if;
   if new.name is distinct from old.name then
     v_changed_fields := array_append(v_changed_fields, 'name');
   end if;
@@ -83,7 +86,7 @@ $$;
 
 drop trigger if exists item_groups_enqueue_event on public.item_groups;
 create trigger item_groups_enqueue_event
-after update of name, remarks, father, void
+after update of code, name, remarks, father, void
 on public.item_groups
 for each row
 execute function public.enqueue_item_group_event();

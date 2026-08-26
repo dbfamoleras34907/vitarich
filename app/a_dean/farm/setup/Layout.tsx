@@ -49,6 +49,7 @@ type FieldConfig = {
 type WarehouseDraft = {
   clientKey: string
   id?: number | null
+  hasAutomaticName?: boolean
   data: FormDataMap
 }
 
@@ -64,6 +65,17 @@ const WAREHOUSE_TYPES = [
 ]
 
 const isPenDraft = (draft: WarehouseDraft) => draft.data.warehouse_type === 'Pen'
+
+const nextDefaultNameNumber = (drafts: WarehouseDraft[], prefix: string) => {
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const defaultNamePattern = new RegExp(`^${escapedPrefix} (\\d+)$`)
+  const highestDefaultNumber = drafts.reduce((highest, draft) => {
+    const match = compact(draft.data.whse_name).match(defaultNamePattern)
+    return match ? Math.max(highest, Number(match[1])) : highest
+  }, 0)
+
+  return Math.max(drafts.length, highestDefaultNumber) + 1
+}
 
 const STEPS = [
   {
@@ -424,14 +436,12 @@ export default function Layout() {
   )
 
   const addWarehouseDraft = () => {
-    const baseName = farmData.name ? `${farmData.name} Main` : 'Main Farm Warehouse'
-
     setWarehouseDrafts((prev) => [
       ...prev,
       {
         clientKey: `warehouse-${Date.now()}`,
         data: {
-          whse_name: baseName,
+          whse_name: '',
           fms_type: selectedFarmType?.warehouseType ?? 'Broiler',
           warehouse_type: 'Warehouse',
           addr1: addressData.address ?? '',
@@ -444,22 +454,25 @@ export default function Layout() {
   }
 
   const addPenDraft = (buildingClientKey: string) => {
-    const penCount = warehouseDrafts.filter(
-      (draft) => isPenDraft(draft) && draft.data.father_client_key === buildingClientKey
-    ).length
+    setWarehouseDrafts((prev) => {
+      const buildingPens = prev.filter(
+        (draft) => isPenDraft(draft) && draft.data.father_client_key === buildingClientKey
+      )
+      const penNumber = nextDefaultNameNumber(buildingPens, 'Pen')
 
-    setWarehouseDrafts((prev) => [
-      ...prev,
-      {
-        clientKey: `pen-${Date.now()}`,
-        data: {
-          whse_name: `Pen ${penCount + 1}`,
-          fms_type: selectedFarmType?.warehouseType ?? 'Broiler',
-          warehouse_type: 'Pen',
-          father_client_key: buildingClientKey,
+      return [
+        ...prev,
+        {
+          clientKey: `pen-${Date.now()}`,
+          data: {
+            whse_name: `Pen ${penNumber}`,
+            fms_type: selectedFarmType?.warehouseType ?? 'Broiler',
+            warehouse_type: 'Pen',
+            father_client_key: buildingClientKey,
+          },
         },
-      },
-    ])
+      ]
+    })
   }
 
   const updateFarm = (code: string, value: string) => {
@@ -475,9 +488,38 @@ export default function Layout() {
 
   const updateWarehouse = (clientKey: string, code: string, value: string) => {
     setWarehouseDrafts((prev) =>
-      prev.map((draft) =>
-        draft.clientKey === clientKey ? { ...draft, data: { ...draft.data, [code]: value } } : draft
-      )
+      prev.map((draft) => {
+        if (draft.clientKey !== clientKey) return draft
+
+        if (code === 'warehouse_type') {
+          if (value === 'Building' && !compact(draft.data.whse_name)) {
+            const buildings = prev.filter(
+              (item) => item.clientKey !== clientKey && item.data.warehouse_type === 'Building'
+            )
+            const buildingNumber = nextDefaultNameNumber(buildings, 'Building')
+
+            return {
+              ...draft,
+              hasAutomaticName: true,
+              data: { ...draft.data, warehouse_type: value, whse_name: `Building ${buildingNumber}` },
+            }
+          }
+
+          if (value === 'Warehouse' && draft.hasAutomaticName) {
+            return {
+              ...draft,
+              hasAutomaticName: false,
+              data: { ...draft.data, warehouse_type: value, whse_name: '' },
+            }
+          }
+        }
+
+        return {
+          ...draft,
+          hasAutomaticName: code === 'whse_name' ? false : draft.hasAutomaticName,
+          data: { ...draft.data, [code]: value },
+        }
+      })
     )
   }
 

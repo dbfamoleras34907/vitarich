@@ -23,6 +23,18 @@ export { getNavigationPermissionTitle } from "./navigationPermissions"
 
 type FilteredNavFolder = NavFolder & { items: NavGroup[] }
 
+type SidebarAccessProfile = {
+  user_type?: number | null
+  fms_type?: string | null
+  default_farm?: string | number | null
+}
+
+type SidebarFarm = {
+  id?: string | number | null
+  code?: string | null
+  name?: string | null
+}
+
 const FMS_FOLDER_TITLES = new Set(["broiler", "hatchery", "breeder"])
 
 const ACTIVE_NAV_ITEM_CLASS =
@@ -58,7 +70,25 @@ export function AppSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
   const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
-  const [accessProfile, setAccessProfile] = useState<{ user_type?: number | null; fms_type?: string | null } | null>(null)
+  const [accessProfile, setAccessProfile] = useState<SidebarAccessProfile | null>(null)
+
+  const userInfo = getValue("UserInfoAuthSession")?.[0] as SidebarAccessProfile | undefined
+  const farmList = (getValue("getFarmDB") ?? []) as SidebarFarm[]
+  const rawFmsType = String(accessProfile?.fms_type ?? userInfo?.fms_type ?? "").trim().toLowerCase()
+  const fmsTypeLabel = rawFmsType === "broiler"
+    ? "Broiler"
+    : rawFmsType === "breeder"
+      ? "Breeder"
+      : rawFmsType === "hatchery" || rawFmsType === "hatcher"
+        ? "Hatchery"
+        : null
+  const sidebarTitle = fmsTypeLabel ? `Vita ${fmsTypeLabel}` : "Vita FMS"
+  const defaultFarmReference = getValue("DefaultFarmId") ?? accessProfile?.default_farm ?? userInfo?.default_farm
+  const defaultFarm = farmList.find(farm =>
+    String(farm.id ?? "") === String(defaultFarmReference ?? "") ||
+    String(farm.code ?? "").trim().toLowerCase() === String(defaultFarmReference ?? "").trim().toLowerCase(),
+  )
+  const defaultFarmName = String(defaultFarm?.name ?? "").trim() || "Default Farm"
 
   const filteredNavFolders = useMemo(
     () => filterNavFolders(NavFolders, userPermissions || [], accessProfile),
@@ -131,7 +161,7 @@ export function AppSidebar() {
         Module groups
       </div>
 
-      <div className="mt-2 flex flex-wrap items-start gap-2">
+      <div className="mt-2 grid grid-cols-2 gap-2">
         {filteredNavFolders.map(folder => {
           const Icon = folder.icon
           const isSelected = activeFolderId === folder.id
@@ -142,7 +172,7 @@ export function AppSidebar() {
               key={folder.id}
               type="button"
               onClick={() => setActiveFolderId(current => current === folder.id ? null : folder.id)}
-              className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${isSelected
+              className={`group flex w-full min-w-0 items-center justify-start gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${isSelected
                 ? "border-primary bg-primary text-primary-foreground"
                 : hasActiveRoute
                   ? "border-primary/40 bg-primary/5 text-sidebar-foreground"
@@ -157,74 +187,76 @@ export function AppSidebar() {
         })}
       </div>
 
-      {activeFolder ? (
-        <div className="mt-6">
-          <div className="mb-2 flex items-center justify-between px-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-              {activeFolder.title}
+      {
+        activeFolder ? (
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+                {activeFolder.title}
+              </div>
+              <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] text-sidebar-foreground/60">
+                {activeFolder.items?.reduce((count, group) => count + group.children.filter(child => child.url !== "#" && !child.hideFromNavigation).length, 0) ?? 0} modules
+              </span>
             </div>
-            <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] text-sidebar-foreground/60">
-              {activeFolder.items?.reduce((count, group) => count + group.children.filter(child => child.url !== "#").length, 0) ?? 0} modules
-            </span>
-          </div>
 
-          <div className="space-y-4">
-            {activeFolder.items?.map(group => {
-              const visibleChildren = group.children.filter(child => child.url && child.url !== "#")
-              if (!visibleChildren.length) return null
+            <div className="space-y-4">
+              {activeFolder.items?.map(group => {
+                const visibleChildren = group.children.filter(child => child.url && child.url !== "#" && !child.hideFromNavigation)
+                if (!visibleChildren.length) return null
 
-              return (
-                <div key={`${activeFolder.id}-${group.group}`}>
-                  {(activeFolder.items?.length ?? 0) > 1 && (
-                    <div className="mb-1 px-3 text-[11px] font-medium text-sidebar-foreground/45">
-                      {group.group}
+                return (
+                  <div key={`${activeFolder.id}-${group.group}`}>
+                    {(activeFolder.items?.length ?? 0) > 1 && (
+                      <div className="mb-1 px-3 text-[11px] font-medium text-sidebar-foreground/45">
+                        {group.group}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      {visibleChildren.map(child => {
+                        const Icon = getModuleIcon(child.title, child.type)
+                        const isCurrentRoute = routeIsActive(pathname, child.url)
+
+                        return (
+                          <div
+                            key={`${activeFolder.id}-${group.group}-${child.title}`}
+                            className="group/route relative"
+                          >
+                            <Button
+                              variant="ghost"
+                              className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
+                              onClick={() => goTo(child.url)}
+                            >
+                              <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
+                              <span className="truncate">{child.title}</span>
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => openInNewWindow(child.url)}
+                              className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
+                              aria-label={`Open ${child.title} in a new window`}
+                              title="Open in new window"
+                            >
+                              <ExternalLink className="size-3.5" />
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )}
-                  <div className="space-y-1">
-                    {visibleChildren.map(child => {
-                      const Icon = getModuleIcon(child.title, child.type)
-                      const isCurrentRoute = routeIsActive(pathname, child.url)
-
-                      return (
-                        <div
-                          key={`${activeFolder.id}-${group.group}-${child.title}`}
-                          className="group/route relative"
-                        >
-                          <Button
-                            variant="ghost"
-                            className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
-                            onClick={() => goTo(child.url)}
-                          >
-                            <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
-                            <span className="truncate">{child.title}</span>
-                          </Button>
-                          <button
-                            type="button"
-                            onClick={() => openInNewWindow(child.url)}
-                            className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
-                            aria-label={`Open ${child.title} in a new window`}
-                            title="Open in new window"
-                          >
-                            <ExternalLink className="size-3.5" />
-                          </button>
-                        </div>
-                      )
-                    })}
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="mt-6 rounded-xl border border-dashed border-sidebar-border p-5 text-center">
-          <Boxes className="mx-auto mb-2 size-6 text-sidebar-foreground/45" />
-          <p className="text-sm font-medium">Choose a group</p>
-          <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">
-            The modules in the selected group will appear here.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="mt-6 rounded-xl border border-dashed border-sidebar-border p-5 text-center">
+            <Boxes className="mx-auto mb-2 size-6 text-sidebar-foreground/45" />
+            <p className="text-sm font-medium">Choose a group</p>
+            <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">
+              The modules in the selected group will appear here.
+            </p>
+          </div>
+        )
+      }
     </>
   )
   // exclude appSideBar from this pages
@@ -261,8 +293,13 @@ export function AppSidebar() {
                   V
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-foreground">Vita FMS</div>
-                  <div className="truncate text-xs text-muted-foreground">Operations</div>
+                  <div className="truncate text-sm font-semibold text-foreground">{sidebarTitle}</div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="truncate text-xs text-muted-foreground">{defaultFarmName}</div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Default Farm</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               <GlobalSearch collapsed={false} />
@@ -300,12 +337,17 @@ export function AppSidebar() {
                 V
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-foreground">Vita FMS</div>
-                <div className="truncate text-xs text-muted-foreground">Operations</div>
+                <div className="truncate text-sm font-semibold text-foreground">{sidebarTitle}</div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="truncate text-xs text-muted-foreground">{defaultFarmName}</div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Default Farm</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           )}
-        <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
+          <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
             <Menu className="size-5" />
           </Button>
         </div>

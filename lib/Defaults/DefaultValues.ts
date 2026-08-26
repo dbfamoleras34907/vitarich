@@ -552,6 +552,18 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 78,
+            type: "Module",
+            title: "Hatchery Process Wizard",
+            url: "/wiz/hatchery-process-wizard",
+            view: true,
+            void: false,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
             id: 14,
             type: "Module",
             title: "Egg Storage",
@@ -720,7 +732,7 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Item Master Data",
             url: "/a_dean/items",
-            view: false,
+            view: true,
             insert: true,
             edit: true,
             approval: false,
@@ -899,61 +911,66 @@ export const NavFolders: NavFolder[] = [
     ],
   },
 
-  // {
-  //   id: 4,
-  //   title: "Workspace",
-  //   url: "#",
-  //   icon: FolderTree,
-  //   view: false,
-  //   insert: false,
-  //   edit: false,
-  //   items: [
-  //     {
-  //       group: "Projects",
-  //       children: [
-  //         {
-  //           id: 33,
-  //           type: "Module",
-  //           title: "Dashboard",
-  //           url: "/wks/dashboard",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-
-  //         {
-  //           id: 34,
-  //           type: "Module",
-  //           title: "Projects",
-  //           url: "/wks/projects",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-
-  //         {
-  //           id: 35,
-  //           type: "Module",
-  //           title: "Task",
-  //           url: "/wks/tasks",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-
-  //         {
-  //           id: 36,
-  //           type: "Module",
-  //           title: "Timesheet",
-  //           url: "/wks/timelines",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-  //       ],
-  //     },
-  //   ],
-  // },
+  {
+    id: 4,
+    title: "Workspace",
+    url: "#",
+    icon: FolderTree,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    view: false,
+    insert: false,
+    edit: false,
+    items: [
+      {
+        group: "Projects",
+        children: [
+          {
+            id: 33,
+            type: "Module",
+            title: "Dashboard",
+            url: "/wks/dashboard",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+          {
+            id: 34,
+            type: "Module",
+            title: "Projects",
+            url: "/wks/projects",
+            newDocumentUrl: "/wks/projects/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 35,
+            type: "Module",
+            title: "Task",
+            url: "/wks/tasks",
+            newDocumentUrl: "/wks/tasks/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 36,
+            type: "Module",
+            title: "Timesheet",
+            url: "/wks/timelines",
+            newDocumentUrl: "/wks/timelines/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: true,
+          },
+        ],
+      },
+    ],
+  },
 
   {
     id: 6,
@@ -1199,6 +1216,18 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: false,
             edit: true,
+            approval: false,
+          },
+
+          {
+            id: 75,
+            type: "Report",
+            title: "Cycle Report",
+            url: "/brd/cycle-master/report",
+            hideFromNavigation: true,
+            view: true,
+            insert: false,
+            edit: false,
             approval: false,
           },
 

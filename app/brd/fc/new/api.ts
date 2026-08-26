@@ -1,6 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
-import { actualAdgColumnIndex } from "./flockCardGridConfig";
+import { actualAdgColumnIndex, feedTypeColumnIndex } from "./flockCardGridConfig";
 
 export type FeedBatchOnHand = {
   id: string;
@@ -250,6 +250,7 @@ function normalizeMortalityAllocations(line: FlockCardLinePayload) {
 function getLineExtra(line: FlockCardLinePayload) {
   const mortalityAllocations = normalizeMortalityAllocations(line);
   const actualAdg = line.values[actualAdgColumnIndex]?.trim() || null;
+  const feedTypeId = Number(line.values[feedTypeColumnIndex]);
 
   return {
     ...(mortalityAllocations.length > 0
@@ -267,6 +268,7 @@ function getLineExtra(line: FlockCardLinePayload) {
       }
       : {}),
     ...(actualAdg ? { actualAdg } : {}),
+    ...(Number.isFinite(feedTypeId) && feedTypeId > 0 ? { feedTypeId } : {}),
   };
 }
 
@@ -495,6 +497,7 @@ async function saveFlockCardLineFeedIntake(lineId: number, line: FlockCardLinePa
     p_feed_bird: parseNumberOrNull(line.values[9]),
     p_feed_guideline: parseNumberOrNull(line.values[10]),
     p_feed_batch_text: line.values[11]?.trim() || null,
+    p_feed_type_id: Number(line.values[feedTypeColumnIndex]),
     p_allocations: line.allocations.map(allocation => ({
       itemId: allocation.itemId ?? null,
       itemCode: allocation.itemCode,
@@ -795,7 +798,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           line.skin_l,
           String(rawExtra.actualAdg ?? rawExtra.addAlw ?? ""),
           null,
-          null,
+          String(rawExtra.feedTypeId ?? ""),
           null,
         ].map((value, columnIndex) =>
           columnIndex === actualAdgColumnIndex

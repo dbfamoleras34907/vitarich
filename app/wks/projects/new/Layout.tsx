@@ -14,6 +14,8 @@ import React, { useEffect, useState } from 'react'
 import { saveProject, SaveProjectPayload } from './api'
 import EggHenLoaderIcon from '@/app/components/EggHenLoaderIcon'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
@@ -21,6 +23,7 @@ export default function Layout() {
   const [isLoading, setIsLoading] = useState(false)
 
   const router = useRouter()
+  const insertDenied = usePermission('/wks/projects/insert')
   const [formValues, setFormValues] = useState<Partial<SaveProjectPayload>>({})
   const components = [
     { name: "project_name", label: "Project Name", type: "text", required: true, placeholder: "Enter project name" },
@@ -73,8 +76,11 @@ export default function Layout() {
 
   const getActiveUsers = async () => {
     try {
-      const data = await getValue("activeUsers");
-      setactiveUsers(data);
+      const data = getValue("activeUsers");
+      setactiveUsers((Array.isArray(data) ? data : []).map((user: { code: string | number; name: string }) => ({
+        code: String(user.code),
+        name: String(user.name),
+      })))
     } catch (error) {
       console.error("Error fetching active users:", error);
     }
@@ -82,16 +88,17 @@ export default function Layout() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    setIsLoading(true)
     if (
       !formValues.project_name ||
       !formValues.start_date ||
       !formValues.end_date ||
       !formValues.project_type
     ) {
-      console.error("Missing required fields")
+      toast.error("Please fill all required fields")
       return
     }
+
+    setIsLoading(true)
 
     const payload: SaveProjectPayload = {
       id: null,
@@ -99,17 +106,17 @@ export default function Layout() {
       description: formValues.description,
       start_date: formValues.start_date,
       end_date: formValues.end_date,
-      project_manager: formValues.project_manager,
+      project_manager: formValues.project_manager ? Number(formValues.project_manager) : null,
       project_type: formValues.project_type,
-      project_members: formValues.project_members ?? []
+      project_members: (formValues.project_members ?? []).map(Number)
     }
-    console.log({ payload })
     try {
       const id = await saveProject(payload)
-      console.log("Saved project:", id)
+      toast.success("Project created successfully")
       router.push(`/wks/projects/${id}`)
     } catch (err) {
       console.error(err)
+      toast.error("Failed to create project")
     }
     setIsLoading(false)
   }
@@ -137,7 +144,7 @@ export default function Layout() {
           />
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || insertDenied}
           >
             {!isLoading ?
               <Plus className='mr-2 h-4 w-4' /> :

@@ -14,7 +14,7 @@ import { DataRecordApproval, DraftItem, Farms } from '@/lib/types'
 import { today } from '@/lib/Defaults/DefaultValues'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import { createReceiving, getUserInfo } from './api'
+import { createReceiving } from './api'
 import { Plus, Save, CalendarDays } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
@@ -176,31 +176,6 @@ export default function ApprovalDecisionForm() {
     //   if (!header) return
     //   getDefaultFarm()
     // }, [header, getValue])
-    const getDefaultFarm = async () => {
-        const defaultFarmId = getValue("DefaultFarmId")
-
-        if (defaultFarmId) {
-            setHeader(h =>
-                h && !h.delivered_to
-                    ? { ...h, delivered_to: defaultFarmId }
-                    : h
-            )
-            return
-        }
-
-        const data = await getUserInfo()
-
-        if (data?.length) {
-            setHeader(h =>
-                h && !h.delivered_to
-                    ? { ...h, delivered_to: data[0].id }
-                    : h
-            )
-        }
-    }
-    useEffect(() => {
-        getDefaultFarm()
-    }, [])
     useEffect(() => {
         refreshSessionx(router)
     }, [])
@@ -583,6 +558,7 @@ export default function ApprovalDecisionForm() {
                             <DefaultFarmComboBox
                                 value={header?.delivered_to ?? undefined}
                                 valueKey="id"
+                                farmType="HA"
                                 setValue={(val) => {
                                     const deliveredTo = val === '' ? null : Number(val)
 

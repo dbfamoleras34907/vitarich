@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Save, Pencil, Loader2, X } from "lucide-react"
+import { ArrowRight, Save, Pencil, Loader2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
   disabled?: boolean
   cancelPath: string
   onSave: () => void
+  onSaveAndContinue?: () => void
 }
 
 export default function FormActionButtons({
@@ -18,6 +19,7 @@ export default function FormActionButtons({
   disabled = false,
   cancelPath,
   onSave,
+  onSaveAndContinue,
 }: Props) {
   const router = useRouter()
 
@@ -41,6 +43,22 @@ export default function FormActionButtons({
           </>
         )}
       </Button>
+      {onSaveAndContinue ? (
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onSaveAndContinue}
+          disabled={disabled}
+          className="h-full w-full md:h-auto md:w-auto"
+        >
+          {saving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowRight className="mr-2 h-4 w-4" />
+          )}
+          {isEdit ? "Update & Continue" : "Save & Continue"}
+        </Button>
+      ) : null}
       <div className="mr-8 md:mr-0"> 
       </div>
       <Button

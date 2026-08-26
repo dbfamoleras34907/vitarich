@@ -20,6 +20,7 @@ import { toast } from 'sonner'
 import { getTaskType } from '../api'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { usePermission } from '@/hooks/usePermission'
 
 
 
@@ -47,7 +48,8 @@ export default function NewTask() {
 
   const [tasksList, setTasksList] = useState<ComboboxItemType[]>([])
   const [activeUsers, setActiveUsers] = useState<ComboboxItemType[]>([])
-  const [authUser, setauthUser] = useState<ComboboxItemType[]>([])
+  const [authUser, setauthUser] = useState<number | null>(null)
+  const insertDenied = usePermission('/wks/tasks/insert')
   const getRandomColor = () =>
     `#${Math.floor(Math.random() * 16777215)
       .toString(16)
@@ -132,13 +134,13 @@ export default function NewTask() {
         list: taskTypes
       },
 
-      // {
-      //   name: 'parent_task',
-      //   label: 'Parent Task',
-      //   type: 'search',
-      //   multiselect: false,
-      //   list: tasksList
-      // },
+      {
+        name: 'parent_task',
+        label: 'Parent Task',
+        type: 'search',
+        multiselect: false,
+        list: tasksList
+      },
 
       {
         name: 'color',
@@ -176,25 +178,24 @@ export default function NewTask() {
 
     const payload: SavetaskPayload = {
       id: null,
-      project_id: formValues.project_id,
+      project_id: Number(formValues.project_id),
       subject: formValues.subject,
       issue: formValues.issue,
       priority: formValues.priority as
         | "low"
         | "mid"
         | "high",
-      task_type: formValues.task_type,
-      parent_task:
-        formValues.parent_task,
+      task_type: Number(formValues.task_type),
+      parent_task: formValues.parent_task ? Number(formValues.parent_task) : null,
       color: formValues.color,
-      assigned_to: formValues.assigned_to
+      assigned_to: Number(formValues.assigned_to)
     }
 
     // console.log('Prepared payload for saving:', payload)
     // console.log(formValues)
     // return
     try {
-      const id = await savetask(payload)
+      await savetask(payload)
       toast.success('Task saved successfully')
 
       // clear fields depending on save mode
@@ -238,31 +239,29 @@ export default function NewTask() {
 
   const getTaskTypesList = async () => {
     const data = await getTaskType()
-    setTaskTypes((data || []).map((t: any) => ({
-      code: t.id,
+    setTaskTypes((data || []).map((t) => ({
+      code: String(t.id),
       name: t.name
     })))
   }
 
   const getActiveUsers = async () => {
     const data = await getValue("activeUsers")
-    console.log({ data })
     setActiveUsers((data || []).map((u: any) => ({
-      code: u.code,
-      name: u.name
+      code: String(u.code),
+      name: String(u.name)
     })))
   }
 
   const getAuthUser = async () => {
     const data = await getValue("UserInfoAuthSession")
-    console.log({ data })
     setauthUser(data[0].id)
   }
   const getProjectList = async () => {
     const data = await getProjects()
     // console.log({ data })
-    setProjectsList((data || []).map((p: any) => ({
-      code: p.id,
+    setProjectsList((data || []).map((p) => ({
+      code: String(p.id),
       name: p.project_name
     })))
   }
@@ -273,8 +272,8 @@ export default function NewTask() {
     const data = await getTaskinNewTaskAPi(formValues.project_id)
 
     setTasksList(
-      (data || []).map((t: any) => ({
-        code: t.id,
+      (data || []).map((t) => ({
+        code: String(t.id),
         name: t.subject
       }))
     )
@@ -317,7 +316,7 @@ export default function NewTask() {
           <ButtonGroup className='border border-white shadow rounded-2xl'>
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || insertDenied}
             >
               {
                 isBatchSaved ? 'Save & Continue' : 'Save'
@@ -331,7 +330,7 @@ export default function NewTask() {
                 <Button
                   type="button"
                   className='w-6'
-                  disabled={isLoading}
+                  disabled={isLoading || insertDenied}
                 >
                   <ChevronDown />
                 </Button>

@@ -8,9 +8,14 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/components/ui/UserFarmSearchCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
+import SearchableDropdown from "@/lib/SearchableDropdown";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { ModuleSettingsHeader, SettingRow, SettingsCategory } from "@/components/settings/ModuleSettingsLayout";
+import {
+  getRootItemGroups,
+  type ItemGroup,
+} from "@/lib/data/repositories/itemGroups";
 import {
   getFlockCardSettings,
   saveFlockCardSettings,
@@ -35,6 +40,8 @@ export default function FlockCardSettingsLayout() {
   const [settings, setSettings] = useState<FlockCardSettings | null>(null);
   const [selectedFarm, setSelectedFarm] = useState<UserFarm | null>(null);
   const [selectedFarmId, setSelectedFarmId] = useState("");
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+  const [feedGroupId, setFeedGroupId] = useState("");
   const [allowAdvancePosting, setAllowAdvancePosting] = useState(false);
   const [autoFeedBatchSelection, setAutoFeedBatchSelection] = useState(false);
   const [autoFeedBatchSelectionMode, setAutoFeedBatchSelectionMode] =
@@ -56,6 +63,7 @@ export default function FlockCardSettingsLayout() {
   const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
   const currentSnapshot = JSON.stringify({
     farmId: activeFarmId,
+    feedGroupId,
     allowAdvancePosting,
     autoFeedBatchSelection,
     autoFeedBatchSelectionMode,
@@ -64,14 +72,34 @@ export default function FlockCardSettingsLayout() {
   const isDirty = Boolean(savedSnapshot) && currentSnapshot !== savedSnapshot;
 
   const canSave = useMemo(
-    () => !saving && !loading && !canEdit && Boolean(activeFarmId),
-    [activeFarmId, canEdit, loading, saving],
+    () => !saving && !loading && !canEdit && Boolean(activeFarmId) && Boolean(feedGroupId),
+    [activeFarmId, canEdit, feedGroupId, loading, saving],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getRootItemGroups()
+      .then((groups) => {
+        if (!cancelled) setItemGroups(groups);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setItemGroups([]);
+          toast("Error: " + errorMessage(error, "Unable to load item groups"));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchSettings = useCallback(async () => {
     const farmId = Number(activeFarmId);
     if (!Number.isFinite(farmId) || farmId <= 0) {
       setSettings(null);
+      setFeedGroupId("");
       setAllowAdvancePosting(false);
       setAutoFeedBatchSelection(false);
       setAutoFeedBatchSelectionMode("USER_SELECTED");
@@ -86,12 +114,14 @@ export default function FlockCardSettingsLayout() {
       const nextSettings = await getFlockCardSettings(farmId);
       setSettings(nextSettings);
       setValue("FlockCardSettings", nextSettings);
+      setFeedGroupId(nextSettings?.feed_group_id ? String(nextSettings.feed_group_id) : "");
       setAllowAdvancePosting(Boolean(nextSettings?.allow_advance_posting));
       setAutoFeedBatchSelection(Boolean(nextSettings?.auto_feed_batch_selection));
       setAutoFeedBatchSelectionMode(nextSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED");
       setAutoMortalityRateBatchSelection(Boolean(nextSettings?.auto_mortality_rate_batch_selection));
       setSavedSnapshot(JSON.stringify({
         farmId: activeFarmId,
+        feedGroupId: nextSettings?.feed_group_id ? String(nextSettings.feed_group_id) : "",
         allowAdvancePosting: Boolean(nextSettings?.allow_advance_posting),
         autoFeedBatchSelection: Boolean(nextSettings?.auto_feed_batch_selection),
         autoFeedBatchSelectionMode: nextSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED",
@@ -100,6 +130,7 @@ export default function FlockCardSettingsLayout() {
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to load Flock Card settings"));
       setSettings(null);
+      setFeedGroupId("");
       setAllowAdvancePosting(false);
       setAutoFeedBatchSelection(false);
       setAutoFeedBatchSelectionMode("USER_SELECTED");
@@ -136,6 +167,11 @@ export default function FlockCardSettingsLayout() {
       return;
     }
 
+    if (!feedGroupId) {
+      toast("Please select a feed group.");
+      return;
+    }
+
     if (!canSave) {
       toast("You do not have permission to edit this setting.");
       return;
@@ -148,6 +184,7 @@ export default function FlockCardSettingsLayout() {
         farm_id: Number(activeFarmId),
         farm_code: activeFarm?.code ?? settings?.farm_code ?? null,
         farm_name: activeFarm?.name ?? settings?.farm_name ?? null,
+        feed_group_id: Number(feedGroupId),
         allow_advance_posting: allowAdvancePosting,
         auto_feed_batch_selection: autoFeedBatchSelection,
         auto_feed_batch_selection_mode: autoFeedBatchSelectionMode,
@@ -155,12 +192,14 @@ export default function FlockCardSettingsLayout() {
       });
       setSettings(saved);
       setValue("FlockCardSettings", saved);
+      setFeedGroupId(String(saved.feed_group_id));
       setAllowAdvancePosting(Boolean(saved.allow_advance_posting));
       setAutoFeedBatchSelection(Boolean(saved.auto_feed_batch_selection));
       setAutoFeedBatchSelectionMode(saved.auto_feed_batch_selection_mode ?? "USER_SELECTED");
       setAutoMortalityRateBatchSelection(Boolean(saved.auto_mortality_rate_batch_selection));
       setSavedSnapshot(JSON.stringify({
         farmId: activeFarmId,
+        feedGroupId: String(saved.feed_group_id),
         allowAdvancePosting: Boolean(saved.allow_advance_posting),
         autoFeedBatchSelection: Boolean(saved.auto_feed_batch_selection),
         autoFeedBatchSelectionMode: saved.auto_feed_batch_selection_mode ?? "USER_SELECTED",
@@ -211,6 +250,19 @@ export default function FlockCardSettingsLayout() {
         </SettingsCategory>
 
         <SettingsCategory title="Posting & Inventory" description="Control posting dates and automatic inventory allocation behavior.">
+          <SettingRow label="Feed Group" description="Select the item group used for feed inventory in Growing & Farm Condition." settingKey="FEED_GROUP_ID" required>
+            <SearchableDropdown
+              list={itemGroups}
+              codeLabel="id"
+              nameLabel="name"
+              value={feedGroupId}
+              placeholder="Select feed group"
+              disabled={loading || saving || canEdit || !activeFarmId}
+              width={360}
+              onChange={(value) => setFeedGroupId(value)}
+            />
+          </SettingRow>
+
           <SettingRow label="Allow advance posting" description="Allows users to post rows ahead of the current flock age." settingKey="ALLOW_ADVANCE_POSTING">
                   <div className="flex items-center gap-3">
                     <Checkbox

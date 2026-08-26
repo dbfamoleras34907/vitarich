@@ -15,7 +15,9 @@ export type SetterRefHistory = {
   qty_set_egg: number | null;
 };
 
-export async function listHatchClassiRefs(): Promise<HatchClassiRefOption[]> {
+export async function listHatchClassiRefs(
+  includeRefs: string[] = [],
+): Promise<HatchClassiRefOption[]> {
   const { data, error } = await db
     .from("view_setter_ref_no")
     .select("egg_ref_no")
@@ -24,9 +26,14 @@ export async function listHatchClassiRefs(): Promise<HatchClassiRefOption[]> {
 
   if (error) throw error;
 
-  const refs = ((data ?? []) as SetterRefNoViewRow[])
-    .map((row) => String(row.egg_ref_no ?? "").trim())
-    .filter(Boolean);
+  const refs = Array.from(
+    new Set([
+      ...((data ?? []) as SetterRefNoViewRow[])
+        .map((row) => String(row.egg_ref_no ?? "").trim())
+        .filter(Boolean),
+      ...includeRefs.map((ref) => ref.trim()).filter(Boolean),
+    ]),
+  );
 
   if (!refs.length) return [];
 

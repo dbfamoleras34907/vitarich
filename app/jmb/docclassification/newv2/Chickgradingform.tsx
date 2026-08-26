@@ -162,6 +162,8 @@ export default function Chickgradingform() {
       const sp = useSearchParams();
     
       const idParam = sp.get("id");
+      const copiedEggRef = sp.get("egg_ref_no")?.trim() ?? "";
+      const copiedFromWizard = sp.get("wizard") === "1" && Boolean(copiedEggRef);
     
       const editId = idParam ? Number(idParam) : null;
     
@@ -169,8 +171,8 @@ export default function Chickgradingform() {
         typeof editId === "number" &&
         Number.isFinite(editId) &&
         editId > 0;
-      const canView = usePermission("/jmb/eggsetter/insert");
-      const canEdit = usePermission("/jmb/eggsetter/edit");
+      const canView = usePermission("/jmb/docclassification/insert");
+      const canEdit = usePermission("/jmb/docclassification/edit");
     
       useEffect(() => {
     
@@ -180,12 +182,12 @@ export default function Chickgradingform() {
         }
     
         if (isEdit && canEdit) {
-          router.replace("/jmb/eggsetter");
+          router.replace("/jmb/docclassification");
           return;
         }
     
         if (!isEdit && canView) {
-          router.replace("/jmb/eggsetter");
+          router.replace("/jmb/docclassification");
         }
     
       }, [isEdit, canEdit, canView, router]);
@@ -205,7 +207,10 @@ export default function Chickgradingform() {
 
   const [eggRefs, setEggRefs] = useState<EggRefOption[]>([]);
   const [remainingInventory, setRemainingInventory] = useState(0);
-  const [form, setForm] = useState<FormState>(initialForm);
+  const [form, setForm] = useState<FormState>({
+    ...initialForm,
+    egg_ref_no: !isEdit ? copiedEggRef : "",
+  });
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -279,7 +284,12 @@ export default function Chickgradingform() {
         const refs = await listEggReferences();
         if (!alive) return;
 
-        setEggRefs(refs.map((egg_ref_no) => ({ egg_ref_no })));
+        const options = refs.map((egg_ref_no) => ({ egg_ref_no }));
+        setEggRefs(
+          copiedFromWizard && !refs.includes(copiedEggRef)
+            ? [{ egg_ref_no: copiedEggRef }, ...options]
+            : options,
+        );
       } catch (e) {
         console.error(e);
         if (alive) setEggRefs([]);
@@ -291,7 +301,7 @@ export default function Chickgradingform() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [copiedEggRef, copiedFromWizard]);
 
   // load edit record
   useEffect(() => {
@@ -574,7 +584,7 @@ export default function Chickgradingform() {
                       showNameOnly
                       value={form.egg_ref_no}
                       onChange={(val) => setField("egg_ref_no", val)}
-                      disabled={saving || eggRefsLoading}
+                      disabled={saving || eggRefsLoading || copiedFromWizard}
                     />
                   </div>
 

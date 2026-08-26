@@ -147,6 +147,7 @@ export default function SearchableDropdown<
     >
       <PopoverTrigger asChild>
         <Button
+          data-slot="searchable-dropdown-trigger"
           type="button"
           disabled={disabled}
           title={displayText}

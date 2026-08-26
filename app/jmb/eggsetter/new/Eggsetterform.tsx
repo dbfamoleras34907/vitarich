@@ -93,6 +93,7 @@ import {
 } from "@/components/ui/dialog";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 import { Separator } from "@/components/ui/separator";
+import { getHatcheryWizardClassificationHeader } from "@/lib/data/repositories/hatcheryProcessWizard";
 import { usePermission } from "@/hooks/usePermission";
 type FormState = {
   ref_no: string[];
@@ -312,6 +313,8 @@ export default function Eggsetterform() {
     const sp = useSearchParams();
   
     const idParam = sp.get("id");
+    const wizardRef = sp.get("ref")?.trim() ?? "";
+    const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
   
     const editId = idParam ? Number(idParam) : null;
   
@@ -350,11 +353,12 @@ export default function Eggsetterform() {
   const [refOptions, setRefOptions] = useState<HatchClassiRefOption[]>([]);
   const [setterHistory, setSetterHistory] = useState<SetterRefHistory[]>([]);
   const [defaultFarm, setdefaultFarm] = useState<DefaultFarm>();
+  const [wizardFarmSource, setWizardFarmSource] = useState("");
   const [converterField, setConverterField] =
     useState<TemperatureFieldKey | null>(null);
   const [referenceRows, setReferenceRows] = useState<EggReferenceRow[]>([]);
   const [form, setForm] = useState<FormState>({
-    ref_no: [],
+    ref_no: isWizard && !isEdit ? [wizardRef] : [],
     setting_date: "",
     farm_source: "",
     machine_id: "",
@@ -389,6 +393,21 @@ export default function Eggsetterform() {
     getDefaultFarm();
   }, []);
   useEffect(() => {
+    if (!isWizard) return;
+    let active = true;
+    void getHatcheryWizardClassificationHeader(wizardRef)
+      .then((header) => {
+        if (!active || !header) return;
+        const source = header.farmName || header.farmCode;
+        setWizardFarmSource(source);
+        setForm((previous) => ({ ...previous, farm_source: source }));
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+    };
+  }, [isWizard, wizardRef]);
+  useEffect(() => {
     refreshSessionx(router);
   }, [router]);
   // Load Reference No. options
@@ -398,7 +417,7 @@ export default function Eggsetterform() {
       setLoadingRefs(true);
       try {
         const [rows, history] = await Promise.all([
-          listHatchClassiRefs(),
+          listHatchClassiRefs(isWizard ? [wizardRef] : []),
           listSetterReferenceHistory(),
         ]);
         if (!mounted) return;
@@ -413,7 +432,7 @@ export default function Eggsetterform() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isWizard, wizardRef]);
 
   // Load record when editing
   useEffect(() => {
@@ -535,7 +554,7 @@ export default function Eggsetterform() {
     const meta = buildRefSelectionMeta(
       refs,
       refOptions,
-      defaultFarm?.name || "",
+      wizardFarmSource || defaultFarm?.name || "",
     );
 
     setForm((p) => ({
@@ -572,7 +591,7 @@ export default function Eggsetterform() {
     const meta = buildRefSelectionMeta(
       form.ref_no,
       refOptions,
-      defaultFarm?.name || form.farm_source,
+      wizardFarmSource || defaultFarm?.name || form.farm_source,
     );
     const nextRows = buildReferenceRows(
       form.ref_no,
@@ -617,6 +636,7 @@ export default function Eggsetterform() {
     });
   }, [
     defaultFarm?.name,
+    wizardFarmSource,
     form.ref_no,
     form.farm_source,
     previousEggSetMap,
@@ -624,7 +644,7 @@ export default function Eggsetterform() {
     referenceRows,
   ]);
 
-  async function onSave() {
+  async function onSave(continueToNext = false) {
     if (!form.ref_no.length) {
       alert("Reference Number is required.");
       return;
@@ -709,7 +729,11 @@ export default function Eggsetterform() {
         await createSetterIncubationBatch(payloads);
       }
 
-      router.push("/jmb/eggsetter");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=${continueToNext ? "transfer" : "setter"}`
+          : "/jmb/eggsetter",
+      );
       router.refresh();
     } catch (error: unknown) {
       console.log({ error })
@@ -776,7 +800,7 @@ export default function Eggsetterform() {
                 value={form.ref_no}
                 onChange={(val) => handleSelectRef(val)}
                 multiple
-                disabled={saving || loadingRefs || isEdit}
+                disabled={saving || loadingRefs || isEdit || isWizard}
               />
             </div>
             <Separator />
@@ -1055,8 +1079,15 @@ export default function Eggsetterform() {
               saving={saving}
               isEdit={isEdit}
               disabled={disabledAll}
-              cancelPath="/jmb/eggsetter"
-              onSave={onSave}
+              cancelPath={
+                isWizard
+                  ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=setter`
+                  : "/jmb/eggsetter"
+              }
+              onSave={() => void onSave(false)}
+              onSaveAndContinue={
+                isWizard ? () => void onSave(true) : undefined
+              }
             />
           </div>
         </CardContent>

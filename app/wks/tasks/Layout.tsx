@@ -8,12 +8,19 @@ import { RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
-import { getTask } from './api'
+import { getTask, getTaskType } from './api'
+import { usePermission } from '@/hooks/usePermission'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 
 export default function Layout() {
   const route = useRouter()
+  const { getValue } = useGlobalContext()
   const [loading, setLoading] = useState(false)
   const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
+  const insertDenied = usePermission('/wks/tasks/insert')
+  const viewDenied = usePermission('/wks/tasks/view')
+  const [taskTypeNames, setTaskTypeNames] = useState<Record<string, string>>({})
+  const [userNames, setUserNames] = useState<Record<string, string>>({})
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -36,10 +43,14 @@ export default function Layout() {
       setLoading(true)
 
       try {
-        const data = await getTask()
-
-        console.log("Fetched Tasks:", data)
+        const [data, taskTypes] = await Promise.all([getTask(), getTaskType()])
         setinitialRows(data)
+        setTaskTypeNames(Object.fromEntries(taskTypes.map(type => [String(type.id), type.name])))
+        const users = getValue('activeUsers')
+        setUserNames(Object.fromEntries((Array.isArray(users) ? users : []).map(user => [
+          String(user.code),
+          String(user.name),
+        ])))
       } catch (err) {
         console.error(err)
       }
@@ -66,6 +77,7 @@ export default function Layout() {
         <div>
           <Button size="sm"
 
+            disabled={insertDenied}
             onClick={() => route.push("/wks/tasks/new")}>
             <Plus /> New Task
           </Button>
@@ -87,6 +99,7 @@ export default function Layout() {
                   <Button
                     size={"sm"}
                     className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
+                    disabled={viewDenied}
                     onClick={() => {
                       route.push(`/wks/tasks/${row.id}`)
                     }}
@@ -99,6 +112,9 @@ export default function Layout() {
             }
 
             const value = row[col.key]
+
+            if (col.key === 'task_type') return taskTypeNames[String(value)] || String(value || '-')
+            if (col.key === 'assigned_to') return userNames[String(value)] || String(value || '-')
 
             if (!value) return "-"
 

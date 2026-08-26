@@ -9,11 +9,14 @@ import { NotepadText, Paperclip, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 import { getTimesheets } from './api'
+import { usePermission } from '@/hooks/usePermission'
 
 export default function Layout() {
   const route = useRouter()
   const [loading, setLoading] = useState(false)
   const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
+  const insertDenied = usePermission('/wks/timelines/insert')
+  const viewDenied = usePermission('/wks/timelines/view')
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -35,7 +38,6 @@ export default function Layout() {
 
       try {
         const data = await getTimesheets()
-        console.log("Fetched Timesheets:", data)
         setinitialRows(data)
       } catch (err) {
         console.error(err)
@@ -61,11 +63,13 @@ export default function Layout() {
         />
         <div className='flex gap-2'>
           <Button size="sm" className='bg-white text-black border-2 border-gray-300 hover:bg-gray-100'
+            disabled={viewDenied}
             onClick={() => route.push("/wks/timelines/a")}>
             <NotepadText />  Timesheet Report
           </Button>
 
           <Button size="sm" className='bg-black text-white hover:bg-gray-600'
+            disabled={insertDenied}
             onClick={() => route.push("/wks/timelines/new")}>
             <Plus /> New Timesheet
           </Button>
@@ -87,6 +91,7 @@ export default function Layout() {
                   <Button
                     size={"sm"}
                     className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-md   '
+                    disabled={viewDenied}
                     onClick={() => {
                       route.push(`/wks/timelines/${row.id}`)
                     }}
@@ -128,4 +133,4 @@ export default function Layout() {
 
     </div>
   )
-} 
+}

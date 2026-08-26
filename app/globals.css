@@ -139,9 +139,13 @@
     [data-slot="select-trigger"],
     [data-slot="combobox-chips"],
     [data-slot="input-group"],
-    [data-slot="command-input-wrapper"]
+    [data-slot="command-input-wrapper"],
+    [data-slot="searchable-dropdown-trigger"],
+    [role="combobox"]
   ) {
     background-color: #ffffff !important;
+    color: #111827 !important;
+    color-scheme: light;
   }
 
   :where(
@@ -151,9 +155,13 @@
     [data-slot="select-trigger"]:disabled,
     [data-slot="combobox-chips"]:has(input:disabled),
     [data-slot="input-group"]:has(input:disabled),
-    [data-slot="input-group"]:has(textarea:disabled)
+    [data-slot="input-group"]:has(textarea:disabled),
+    [data-slot="searchable-dropdown-trigger"]:disabled,
+    [role="combobox"]:disabled,
+    [role="combobox"][aria-disabled="true"]
   ) {
     background-color: #f3f4f6 !important;
+    color: #6b7280 !important;
     cursor: not-allowed;
     opacity: 1;
   }
@@ -170,28 +178,40 @@
 }
 
 @media screen {
-  .dark :where(
-    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
-    textarea,
-    select,
-    [data-slot="select-trigger"],
-    [data-slot="combobox-chips"],
-    [data-slot="input-group"],
-    [data-slot="command-input-wrapper"]
-  ) {
-    background-color: color-mix(in srgb, var(--input) 30%, transparent) !important;
-  }
+  @layer base {
+    .dark :where(
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+      textarea,
+      select,
+      [data-slot="select-trigger"],
+      [data-slot="combobox-chips"],
+      [data-slot="input-group"],
+      [data-slot="command-input-wrapper"],
+      [data-slot="searchable-dropdown-trigger"],
+      [role="combobox"]
+    ) {
+      background-color: var(--secondary) !important;
+      border-color: color-mix(in srgb, var(--foreground) 24%, transparent) !important;
+      color: var(--foreground) !important;
+      color-scheme: dark;
+    }
 
-  .dark :where(
-    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):disabled,
-    textarea:disabled,
-    select:disabled,
-    [data-slot="select-trigger"]:disabled,
-    [data-slot="combobox-chips"]:has(input:disabled),
-    [data-slot="input-group"]:has(input:disabled),
-    [data-slot="input-group"]:has(textarea:disabled)
-  ) {
-    background-color: color-mix(in srgb, var(--input) 20%, transparent) !important;
+    .dark :where(
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):disabled,
+      textarea:disabled,
+      select:disabled,
+      [data-slot="select-trigger"]:disabled,
+      [data-slot="combobox-chips"]:has(input:disabled),
+      [data-slot="input-group"]:has(input:disabled),
+      [data-slot="input-group"]:has(textarea:disabled),
+      [data-slot="searchable-dropdown-trigger"]:disabled,
+      [role="combobox"]:disabled,
+      [role="combobox"][aria-disabled="true"]
+    ) {
+      background-color: var(--background) !important;
+      border-color: var(--border) !important;
+      color: var(--muted-foreground) !important;
+    }
   }
 
   .dark .bg-white {
@@ -411,19 +431,22 @@
   border-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
 }
 
-.dark .fc-grid-cell-editable,
+.dark .fc-grid-cell-editable {
+  background: var(--secondary);
+}
+
 .dark .fc-grid-age {
   background: var(--card);
 }
 
 .dark .fc-grid-cell-editable input,
 .dark .fc-grid-cell-editable [data-fc-cell="true"] {
-  background: var(--card);
+  background: var(--secondary);
   color: var(--foreground);
 }
 
 .dark .fc-grid-cell-readonly {
-  background: color-mix(in srgb, var(--card) 80%, black);
+  background: var(--background);
 }
 
 .dark .fc-grid-cell-editable:hover,

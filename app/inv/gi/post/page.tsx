@@ -7,7 +7,7 @@ export default function page() {
   return (
     <div>
       <NavigationBar currentLabel="" fatherLabel="">
-        <Layout mode="post" />
+        <Layout mode="post" warehouseScope="line" warehouseLabel="Warehouse / Building" />
       </NavigationBar>
     </div>
   )

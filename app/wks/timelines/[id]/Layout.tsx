@@ -23,7 +23,6 @@ import { CalendarIcon, ChevronDown, EllipsisVertical } from 'lucide-react'
 
 import React, { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { db } from '@/lib/Supabase/supabaseClient'
 
 import {
   Table,
@@ -42,6 +41,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { formatDateTime } from '@/lib/formatDate'
+import { getWorkspaceActivityTypes, getWorkspaceProjects, getWorkspaceTasksByProject } from '@/lib/data/repositories/workspace'
+import { getTimesheetById } from './api'
+import { saveWorkspaceTimesheet } from '@/lib/data/mutations/workspace'
+import { toast } from 'sonner'
+import { usePermission } from '@/hooks/usePermission'
 
 type LineRow = {
   id?: number | null
@@ -61,6 +65,7 @@ export default function Layout() {
   const { setValue } = useGlobalContext()
 
   const [isLoading, setIsLoading] = useState(false)
+  const editDenied = usePermission('/wks/timelines/edit')
 
   const [activityTypes, setActivityTypes] =
     useState<ComboboxItemType[]>([])
@@ -84,8 +89,7 @@ export default function Layout() {
 
   const loadActivityTypes = async () => {
 
-    const { data } =
-      await db.from('activity_types').select('*')
+    const data = await getWorkspaceActivityTypes()
 
     setActivityTypes(
       (data || []).map(a => ({
@@ -97,10 +101,7 @@ export default function Layout() {
 
   const loadProjects = async () => {
 
-    const { data } =
-      await db.from('projects')
-        .select('*')
-        .eq('void', 1)
+    const data = await getWorkspaceProjects()
 
     setProjectsList(
       (data || []).map(p => ({
@@ -115,10 +116,7 @@ export default function Layout() {
     index: number
   ) => {
 
-    const { data } =
-      await db.from('tasks')
-        .select('*')
-        .eq('project_id', projectId)
+    const data = await getWorkspaceTasksByProject(projectId)
 
     setTasksList(prev => ({
       ...prev,
@@ -134,14 +132,7 @@ export default function Layout() {
 
   const loadHeader = async () => {
 
-    const { data } =
-      await db
-        .from('vw_timesheets')
-        .select('*')
-        .eq('id', id)
-        .single()
-
-    if (!data) return
+    const { header: data } = await getTimesheetById(Number(id))
 
     setFormValues({
       doc_date: new Date(data.doc_date),
@@ -153,13 +144,7 @@ export default function Layout() {
 
   const loadLines = async () => {
 
-    const { data } =
-      await db
-        .from('vw_timesheet_lines')
-        .select('*')
-        .eq('docentry', id)
-
-    if (!data) return
+    const { lines: data } = await getTimesheetById(Number(id))
 
     const mapped =
       data.map((row, index) => {
@@ -250,7 +235,7 @@ export default function Layout() {
         id: Number(id),
         doc_date: formatDateTime(String(formValues.doc_date), 'mmddyyyy'),
         assigned_to: formValues.assigned_to,
-        status: 'Submitted'
+        status: 'Submitted' as const
       },
 
       lines: rows.map((r, i) => ({
@@ -272,17 +257,13 @@ export default function Layout() {
     }
 
     setIsLoading(true)
-    console.log('payload', payload)
-    const { error } =
-      await db.rpc(
-        'rpc_upsert_timesheet_full',
-        { payload }
-      )
-
-    if (error) {
-
+    try {
+      await saveWorkspaceTimesheet(payload)
+      toast.success('Timesheet submitted successfully')
+    } catch (error) {
       console.error(error)
       setIsLoading(false)
+      toast.error('Failed to submit timesheet')
       return
     }
     setIsLoading(false)
@@ -326,17 +307,13 @@ export default function Layout() {
     }
 
     setIsLoading(true)
-    console.log('payload', payload)
-    const { error } =
-      await db.rpc(
-        'rpc_upsert_timesheet_full',
-        { payload }
-      )
-
-    if (error) {
-
+    try {
+      await saveWorkspaceTimesheet(payload)
+      toast.success('Draft saved successfully')
+    } catch (error) {
       console.error(error)
       setIsLoading(false)
+      toast.error('Failed to save draft')
       return
     }
     setIsLoading(false)
@@ -385,7 +362,7 @@ export default function Layout() {
         <div className='flex justify-center '>
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || editDenied}
             className='rounded-none rounded-bl-md rounded-tl-md border-r'
           >
             Save as Draft

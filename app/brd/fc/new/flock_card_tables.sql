@@ -614,6 +614,7 @@ begin
     feed_bird = null,
     feed_guideline = null,
     feed_batch_text = null,
+    extra = coalesce(line.extra, '{}'::jsonb) - 'feedTypeId',
     is_locked = false,
     updated_by = v_user,
     reversed_by = v_user,
@@ -625,12 +626,15 @@ begin
 end;
 $$;
 
+drop function if exists public.save_brd_fc_feed_intake(bigint, numeric, numeric, numeric, text, jsonb);
+
 create or replace function public.save_brd_fc_feed_intake(
   p_line_id bigint,
   p_feed_kg numeric,
   p_feed_bird numeric,
   p_feed_guideline numeric,
   p_feed_batch_text text,
+  p_feed_type_id bigint,
   p_allocations jsonb
 )
 returns table (id bigint, age integer)
@@ -676,6 +680,33 @@ begin
 
   if not found then
     raise exception 'Unable to save feed intake: flock card % was not found', v_line.fc_id;
+  end if;
+
+  if p_feed_type_id is null or not exists (
+    select 1
+    from public.brd_fc_settings settings
+    join public.item_groups feed_type
+      on feed_type.id = p_feed_type_id
+     and feed_type.father = settings.feed_group_id
+     and btrim(coalesce(feed_type.void::text, '0')) = '1'
+    where settings.farm_id = v_card.farm_id
+      and settings.void = '1'
+  ) then
+    raise exception 'Unable to save feed intake: select a valid Feed Type for the farm Feed Group';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_allocations) allocation
+    where not exists (
+      select 1
+      from public.items item
+      where upper(btrim(item.item_code)) = upper(btrim(allocation ->> 'itemCode'))
+        and item.sub_item_group_id = p_feed_type_id
+        and btrim(coalesce(item.void::text, '0')) = '1'
+    )
+  ) then
+    raise exception 'Unable to save feed intake: every selected batch item must belong to the selected Feed Type';
   end if;
 
   v_user := coalesce(auth.uid(), v_line.updated_by, v_line.created_by, v_card.updated_by, v_card.created_by);
@@ -745,6 +776,7 @@ begin
     feed_bird = p_feed_bird,
     feed_guideline = p_feed_guideline,
     feed_batch_text = nullif(btrim(coalesce(p_feed_batch_text, '')), ''),
+    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || jsonb_build_object('feedTypeId', p_feed_type_id),
     is_locked = true,
     updated_by = v_user,
     reversed_at = null,

@@ -644,7 +644,8 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
     0,
   )
   const canEditDraft = transfer?.status === 'Draft'
-  const canPostDocument = isPostMode || Boolean(transfer?.id)
+  // New transfers may be posted directly; saving a draft first is optional.
+  const canPostDocument = true
 
   const handleSave = async (targetStatus: InventoryTransferStatus) => {
     if (!transfer) return
@@ -652,22 +653,6 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
     const posting = targetStatus === 'Posted'
     if (!canEditDraft) {
       toast('Only draft documents can be edited or posted.')
-      return
-    }
-    if (!transfer.farmId) {
-      toast('Please select a farm.')
-      return
-    }
-    if (!transfer.fromWarehouseId || !transfer.fromWarehouseCode) {
-      toast('Please select a source warehouse.')
-      return
-    }
-    if (!transfer.toWarehouseId || !transfer.toWarehouseCode) {
-      toast('Please select a destination warehouse.')
-      return
-    }
-    if (transfer.fromWarehouseCode === transfer.toWarehouseCode) {
-      toast('Source and destination warehouse must be different.')
       return
     }
     const linesToSave = completedLines.map(line => ({
@@ -680,26 +665,44 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
       toWarehouseName: transfer.toWarehouseName,
     }))
 
-    if (posting && linesToSave.length === 0) {
-      toast('Please select at least one item.')
-      return
-    }
-    if (linesToSave.some(lineHasInvalidQuantity)) {
-      toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
-      return
-    }
+    if (posting) {
+      if (!transfer.farmId) {
+        toast('Please select a farm.')
+        return
+      }
+      if (!transfer.fromWarehouseId || !transfer.fromWarehouseCode) {
+        toast('Please select a source warehouse.')
+        return
+      }
+      if (!transfer.toWarehouseId || !transfer.toWarehouseCode) {
+        toast('Please select a destination warehouse.')
+        return
+      }
+      if (transfer.fromWarehouseCode === transfer.toWarehouseCode) {
+        toast('Source and destination warehouse must be different.')
+        return
+      }
+      if (linesToSave.length === 0) {
+        toast('Please select at least one item.')
+        return
+      }
+      if (linesToSave.some(lineHasInvalidQuantity)) {
+        toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
+        return
+      }
 
-    const missingBatchLine = posting
-      ? linesToSave.find(line => itemNeedsBatch(line) && !line.batchNumber.trim())
-      : null
-    if (missingBatchLine) {
-      toast(`Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
-      return
+      const missingBatchLine = linesToSave.find(line =>
+        itemNeedsBatch(line) && !line.batchNumber.trim(),
+      )
+      if (missingBatchLine) {
+        toast(`Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
+        return
+      }
     }
 
     setSaving(true)
     try {
-      if (linesToSave.length > 0) {
+      if (posting && linesToSave.length > 0) {
         const [shortage] = await getInventoryTransferOnHandShortages(linesToSave)
         if (shortage) {
           toast(formatShortageMessage(shortage))
@@ -923,7 +926,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
                     const isLoadingBatches = Boolean(loadingBatchOptions[batchKey])
                     const hasSearchedBatches = Object.prototype.hasOwnProperty.call(batchOptions, batchKey)
                     const canSearchBatches = canSearchLineInventory(line)
-                    const isOver = canPostDocument && line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
+                    const isOver = line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
 
                     return (
                       <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">

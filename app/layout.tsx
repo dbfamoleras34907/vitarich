@@ -14,6 +14,7 @@ import InternetErrorToast from '@/components/InternetErrorToast';
 import RouteGuard from '@/lib/SignupUpdateGuard';
 import GlobalLoaderController from '@/lib/context/GlobalLoaderController';
 import DefaultFarm from './utils/DefaultFarm';
+import CollapsedSidebarLabel from '@/lib/sidebar/CollapsedSidebarLabel';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -63,6 +64,7 @@ export default function RootLayout({
                   <div className="flex h-dvh overflow-hidden bg-background print:h-auto print:overflow-visible">
                     <AppSideBarControler />
                     <main className="h-full min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto print:h-auto print:overflow-visible">
+                        <CollapsedSidebarLabel />
                         {children}
                     </main>
                   </div>

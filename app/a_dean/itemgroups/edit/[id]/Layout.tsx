@@ -49,6 +49,17 @@ const emptySubItemGroup: SubItemGroupForm = {
   remarks: '',
 }
 
+function getSaveErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message
+
+  if (typeof error === 'object' && error != null && 'message' in error) {
+    const message = error.message
+    if (typeof message === 'string' && message) return message
+  }
+
+  return fallback
+}
+
 function ItemGroupEditSkeleton() {
   return (
     <main className="min-h-[calc(100vh-4rem)] text-stone-950 dark:text-foreground">
@@ -111,7 +122,7 @@ export default function EditItemGroupLayout() {
     try {
       setSubItemGroups(await getSubItemGroups(itemGroupId))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to load sub item groups'
+      const message = getSaveErrorMessage(error, 'Unable to load sub item groups')
       toast('Error: ' + message)
       setSubItemGroups([])
     } finally {
@@ -141,7 +152,7 @@ export default function EditItemGroupLayout() {
 
         if (father == null) await loadSubItemGroups()
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to load item group'
+        const message = getSaveErrorMessage(error, 'Unable to load item group')
         toast('Error: ' + message)
         router.replace('/a_dean/itemgroups')
       } finally {
@@ -163,12 +174,13 @@ export default function EditItemGroupLayout() {
     setSaving(true)
     try {
       await updateItemGroup(itemGroupId, {
+        code: form.code,
         name: form.name.trim(),
         remarks: form.remarks.trim(),
       })
       toast('Item group updated successfully')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to update item group'
+      const message = getSaveErrorMessage(error, 'Unable to update item group')
       toast('Error: ' + message)
     } finally {
       setSaving(false)
@@ -178,15 +190,14 @@ export default function EditItemGroupLayout() {
   const handleAddSubItemGroup = async (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!subItemGroupForm.code.trim() || !subItemGroupForm.name.trim()) {
-      toast('Please fill in code and name.')
+    if (!subItemGroupForm.name.trim()) {
+      toast('Please fill in the name.')
       return
     }
 
     setSubItemGroupSaving(true)
     try {
       await addSubItemGroup(itemGroupId, {
-        code: subItemGroupForm.code.trim(),
         name: subItemGroupForm.name.trim(),
         remarks: subItemGroupForm.remarks.trim(),
       })
@@ -195,7 +206,7 @@ export default function EditItemGroupLayout() {
       setAddDialogOpen(false)
       await loadSubItemGroups()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to add sub item group'
+      const message = getSaveErrorMessage(error, 'Unable to add sub item group')
       toast('Error: ' + message)
     } finally {
       setSubItemGroupSaving(false)
@@ -221,6 +232,7 @@ export default function EditItemGroupLayout() {
     setSubItemGroupSaving(true)
     try {
       await updateItemGroup(editingSubItemGroup.id, {
+        code: subItemGroupForm.code.trim(),
         name: subItemGroupForm.name.trim(),
         remarks: subItemGroupForm.remarks.trim(),
       })
@@ -229,7 +241,7 @@ export default function EditItemGroupLayout() {
       setSubItemGroupForm(emptySubItemGroup)
       await loadSubItemGroups()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to update sub item group'
+      const message = getSaveErrorMessage(error, 'Unable to update sub item group')
       toast('Error: ' + message)
     } finally {
       setSubItemGroupSaving(false)
@@ -246,7 +258,7 @@ export default function EditItemGroupLayout() {
       toast('Sub item group voided successfully')
       await loadSubItemGroups()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to void sub item group'
+      const message = getSaveErrorMessage(error, 'Unable to void sub item group')
       toast('Error: ' + message)
     } finally {
       setVoidingId(null)
@@ -277,7 +289,12 @@ export default function EditItemGroupLayout() {
           <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
             <div className="grid items-center gap-2 sm:grid-cols-[112px_minmax(0,300px)]">
               <Label htmlFor="item-group-code" className="font-semibold" required>Code</Label>
-              <Input id="item-group-code" value={form.code} readOnly />
+              <Input
+                id="item-group-code"
+                value={form.code}
+                onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+                readOnly={form.father == null}
+              />
             </div>
             <div className="grid items-center gap-2 sm:grid-cols-[112px_minmax(0,300px)]">
               <Label htmlFor="item-group-name" className="font-semibold" required>Name</Label>
@@ -392,7 +409,7 @@ export default function EditItemGroupLayout() {
               <DialogTitle>Add Sub Item Group</DialogTitle>
               <DialogDescription>Add a direct child under {form.code} - {form.name}.</DialogDescription>
             </DialogHeader>
-            <SubItemGroupFields form={subItemGroupForm} setForm={setSubItemGroupForm} />
+            <SubItemGroupFields form={subItemGroupForm} setForm={setSubItemGroupForm} hideCode />
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline" disabled={subItemGroupSaving}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={subItemGroupSaving}>
@@ -419,7 +436,7 @@ export default function EditItemGroupLayout() {
               <DialogTitle>Edit Sub Item Group</DialogTitle>
               <DialogDescription>Update the selected sub item group details.</DialogDescription>
             </DialogHeader>
-            <SubItemGroupFields form={subItemGroupForm} setForm={setSubItemGroupForm} codeReadOnly />
+            <SubItemGroupFields form={subItemGroupForm} setForm={setSubItemGroupForm} />
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline" disabled={subItemGroupSaving}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={subItemGroupSaving}>
@@ -437,37 +454,36 @@ export default function EditItemGroupLayout() {
 function SubItemGroupFields({
   form,
   setForm,
-  codeReadOnly = false,
+  hideCode = false,
 }: {
   form: SubItemGroupForm
   setForm: React.Dispatch<React.SetStateAction<SubItemGroupForm>>
-  codeReadOnly?: boolean
+  hideCode?: boolean
 }) {
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor={codeReadOnly ? 'edit-sub-item-code' : 'new-sub-item-code'} required>Code</Label>
+      {!hideCode && <div className="space-y-2">
+        <Label htmlFor="sub-item-code" required>Code</Label>
         <Input
-          id={codeReadOnly ? 'edit-sub-item-code' : 'new-sub-item-code'}
+          id="sub-item-code"
           value={form.code}
           onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-          readOnly={codeReadOnly}
           required
         />
-      </div>
+      </div>}
       <div className="space-y-2">
-        <Label htmlFor={codeReadOnly ? 'edit-sub-item-name' : 'new-sub-item-name'} required>Name</Label>
+        <Label htmlFor="sub-item-name" required>Name</Label>
         <Input
-          id={codeReadOnly ? 'edit-sub-item-name' : 'new-sub-item-name'}
+          id="sub-item-name"
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           required
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={codeReadOnly ? 'edit-sub-item-remarks' : 'new-sub-item-remarks'}>Remarks</Label>
+        <Label htmlFor="sub-item-remarks">Remarks</Label>
         <Textarea
-          id={codeReadOnly ? 'edit-sub-item-remarks' : 'new-sub-item-remarks'}
+          id="sub-item-remarks"
           value={form.remarks}
           onChange={(event) => setForm((current) => ({ ...current, remarks: event.target.value }))}
         />

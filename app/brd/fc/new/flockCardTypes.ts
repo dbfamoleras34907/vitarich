@@ -58,6 +58,13 @@ export type MortalityBatchAllocation = {
 };
 
 export type FlockCardSettingsState = {
+  feed_group_id?: number | null;
+  feed_group?: {
+    id?: number;
+    code?: string;
+    name?: string;
+    father?: number | null;
+  } | null;
   allow_advance_posting?: boolean;
   auto_feed_batch_selection?: boolean;
   auto_feed_batch_selection_mode?: "USER_SELECTED" | "FIFO";

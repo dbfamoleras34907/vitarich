@@ -75,7 +75,7 @@ type GoodsIssueHistoryProps = {
   config?: Partial<GoodsIssueHistoryConfig>
 }
 
-function normalizeFarmId(value: unknown): number | string | null {
+export function normalizeFarmId(value: unknown): number | string | null {
   const candidate = typeof value === 'object' && value !== null
     ? ('id' in value ? (value as { id?: unknown }).id : null)
     : value
