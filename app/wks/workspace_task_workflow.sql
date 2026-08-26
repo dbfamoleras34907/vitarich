@@ -57,6 +57,9 @@ alter table public.tasks
   on update restrict
   on delete restrict;
 
+alter table public.tasks
+  alter column status_id set not null;
+
 create index if not exists tasks_status_id_idx on public.tasks(status_id);
 create index if not exists tasks_assigned_status_idx on public.tasks(assigned_to, status_id);
 create index if not exists tasks_project_status_idx on public.tasks(project_id, status_id);

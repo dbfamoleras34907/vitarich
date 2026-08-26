@@ -17,7 +17,7 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { format } from 'date-fns'
 import { CalendarIcon, EllipsisVertical } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Table,
@@ -27,12 +27,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuShortcut, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { formatDateTime } from '@/lib/formatDate'
-import { getWorkspaceActivityTypes, getWorkspaceProjects, getWorkspaceTasksByProject } from '@/lib/data/repositories/workspace'
+import { getWorkspaceActivityTypes, getWorkspaceTimesheetEntryOptionsForUser, getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
 import { saveTimesheet } from './api'
 import { toast } from 'sonner'
 import { usePermission } from '@/hooks/usePermission'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import NewProjectTask from '../../projects/[id]/NewProjectTask'
 
 type LineRow = {
   id?: number | null
@@ -45,28 +53,94 @@ type LineRow = {
   remarks: string
 }
 
+type TimesheetFormValues = {
+  doc_date: Date | undefined
+  assigned_to: number | null
+}
+
+const calculateNextFromTime = (fromTime: string, hours: string) => {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(fromTime)
+  const duration = Number(hours)
+  if (!match || !Number.isFinite(duration) || duration <= 0) return ''
+
+  const startMinutes = Number(match[1]) * 60 + Number(match[2])
+  const nextMinutes = (startMinutes + Math.round(duration * 60)) % (24 * 60)
+  const nextHour = Math.floor(nextMinutes / 60)
+  const nextMinute = nextMinutes % 60
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`
+}
+
+const isCompleteLine = (row: LineRow) => Boolean(
+  row.activity_type &&
+  row.from_time &&
+  Number(row.hrs) > 0 &&
+  row.project_id &&
+  row.task_id
+)
+
+const prepareTimesheetRows = (
+  sourceRows: LineRow[],
+  defaultActivityType: string | null
+) => {
+  const preparedRows: LineRow[] = []
+  sourceRows.forEach((row, index) => {
+    if (index === 0 || row.from_time) {
+      preparedRows.push(row)
+      return
+    }
+
+    const previousRow = preparedRows[index - 1]
+    const calculatedTime = calculateNextFromTime(previousRow.from_time, previousRow.hrs)
+    preparedRows.push(calculatedTime ? { ...row, from_time: calculatedTime } : row)
+  })
+
+  const lastRow = preparedRows[preparedRows.length - 1]
+  if (!lastRow || !isCompleteLine(lastRow)) return preparedRows
+
+  return [
+    ...preparedRows,
+    {
+      line_num: preparedRows.length + 1,
+      activity_type: defaultActivityType,
+      from_time: calculateNextFromTime(lastRow.from_time, lastRow.hrs),
+      hrs: '',
+      project_id: null,
+      task_id: null,
+      remarks: '',
+    },
+  ]
+}
+
 export default function Layout() {
 
   const router = useRouter()
   const { setValue, getValue } = useGlobalContext()
+  const gridRef = useRef<HTMLTableElement>(null)
 
   const [isLoading, setIsLoading] = useState(false)
 
   const insertDenied = usePermission('/wks/timelines/insert')
+  const taskInsertDenied = usePermission('/wks/tasks/insert')
 
   const [activityTypes, setActivityTypes] =
     useState<ComboboxItemType[]>([])
 
+  const [defaultActivityType, setDefaultActivityType] =
+    useState<string | null>(null)
+
   const [projectsList, setProjectsList] =
     useState<ComboboxItemType[]>([])
 
-  const [tasksList, setTasksList] =
-    useState<Record<number, ComboboxItemType[]>>({})
+  const [tasksByProject, setTasksByProject] =
+    useState<Record<string, ComboboxItemType[]>>({})
+
+  const [taskCreateRowIndex, setTaskCreateRowIndex] =
+    useState<number | null>(null)
 
   const [formValues, setFormValues] =
-    useState({
+    useState<TimesheetFormValues>({
       doc_date: new Date(),
-      assigned_to: null as number | null
+      assigned_to: null
     })
 
   const [rows, setRows] = useState<LineRow[]>([
@@ -81,9 +155,9 @@ export default function Layout() {
     }
   ])
 
-  const handleHeaderChange = (
-    name: string,
-    value: any
+  const handleHeaderChange = <K extends keyof TimesheetFormValues>(
+    name: K,
+    value: TimesheetFormValues[K]
   ) => {
     setFormValues(prev => ({
       ...prev,
@@ -96,83 +170,135 @@ export default function Layout() {
     field: K,
     value: LineRow[K]
   ) => {
+    setRows(current => prepareTimesheetRows(
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: value } : row
+      ),
+      defaultActivityType
+    ))
+  }
 
-    const updated = [...rows]
-    updated[index][field] = value
-
-    setRows(updated)
+  const handleProjectChange = (index: number, projectId: string) => {
+    setRows(current => prepareTimesheetRows(
+      current.map((row, rowIndex) => rowIndex === index
+        ? { ...row, project_id: projectId || null, task_id: null }
+        : row
+      ),
+      defaultActivityType
+    ))
   }
 
   const addRow = () => {
 
-    setRows(prev => [
-      ...prev,
-      {
-        line_num: prev.length + 1,
-        activity_type: null,
-        from_time: '',
-        hrs: '',
-        project_id: null,
-        task_id: null,
-        remarks: ''
-      }
-    ])
+    setRows(prev => {
+      const previousRow = prev[prev.length - 1]
+      return [
+        ...prev,
+        {
+          line_num: prev.length + 1,
+          activity_type: defaultActivityType,
+          from_time: previousRow
+            ? calculateNextFromTime(previousRow.from_time, previousRow.hrs)
+            : '',
+          hrs: '',
+          project_id: null,
+          task_id: null,
+          remarks: ''
+        }
+      ]
+    })
   }
 
-  const loadActivityTypes = async () => {
-
-    const data = await getWorkspaceActivityTypes()
-
-    setActivityTypes(
-      (data || []).map(a => ({
-        code: String(a.id),
-        name: a.name
-      }))
+  const focusGridCell = (rowIndex: number, columnIndex: number) => {
+    const element = gridRef.current?.querySelector<HTMLInputElement>(
+      `[data-grid-row="${rowIndex}"][data-grid-column="${columnIndex}"]:not(:disabled)`
     )
+    if (!element) return false
+    element.focus()
+    if (!element.readOnly) element.select()
+    return true
   }
 
-  const loadProjects = async () => {
-
-    const data = await getWorkspaceProjects()
-
-    setProjectsList(
-      (data || []).map(p => ({
-        code: String(p.id),
-        name: p.project_name
-      }))
-    )
-  }
-
-  const loadTasksByProject = async (
-    projectId: string,
-    rowIndex: number
+  const moveGridFocus = (
+    rowIndex: number,
+    columnIndex: number,
+    rowStep: number,
+    columnStep: number
   ) => {
+    let nextRow = rowIndex + rowStep
+    let nextColumn = columnIndex + columnStep
 
-    const data = await getWorkspaceTasksByProject(Number(projectId))
+    if (nextColumn > 5) {
+      nextColumn = 0
+      nextRow += 1
+    }
+    if (nextColumn < 0) {
+      nextColumn = 5
+      nextRow -= 1
+    }
 
-    setTasksList(prev => ({
-      ...prev,
-      [rowIndex]:
-        (data || []).map(t => ({
-          code: String(t.id),
-          name: t.subject
-        }))
-    }))
+    if (nextRow === rows.length) {
+      addRow()
+      window.setTimeout(() => focusGridCell(nextRow, nextColumn), 0)
+      return
+    }
+
+    if (nextRow >= 0 && nextRow < rows.length) {
+      focusGridCell(nextRow, nextColumn)
+    }
   }
 
-  const getAuthUser = async () => {
+  const handleGridKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+    rowIndex: number,
+    columnIndex: number
+  ) => {
+    const movement: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      Enter: [event.shiftKey ? -1 : 1, 0],
+      Tab: [0, event.shiftKey ? -1 : 1],
+    }
+    const next = movement[event.key]
+    if (!next) return
 
-    const data =
-      await getValue('UserInfoAuthSession')
-
-    const id = data?.[0]?.id ?? null
-
-    setFormValues(prev => ({
-      ...prev,
-      assigned_to: id
-    }))
+    event.preventDefault()
+    moveGridFocus(rowIndex, columnIndex, next[0], next[1])
   }
 
+  const openTaskCreation = (rowIndex: number) => {
+    if (taskInsertDenied) {
+      toast.error('You do not have permission to create tasks')
+      return
+    }
+
+    if (!rows[rowIndex]?.project_id) {
+      toast.error('Select a project before creating a task')
+      return
+    }
+
+    setTaskCreateRowIndex(rowIndex)
+  }
+
+  const handleTaskCreated = (taskId: number, taskSubject: string) => {
+    if (taskCreateRowIndex === null) return
+
+    const rowIndex = taskCreateRowIndex
+    const projectId = rows[rowIndex]?.project_id
+    if (!projectId) return
+
+    setTasksByProject(current => ({
+      ...current,
+      [projectId]: [
+        { code: String(taskId), name: taskSubject },
+        ...(current[projectId] ?? []).filter(task => task.code !== String(taskId)),
+      ],
+    }))
+    handleRowChange(rowIndex, 'task_id', String(taskId))
+    setTaskCreateRowIndex(null)
+  }
 
   const duplicateRowBelow = (index: number) => {
     setRows(prev => {
@@ -194,9 +320,9 @@ export default function Layout() {
   }
 
   const deleteRow = (index: number) => {
-    setRows(prev => {
-      if (prev.length === 1) return prev // prevent deleting last row
+    if (rows.length === 1) return
 
+    setRows(prev => {
       const newRows = prev.filter((_, i) => i !== index)
 
       return newRows.map((row, i) => ({
@@ -263,18 +389,77 @@ export default function Layout() {
   }
 
   useEffect(() => {
+    let cancelled = false
 
-    loadActivityTypes()
-    loadProjects()
-    getAuthUser()
+    const loadFormOptions = async () => {
+      try {
+        const session = await Promise.resolve(getValue('UserInfoAuthSession'))
+        const userId = Number(session?.[0]?.id)
+        if (!userId) throw new Error('Unable to resolve the timesheet owner')
 
-  }, [])
+        const [activities, entryOptions, settings] = await Promise.all([
+          getWorkspaceActivityTypes(),
+          getWorkspaceTimesheetEntryOptionsForUser(userId),
+          getWorkspaceTimesheetSettings().catch(() => null),
+        ])
+        if (cancelled) return
+
+        setActivityTypes(activities.map(activity => ({
+          code: String(activity.id),
+          name: activity.name,
+        })))
+        const configuredActivity = settings?.default_activity_type_id
+          ? activities.find(activity => activity.id === settings.default_activity_type_id)
+          : activities.find(activity => activity.name.trim().toLowerCase() === 'development')
+        const configuredActivityId = configuredActivity
+          ? String(configuredActivity.id)
+          : null
+        setDefaultActivityType(configuredActivityId)
+        if (configuredActivityId) {
+          setRows(current => prepareTimesheetRows(
+            current.map(row => ({
+              ...row,
+              activity_type: row.activity_type || configuredActivityId,
+            })),
+            configuredActivityId
+          ))
+        }
+        setProjectsList(entryOptions.projects.map(project => ({
+          code: String(project.id),
+          name: project.project_name,
+        })))
+        setTasksByProject(entryOptions.tasks.reduce<Record<string, ComboboxItemType[]>>(
+          (groupedTasks, task) => {
+            const projectId = String(task.project_id)
+            groupedTasks[projectId] = [
+              ...(groupedTasks[projectId] ?? []),
+              { code: String(task.id), name: task.subject },
+            ]
+            return groupedTasks
+          },
+          {}
+        ))
+        setFormValues(current => ({
+          ...current,
+          assigned_to: userId,
+        }))
+      } catch (error) {
+        console.error(error)
+        toast.error('Failed to load timesheet options')
+      }
+    }
+
+    void loadFormOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [getValue])
 
   useEffect(() => {
 
     setValue('loading_g', isLoading)
 
-  }, [isLoading])
+  }, [isLoading, setValue])
 
   return (
     <div>
@@ -348,30 +533,32 @@ export default function Layout() {
 
         {/* LINES */}
 
-        <Card className="px-4 py-4">
+        <Card className="overflow-hidden p-0">
 
-          <Table>
+          <Table ref={gridRef} className="min-w-[1050px] table-fixed border-collapse text-xs">
             <TableHeader>
               <TableRow>
-                <TableHead></TableHead>
-                <TableHead>Activity</TableHead>
-                <TableHead>From Time</TableHead>
-                <TableHead>Hours</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Task</TableHead>
-                <TableHead>Remarks</TableHead>
+                <TableHead className="h-8 w-12 border-r px-1 text-center">#</TableHead>
+                <TableHead className="h-8 w-36 border-r px-2">Activity</TableHead>
+                <TableHead className="h-8 w-28 border-r px-2">From Time</TableHead>
+                <TableHead className="h-8 w-24 border-r px-2">Hours</TableHead>
+                <TableHead className="h-8 w-52 border-r px-2">Project</TableHead>
+                <TableHead className="h-8 w-56 border-r px-2">Task</TableHead>
+                <TableHead className="h-8 min-w-56 px-2">Remarks</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {rows.map((row, index) => (
-                <TableRow key={index}>
+                <TableRow key={index} className="h-8 hover:bg-transparent">
 
-                  <TableCell className='border-t border-b'>
-                    {/* <EllipsisVertical className='h-4' /> */}
+                  <TableCell className="h-8 border-r p-0 text-center">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <EllipsisVertical className='h-4' />
+                        <Button type="button" variant="ghost" className="h-8 w-full rounded-none px-1 text-xs text-muted-foreground">
+                          <span>{index + 1}</span>
+                          <EllipsisVertical className="size-3.5" />
+                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-40" align="start">
                         <DropdownMenuGroup>
@@ -388,7 +575,7 @@ export default function Layout() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
-                  <TableCell className='border'>
+                  <TableCell className="border-r p-0">
                     <SearchableCombobox
                       // label="Activity"
                       // required
@@ -397,59 +584,89 @@ export default function Layout() {
                       onValueChange={(val) =>
                         handleRowChange(index, "activity_type", val)
                       }
+                      className="h-8 min-h-8 w-full max-w-none rounded-none border-0 px-2 py-1 text-xs shadow-none focus-within:ring-2"
+                      gridRow={index}
+                      gridColumn={0}
+                      onGridKeyDown={event => handleGridKeyDown(event, index, 0)}
+                      openOnFocus
                     />
                   </TableCell>
 
-                  <TableCell className='border'>
+                  <TableCell className="border-r p-0">
                     <Input
                       type="time"
                       value={row.from_time}
                       onChange={(e) =>
                         handleRowChange(index, "from_time", e.target.value)
                       }
+                      data-grid-row={index}
+                      data-grid-column={1}
+                      onKeyDown={event => handleGridKeyDown(event, index, 1)}
+                      className="h-8 rounded-none border-0 bg-transparent px-2 text-xs shadow-none focus-visible:ring-2"
                     />
                   </TableCell>
 
-                  <TableCell className='border'>
+                  <TableCell className="border-r p-0">
                     <Input
+                      type="number"
+                      min="0"
+                      step="0.25"
                       placeholder="Hours"
                       value={row.hrs}
                       onChange={(e) =>
                         handleRowChange(index, "hrs", e.target.value)
                       }
+                      data-grid-row={index}
+                      data-grid-column={2}
+                      onKeyDown={event => handleGridKeyDown(event, index, 2)}
+                      className="h-8 rounded-none border-0 bg-transparent px-2 text-right text-xs tabular-nums shadow-none focus-visible:ring-2"
                     />
                   </TableCell>
 
-                  <TableCell className='border'>
+                  <TableCell className="border-r p-0">
                     <SearchableCombobox
                       // label="Project"
                       items={projectsList}
                       value={row.project_id || ""}
-                      onValueChange={(val) => {
-                        handleRowChange(index, "project_id", val)
-                        loadTasksByProject(val, index)
-                      }}
+                      onValueChange={(val) => handleProjectChange(index, val)}
+                      className="h-8 min-h-8 w-full max-w-none rounded-none border-0 px-2 py-1 text-xs shadow-none focus-within:ring-2"
+                      gridRow={index}
+                      gridColumn={3}
+                      onGridKeyDown={event => handleGridKeyDown(event, index, 3)}
+                      openOnFocus
                     />
                   </TableCell>
 
-                  <TableCell className='border'>
+                  <TableCell className="border-r p-0">
                     <SearchableCombobox
                       // label="Task"
-                      items={tasksList[index] || []}
+                      items={row.project_id ? tasksByProject[row.project_id] || [] : []}
                       value={row.task_id || ""}
                       onValueChange={(val) =>
                         handleRowChange(index, "task_id", val)
                       }
+                      actionLabel="Create Task"
+                      actionDisabled={taskInsertDenied}
+                      onAction={() => openTaskCreation(index)}
+                      className="h-8 min-h-8 w-full max-w-none rounded-none border-0 px-2 py-1 text-xs shadow-none focus-within:ring-2"
+                      gridRow={index}
+                      gridColumn={4}
+                      onGridKeyDown={event => handleGridKeyDown(event, index, 4)}
+                      openOnFocus
                     />
                   </TableCell>
 
-                  <TableCell className='border'>
+                  <TableCell className="p-0">
                     <Input
                       placeholder="Remarks"
                       value={row.remarks}
                       onChange={(e) =>
                         handleRowChange(index, "remarks", e.target.value)
                       }
+                      data-grid-row={index}
+                      data-grid-column={5}
+                      onKeyDown={event => handleGridKeyDown(event, index, 5)}
+                      className="h-8 rounded-none border-0 bg-transparent px-2 text-xs shadow-none focus-visible:ring-2"
                     />
                   </TableCell>
 
@@ -460,15 +677,40 @@ export default function Layout() {
 
           <Button
             type="button"
-            variant="secondary"
-            className=" w-fit"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-full justify-start rounded-none border-t px-3 text-xs text-muted-foreground"
             onClick={addRow}
           >
-            Add Row
+            + Add Row
           </Button>
 
         </Card>
       </form>
+
+      <Dialog
+        open={taskCreateRowIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setTaskCreateRowIndex(null)
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Task</DialogTitle>
+            <DialogDescription>
+              Create a task for the selected project. It will be selected on this timesheet line after saving.
+            </DialogDescription>
+          </DialogHeader>
+
+          {taskCreateRowIndex !== null && rows[taskCreateRowIndex]?.project_id && (
+            <NewProjectTask
+              projectId={rows[taskCreateRowIndex].project_id}
+              onClose={() => setTaskCreateRowIndex(null)}
+              onCreated={handleTaskCreated}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
 
     </div>

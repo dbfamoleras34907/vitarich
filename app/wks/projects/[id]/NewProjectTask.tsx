@@ -4,7 +4,6 @@ import SearchableCombobox, {
   ComboboxItemType
 } from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -16,7 +15,17 @@ import { toast } from 'sonner'
 interface Props {
   projectId: string
   onClose?: () => void
-  onCreated?: (taskId: number) => void
+  onCreated?: (taskId: number, taskSubject: string) => void
+}
+
+type TaskFormValues = {
+  subject: string
+  issue: string
+  assigned_to: string
+  priority: string
+  task_type: string
+  parent_task: string
+  color: string
 }
 
 export default function NewProjectTask({
@@ -38,7 +47,7 @@ export default function NewProjectTask({
     useState<ComboboxItemType[]>([])
 
   const [formValues, setFormValues] =
-    useState({
+    useState<TaskFormValues>({
       subject: '',
       issue: '',
       assigned_to: '',
@@ -48,9 +57,9 @@ export default function NewProjectTask({
       color: '#000000'
     })
 
-  const handleChange = (
-    name: string,
-    value: any
+  const handleChange = <K extends keyof TaskFormValues>(
+    name: K,
+    value: TaskFormValues[K]
   ) => {
     setFormValues(prev => ({
       ...prev,
@@ -94,7 +103,7 @@ export default function NewProjectTask({
 
       toast.success('Task created')
 
-      onCreated?.(taskId)
+      onCreated?.(taskId, formValues.subject)
       onClose?.()
     } catch (err) {
       console.error(err)
@@ -104,50 +113,48 @@ export default function NewProjectTask({
     setIsLoading(false)
   }
 
-  const loadTaskTypes = async () => {
-    const data = await getTaskType()
-    setTaskTypes(
-      (data || []).map((t) => ({
-        code: String(t.id),
-        name: t.name
-      }))
-    )
-  }
+  useEffect(() => {
+    let cancelled = false
 
-  const loadActiveUsers = async () => {
-    const users = getValue('activeUsers')
-    setActiveUsers((Array.isArray(users) ? users : []).map((user) => ({
-      code: String(user.code),
-      name: String(user.name),
-    })))
+    const loadFormOptions = async () => {
+      const [types, projectTasks] = await Promise.all([
+        getTaskType(),
+        getTaskinNewTaskAPi(Number(projectId)),
+      ])
+      if (cancelled) return
 
-    const session = getValue('UserInfoAuthSession')
-    const currentUserId = Array.isArray(session) ? session[0]?.id : null
-    if (currentUserId) {
+      const users = getValue('activeUsers')
+      const session = getValue('UserInfoAuthSession')
+      const currentUserId = Array.isArray(session) ? session[0]?.id : null
+
+      setTaskTypes(types.map((type) => ({
+        code: String(type.id),
+        name: type.name,
+      })))
+      setTasksList(projectTasks.map((task) => ({
+        code: String(task.id),
+        name: task.subject,
+      })))
+      setActiveUsers((Array.isArray(users) ? users : []).map((user) => ({
+        code: String(user.code),
+        name: String(user.name),
+      })))
       setFormValues(current => ({
         ...current,
-        assigned_to: String(currentUserId),
+        task_type: current.task_type || String(types[0]?.id ?? ''),
+        assigned_to: current.assigned_to || String(currentUserId ?? ''),
       }))
     }
-  }
 
-  const loadParentTasks = async () => {
-    const data = await getTaskinNewTaskAPi(Number(projectId))
-    setTasksList(data.map((task) => ({
-      code: String(task.id),
-      name: task.subject,
-    })))
-  }
-
-  useEffect(() => {
-    loadTaskTypes()
-    loadActiveUsers()
-    loadParentTasks()
-  }, [projectId])
+    void loadFormOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [getValue, projectId])
 
   useEffect(() => {
     setValue('loading_g', isLoading)
-  }, [isLoading])
+  }, [isLoading, setValue])
 
   return (
     <form

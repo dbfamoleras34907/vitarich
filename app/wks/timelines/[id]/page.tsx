@@ -3,7 +3,7 @@ import Layout from './Layout'
 export default function page() {
     return (
         <div>
-            <NavigationBar currentLabel='User' fatherLabel='Administrator' fatherLink='' >
+            <NavigationBar currentLabel='Timesheet Details' fatherLabel='Timesheets' fatherLink='/wks/timelines' >
                 <div className='max-w-7xl mx-auto'>
                     <Layout />
                 </div>

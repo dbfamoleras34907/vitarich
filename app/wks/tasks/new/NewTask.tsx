@@ -41,6 +41,7 @@ export default function NewTask() {
 
   const subjectRef = useRef<HTMLInputElement | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const [projectsList, setProjectsList] = useState<ComboboxItemType[]>([])
 
@@ -217,7 +218,7 @@ export default function NewTask() {
           subject: '',
           issue: '',
           priority: null,
-          task_type: null,
+          task_type: taskTypes[0]?.code || null,
           parent_task: null,
           color: '#000000'
         })
@@ -243,6 +244,12 @@ export default function NewTask() {
       code: String(t.id),
       name: t.name
     })))
+    if (data[0]?.id) {
+      setFormValues(current => ({
+        ...current,
+        task_type: current.task_type || String(data[0].id),
+      }))
+    }
   }
 
   const getActiveUsers = async () => {
@@ -351,9 +358,20 @@ export default function NewTask() {
         </div>
 
         <Card className='shadow-none'>
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <div>
+              <h2 className="font-medium">Task Details</h2>
+              <p className="text-xs text-muted-foreground">Start with the essentials. Open more details only when needed.</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => setShowAdvanced(current => !current)}>
+              {showAdvanced ? 'Hide details' : 'More details'}
+            </Button>
+          </div>
           <div className="grid md:grid-cols-2 gap-4 px-4">
 
-            {components.map((e, i) => (
+            {components
+              .filter(e => showAdvanced || !['issue', 'task_type', 'parent_task', 'color'].includes(e.name))
+              .map((e, i) => (
               <div key={i}>
 
                 {e.type !== "search" && (

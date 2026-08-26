@@ -65,6 +65,7 @@ type Props<T> = {
   enablePagination?: boolean
   onRowClick?: (row: T) => void
   getRowClassName?: (row: T, index: number) => string
+  compact?: boolean
 }
 
 type SortState = {
@@ -164,6 +165,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   enablePagination = true,
   onRowClick,
   getRowClassName,
+  compact = false,
 }: Props<T>) {
   const tableId = useId()
   const [sort, setSort] = useState<SortState>({ key: null, direction: 'asc' })
@@ -417,7 +419,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       aria-labelledby={title ? `${tableId}-title` : undefined}
     >
       <div
-        className="flex min-w-0 flex-col gap-3 border-b bg-card px-3 py-3 lg:flex-row lg:items-center lg:justify-between"
+        className={`flex min-w-0 flex-col border-b bg-card lg:flex-row lg:items-center lg:justify-between ${compact ? 'gap-2 px-2 py-2' : 'gap-3 px-3 py-3'}`}
       >
         {loading ? (
           <>
@@ -444,7 +446,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                   {description}
                 </p>
               )}
-              <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">
+              <p className={`${compact ? 'text-xs' : 'mt-1 text-sm'} text-muted-foreground`} aria-live="polite">
                 {sortedData.length} of {data.length} rows
               </p>
             </div>
@@ -708,7 +710,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                           : 'descending'
                         : 'none'
                     }
-                    className={`h-10 whitespace-nowrap px-3 align-middle text-xs font-semibold uppercase text-foreground/70 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'}`}
+                    className={`${compact ? 'h-8 px-2 text-[11px]' : 'h-10 px-3 text-xs'} whitespace-nowrap align-middle font-semibold uppercase text-foreground/70 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'}`}
                   >
                     {sortable ? (
                       <button
@@ -748,8 +750,8 @@ export default function DynamicTable<T extends Record<string, unknown>>({
               Array.from({ length: 5 }).map((_, rowIndex) => (
                 <tr key={rowIndex}>
                   {columns.map((column, colIndex) => (
-                    <td key={`${String(column.key)}-${colIndex}`} className="p-2">
-                      <Skeleton className="h-4 w-full" />
+                    <td key={`${String(column.key)}-${colIndex}`} className={compact ? 'px-2 py-1' : 'p-2'}>
+                      <Skeleton className={`${compact ? 'h-3.5' : 'h-4'} w-full`} />
                     </td>
                   ))}
                 </tr>
@@ -777,7 +779,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                     {columns.map(column => (
                       <td
                         key={String(column.key)}
-                        className={`p-2 align-middle text-foreground/85 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'} ${column.type === 'button' ? 'whitespace-nowrap' : 'max-w-[320px]'}`}
+                        className={`${compact ? 'px-2 py-1 text-xs' : 'p-2'} align-middle text-foreground/85 ${column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left'} ${column.type === 'button' ? 'whitespace-nowrap' : 'max-w-[320px]'}`}
                         title={column.type === 'button' ? undefined : String(row[column.key as keyof T] ?? '')}
                       >
                         <div className={column.type === 'button' ? 'flex justify-end' : 'truncate'}>
@@ -793,7 +795,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       </div>
 
       {!loading && sortedData.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 border-t px-4 py-10 text-center">
+        <div className={`flex flex-col items-center justify-center gap-2 border-t px-4 text-center ${compact ? 'py-6' : 'py-10'}`}>
           <div className="flex size-10 items-center justify-center rounded-md bg-accent text-primary">
             {hasActiveSearchOrFilters ? (
               <Filter className="size-5" aria-hidden="true" />
@@ -822,7 +824,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       )}
 
       {showFooter && (
-        <div className="flex min-w-0 flex-col gap-3 border-t bg-secondary/70 px-3 py-3 text-sm text-foreground/75 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex min-w-0 flex-col border-t bg-secondary/70 text-foreground/75 sm:flex-row sm:items-center sm:justify-between ${compact ? 'gap-2 px-2 py-2 text-xs' : 'gap-3 px-3 py-3 text-sm'}`}>
           <p className="min-w-0" aria-live="polite">
             Showing <span className="font-medium text-foreground">{firstRow}</span> to{' '}
             <span className="font-medium text-foreground">{lastRow}</span> of{' '}

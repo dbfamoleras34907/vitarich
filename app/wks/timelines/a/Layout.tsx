@@ -30,6 +30,7 @@ import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
+import { getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
 
 export default function Layout() {
   const route = useRouter()
@@ -63,7 +64,7 @@ export default function Layout() {
   // PREFETCH
   useEffect(() => {
     route.prefetch('/wks/timelines/new')
-  }, [])
+  }, [route])
 
   // LOAD DATA
   useEffect(() => {
@@ -75,6 +76,13 @@ export default function Layout() {
 
         setInitialRows(data)
         setFilteredRows(data)
+
+        try {
+          const settings = await getWorkspaceTimesheetSettings()
+          setEmailTo(current => current || settings.supervisor_email || '')
+        } catch (settingsError) {
+          console.error('Unable to load timesheet settings', settingsError)
+        }
       } catch (err) {
         console.error(err)
       }
@@ -90,7 +98,7 @@ export default function Layout() {
     initialRows.forEach((row) => {
       route.prefetch(`/wks/tasks/${row.id}`)
     })
-  }, [initialRows])
+  }, [initialRows, route])
 
   // FILTER DATE RANGE
   useEffect(() => {

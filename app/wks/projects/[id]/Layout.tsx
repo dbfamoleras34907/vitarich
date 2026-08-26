@@ -11,23 +11,24 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { format } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { getProjectById } from './api'
 import { saveProject, SaveProjectPayload } from '../new/api'
 import NewProjectTask from './NewProjectTask'
-import { getWorkspaceTasksByProject, type WorkspaceTask } from '@/lib/data/repositories/workspace'
+import { getWorkspaceTaskStatuses, getWorkspaceTasksByProject, type WorkspaceTask, type WorkspaceTaskStatus } from '@/lib/data/repositories/workspace'
 import { toast } from 'sonner'
 import { usePermission } from '@/hooks/usePermission'
+import ProjectTaskBoard from './ProjectTaskBoard'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
   const [activeUsers, setactiveUsers] = useState<ComboboxItemType[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const { id } = useParams()
-  const router = useRouter()
   const [modalOpen, setmodalOpen] = useState(false)
   const [formValues, setFormValues] = useState<Partial<SaveProjectPayload>>({})
   const [projectTasks, setProjectTasks] = useState<WorkspaceTask[]>([])
+  const [taskStatuses, setTaskStatuses] = useState<WorkspaceTaskStatus[]>([])
   const editDenied = usePermission('/wks/projects/edit')
   const taskInsertDenied = usePermission('/wks/tasks/insert')
   const components = [
@@ -159,9 +160,19 @@ export default function Layout() {
     }
   }
 
+  const loadTaskStatuses = async () => {
+    try {
+      setTaskStatuses(await getWorkspaceTaskStatuses())
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load task workflow')
+    }
+  }
+
   useEffect(() => {
     loadProject()
     loadProjectTasks()
+    loadTaskStatuses()
   }, [id])
 
   useEffect(() => {
@@ -350,25 +361,11 @@ export default function Layout() {
             {projectTasks.length} task{projectTasks.length === 1 ? '' : 's'}
           </p>
         </div>
-        <div className="divide-y">
-          {projectTasks.map(task => (
-            <button
-              key={task.id}
-              type="button"
-              className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
-              onClick={() => router.push(`/wks/tasks/${task.id}`)}
-            >
-              <span>
-                <span className="block font-medium">{task.subject}</span>
-                <span className="block text-xs text-muted-foreground">{task.priority || 'No priority'}</span>
-              </span>
-              <span className="text-sm text-muted-foreground">View</span>
-            </button>
-          ))}
-          {projectTasks.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No tasks have been added to this project.
-            </p>
+        <div className="p-3">
+          {taskStatuses.length > 0 ? (
+            <ProjectTaskBoard tasks={projectTasks} statuses={taskStatuses} onTasksChange={setProjectTasks} />
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">Apply Workspace task workflow settings to enable the board.</p>
           )}
         </div>
       </Card>

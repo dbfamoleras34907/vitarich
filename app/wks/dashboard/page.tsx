@@ -3,20 +3,13 @@
 
 import React from 'react'
 import Layout from './Layout'
-import ChildFolder from '@/components/ChildFolder'
 import NavigationBar from '@/components/ui/sidebar/NavigationBar'
-import Breadcrumb from '@/lib/Breadcrumb'
-import { Separator } from '@/components/ui/separator'
-import ProjectsChart from './ProjectsChart'
-import { Card } from '@/components/ui/card'
 
 export default function page() {
     return (
         <div>
-            <NavigationBar currentLabel='User' fatherLabel='Administrator' fatherLink='' >
-                <div className='max-w-7xl mx-auto'>
-                    <Layout />
-                </div>
+            <NavigationBar currentLabel='My Work' fatherLabel='Workspace' fatherLink='/wks/dashboard' >
+                <Layout />
             </NavigationBar>
 
         </div>
