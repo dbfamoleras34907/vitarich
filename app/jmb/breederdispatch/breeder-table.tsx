@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import {
   Ban,
   Bird,
+  ChevronDown,
   ClipboardList,
+  Eye,
   Loader2,
   MapPin,
-  Pencil,
   Plus,
+  Printer,
   RefreshCw,
   Search,
-  Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
@@ -27,13 +28,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
   cancelBreederDispatch,
-  deleteBreederDispatchDraft,
   listBreederDispatches,
   type BreederDispatchRecord,
 } from "./new/api";
@@ -71,7 +77,7 @@ export default function BreederDispatchTable() {
       setRecords(await listBreederDispatches());
     } catch (loadError) {
       console.error(loadError);
-      setError("Unable to load breeder dispatches. Run breeder_dispatch_tables.sql in Supabase if this module is new.");
+      setError("Unable to load breeder dispatches. Run breeder_dispatch_tables.sql, then dispatch_category_sources.sql, in Supabase.");
     } finally {
       setLoading(false);
     }
@@ -100,15 +106,7 @@ export default function BreederDispatchTable() {
     });
   }, [farmFilter, records, search, statusFilter]);
   const posted = records.filter((record) => record.status === "Posted");
-  const postedBirds = posted.reduce((sum, record) => sum + Number(record.total_qty), 0);
-
-  async function removeDraft(record: BreederDispatchRecord) {
-    if (!window.confirm(`Delete draft ${record.document_no}?`)) return;
-    setWorking(true); setError("");
-    try { await deleteBreederDispatchDraft(record.id); await load(); }
-    catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Unable to delete draft."); }
-    finally { setWorking(false); }
-  }
+  const postedUnits = posted.reduce((sum, record) => sum + Number(record.total_qty), 0);
 
   async function confirmCancel() {
     if (!cancelRecord || !cancelReason.trim()) return;
@@ -129,14 +127,14 @@ export default function BreederDispatchTable() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"><Bird className="size-5" /></div>
-              <div><h1 className="text-xl font-semibold">Breeder dispatch</h1><p className="text-sm text-muted-foreground">Flock-card harvest and delivery register</p></div>
+              <div><h1 className="text-xl font-semibold">Breeder dispatch</h1><p className="text-sm text-muted-foreground">Population Record and Egg Laying dispatch register</p></div>
             </div>
             <Button onClick={() => router.push("/jmb/breederdispatch/new")}><Plus className="size-4" />New dispatch</Button>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <Stat icon={<ClipboardList className="size-3.5" />} label="Posted documents" value={posted.length} />
             <Stat icon={<MapPin className="size-3.5" />} label="Farms dispatched" value={new Set(posted.map((row) => row.farm_id)).size} />
-            <Stat icon={<Bird className="size-3.5" />} label="Birds dispatched" value={postedBirds} />
+            <Stat icon={<Bird className="size-3.5" />} label="Units dispatched" value={postedUnits} />
           </div>
         </div>
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row">
@@ -147,23 +145,30 @@ export default function BreederDispatchTable() {
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table>
-          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Male</TableHead><TableHead className="text-right">Female</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading ? <TableRow><TableCell colSpan={8} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
             {!loading && filtered.map((record) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
                 <TableCell>{formatDate(record.dispatch_date)}</TableCell>
-                <TableCell><div className="font-mono text-xs">{record.document_no}</div><div className="text-xs text-muted-foreground">{record.line_count} flock card{record.line_count === 1 ? "" : "s"}</div></TableCell>
+                <TableCell><div className="font-mono text-xs">{record.document_no}</div><div className="text-xs text-muted-foreground">{record.line_count} categor{record.line_count === 1 ? "y" : "ies"}</div></TableCell>
                 <TableCell><div className="font-medium">{record.farm_name}</div><div className="text-xs text-muted-foreground">{record.farm_code || "-"}</div></TableCell>
                 <TableCell><div className="font-medium">{record.destination}</div><div className="text-xs text-muted-foreground">{[record.hauler_name, record.plate_number].filter(Boolean).join(" · ") || "-"}</div></TableCell>
-                <TableCell className="text-right tabular-nums">{Number(record.male_qty).toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums">{Number(record.female_qty).toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{Number(record.population_qty).toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{Number(record.egg_qty).toLocaleString()}</TableCell>
                 <TableCell><span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(record.status)}`}>{record.status}</span></TableCell>
-                <TableCell><div className="flex justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={() => router.push(`/jmb/breederdispatch/new?id=${record.id}`)}><Pencil className="size-4" />{record.status === "Draft" ? "Edit" : "View"}</Button>
-                  {record.status === "Draft" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => void removeDraft(record)}><Trash2 className="size-4" />Delete</Button> : null}
-                  {record.status === "Posted" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</Button> : null}
-                </div></TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">Actions<ChevronDown className="size-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => window.open(`/jmb/breederdispatch/${record.id}/print`, "_blank")}><Printer className="size-4" />Print</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => router.push(`/jmb/breederdispatch/new?id=${record.id}`)}><Eye className="size-4" />View</DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" disabled={record.status !== "Posted"} onSelect={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
               </TableRow>
             ))}
             {!loading && !filtered.length ? <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
@@ -172,7 +177,7 @@ export default function BreederDispatchTable() {
         <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} dispatches</div>
       </section>
       <Dialog open={Boolean(cancelRecord)} onOpenChange={(open) => { if (!open && !working) setCancelRecord(null); }}>
-        <DialogContent><DialogHeader><DialogTitle>Cancel breeder dispatch?</DialogTitle><DialogDescription>The dispatched quantities will be reversed from the corresponding breeder flock cards.</DialogDescription></DialogHeader>
+        <DialogContent><DialogHeader><DialogTitle>Cancel breeder dispatch?</DialogTitle><DialogDescription>The reserved Population Record and Egg Laying quantities will become available for dispatch again.</DialogDescription></DialogHeader>
           <div className="space-y-2"><Label required>Cancellation reason</Label><Textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></div>
           <DialogFooter><Button variant="outline" onClick={() => setCancelRecord(null)} disabled={working}>Keep dispatch</Button><Button variant="destructive" onClick={() => void confirmCancel()} disabled={working || !cancelReason.trim()}>{working ? <Loader2 className="size-4 animate-spin" /> : <Ban className="size-4" />}Cancel dispatch</Button></DialogFooter>
         </DialogContent>

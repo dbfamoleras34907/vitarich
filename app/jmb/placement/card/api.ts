@@ -27,6 +27,10 @@ export type BreederDailyPerformance = {
   trans_in_female: number;
   trans_out_male: number;
   trans_out_female: number;
+  kitchen_male: number;
+  kitchen_female: number;
+  condem_male: number;
+  condem_female: number;
   avg_body_weight_male: number;
   avg_body_weight_female: number;
   feed_consumption_male: number;
@@ -63,7 +67,20 @@ export async function getPlacement(placementId: number) {
     .eq("id", placementId)
     .single();
   if (error) throw new Error(errorMessage(error));
-  return data as Placement;
+
+  const placement = data as Placement;
+  if (!placement.cycle_id) return placement;
+
+  const { data: cycle, error: cycleError } = await db
+    .from("tbl_breeder_cycle")
+    .select("cycle_no")
+    .eq("id", placement.cycle_id)
+    .maybeSingle();
+  if (cycleError) throw new Error(errorMessage(cycleError));
+  return {
+    ...placement,
+    cycle_no: cycle?.cycle_no == null ? null : Number(cycle.cycle_no),
+  };
 }
 
 export async function listPlacementPens(placement: Placement) {

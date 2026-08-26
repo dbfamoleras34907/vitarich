@@ -435,17 +435,17 @@ export const NavFolders: NavFolder[] = [
         group: "Breeder Masters",
         children: [
           {
+            id: 199,
+            type: "Module",
+            title: "Breeder Dashboard",
+            url: "/jmb/brddash",
+          },
+
+          {
             id: 2,
             type: "Module",
             title: "Placement",
             url: "/jmb/placement",
-          },
-
-          {
-            id: 3,
-            type: "Module",
-            title: "Population Record",
-            url: "/jmb/growing",
           },
 
           {
@@ -467,7 +467,8 @@ export const NavFolders: NavFolder[] = [
             id: 6,
             type: "Module",
             title: "Clean-Up",
-            url: "/jmb/breedercleanup",
+            url: "/jmb/cleanup",
+            newDocumentUrl: "/jmb/cleanup/new",
           },
 
           {

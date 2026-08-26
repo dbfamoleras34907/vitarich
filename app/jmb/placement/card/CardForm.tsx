@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronUp, Loader2, Save } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, ChevronUp, Loader2, Plus, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import type { Placement } from "../new/api";
 import {
@@ -22,17 +25,28 @@ import BreederCardExportMenu, {
   BREEDER_IMPORT_HEADERS,
   type BreederImportRow,
 } from "./BreederCardExportMenu";
+import { createBreederTransfer, loadBreederTransfers, type TransferPlacement } from "../transfer/api";
 
 type EditableRow = Omit<
   BreederDailyPerformance,
   "id" | "created_at" | "created_by" | "updated_at" | "updated_by"
 > & { id?: number };
 
+type TransferModalState = {
+  transfer_date: string;
+  destination_placement_id: string;
+  male_qty: string;
+  female_qty: string;
+  reason: string;
+  remarks: string;
+};
+
 type NumericKey = keyof Pick<
   EditableRow,
   | "inv_male" | "inv_female" | "mc_male" | "mc_female"
   | "cull_male" | "cull_female" | "trans_in_male" | "trans_in_female"
-  | "trans_out_male" | "trans_out_female" | "avg_body_weight_male"
+  | "trans_out_male" | "trans_out_female" | "kitchen_male" | "kitchen_female"
+  | "condem_male" | "condem_female" | "avg_body_weight_male"
   | "avg_body_weight_female" | "feed_consumption_male"
   | "feed_consumption_female"
 >;
@@ -46,8 +60,12 @@ const gridColumnByField: Partial<Record<NumericKey, number>> = {
   trans_in_female: 5,
   trans_out_male: 6,
   trans_out_female: 7,
-  avg_body_weight_male: 8,
-  avg_body_weight_female: 9,
+  kitchen_male: 8,
+  kitchen_female: 9,
+  condem_male: 10,
+  condem_female: 11,
+  avg_body_weight_male: 12,
+  avg_body_weight_female: 13,
 };
 
 const gridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -61,11 +79,24 @@ const zeroFields = {
   trans_in_female: 0,
   trans_out_male: 0,
   trans_out_female: 0,
+  kitchen_male: 0,
+  kitchen_female: 0,
+  condem_male: 0,
+  condem_female: 0,
   avg_body_weight_male: 0,
   avg_body_weight_female: 0,
   feed_consumption_male: 0,
   feed_consumption_female: 0,
 };
+
+const dailyEntryFields = Object.keys(zeroFields) as Array<keyof typeof zeroFields>;
+
+function hasDailyRecord(row: EditableRow) {
+  return row.id != null
+    || dailyEntryFields.some((field) => Number(row[field]) !== 0)
+    || row.male_feedtype_id != null
+    || row.female_feedtype_id != null;
+}
 
 function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -108,8 +139,8 @@ function ageOn(placementDate: string | undefined, recordDate: string) {
 function liveInventory(row: EditableRow | undefined, sex: "male" | "female") {
   if (!row) return 0;
   return sex === "male"
-    ? row.inv_male + row.trans_in_male - row.mc_male - row.cull_male - row.trans_out_male
-    : row.inv_female + row.trans_in_female - row.mc_female - row.cull_female - row.trans_out_female;
+    ? row.inv_male + row.trans_in_male - row.mc_male - row.cull_male - row.trans_out_male - row.kitchen_male - row.condem_male
+    : row.inv_female + row.trans_in_female - row.mc_female - row.cull_female - row.trans_out_female - row.kitchen_female - row.condem_female;
 }
 
 function buildDailyRows(
@@ -117,7 +148,11 @@ function buildDailyRows(
   savedRows: BreederDailyPerformance[] = [],
 ) {
   const savedByDate = new Map(savedRows.map((row) => [row.daterec, row]));
-  const sourceRows = Array.from({ length: 31 }, (_, age): EditableRow => {
+  const lastSavedDay = savedRows.reduce(
+    (latest, row) => Math.max(latest, ageOn(placement.placement_date, row.daterec)),
+    0,
+  );
+  const sourceRows = Array.from({ length: Math.max(31, lastSavedDay) }, (_, age): EditableRow => {
     const daterec = addDays(placement.placement_date, age);
     const saved = savedByDate.get(daterec);
     return {
@@ -181,6 +216,10 @@ export default function CardForm() {
   const [importing, setImporting] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(true);
   const [explicitZeroCells, setExplicitZeroCells] = useState<Set<string>>(() => new Set());
+  const [transferModal, setTransferModal] = useState<TransferModalState | null>(null);
+  const [transferPlacements, setTransferPlacements] = useState<TransferPlacement[]>([]);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferSaving, setTransferSaving] = useState(false);
   const gridRef = useRef<HTMLTableElement>(null);
 
   function numericCellKey(rowIndex: number, field: NumericKey) {
@@ -188,6 +227,7 @@ export default function CardForm() {
   }
 
   function updateNumericCell(rowIndex: number, field: NumericKey, rawValue: string) {
+    if (field.includes("feed_consumption") && !/^\d*(?:\.\d{0,2})?$/.test(rawValue)) return;
     const parsedValue = rawValue === "" ? 0 : Number(rawValue);
     if (!Number.isFinite(parsedValue) || parsedValue < 0) return;
     const cellKey = numericCellKey(rowIndex, field);
@@ -214,15 +254,15 @@ export default function CardForm() {
     let nextRow = rowIndex + rowStep;
     let nextColumn = columnIndex + columnStep;
     if (columnStep !== 0) {
-      if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
-      if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+      if (nextColumn > 17) { nextColumn = 0; nextRow += 1; }
+      if (nextColumn < 0) { nextColumn = 17; nextRow -= 1; }
     }
     while (nextRow >= 0 && nextRow < rows.length) {
       if (focusGridCell(nextRow, nextColumn)) return;
       if (columnStep !== 0) {
         nextColumn += columnStep;
-        if (nextColumn > 13) { nextColumn = 0; nextRow += 1; }
-        if (nextColumn < 0) { nextColumn = 13; nextRow -= 1; }
+        if (nextColumn > 17) { nextColumn = 0; nextRow += 1; }
+        if (nextColumn < 0) { nextColumn = 17; nextRow -= 1; }
       } else {
         nextRow += rowStep;
       }
@@ -278,15 +318,19 @@ export default function CardForm() {
     cullFemale: total.cullFemale + row.cull_female,
     inFemale: total.inFemale + row.trans_in_female,
     outFemale: total.outFemale + row.trans_out_female,
+    kitchenFemale: total.kitchenFemale + row.kitchen_female,
+    condemFemale: total.condemFemale + row.condem_female,
     feedFemale: total.feedFemale + row.feed_consumption_female,
     mcMale: total.mcMale + row.mc_male,
     cullMale: total.cullMale + row.cull_male,
     inMale: total.inMale + row.trans_in_male,
     outMale: total.outMale + row.trans_out_male,
+    kitchenMale: total.kitchenMale + row.kitchen_male,
+    condemMale: total.condemMale + row.condem_male,
     feedMale: total.feedMale + row.feed_consumption_male,
   }), {
-    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, feedFemale: 0,
-    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, feedMale: 0,
+    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, kitchenFemale: 0, condemFemale: 0, feedFemale: 0,
+    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, kitchenMale: 0, condemMale: 0, feedMale: 0,
   }), [rows]);
   const cumulativeMortality = useMemo(() => {
     let male = 0;
@@ -309,6 +353,8 @@ export default function CardForm() {
         row.cull_male, row.cull_female,
         row.trans_in_male, row.trans_in_female,
         row.trans_out_male, row.trans_out_female,
+        row.kitchen_male, row.kitchen_female,
+        row.condem_male, row.condem_female,
         row.avg_body_weight_male, row.avg_body_weight_female,
         `${row.feed_consumption_male}${row.male_feedtype_id ? ` / ${feedTypeById.get(row.male_feedtype_id) ?? ""}` : ""}`,
         `${row.feed_consumption_female}${row.female_feedtype_id ? ` / ${feedTypeById.get(row.female_feedtype_id) ?? ""}` : ""}`,
@@ -327,6 +373,10 @@ export default function CardForm() {
     trans_in_female: row.trans_in_female,
     trans_out_male: row.trans_out_male,
     trans_out_female: row.trans_out_female,
+    kitchen_male: row.kitchen_male,
+    kitchen_female: row.kitchen_female,
+    condem_male: row.condem_male,
+    condem_female: row.condem_female,
     avg_body_weight_male: row.avg_body_weight_male,
     avg_body_weight_female: row.avg_body_weight_female,
     feed_consumption_male: row.feed_consumption_male,
@@ -345,6 +395,24 @@ export default function CardForm() {
       return;
     }
     setRows(recalculated);
+  }
+
+  function addDailyRow() {
+    if (!placement) return;
+    setRows((current) => {
+      const daterec = addDays(current.at(-1)?.daterec ?? placement.placement_date, 1);
+      const nextRow: EditableRow = {
+        placement_id: placement.id,
+        daterec,
+        inv_male: 0,
+        inv_female: 0,
+        ...zeroFields,
+        male_feedtype_id: null,
+        female_feedtype_id: null,
+        isactive: true,
+      };
+      return recalculateInventories(placement, [...current, nextRow]);
+    });
   }
 
   async function save() {
@@ -416,6 +484,7 @@ export default function CardForm() {
       const integerFields = new Set<string>([
         "inv_male", "inv_female", "mc_male", "mc_female", "cull_male", "cull_female",
         "trans_in_male", "trans_in_female", "trans_out_male", "trans_out_female",
+        "kitchen_male", "kitchen_female", "condem_male", "condem_female",
       ]);
       const nullableFeedFields = new Set<string>(["male_feedtype_id", "female_feedtype_id"]);
       const importedRows = dataRows.map((excelRow, index): EditableRow => {
@@ -471,8 +540,10 @@ export default function CardForm() {
           inv_male: Number(typed.inv_male), inv_female: Number(typed.inv_female),
           mc_male: Number(typed.mc_male), mc_female: Number(typed.mc_female),
           cull_male: Number(typed.cull_male), cull_female: Number(typed.cull_female),
-          trans_in_male: Number(typed.trans_in_male), trans_in_female: Number(typed.trans_in_female),
-          trans_out_male: Number(typed.trans_out_male), trans_out_female: Number(typed.trans_out_female),
+          trans_in_male: Number(rows[index]?.trans_in_male ?? 0), trans_in_female: Number(rows[index]?.trans_in_female ?? 0),
+          trans_out_male: Number(rows[index]?.trans_out_male ?? 0), trans_out_female: Number(rows[index]?.trans_out_female ?? 0),
+          kitchen_male: Number(typed.kitchen_male), kitchen_female: Number(typed.kitchen_female),
+          condem_male: Number(typed.condem_male), condem_female: Number(typed.condem_female),
           avg_body_weight_male: Number(typed.avg_body_weight_male), avg_body_weight_female: Number(typed.avg_body_weight_female),
           feed_consumption_male: Number(typed.feed_consumption_male), feed_consumption_female: Number(typed.feed_consumption_female),
           male_feedtype_id: typed.male_feedtype_id == null ? null : Number(typed.male_feedtype_id),
@@ -508,7 +579,7 @@ export default function CardForm() {
   ) {
     const decimal = field.includes("weight") || field.includes("consumption");
     const future = row.daterec > localDate();
-    const readOnly = field === "inv_male" || field === "inv_female";
+    const readOnly = field === "inv_male" || field === "inv_female" || field.startsWith("trans_in_") || field.startsWith("trans_out_");
     const gridColumn = gridColumnByField[field];
     return (
       <td key={`${rowIndex}-${field}`} className={`fc-grid-cell ${future || readOnly ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} p-0 ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
@@ -533,12 +604,77 @@ export default function CardForm() {
     );
   }
 
-  function renderCumulativeCell(rowIndex: number, sex: "male" | "female", groupEnd = false) {
+  function renderCumulativeCell(row: EditableRow, rowIndex: number, sex: "male" | "female", groupEnd = false) {
+    const value = hasDailyRecord(row) ? cumulativeMortality[rowIndex]?.[sex] ?? 0 : "";
     return (
-      <td key={`${rowIndex}-cumulative-${sex}`} className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-semibold tabular-nums ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
-        {count(cumulativeMortality[rowIndex]?.[sex] ?? 0)}
+      <td key={`${rowIndex}-cumulative-${sex}`} className={`fc-grid-cell fc-grid-cell-readonly p-0 ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"} ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+        <Input
+          value={value}
+          readOnly
+          tabIndex={-1}
+          className="h-8 rounded-none border-0 bg-transparent text-center font-semibold tabular-nums shadow-none focus-visible:ring-0"
+        />
       </td>
     );
+  }
+
+  async function openTransferModal(row: EditableRow) {
+    if (!placement || row.daterec > localDate()) return;
+    setTransferModal({
+      transfer_date: row.daterec,
+      destination_placement_id: "",
+      male_qty: "",
+      female_qty: "",
+      reason: "",
+      remarks: "",
+    });
+    setTransferLoading(true);
+    try {
+      const result = await loadBreederTransfers();
+      setTransferPlacements(result.placements);
+      if (!result.placements.some((item) => item.id === placement.id)) {
+        toast.error("This source placement does not have an active breeder cycle.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to load transfer destinations.");
+      setTransferModal(null);
+    } finally {
+      setTransferLoading(false);
+    }
+  }
+
+  async function postTransferFromModal() {
+    if (!placement || !transferModal) return;
+    const source = transferPlacements.find((item) => item.id === placement.id);
+    const destination = transferPlacements.find((item) => String(item.id) === transferModal.destination_placement_id);
+    const maleQty = Number(transferModal.male_qty || 0);
+    const femaleQty = Number(transferModal.female_qty || 0);
+    if (!source) { toast.error("The source placement is not active for transfer."); return; }
+    if (!destination) { toast.error("Select a destination building and pen."); return; }
+    if (transferModal.transfer_date < source.placement_date || transferModal.transfer_date < destination.placement_date) { toast.error("Transfer date cannot be earlier than either placement date."); return; }
+    if (!Number.isInteger(maleQty) || !Number.isInteger(femaleQty) || maleQty < 0 || femaleQty < 0 || maleQty + femaleQty <= 0) { toast.error("Enter a positive whole-number male or female quantity."); return; }
+    if (maleQty > source.male_available || femaleQty > source.female_available) { toast.error("Transfer quantity exceeds the source inventory."); return; }
+    if (!transferModal.reason.trim()) { toast.error("Transfer reason is required."); return; }
+    setTransferSaving(true);
+    try {
+      await createBreederTransfer({
+        transfer_date: transferModal.transfer_date,
+        source_placement_id: source.id,
+        destination_placement_id: destination.id,
+        male_qty: maleQty,
+        female_qty: femaleQty,
+        reason: transferModal.reason.trim(),
+        remarks: transferModal.remarks.trim() || null,
+      }, true);
+      const refreshed = await listDailyPerformance(placement.id);
+      setRows(buildDailyRows(placement, refreshed));
+      setTransferModal(null);
+      toast.success("Bird transfer posted to both Population Records.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to post bird transfer.");
+    } finally {
+      setTransferSaving(false);
+    }
   }
 
   function renderFeedCell(
@@ -556,7 +692,7 @@ export default function CardForm() {
           <Input
             type="number"
             min="0"
-            step="0.001"
+            step="0.01"
             value={
               Number(row[consumptionField]) === 0 && !explicitZeroCells.has(numericCellKey(rowIndex, consumptionField))
                 ? ""
@@ -564,9 +700,9 @@ export default function CardForm() {
             }
             disabled={future}
             data-pop-row={rowIndex}
-            data-pop-column={sex === "male" ? 10 : 12}
+            data-pop-column={sex === "male" ? 14 : 16}
             title="Feed consumption"
-            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 10 : 12)}
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 14 : 16)}
             onChange={(event) => updateNumericCell(rowIndex, consumptionField, event.target.value)}
             className={`h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
           />
@@ -574,9 +710,9 @@ export default function CardForm() {
             value={row[feedTypeField] ?? ""}
             disabled={future}
             data-pop-row={rowIndex}
-            data-pop-column={sex === "male" ? 11 : 13}
+            data-pop-column={sex === "male" ? 15 : 17}
             title="Feed type"
-            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 11 : 13)}
+            onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 15 : 17)}
             onChange={(event) => updateRow(rowIndex, feedTypeField, event.target.value ? Number(event.target.value) : null)}
             className="h-8 w-[52%] min-w-0 border-l bg-transparent px-1 text-[10px] outline-none disabled:cursor-not-allowed"
           >
@@ -607,6 +743,10 @@ export default function CardForm() {
   const liveFemale = liveInventory(latest, "female");
   const liveMale = liveInventory(latest, "male");
   const rowDivider = (rowIndex: number) => rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
+  const transferSource = transferPlacements.find((item) => item.id === placement.id) ?? null;
+  const transferDestination = transferPlacements.find((item) => String(item.id) === transferModal?.destination_placement_id) ?? null;
+  const transferMinimumDate = [transferSource?.placement_date, transferDestination?.placement_date].filter(Boolean).sort().at(-1) ?? placement.placement_date;
+  const transferLabel = (item: TransferPlacement) => `${item.building_no} - ${item.pen_no}`;
 
   return (
     <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
@@ -642,6 +782,9 @@ export default function CardForm() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                  <Button type="button" variant="outline" onClick={() => router.push(`/jmb/placement/transfer?sourcePlacementId=${placement.id}`)}>
+                    <ArrowLeftRight className="size-4" /> Transfer History
+                  </Button>
                   <BreederCardExportMenu
                     farm={placement.farm_name || ""}
                     building={placement.building_no || ""}
@@ -667,15 +810,15 @@ export default function CardForm() {
                 </div>
                 <div className="grid w-[328px] grid-cols-2 divide-x rounded-md border bg-slate-50 dark:bg-background/40">
                   <div className="px-3 py-2"><div className="text-xs font-medium text-muted-foreground">Placed birds</div><div className="text-base font-semibold tabular-nums">{count(placedTotal)}</div></div>
-                  <div className="px-3 py-2"><div className="text-xs font-medium text-muted-foreground">Live birds</div><div className="text-base font-semibold tabular-nums">{count(liveFemale + liveMale)}</div></div>
+                  <div className="px-3 py-2"><div className="text-xs font-medium text-muted-foreground">Cycle #</div><div className="text-base font-semibold tabular-nums">{placement.cycle_no ?? "-"}</div></div>
                 </div>
                 <div className="w-[190px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Female live / losses</div>
-                  <div className="text-sm font-semibold tabular-nums">{count(liveFemale)} / {count(totals.mcFemale + totals.cullFemale)}</div>
+                  <div className="text-xs font-medium text-muted-foreground">Female live / Mortality</div>
+                  <div className="text-sm font-semibold tabular-nums">{count(liveFemale)} / {count(totals.mcFemale)}</div>
                 </div>
                 <div className="w-[190px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Male live / losses</div>
-                  <div className="text-sm font-semibold tabular-nums">{count(liveMale)} / {count(totals.mcMale + totals.cullMale)}</div>
+                  <div className="text-xs font-medium text-muted-foreground">Male live / Mortality</div>
+                  <div className="text-sm font-semibold tabular-nums">{count(liveMale)} / {count(totals.mcMale)}</div>
                 </div>
                 <div className="w-[170px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
                   <div className="text-xs font-medium text-muted-foreground">Daily rows</div>
@@ -693,7 +836,7 @@ export default function CardForm() {
             <div className="relative flex min-h-14 items-center gap-3 border-b bg-white px-4 pb-4 pt-2 dark:bg-card">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{placement.farm_name} &gt; {placement.building_no} &gt; {penLabel}</div>
-                <div className="truncate text-xs text-muted-foreground">Placed {count(placedTotal)} | Live {count(liveFemale + liveMale)} | Rows {rows.length}</div>
+                <div className="truncate text-xs text-muted-foreground">Placed {count(placedTotal)} | Cycle {placement.cycle_no ?? "-"} | Rows {rows.length}</div>
               </div>
               <BreederCardExportMenu
                 farm={placement.farm_name || ""}
@@ -707,6 +850,7 @@ export default function CardForm() {
                 importing={importing}
                 onImport={importExcel}
               />
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/jmb/placement/transfer?sourcePlacementId=${placement.id}`)}><ArrowLeftRight className="size-4" /> Transfer History</Button>
               <Button type="button" size="sm" onClick={save} disabled={saving}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button>
               <Button type="button" variant="outline" size="icon-sm" onClick={() => setHeaderOpen(true)} title="Show header details" className="absolute bottom-0 left-1/2 z-[60] -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md dark:bg-card">
                 <ChevronDown className="size-4" />
@@ -716,25 +860,25 @@ export default function CardForm() {
         </Collapsible>
 
         <div className="relative flex-1 overflow-auto">
-          <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 1780 }}>
+          <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 2228 }}>
             <colgroup>
               <col style={{ width: 132 }} /><col style={{ width: 52 }} />
-              {[92, 92, 76, 76, 92, 92, 76, 76, 82, 82, 82, 82, 100, 100, 180, 180].map((width, index) => <col key={index} style={{ width }} />)}
+              {[92, 92, 76, 76, 92, 92, 76, 76, 82, 82, 82, 82, 120, 82, 82, 82, 82, 100, 100, 180, 180].map((width, index) => <col key={index} style={{ width }} />)}
             </colgroup>
             <thead>
               <tr style={{ height: 28 }}>
                 <th rowSpan={2} className="fc-grid-header fc-grid-header-border sticky left-0 top-0 z-40 text-center text-xs" style={{ minWidth: 132 }}>Date</th>
                 <th rowSpan={2} className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-[132px] top-0 z-40 text-center text-xs" style={{ minWidth: 52 }}>Age</th>
                 {[
-                  "Inventory", "MC", "Cumm M/C", "Culls", "Transfer In",
-                  "Transfer Out", "Grams/Birds", "FC",
+                  "Inventory (pc)", "Mortality (pc)", "Cumm Mortality (pc)", "Culls (pc)", "Transfer In (pc)",
+                  "Transfer Out (pc)", "Kitchen (pc)", "Condem (pc)", "Grams/Birds (kg/pc)", "Feeds Consumption (kg)",
                 ].map((label) => (
-                  <th key={label} colSpan={2} className={`${headerClass(true)} fc-grid-header-group capitalize`} style={{ top: 0 }}>{label}</th>
+                  <th key={label} colSpan={label === "Transfer Out (pc)" ? 3 : 2} className={`${headerClass(true)} fc-grid-header-group capitalize`} style={{ top: 0 }}>{label}</th>
                 ))}
               </tr>
               <tr style={{ height: 28 }}>
-                {Array.from({ length: 8 }, (_, groupIndex) => ["Male", "Female"].map((label, sexIndex) => (
-                  <th key={`${groupIndex}-${label}`} className={headerClass(sexIndex === 1)} style={{ top: 28 }}>{label}</th>
+                {Array.from({ length: 10 }, (_, groupIndex) => (groupIndex === 5 ? ["Male", "Female", "Transfer"] : ["Male", "Female"]).map((label, columnIndex, labels) => (
+                  <th key={`${groupIndex}-${label}`} className={headerClass(columnIndex === labels.length - 1)} style={{ top: 28 }}>{label}</th>
                 )))}
               </tr>
             </thead>
@@ -747,14 +891,21 @@ export default function CardForm() {
                   {renderNumericCell(row, rowIndex, "inv_female", true)}
                   {renderNumericCell(row, rowIndex, "mc_male")}
                   {renderNumericCell(row, rowIndex, "mc_female", true)}
-                  {renderCumulativeCell(rowIndex, "male")}
-                  {renderCumulativeCell(rowIndex, "female", true)}
+                  {renderCumulativeCell(row, rowIndex, "male")}
+                  {renderCumulativeCell(row, rowIndex, "female", true)}
                   {renderNumericCell(row, rowIndex, "cull_male")}
                   {renderNumericCell(row, rowIndex, "cull_female", true)}
                   {renderNumericCell(row, rowIndex, "trans_in_male")}
                   {renderNumericCell(row, rowIndex, "trans_in_female", true)}
                   {renderNumericCell(row, rowIndex, "trans_out_male")}
                   {renderNumericCell(row, rowIndex, "trans_out_female", true)}
+                  <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center fc-grid-group-divider ${rowDivider(rowIndex)}`}>
+                    <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" disabled={row.daterec > localDate()} onClick={() => void openTransferModal(row)}><ArrowLeftRight className="size-3.5" />Transfer</Button>
+                  </td>
+                  {renderNumericCell(row, rowIndex, "kitchen_male")}
+                  {renderNumericCell(row, rowIndex, "kitchen_female", true)}
+                  {renderNumericCell(row, rowIndex, "condem_male")}
+                  {renderNumericCell(row, rowIndex, "condem_female", true)}
                   {renderNumericCell(row, rowIndex, "avg_body_weight_male")}
                   {renderNumericCell(row, rowIndex, "avg_body_weight_female", true)}
                   {renderFeedCell(row, rowIndex, "male")}
@@ -773,14 +924,43 @@ export default function CardForm() {
                   totals.cullMale, totals.cullFemale,
                   totals.inMale, totals.inFemale,
                   totals.outMale, totals.outFemale,
+                ].map((value, index) => <td key={`before-${index}`} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}
+                <td className="fc-grid-footer-cell fc-grid-group-divider sticky bottom-0" />
+                {[
+                  totals.kitchenMale, totals.kitchenFemale,
+                  totals.condemMale, totals.condemFemale,
                   latest?.avg_body_weight_male ?? 0, latest?.avg_body_weight_female ?? 0,
                   totals.feedMale, totals.feedFemale,
-                ].map((value, index) => <td key={index} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}
+                ].map((value, index) => <td key={`after-${index}`} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}
               </tr>
             </tfoot>
           </table>
+          <div className="sticky left-0 flex w-fit p-3">
+            <Button type="button" size="sm" onClick={addDailyRow} disabled={saving}>
+              <Plus className="size-4" /> Add Date
+            </Button>
+          </div>
         </div>
       </div>
+      <Dialog open={Boolean(transferModal)} onOpenChange={(open) => { if (!open && !transferSaving) setTransferModal(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Transfer Transaction</DialogTitle>
+            <DialogDescription>Transfer Out is posted to this source pen and Transfer In is posted to the selected destination.</DialogDescription>
+          </DialogHeader>
+          {transferModal ? <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2"><Label>Transfer date</Label><Input type="date" min={transferMinimumDate} max={localDate()} value={transferModal.transfer_date} onChange={(event) => setTransferModal((current) => current ? { ...current, transfer_date: event.target.value } : current)} /></label>
+            <label className="space-y-2"><Label>Source building / pen</Label><Input value={`${placement.farm_name} / ${placement.building_no} / ${placement.pen_no}`} readOnly className="bg-muted/40" /></label>
+            <label className="space-y-2 sm:col-span-2"><Label required>Destination building / pen</Label><select value={transferModal.destination_placement_id} onChange={(event) => setTransferModal((current) => current ? { ...current, destination_placement_id: event.target.value } : current)} disabled={transferLoading} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">{transferLoading ? "Loading destinations..." : "Select destination"}</option>{transferPlacements.filter((item) => item.id !== placement.id).sort((left, right) => left.building_no.localeCompare(right.building_no, undefined, { numeric: true }) || left.pen_no.localeCompare(right.pen_no, undefined, { numeric: true })).map((item) => <option key={item.id} value={item.id}>{transferLabel(item)}</option>)}</select></label>
+            <div className="grid grid-cols-2 gap-3 sm:col-span-2"><div className="rounded-md border bg-muted/20 px-3 py-2"><div className="text-xs text-muted-foreground">Male available</div><div className="font-semibold tabular-nums">{Number(transferSource?.male_available ?? 0).toLocaleString()}</div></div><div className="rounded-md border bg-muted/20 px-3 py-2"><div className="text-xs text-muted-foreground">Female available</div><div className="font-semibold tabular-nums">{Number(transferSource?.female_available ?? 0).toLocaleString()}</div></div></div>
+            <label className="space-y-2"><Label>Male quantity</Label><Input type="number" min="0" max={transferSource?.male_available ?? 0} step="1" value={transferModal.male_qty} onChange={(event) => setTransferModal((current) => current ? { ...current, male_qty: event.target.value } : current)} /></label>
+            <label className="space-y-2"><Label>Female quantity</Label><Input type="number" min="0" max={transferSource?.female_available ?? 0} step="1" value={transferModal.female_qty} onChange={(event) => setTransferModal((current) => current ? { ...current, female_qty: event.target.value } : current)} /></label>
+            <label className="space-y-2 sm:col-span-2"><Label required>Reason</Label><Input value={transferModal.reason} maxLength={250} onChange={(event) => setTransferModal((current) => current ? { ...current, reason: event.target.value } : current)} /></label>
+            <label className="space-y-2 sm:col-span-2"><Label>Remarks</Label><Textarea value={transferModal.remarks} maxLength={500} onChange={(event) => setTransferModal((current) => current ? { ...current, remarks: event.target.value } : current)} /></label>
+          </div> : null}
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setTransferModal(null)} disabled={transferSaving}>Cancel</Button><Button type="button" onClick={() => void postTransferFromModal()} disabled={transferLoading || transferSaving || !transferSource}>{transferSaving ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}Post Transfer</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

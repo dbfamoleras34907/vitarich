@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
-import { Download, Plus, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
   createEggLaying,
@@ -19,6 +19,7 @@ import {
   listEggLayingHistoryByFarm,
   updateEggLaying,
   type EggLaying,
+  type EggLayingHistory,
   type EggLayingInsert,
   type LayingPlacement,
 } from "./api";
@@ -57,6 +58,7 @@ const historyNumberFields = [
 ] as const satisfies ReadonlyArray<keyof EggLaying>;
 
 const productionGridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const HISTORY_PAGE_SIZE = 20;
 
 function createProductionRow(dateLaying = getToday()): ProductionRow {
   return {
@@ -137,14 +139,15 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
     start.getDate(),
   );
   const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
+  const elapsedDays = Math.floor((endUtc - startUtc) / 86_400_000);
+  return elapsedDays >= 0 ? elapsedDays + 1 : 0;
 }
 
-function formatAgeWeeks(days: number | null | undefined) {
+function formatAge(days: number | null | undefined) {
   const safeDays = Number(days ?? 0);
-  const weeks = Math.floor(safeDays / 7);
-  const weekDay = safeDays % 7;
-  return `${weeks}.7/${weekDay}`;
+  if (!Number.isFinite(safeDays)) return "0/0";
+  const wholeDays = Math.max(0, Math.floor(safeDays));
+  return `${Math.floor(wholeDays / 7)}/${wholeDays % 7}`;
 }
 
 function getEggTotal(
@@ -211,7 +214,11 @@ export default function EggLayingForm() {
   const [form, setForm] = useState<FormState>(() => createInitialForm());
   const [selectedPlacement, setSelectedPlacement] =
     useState<LayingPlacement | null>(null);
-  const [history, setHistory] = useState<EggLaying[]>([]);
+  const [history, setHistory] = useState<EggLayingHistory[]>([]);
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyBuildingFilter, setHistoryBuildingFilter] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() => [createProductionRow()]);
   const [importError, setImportError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -230,6 +237,19 @@ export default function EggLayingForm() {
   const productionTotals = useMemo(() => productionNumberFields.map((field) =>
     productionRows.reduce((total, row) => total + asNumber(row[field]), 0),
   ), [productionRows]);
+  const filteredHistory = useMemo(() => {
+    const buildingFilter = historyBuildingFilter.trim().toLowerCase();
+    return history.filter((row) =>
+      (!historyDateFrom || row.date_laying >= historyDateFrom) &&
+      (!historyDateTo || row.date_laying <= historyDateTo) &&
+      (!buildingFilter || (row.building ?? "").toLowerCase().includes(buildingFilter)),
+    );
+  }, [history, historyBuildingFilter, historyDateFrom, historyDateTo]);
+  const historyPageCount = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE));
+  const paginatedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return filteredHistory.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [filteredHistory, historyPage]);
 
   function applyPlacement(
     placement: LayingPlacement,
@@ -265,6 +285,7 @@ export default function EggLayingForm() {
       farmName: nextForm.farm_name || null,
     });
     setHistory(rows);
+    setHistoryPage(1);
   }
 
   useEffect(() => {
@@ -366,10 +387,13 @@ export default function EggLayingForm() {
   }
 
   function addProductionRow() {
-    setProductionRows((current) => {
-      const lastDate = current.at(-1)?.date_laying;
-      return [...current, createProductionRow(lastDate ? addDays(lastDate, 1) : getToday())];
-    });
+    const lastDate = productionRows.at(-1)?.date_laying;
+    const nextDate = lastDate ? addDays(lastDate, 1) : getToday();
+    if (nextDate > getToday()) {
+      alert("Advance recording is not allowed. Date Laying cannot be later than today.");
+      return;
+    }
+    setProductionRows((current) => [...current, createProductionRow(nextDate)]);
   }
 
   function focusProductionCell(rowIndex: number, columnIndex: number) {
@@ -493,6 +517,7 @@ export default function EggLayingForm() {
         if (raw.every((value) => value == null || String(value).trim() === "")) return;
         const dateLaying = normalizeImportedDate(raw[0]);
         if (!dateLaying) errors.push(`Row ${rowNumber}: Date Laying is invalid.`);
+        if (dateLaying && dateLaying > getToday()) errors.push(`Row ${rowNumber}: advance recording is not allowed. Date Laying cannot be later than today.`);
         if (dateLaying && dates.has(dateLaying)) errors.push(`Row ${rowNumber}: duplicate Date Laying ${dateLaying}.`);
         if (dateLaying && existingDates.has(dateLaying)) errors.push(`Row ${rowNumber}: Date Laying ${dateLaying} already has a saved record.`);
         if (dateLaying) dates.add(dateLaying);
@@ -550,6 +575,10 @@ export default function EggLayingForm() {
         alert(`Row ${index + 1}: Date Laying is required.`);
         return;
       }
+      if (row.date_laying > getToday()) {
+        alert(`Row ${index + 1}: advance recording is not allowed. Date Laying cannot be later than today.`);
+        return;
+      }
       if (dates.has(row.date_laying)) {
         alert(`Row ${index + 1}: duplicate Date Laying ${row.date_laying}.`);
         return;
@@ -577,7 +606,9 @@ export default function EggLayingForm() {
       farm_id: form.farm_id ? asNumber(form.farm_id) : null,
       farm_name: form.farm_name || null,
       building: form.building || null,
-      age: selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age),
+      age: selectedPlacement
+        ? getAgeInDays(selectedPlacement.placement_date, row.date_laying)
+        : Math.max(0, Math.floor(asNumber(form.age))),
       tep_collection: row.tep_collection
         ? asNumber(row.tep_collection)
         : null,
@@ -675,7 +706,7 @@ export default function EggLayingForm() {
                       const file = event.target.files?.[0];
                       if (file) void importExcel(file);
                     }} />
-                    <Button type="button" size="sm" onClick={addProductionRow}>
+                    <Button type="button" size="sm" onClick={addProductionRow} disabled={(productionRows.at(-1)?.date_laying ?? getToday()) >= getToday()}>
                       <Plus className="size-4" /> Add Date
                     </Button>
                   </div>
@@ -729,7 +760,7 @@ export default function EggLayingForm() {
                     {productionRows.map((row, rowIndex) => (
                     <tr key={`${row.date_laying}-${rowIndex}`} className="fc-grid-row border-0">
                       <td className={`fc-grid-cell fc-grid-cell-editable sticky left-0 z-20 p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
-                        <Input type="date" value={row.date_laying}
+                        <Input type="date" value={row.date_laying} max={getToday()}
                           data-production-row={rowIndex} data-production-column={0}
                           onChange={(event) => updateProductionRow(rowIndex, "date_laying", event.target.value)}
                           onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}
@@ -737,7 +768,7 @@ export default function EggLayingForm() {
                       </td>
                       <td style={{ left: "11%" }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                         <div className="flex h-8 items-center justify-center">
-                          {formatAgeWeeks(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
+                          {formatAge(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
                         </div>
                       </td>
                       {productionNumberFields.map((field, fieldIndex) => (
@@ -813,17 +844,62 @@ export default function EggLayingForm() {
                 </p>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-from" className="text-xs">Date Laying From</Label>
+                  <Input
+                    id="history-date-from"
+                    type="date"
+                    max={historyDateTo || undefined}
+                    value={historyDateFrom}
+                    onChange={(event) => {
+                      setHistoryDateFrom(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-to" className="text-xs">Date Laying To</Label>
+                  <Input
+                    id="history-date-to"
+                    type="date"
+                    min={historyDateFrom || undefined}
+                    value={historyDateTo}
+                    onChange={(event) => {
+                      setHistoryDateTo(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-building-filter" className="text-xs">Building</Label>
+                  <Input
+                    id="history-building-filter"
+                    type="search"
+                    placeholder="Search building..."
+                    value={historyBuildingFilter}
+                    onChange={(event) => {
+                      setHistoryBuildingFilter(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
               <div className="max-h-[420px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
                 <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
                   <colgroup>
-                    {[9, 12, 8, 5, 9, 8, 7, 7, 6, 6, 6, 7, 10].map((width, index) => (
+                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
                       <col key={index} style={{ width: `${width}%` }} />
                     ))}
                   </colgroup>
                   <thead>
                     <tr style={{ height: 36 }}>
                       {[
-                        "Date Laying", "Farm Name", "Building", "Age", "TEP Collection",
+                        "Row #", "Date Laying", "Building", "Cycle #", "Age", "TEP Collection",
                         "Hatching Egg", "Table Egg", "Class B", "Crack", "Junior", "Jumbo",
                         "Condemn", "Total Egg Classification",
                       ].map((label, index) => (
@@ -837,22 +913,27 @@ export default function EggLayingForm() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.length ? (
-                      history.map((row, rowIndex) => {
+                    {paginatedHistory.length ? (
+                      paginatedHistory.map((row, rowIndex) => {
                         const rowDivider = rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
                         return (
                         <tr key={row.id} className="fc-grid-row border-0">
                           <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider}`}>
-                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">{formatDate(row.date_laying)}</div>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">
+                              {(historyPage - 1) * HISTORY_PAGE_SIZE + rowIndex + 1}
+                            </div>
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
-                            <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.farm_name ?? ""}>{row.farm_name ?? ""}</div>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">{formatDate(row.date_laying)}</div>
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
                             <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.building ?? ""}>{row.building ?? ""}</div>
                           </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
+                            {row.cycle_no ?? "-"}
+                          </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold ${rowDivider}`}>
-                            {formatAgeWeeks(row.age)}
+                            {formatAge(row.age)}
                           </td>
                           {historyNumberFields.map((field) => (
                             <td key={field} className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs tabular-nums ${rowDivider}`}>
@@ -868,15 +949,46 @@ export default function EggLayingForm() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={13}
+                          colSpan={14}
                           className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
-                          No farm history found.
+                          {history.length ? "No history matches the selected filters." : "No farm history found."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-muted-foreground">
+                  {filteredHistory.length
+                    ? `Showing ${(historyPage - 1) * HISTORY_PAGE_SIZE + 1}-${Math.min(historyPage * HISTORY_PAGE_SIZE, filteredHistory.length)} of ${filteredHistory.length}`
+                    : "Showing 0 of 0"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                    disabled={historyPage === 1}
+                  >
+                    <ChevronLeft className="size-4" /> Previous
+                  </Button>
+                  <span className="min-w-24 text-center text-xs font-medium">
+                    Page {historyPage} of {historyPageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.min(historyPageCount, page + 1))}
+                    disabled={historyPage === historyPageCount}
+                  >
+                    Next <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

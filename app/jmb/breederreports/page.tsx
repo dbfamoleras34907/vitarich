@@ -1,3 +1,5 @@
-export default function BreederReportsPage() {
-  return null;
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/jmb/brdreports");
 }
