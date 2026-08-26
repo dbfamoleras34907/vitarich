@@ -16,6 +16,24 @@ interface Props {
   projectId: string
   onClose?: () => void
   onCreated?: (taskId: number, taskSubject: string) => void
+  defaultPriority?: 'low' | 'mid' | 'high'
+  defaultTaskTypeId?: number | null
+}
+
+const TASK_COLOR_PALETTE = [
+  '#2563eb',
+  '#7c3aed',
+  '#db2777',
+  '#dc2626',
+  '#ea580c',
+  '#ca8a04',
+  '#16a34a',
+  '#0d9488',
+  '#0891b2',
+]
+
+function getRandomTaskColor() {
+  return TASK_COLOR_PALETTE[Math.floor(Math.random() * TASK_COLOR_PALETTE.length)]
 }
 
 type TaskFormValues = {
@@ -32,6 +50,8 @@ export default function NewProjectTask({
   projectId,
   onClose,
   onCreated,
+  defaultPriority,
+  defaultTaskTypeId,
 }: Props) {
   const { setValue, getValue } = useGlobalContext()
 
@@ -51,8 +71,8 @@ export default function NewProjectTask({
       subject: '',
       issue: '',
       assigned_to: '',
-      priority: '',
-      task_type: '',
+      priority: defaultPriority ?? '',
+      task_type: defaultTaskTypeId ? String(defaultTaskTypeId) : '',
       parent_task: '',
       color: '#000000'
     })
@@ -139,10 +159,17 @@ export default function NewProjectTask({
         code: String(user.code),
         name: String(user.name),
       })))
+      const availableDefaultTaskTypeId = types.some(
+        type => Number(type.id) === Number(defaultTaskTypeId)
+      )
+        ? defaultTaskTypeId
+        : types[0]?.id
       setFormValues(current => ({
         ...current,
-        task_type: current.task_type || String(types[0]?.id ?? ''),
+        priority: current.priority || defaultPriority || '',
+        task_type: current.task_type || String(availableDefaultTaskTypeId ?? ''),
         assigned_to: current.assigned_to || String(currentUserId ?? ''),
+        color: current.color === '#000000' ? getRandomTaskColor() : current.color,
       }))
     }
 
@@ -150,7 +177,7 @@ export default function NewProjectTask({
     return () => {
       cancelled = true
     }
-  }, [getValue, projectId])
+  }, [defaultPriority, defaultTaskTypeId, getValue, projectId])
 
   useEffect(() => {
     setValue('loading_g', isLoading)
@@ -175,7 +202,7 @@ export default function NewProjectTask({
 
           {/* SUBJECT */}
           <div>
-            <Label required>
+            <Label required className='mb-2'>
               Subject
             </Label>
             <Input
@@ -251,7 +278,7 @@ export default function NewProjectTask({
 
           {/* COLOR */}
           <div>
-            <Label>Color</Label>
+            <Label className='mb-2'>Color</Label>
             <Input
               type="color"
               value={formValues.color}

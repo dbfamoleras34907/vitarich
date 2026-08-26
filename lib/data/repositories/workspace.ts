@@ -42,6 +42,8 @@ export type WorkspaceTaskStatus = {
 export type WorkspaceTimesheetSettings = {
   id: number
   default_activity_type_id: number | null
+  default_priority: "low" | "mid" | "high" | null
+  default_task_type_id: number | null
   supervisor_user_id: number | null
   supervisor_email: string | null
   created_at?: string | null
@@ -82,10 +84,51 @@ export type WorkspaceTimesheetLine = {
   remarks: string
 }
 
+export type WorkspaceTimesheetReportRow = {
+  id: number
+  docentry: number
+  doc_date: string
+  assigned_to: number
+  project_id: number | null
+  project_name: string | null
+  task_id: number | null
+  subject: string | null
+  remarks: string
+  from_time: string
+  hrs: string
+}
+
 export async function getWorkspaceProjects() {
   const { data, error } = await db.from("vw_projects_list").select("*")
   if (error) throw error
   return (data ?? []) as WorkspaceProject[]
+}
+
+export async function getWorkspaceProjectsForTaskSelection() {
+  const listedProjects = await getWorkspaceProjects()
+  const { data: directProjects, error } = await db
+    .from("projects")
+    .select("id, project_name, void")
+    .or("void.is.null,void.eq.1")
+    .order("project_name")
+
+  if (error) return listedProjects
+
+  const projectsById = new Map<number, WorkspaceProject>()
+  listedProjects.forEach(project => projectsById.set(project.id, project))
+  ;(directProjects ?? []).forEach(project => {
+    const existing = projectsById.get(Number(project.id))
+    projectsById.set(Number(project.id), {
+      ...existing,
+      id: Number(project.id),
+      project_name: String(project.project_name ?? existing?.project_name ?? ''),
+      void: project.void,
+    })
+  })
+
+  return [...projectsById.values()]
+    .filter(project => project.project_name.trim())
+    .sort((left, right) => left.project_name.localeCompare(right.project_name))
 }
 
 export async function getWorkspaceProjectById(id: number) {
@@ -123,7 +166,7 @@ export async function getWorkspaceActivityTypes() {
 export async function getWorkspaceTimesheetSettings() {
   const { data, error } = await db
     .from("workspace_timesheet_settings")
-    .select("id, default_activity_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
+    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
     .eq("id", 1)
     .maybeSingle()
 
@@ -131,9 +174,22 @@ export async function getWorkspaceTimesheetSettings() {
   return (data ?? {
     id: 1,
     default_activity_type_id: null,
+    default_priority: null,
+    default_task_type_id: null,
     supervisor_user_id: null,
     supervisor_email: null,
   }) as WorkspaceTimesheetSettings
+}
+
+export async function getWorkspaceTimesheetSupervisorEmail() {
+  const { data, error } = await db
+    .from("workspace_timesheet_settings")
+    .select("supervisor_email")
+    .eq("id", 1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data?.supervisor_email?.trim() || null
 }
 
 export async function getWorkspaceSupervisorUsers() {
@@ -267,11 +323,55 @@ export async function getWorkspaceTimesheetById(id: number) {
 }
 
 export async function getWorkspaceTimesheetReportForUser(userId: number) {
-  const { data, error } = await db
-    .from("vw_timesheets_report")
-    .select("*")
-    .eq("assigned_to", userId)
+  const [headersResult, entryOptions] = await Promise.all([
+    db
+      .from("vw_timesheets")
+      .select("*")
+      .eq("assigned_to", userId)
+      .order("doc_date", { ascending: false }),
+    getWorkspaceTimesheetEntryOptionsForUser(userId),
+  ])
 
-  if (error) throw error
-  return data ?? []
+  if (headersResult.error) throw headersResult.error
+
+  const headers = (headersResult.data ?? []) as WorkspaceTimesheetHeader[]
+  if (headers.length === 0) return [] as WorkspaceTimesheetReportRow[]
+
+  const { data: lineData, error: lineError } = await db
+    .from("vw_timesheet_lines")
+    .select("*")
+    .in("docentry", headers.map(header => header.id))
+
+  if (lineError) throw lineError
+
+  const headersById = new Map(headers.map(header => [header.id, header]))
+  const projectsById = new Map(entryOptions.projects.map(project => [project.id, project]))
+  const tasksById = new Map(entryOptions.tasks.map(task => [task.id, task]))
+
+  return ((lineData ?? []) as WorkspaceTimesheetLine[])
+    .map(line => {
+      const header = headersById.get(line.docentry)
+      return {
+        id: line.id ?? line.docentry,
+        docentry: line.docentry,
+        doc_date: header?.doc_date ?? '',
+        assigned_to: userId,
+        project_id: line.project_id,
+        project_name: line.project_id == null
+          ? null
+          : projectsById.get(line.project_id)?.project_name ?? null,
+        task_id: line.task_id,
+        subject: line.task_id == null
+          ? null
+          : tasksById.get(line.task_id)?.subject ?? null,
+        remarks: line.remarks,
+        from_time: line.from_time,
+        hrs: line.hrs,
+      }
+    })
+    .filter(row => row.doc_date)
+    .sort((left, right) => {
+      const dateOrder = right.doc_date.localeCompare(left.doc_date)
+      return dateOrder || left.docentry - right.docentry
+    })
 }

@@ -20,6 +20,7 @@ import { usePermission } from '@/hooks/usePermission'
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
   const [activeUsers, setactiveUsers] = useState<ComboboxItemType[]>([])
+  const [creatorUserId, setCreatorUserId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const router = useRouter()
@@ -81,6 +82,20 @@ export default function Layout() {
         code: String(user.code),
         name: String(user.name),
       })))
+
+      const session = getValue('UserInfoAuthSession')
+      const currentUserId = Number(Array.isArray(session) ? session[0]?.id : null)
+      if (currentUserId) {
+        setCreatorUserId(currentUserId)
+        setFormValues(current => ({
+          ...current,
+          project_manager: current.project_manager ?? currentUserId,
+          project_members: Array.from(new Set([
+            ...(current.project_members ?? []).map(Number),
+            currentUserId,
+          ])),
+        }))
+      }
     } catch (error) {
       console.error("Error fetching active users:", error);
     }
@@ -106,9 +121,12 @@ export default function Layout() {
       description: formValues.description,
       start_date: formValues.start_date,
       end_date: formValues.end_date,
-      project_manager: formValues.project_manager ? Number(formValues.project_manager) : null,
+      project_manager: formValues.project_manager ? Number(formValues.project_manager) : creatorUserId,
       project_type: formValues.project_type,
-      project_members: (formValues.project_members ?? []).map(Number)
+      project_members: Array.from(new Set([
+        ...(formValues.project_members ?? []).map(Number),
+        ...(creatorUserId ? [creatorUserId] : []),
+      ]))
     }
     try {
       const id = await saveProject(payload)

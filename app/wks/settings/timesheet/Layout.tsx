@@ -11,6 +11,7 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import {
   getWorkspaceActivityTypes,
   getWorkspaceSupervisorUsers,
+  getWorkspaceTaskTypes,
   getWorkspaceTimesheetSettings,
 } from '@/lib/data/repositories/workspace'
 import { saveWorkspaceTimesheetSettings } from '@/lib/data/mutations/workspace'
@@ -18,8 +19,11 @@ import { saveWorkspaceTimesheetSettings } from '@/lib/data/mutations/workspace'
 export default function Layout() {
   const editDenied = usePermission('/wks/settings/timesheet/edit')
   const [activities, setActivities] = useState<ComboboxItemType[]>([])
+  const [taskTypes, setTaskTypes] = useState<ComboboxItemType[]>([])
   const [supervisorUsers, setSupervisorUsers] = useState<ComboboxItemType[]>([])
   const [defaultActivityId, setDefaultActivityId] = useState('')
+  const [defaultPriority, setDefaultPriority] = useState('mid')
+  const [defaultTaskTypeId, setDefaultTaskTypeId] = useState('')
   const [supervisorUserId, setSupervisorUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -29,8 +33,9 @@ export default function Layout() {
 
     const loadSettings = async () => {
       try {
-        const [activityRows, supervisorRows, settings] = await Promise.all([
+        const [activityRows, taskTypeRows, supervisorRows, settings] = await Promise.all([
           getWorkspaceActivityTypes(),
+          getWorkspaceTaskTypes(),
           getWorkspaceSupervisorUsers(),
           getWorkspaceTimesheetSettings(),
         ])
@@ -39,6 +44,10 @@ export default function Layout() {
         setActivities(activityRows.map(activity => ({
           code: String(activity.id),
           name: activity.name,
+        })))
+        setTaskTypes(taskTypeRows.map(taskType => ({
+          code: String(taskType.id),
+          name: taskType.name,
         })))
         setSupervisorUsers(supervisorRows.map(user => {
           const fullName = [user.firstname, user.middlename, user.lastname]
@@ -54,6 +63,10 @@ export default function Layout() {
         setDefaultActivityId(settings.default_activity_type_id
           ? String(settings.default_activity_type_id)
           : '')
+        setDefaultPriority(settings.default_priority ?? 'mid')
+        setDefaultTaskTypeId(settings.default_task_type_id
+          ? String(settings.default_task_type_id)
+          : String(taskTypeRows[0]?.id ?? ''))
         setSupervisorUserId(settings.supervisor_user_id
           ? String(settings.supervisor_user_id)
           : '')
@@ -80,6 +93,14 @@ export default function Layout() {
       toast.error('Select a default activity')
       return
     }
+    if (!defaultPriority) {
+      toast.error('Select a default priority')
+      return
+    }
+    if (!defaultTaskTypeId) {
+      toast.error('Select a default task type')
+      return
+    }
     if (!supervisorUserId) {
       toast.error('Select a supervisor')
       return
@@ -89,6 +110,8 @@ export default function Layout() {
     try {
       const saved = await saveWorkspaceTimesheetSettings({
         default_activity_type_id: Number(defaultActivityId),
+        default_priority: defaultPriority as 'low' | 'mid' | 'high',
+        default_task_type_id: Number(defaultTaskTypeId),
         supervisor_user_id: Number(supervisorUserId),
       })
       setSupervisorUserId(String(saved.supervisor_user_id ?? ''))
@@ -125,6 +148,43 @@ export default function Layout() {
             <p className="mt-1 text-xs text-muted-foreground">
               Automatically selected for new timesheet rows.
             </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <SearchableCombobox
+                label="Default Priority"
+                required
+                items={[
+                  { code: 'low', name: 'Low' },
+                  { code: 'mid', name: 'Medium' },
+                  { code: 'high', name: 'High' },
+                ]}
+                value={defaultPriority}
+                onValueChange={setDefaultPriority}
+                disabled={editDenied || loading || saving}
+                className="w-full max-w-none"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Used when a task is created from a timesheet.
+              </p>
+            </div>
+
+            <div>
+              <SearchableCombobox
+                label="Default Task Type"
+                required
+                items={taskTypes}
+                value={defaultTaskTypeId}
+                onValueChange={setDefaultTaskTypeId}
+                disabled={editDenied || loading || saving}
+                className="w-full max-w-none"
+                placeholder={loading ? 'Loading task types...' : 'Select task type'}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Used when a task is created from a timesheet.
+              </p>
+            </div>
           </div>
 
           <div>

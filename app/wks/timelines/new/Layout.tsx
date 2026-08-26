@@ -29,18 +29,12 @@ import {
 } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { formatDateTime } from '@/lib/formatDate'
-import { getWorkspaceActivityTypes, getWorkspaceTimesheetEntryOptionsForUser, getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
+import { getWorkspaceActivityTypes, getWorkspaceTimesheetById, getWorkspaceTimesheetEntryOptionsForUser, getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
 import { saveTimesheet } from './api'
 import { toast } from 'sonner'
 import { usePermission } from '@/hooks/usePermission'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import NewProjectTask from '../../projects/[id]/NewProjectTask'
+import { Modal } from '@/lib/Moda'
 
 type LineRow = {
   id?: number | null
@@ -111,7 +105,11 @@ const prepareTimesheetRows = (
   ]
 }
 
-export default function Layout() {
+type Props = {
+  timesheetId?: number
+}
+
+export default function Layout({ timesheetId }: Props = {}) {
 
   const router = useRouter()
   const { setValue, getValue } = useGlobalContext()
@@ -119,7 +117,9 @@ export default function Layout() {
 
   const [isLoading, setIsLoading] = useState(false)
 
-  const insertDenied = usePermission('/wks/timelines/insert')
+  const saveDenied = usePermission(timesheetId
+    ? '/wks/timelines/edit'
+    : '/wks/timelines/insert')
   const taskInsertDenied = usePermission('/wks/tasks/insert')
 
   const [activityTypes, setActivityTypes] =
@@ -136,6 +136,11 @@ export default function Layout() {
 
   const [taskCreateRowIndex, setTaskCreateRowIndex] =
     useState<number | null>(null)
+
+  const [taskCreationDefaults, setTaskCreationDefaults] = useState<{
+    priority: 'low' | 'mid' | 'high'
+    taskTypeId: number | null
+  }>({ priority: 'mid', taskTypeId: null })
 
   const [formValues, setFormValues] =
     useState<TimesheetFormValues>({
@@ -306,6 +311,7 @@ export default function Layout() {
 
       const copiedRow = {
         ...newRows[index],
+        id: null,
         line_num: index + 2
       }
 
@@ -361,12 +367,12 @@ export default function Layout() {
 
     const payload = {
       header: {
-        id: null,
+        id: timesheetId ?? null,
         doc_date: formatDateTime(String(formValues.doc_date),'mmddyyyy'),
         assigned_to: formValues.assigned_to
       },
       lines: filteredRows.map((r, i) => ({
-        id: null,
+        id: r.id ?? null,
         line_num: i + 1,
         activity_type: r.activity_type,
         from_time: r.from_time,
@@ -379,7 +385,9 @@ export default function Layout() {
 
     try {
       const data = await saveTimesheet(payload)
-      toast.success('Timesheet saved successfully')
+      toast.success(timesheetId
+        ? 'Timesheet updated successfully'
+        : 'Timesheet saved successfully')
       router.push(`/wks/timelines/${data}`)
     } catch (error) {
       console.error(error)
@@ -392,9 +400,53 @@ export default function Layout() {
     let cancelled = false
 
     const loadFormOptions = async () => {
+      let existingTimesheet: Awaited<ReturnType<typeof getWorkspaceTimesheetById>> | null = null
+      let existingRows: LineRow[] = []
+
+      if (timesheetId) {
+        try {
+          existingTimesheet = await getWorkspaceTimesheetById(timesheetId)
+          if (cancelled) return
+
+          existingRows = existingTimesheet.lines
+            .slice()
+            .sort((left, right) => left.line_num - right.line_num)
+            .map(row => ({
+              id: row.id ?? null,
+              line_num: row.line_num,
+              activity_type: row.activity_type == null ? null : String(row.activity_type),
+              from_time: row.from_time ?? '',
+              hrs: row.hrs == null ? '' : String(row.hrs),
+              project_id: row.project_id == null ? null : String(row.project_id),
+              task_id: row.task_id == null ? null : String(row.task_id),
+              remarks: row.remarks ?? '',
+            }))
+
+          setFormValues({
+            doc_date: new Date(existingTimesheet.header.doc_date),
+            assigned_to: existingTimesheet.header.assigned_to,
+          })
+          setRows(existingRows.length > 0
+            ? existingRows
+            : [{
+              line_num: 1,
+              activity_type: null,
+              from_time: '08:00',
+              hrs: '',
+              project_id: null,
+              task_id: null,
+              remarks: '',
+            }])
+        } catch (error) {
+          console.error(error)
+          toast.error('Failed to load timesheet record')
+          return
+        }
+      }
+
       try {
         const session = await Promise.resolve(getValue('UserInfoAuthSession'))
-        const userId = Number(session?.[0]?.id)
+        const userId = Number(existingTimesheet?.header.assigned_to ?? session?.[0]?.id)
         if (!userId) throw new Error('Unable to resolve the timesheet owner')
 
         const [activities, entryOptions, settings] = await Promise.all([
@@ -414,8 +466,27 @@ export default function Layout() {
         const configuredActivityId = configuredActivity
           ? String(configuredActivity.id)
           : null
+        setTaskCreationDefaults({
+          priority: settings?.default_priority ?? 'mid',
+          taskTypeId: settings?.default_task_type_id ?? null,
+        })
         setDefaultActivityType(configuredActivityId)
-        if (configuredActivityId) {
+        if (existingTimesheet) {
+          setRows(prepareTimesheetRows(
+            existingRows.length > 0
+              ? existingRows
+              : [{
+                line_num: 1,
+                activity_type: configuredActivityId,
+                from_time: '08:00',
+                hrs: '',
+                project_id: null,
+                task_id: null,
+                remarks: '',
+              }],
+            configuredActivityId
+          ))
+        } else if (configuredActivityId) {
           setRows(current => prepareTimesheetRows(
             current.map(row => ({
               ...row,
@@ -439,13 +510,20 @@ export default function Layout() {
           },
           {}
         ))
-        setFormValues(current => ({
-          ...current,
-          assigned_to: userId,
-        }))
+        setFormValues(current => existingTimesheet
+          ? {
+            doc_date: new Date(existingTimesheet.header.doc_date),
+            assigned_to: existingTimesheet.header.assigned_to ?? userId,
+          }
+          : {
+            ...current,
+            assigned_to: userId,
+          })
       } catch (error) {
         console.error(error)
-        toast.error('Failed to load timesheet options')
+        toast.error(timesheetId
+          ? 'Timesheet loaded, but some form options are unavailable'
+          : 'Failed to load timesheet options')
       }
     }
 
@@ -453,7 +531,7 @@ export default function Layout() {
     return () => {
       cancelled = true
     }
-  }, [getValue])
+  }, [getValue, timesheetId])
 
   useEffect(() => {
 
@@ -471,13 +549,13 @@ export default function Layout() {
         <div className="flex items-center justify-between">
 
           <Breadcrumb
-            CurrentPageName="Create New Timesheet"
+            CurrentPageName={timesheetId ? 'Edit Timesheet' : 'Create New Timesheet'}
             FirstPreviewsPageName="Timelines"
           />
 
           <Button
             type="submit"
-            disabled={isLoading || insertDenied}
+            disabled={isLoading || saveDenied}
           >
             Save
           </Button>
@@ -688,29 +766,25 @@ export default function Layout() {
         </Card>
       </form>
 
-      <Dialog
+      <Modal
         open={taskCreateRowIndex !== null}
         onOpenChange={(open) => {
           if (!open) setTaskCreateRowIndex(null)
         }}
+        title="Create Task"
+        description="Create a task for the selected project. It will be selected on this timesheet line after saving."
+        className="max-w-2xl overflow-hidden"
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create Task</DialogTitle>
-            <DialogDescription>
-              Create a task for the selected project. It will be selected on this timesheet line after saving.
-            </DialogDescription>
-          </DialogHeader>
-
-          {taskCreateRowIndex !== null && rows[taskCreateRowIndex]?.project_id && (
-            <NewProjectTask
-              projectId={rows[taskCreateRowIndex].project_id}
-              onClose={() => setTaskCreateRowIndex(null)}
-              onCreated={handleTaskCreated}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+        {taskCreateRowIndex !== null && rows[taskCreateRowIndex]?.project_id && (
+          <NewProjectTask
+            projectId={rows[taskCreateRowIndex].project_id}
+            onClose={() => setTaskCreateRowIndex(null)}
+            onCreated={handleTaskCreated}
+            defaultPriority={taskCreationDefaults.priority}
+            defaultTaskTypeId={taskCreationDefaults.taskTypeId}
+          />
+        )}
+      </Modal>
 
 
     </div>

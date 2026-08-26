@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ArrowDown, CalendarIcon, ChevronDown } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { format } from 'date-fns'
-import { getProjects, getTaskList } from '../../projects/api'
+import { getProjectsForTaskSelection } from '../../projects/api'
 import { toast } from 'sonner'
 import { getTaskType } from '../api'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
@@ -44,6 +44,7 @@ export default function NewTask() {
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   const [projectsList, setProjectsList] = useState<ComboboxItemType[]>([])
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false)
 
   const [taskTypes, setTaskTypes] = useState<ComboboxItemType[]>([])
 
@@ -265,12 +266,15 @@ export default function NewTask() {
     setauthUser(data[0].id)
   }
   const getProjectList = async () => {
-    const data = await getProjects()
-    // console.log({ data })
-    setProjectsList((data || []).map((p) => ({
-      code: String(p.id),
-      name: p.project_name
-    })))
+    try {
+      const data = await getProjectsForTaskSelection()
+      setProjectsList((data || []).map((p) => ({
+        code: String(p.id),
+        name: p.project_name
+      })))
+    } catch {
+      toast.error('Unable to refresh projects')
+    }
   }
 
 
@@ -394,6 +398,13 @@ export default function NewTask() {
                     value={(formValues as any)[e.name] || ""}
                     onValueChange={(val: any) => handleChange(e.name, val)}
                     className="w-full"
+                    open={e.name === 'project_id' ? projectDropdownOpen : undefined}
+                    onOpenChange={e.name === 'project_id'
+                      ? (open) => {
+                        setProjectDropdownOpen(open)
+                        if (open) void getProjectList()
+                      }
+                      : undefined}
                   />
                 ) : e.type === "textarea" ? (
 

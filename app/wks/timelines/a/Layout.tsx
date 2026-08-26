@@ -30,7 +30,16 @@ import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
+import { getWorkspaceTimesheetSupervisorEmail } from '@/lib/data/repositories/workspace'
+import { addDays, format, startOfWeek } from 'date-fns'
+
+const currentWorkWeek = () => {
+  const monday = startOfWeek(new Date(), { weekStartsOn: 1 })
+  return {
+    from: format(monday, 'yyyy-MM-dd'),
+    to: format(addDays(monday, 4), 'yyyy-MM-dd'),
+  }
+}
 
 export default function Layout() {
   const route = useRouter()
@@ -46,8 +55,8 @@ export default function Layout() {
   const [filteredRows, setFilteredRows] = useState<RowDataKey[]>([])
 
   // DATE RANGE
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(() => currentWorkWeek().from)
+  const [dateTo, setDateTo] = useState(() => currentWorkWeek().to)
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -72,17 +81,14 @@ export default function Layout() {
       setLoading(true)
 
       try {
-        const data = await getTimesheets()
+        const [data, supervisorEmail] = await Promise.all([
+          getTimesheets(),
+          getWorkspaceTimesheetSupervisorEmail().catch(() => null),
+        ])
 
         setInitialRows(data)
         setFilteredRows(data)
-
-        try {
-          const settings = await getWorkspaceTimesheetSettings()
-          setEmailTo(current => current || settings.supervisor_email || '')
-        } catch (settingsError) {
-          console.error('Unable to load timesheet settings', settingsError)
-        }
+        setEmailTo(supervisorEmail ?? '')
       } catch (err) {
         console.error(err)
       }
@@ -345,7 +351,7 @@ export default function Layout() {
   const handleSendEmail = async () => {
     try {
       if (!emailTo) {
-        toast.error('Please enter recipient email')
+        toast.error('Configure a supervisor email in Timesheet Settings')
         return
       }
 
@@ -498,7 +504,6 @@ export default function Layout() {
       setEmailOpen(false)
 
 
-      setEmailTo('')
     } catch (err) {
       console.error(err)
       toast.error('Failed to send email')
@@ -603,13 +608,13 @@ export default function Layout() {
               <div className="space-y-4 py-2">
                 {/* TO */}
                 <div className="space-y-2">
-                  <Label>Email Recipient</Label>
+                  <Label>Email Recipient (from Timesheet Settings)</Label>
 
                   <Input
                     type="email"
-                    placeholder="manager@company.com"
+                    placeholder="No supervisor email configured"
                     value={emailTo}
-                    onChange={(e) => setEmailTo(e.target.value)}
+                    readOnly
                   />
                 </div>
 

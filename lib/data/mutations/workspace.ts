@@ -124,11 +124,15 @@ export async function saveWorkspaceTaskStatus(payload: {
 
 export async function saveWorkspaceTimesheetSettings(payload: {
   default_activity_type_id: number | null
+  default_priority: "low" | "mid" | "high"
+  default_task_type_id: number | null
   supervisor_user_id: number | null
 }) {
   const values = {
     id: 1,
     default_activity_type_id: payload.default_activity_type_id,
+    default_priority: payload.default_priority,
+    default_task_type_id: payload.default_task_type_id,
     supervisor_user_id: payload.supervisor_user_id,
     updated_at: new Date().toISOString(),
   }
@@ -136,7 +140,7 @@ export async function saveWorkspaceTimesheetSettings(payload: {
   const { data, error } = await db
     .from("workspace_timesheet_settings")
     .upsert(values, { onConflict: "id" })
-    .select("id, default_activity_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
+    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
     .single()
 
   if (error) throw error

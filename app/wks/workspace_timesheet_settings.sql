@@ -4,6 +4,8 @@
 create table if not exists public.workspace_timesheet_settings (
   id smallint primary key default 1,
   default_activity_type_id bigint null,
+  default_priority text null,
+  default_task_type_id bigint null,
   supervisor_user_id bigint null,
   supervisor_email text null,
   created_at timestamptz not null default now(),
@@ -12,6 +14,13 @@ create table if not exists public.workspace_timesheet_settings (
   constraint workspace_timesheet_settings_activity_fkey
     foreign key (default_activity_type_id)
     references public.activity_types(id)
+    on update restrict
+    on delete restrict,
+  constraint workspace_timesheet_settings_priority_check
+    check (default_priority is null or default_priority in ('low', 'mid', 'high')),
+  constraint workspace_timesheet_settings_task_type_fkey
+    foreign key (default_task_type_id)
+    references public.task_types(id)
     on update restrict
     on delete restrict,
   constraint workspace_timesheet_settings_supervisor_user_fkey
@@ -27,7 +36,30 @@ create table if not exists public.workspace_timesheet_settings (
 );
 
 alter table public.workspace_timesheet_settings
+  add column if not exists default_priority text null;
+
+alter table public.workspace_timesheet_settings
+  add column if not exists default_task_type_id bigint null;
+
+alter table public.workspace_timesheet_settings
   add column if not exists supervisor_user_id bigint null;
+
+alter table public.workspace_timesheet_settings
+  drop constraint if exists workspace_timesheet_settings_priority_check;
+
+alter table public.workspace_timesheet_settings
+  add constraint workspace_timesheet_settings_priority_check
+  check (default_priority is null or default_priority in ('low', 'mid', 'high'));
+
+alter table public.workspace_timesheet_settings
+  drop constraint if exists workspace_timesheet_settings_task_type_fkey;
+
+alter table public.workspace_timesheet_settings
+  add constraint workspace_timesheet_settings_task_type_fkey
+  foreign key (default_task_type_id)
+  references public.task_types(id)
+  on update restrict
+  on delete restrict;
 
 alter table public.workspace_timesheet_settings
   drop constraint if exists workspace_timesheet_settings_supervisor_user_fkey;
@@ -39,7 +71,14 @@ alter table public.workspace_timesheet_settings
   on update restrict
   on delete restrict;
 
-insert into public.workspace_timesheet_settings (id, default_activity_type_id, supervisor_user_id, supervisor_email)
+insert into public.workspace_timesheet_settings (
+  id,
+  default_activity_type_id,
+  default_priority,
+  default_task_type_id,
+  supervisor_user_id,
+  supervisor_email
+)
 select
   1,
   (
@@ -49,9 +88,32 @@ select
     order by activity.id
     limit 1
   ),
+  'mid',
+  (
+    select task_type.id
+    from public.task_types task_type
+    where task_type.void = 1
+    order by task_type.name, task_type.id
+    limit 1
+  ),
   null,
   null
 on conflict (id) do nothing;
+
+update public.workspace_timesheet_settings settings
+set
+  default_priority = coalesce(settings.default_priority, 'mid'),
+  default_task_type_id = coalesce(
+    settings.default_task_type_id,
+    (
+      select task_type.id
+      from public.task_types task_type
+      where task_type.void = 1
+      order by task_type.name, task_type.id
+      limit 1
+    )
+  )
+where settings.id = 1;
 
 create or replace function public.workspace_touch_timesheet_settings()
 returns trigger
