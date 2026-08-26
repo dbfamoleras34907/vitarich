@@ -291,18 +291,34 @@ export default function PlacementTable() {
             </div>
           </div>
         </div>
-        <div className="flex">
+        <div className="flex flex-wrap">
           <div className="border-r px-5 py-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">
               Farm code
             </div>
             <div className="mt-1 font-medium">{selectedFarm?.code || "-"}</div>
           </div>
-          <div className="px-5 py-3">
+          <div className="border-r px-5 py-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">
               Farm
             </div>
             <div className="mt-1 font-medium">{selectedFarm?.name || "-"}</div>
+          </div>
+          <div className="min-w-[260px] flex-1 border-r px-5 py-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">
+              Farm Address
+            </div>
+            <div className="mt-1 font-medium">
+              {selectedFarm?.address || "-"}
+            </div>
+          </div>
+          <div className="min-w-[180px] px-5 py-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">
+              Assigned TA
+            </div>
+            <div className="mt-1 font-medium">
+              {selectedFarm?.assigned_ta || "-"}
+            </div>
           </div>
         </div>
       </section>

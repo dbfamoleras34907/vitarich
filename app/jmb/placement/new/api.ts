@@ -36,6 +36,8 @@ export type BreederFarm = {
   id: number;
   code: string;
   name: string;
+  address: string | null;
+  assigned_ta: string | null;
 };
 
 export type BreederCycle = {
@@ -553,7 +555,7 @@ export async function listFarmLocationLookup() {
 export async function listBreederFarms() {
   const { data, error } = await db
     .from(BREEDER_FARM_VIEW)
-    .select("id, code, name")
+    .select("id, code, name, address, assigned_ta")
     .order("name", { ascending: true });
 
   if (error) throw error;

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
-import { Download, Plus, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
   createEggLaying,
@@ -19,6 +19,7 @@ import {
   listEggLayingHistoryByFarm,
   updateEggLaying,
   type EggLaying,
+  type EggLayingHistory,
   type EggLayingInsert,
   type LayingPlacement,
 } from "./api";
@@ -57,6 +58,7 @@ const historyNumberFields = [
 ] as const satisfies ReadonlyArray<keyof EggLaying>;
 
 const productionGridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const HISTORY_PAGE_SIZE = 20;
 
 function createProductionRow(dateLaying = getToday()): ProductionRow {
   return {
@@ -212,7 +214,11 @@ export default function EggLayingForm() {
   const [form, setForm] = useState<FormState>(() => createInitialForm());
   const [selectedPlacement, setSelectedPlacement] =
     useState<LayingPlacement | null>(null);
-  const [history, setHistory] = useState<EggLaying[]>([]);
+  const [history, setHistory] = useState<EggLayingHistory[]>([]);
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyBuildingFilter, setHistoryBuildingFilter] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() => [createProductionRow()]);
   const [importError, setImportError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,6 +237,19 @@ export default function EggLayingForm() {
   const productionTotals = useMemo(() => productionNumberFields.map((field) =>
     productionRows.reduce((total, row) => total + asNumber(row[field]), 0),
   ), [productionRows]);
+  const filteredHistory = useMemo(() => {
+    const buildingFilter = historyBuildingFilter.trim().toLowerCase();
+    return history.filter((row) =>
+      (!historyDateFrom || row.date_laying >= historyDateFrom) &&
+      (!historyDateTo || row.date_laying <= historyDateTo) &&
+      (!buildingFilter || (row.building ?? "").toLowerCase().includes(buildingFilter)),
+    );
+  }, [history, historyBuildingFilter, historyDateFrom, historyDateTo]);
+  const historyPageCount = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE));
+  const paginatedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return filteredHistory.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [filteredHistory, historyPage]);
 
   function applyPlacement(
     placement: LayingPlacement,
@@ -266,6 +285,7 @@ export default function EggLayingForm() {
       farmName: nextForm.farm_name || null,
     });
     setHistory(rows);
+    setHistoryPage(1);
   }
 
   useEffect(() => {
@@ -824,17 +844,62 @@ export default function EggLayingForm() {
                 </p>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-from" className="text-xs">Date Laying From</Label>
+                  <Input
+                    id="history-date-from"
+                    type="date"
+                    max={historyDateTo || undefined}
+                    value={historyDateFrom}
+                    onChange={(event) => {
+                      setHistoryDateFrom(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-to" className="text-xs">Date Laying To</Label>
+                  <Input
+                    id="history-date-to"
+                    type="date"
+                    min={historyDateFrom || undefined}
+                    value={historyDateTo}
+                    onChange={(event) => {
+                      setHistoryDateTo(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-building-filter" className="text-xs">Building</Label>
+                  <Input
+                    id="history-building-filter"
+                    type="search"
+                    placeholder="Search building..."
+                    value={historyBuildingFilter}
+                    onChange={(event) => {
+                      setHistoryBuildingFilter(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
               <div className="max-h-[420px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
                 <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
                   <colgroup>
-                    {[9, 12, 8, 5, 9, 8, 7, 7, 6, 6, 6, 7, 10].map((width, index) => (
+                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
                       <col key={index} style={{ width: `${width}%` }} />
                     ))}
                   </colgroup>
                   <thead>
                     <tr style={{ height: 36 }}>
                       {[
-                        "Date Laying", "Farm Name", "Building", "Age", "TEP Collection",
+                        "Row #", "Date Laying", "Building", "Cycle #", "Age", "TEP Collection",
                         "Hatching Egg", "Table Egg", "Class B", "Crack", "Junior", "Jumbo",
                         "Condemn", "Total Egg Classification",
                       ].map((label, index) => (
@@ -848,19 +913,24 @@ export default function EggLayingForm() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.length ? (
-                      history.map((row, rowIndex) => {
+                    {paginatedHistory.length ? (
+                      paginatedHistory.map((row, rowIndex) => {
                         const rowDivider = rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
                         return (
                         <tr key={row.id} className="fc-grid-row border-0">
                           <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider}`}>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">
+                              {(historyPage - 1) * HISTORY_PAGE_SIZE + rowIndex + 1}
+                            </div>
+                          </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
                             <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">{formatDate(row.date_laying)}</div>
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
-                            <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.farm_name ?? ""}>{row.farm_name ?? ""}</div>
-                          </td>
-                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
                             <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.building ?? ""}>{row.building ?? ""}</div>
+                          </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
+                            {row.cycle_no ?? "-"}
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold ${rowDivider}`}>
                             {formatAge(row.age)}
@@ -879,15 +949,46 @@ export default function EggLayingForm() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={13}
+                          colSpan={14}
                           className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
-                          No farm history found.
+                          {history.length ? "No history matches the selected filters." : "No farm history found."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-muted-foreground">
+                  {filteredHistory.length
+                    ? `Showing ${(historyPage - 1) * HISTORY_PAGE_SIZE + 1}-${Math.min(historyPage * HISTORY_PAGE_SIZE, filteredHistory.length)} of ${filteredHistory.length}`
+                    : "Showing 0 of 0"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                    disabled={historyPage === 1}
+                  >
+                    <ChevronLeft className="size-4" /> Previous
+                  </Button>
+                  <span className="min-w-24 text-center text-xs font-medium">
+                    Page {historyPage} of {historyPageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.min(historyPageCount, page + 1))}
+                    disabled={historyPage === historyPageCount}
+                  >
+                    Next <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

@@ -515,7 +515,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 }
 function Summary({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-[150px] rounded-md border bg-slate-50 px-3 py-2">
+    <div className="min-w-37.5 rounded-md border bg-slate-50 px-3 py-2">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="font-semibold tabular-nums">{value}</div>
     </div>
@@ -641,7 +641,7 @@ function GrowingGrid({
           </th>
           <th
             rowSpan={2}
-            className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-[132px] top-0 z-40 text-center text-xs"
+            className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-33 top-0 z-40 text-center text-xs"
             style={{ minWidth: 52 }}
           >
             Age
@@ -720,7 +720,7 @@ function GrowingGrid({
                   />
                 </td>
                 <td
-                  className={`fc-grid-age sticky left-[132px] z-20 p-0 text-center font-semibold ${divider}`}
+                  className={`fc-grid-age sticky left-33 z-20 p-0 text-center font-semibold ${divider}`}
                   style={{ minWidth: 52 }}
                 >
                   <div className="flex h-8 items-center justify-center">
@@ -754,7 +754,7 @@ function GrowingGrid({
             <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">
               Total
             </td>
-            <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-[132px] z-40 text-center font-semibold">
+            <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-33 z-40 text-center font-semibold">
               {rows.length} days
             </td>
             {footerValues.map((value, index) => (
@@ -830,7 +830,7 @@ function LayingGrid({
           Saved egg production records for the selected building and cycle.
         </p>
       </div>
-      <div className="max-h-[520px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
+      <div className="max-h-130 w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
         <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
           <colgroup>
             <col style={{ width: "12%" }} />
