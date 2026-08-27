@@ -1123,6 +1123,17 @@ export const NavFolders: NavFolder[] = [
         group: "Settings",
         children: [
           {
+            id: 79,
+            type: "Module",
+            title: "Broiler Farm Setup",
+            url: "/brd/settings/farm-setup",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
             id: 65,
             type: "Module",
             title: "DOC Placement Settings",

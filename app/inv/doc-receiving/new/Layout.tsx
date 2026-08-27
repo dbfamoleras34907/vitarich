@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
   ChevronDown,
+  FileSpreadsheet,
+  FileUp,
   Hash,
   List,
   Loader2,
@@ -14,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import readXlsxFile from 'read-excel-file/browser'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -72,6 +75,8 @@ import {
   DocReceivingSettings,
   getDocReceivingSettings,
 } from '@/app/a_dean/doc-receiving-settings/api'
+import { exportDocDetailsTemplate } from './docDetailsTemplate'
+import { parseDocDetailsImport } from './docDetailsImport'
 import {
   BatchTransactionTrail,
   getBatchTransactionTrail,
@@ -96,7 +101,7 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'mnf_date', name: 'Production Date' },
   { code: 'doc_source', name: 'DOC Source' },
   { code: 'building', name: 'Building' },
-  { code: 'transfer_slip', name: 'Hatchery Ref' },
+  { code: 'transfer_slip', name: 'TS/DR #' },
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
   { code: 'doa_quantity', name: 'DOA Count' },
@@ -604,6 +609,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [docDetailRows, setDocDetailRows] = useState<DocDetailRow[]>([])
+  const docDetailsImportInputRef = useRef<HTMLInputElement>(null)
+  const [importingDocDetails, setImportingDocDetails] = useState(false)
+  const [docDetailsImportIssues, setDocDetailsImportIssues] = useState<string[]>([])
   const [forceDocDetailsModal, setForceDocDetailsModal] = useState(false)
   const [docDetailsModalOpen, setDocDetailsModalOpen] = useState(false)
   const [modalDocDetailRow, setModalDocDetailRow] = useState<DocDetailRow | null>(null)
@@ -708,7 +716,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             })
           : getGoodsReceiptReferences()
 
-        const [references, savedReceipt, grNo, settings] = await Promise.all([
+        const [references, savedReceipt, grNo] = await Promise.all([
           referencesPromise,
           receiptId
             ? getGoodsReceiptById(Number(receiptId))
@@ -716,7 +724,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               ? getGoodsReceiptById(Number(duplicateId))
               : Promise.resolve(null),
           receiptId && !duplicateId ? Promise.resolve('') : createGoodsReceiptNumber(),
-          getDocReceivingSettings(),
         ])
 
         if (cancelled) return
@@ -740,7 +747,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         setItemGroups(references.itemGroups)
         setBatchRules(references.batchRules)
         setBatchSeries(references.batchSeries)
-        setDocReceivingSettings(settings)
       } catch (error) {
         console.error(error)
         toast('Reference data could not be loaded.')
@@ -755,6 +761,26 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       cancelled = true
     }
   }, [canInsert, duplicateId, getValue, isPostMode, receiptId, router])
+
+  useEffect(() => {
+    const farmId = Number(receipt?.farmId ?? 0)
+    let cancelled = false
+    const settingsRequest = farmId ? getDocReceivingSettings(farmId) : Promise.resolve(null)
+    settingsRequest
+      .then(settings => {
+        if (!cancelled) setDocReceivingSettings(settings)
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setDocReceivingSettings(null)
+          toast.error(error instanceof Error ? error.message : 'Unable to load DOC Placement settings.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [receipt?.farmId])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === receipt?.farmId),
@@ -1241,6 +1267,88 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const canEditDraft = receipt.status === 'Draft'
   const canPostDocument = receipt.status === 'Draft'
   const canEditDocDetails = receipt.status !== 'Posted'
+
+  const handleDocDetailsImport = async (file: File) => {
+    setDocDetailsImportIssues([])
+
+    if (!receipt.farmId) {
+      setDocDetailsImportIssues(['Select a Farm before importing DOC Details.'])
+      if (docDetailsImportInputRef.current) docDetailsImportInputRef.current.value = ''
+      return
+    }
+
+    setImportingDocDetails(true)
+    try {
+      const sheets = await readXlsxFile(file)
+      const docDetailsSheet = sheets.find(sheet => sheet.sheet.trim().toLowerCase() === 'doc details')
+      if (!docDetailsSheet) {
+        setDocDetailsImportIssues(['The workbook must contain a worksheet named DOC Details.'])
+        return
+      }
+
+      const parsed = parseDocDetailsImport(docDetailsSheet.data)
+      const resolvedRows = parsed.rows.map((row, index) => {
+        if (row.receiveDate && isFutureReceivingDate(row.receiveDate)) {
+          parsed.issues.push(`Row ${index + 2}: ${FUTURE_RECEIVING_DATE_MESSAGE}`)
+        }
+        const buildingKey = row.building.trim().toLowerCase()
+        const entry = selectableFarmBuildings.find(({ building }) => {
+          const values = [
+            building.code,
+            building.warehouseCode,
+            building.name,
+            `${building.code} - ${building.name}`,
+          ]
+          return values.some(value => String(value ?? '').trim().toLowerCase() === buildingKey)
+        })
+
+        if (!entry) {
+          parsed.issues.push(`Row ${index + 2}: Building "${row.building}" was not found under the selected Farm.`)
+          return null
+        }
+
+        return normalizeDocDetailRow({
+          receive_date: row.receiveDate || receipt.receiveDate,
+          receive_time: row.receiveTime,
+          mnf_date: row.productionDate,
+          doc_source: row.docSource,
+          building_warehouse_id: entry.building.id,
+          flock_card_id: entry.activeCycle?.flockCardId ?? null,
+          transfer_slip: row.hatcheryRef,
+          average_doc_weight: row.averageDocWeight,
+          quantity_received: row.totalReceived,
+          short_count: row.shortCount,
+          short_count_remarks: row.shortCountRemarks,
+          doa_quantity: row.doaCount,
+          doa_count_remarks: row.doaCountRemarks,
+          reject_count: row.rejectCount,
+          reject_count_remarks: row.rejectCountRemarks,
+        }, receipt.receiveDate)
+      })
+
+      if (parsed.issues.length > 0) {
+        setDocDetailsImportIssues(parsed.issues)
+        return
+      }
+
+      const importedRows = resolvedRows.filter((row): row is DocDetailRow => Boolean(row))
+      setDocDetailRows(current => [...current, ...importedRows])
+      const firstImportedDate = importedRows.find(row => row.receive_date)?.receive_date
+      if (firstImportedDate && docDetailRows.length === 0) {
+        setReceipt(current => current ? { ...current, receiveDate: firstImportedDate } : current)
+      }
+      const missingCycles = importedRows.filter(row => !row.flock_card_id).length
+      toast.success(
+        `${importedRows.length} DOC Detail ${importedRows.length === 1 ? 'row' : 'rows'} imported.${missingCycles > 0 ? ` Create the active cycle for ${missingCycles} ${missingCycles === 1 ? 'Building' : 'Buildings'} before posting.` : ''}`,
+      )
+    } catch (error) {
+      console.error(error)
+      setDocDetailsImportIssues(['The Excel file could not be read. Use the exported DOC Details template.'])
+    } finally {
+      setImportingDocDetails(false)
+      if (docDetailsImportInputRef.current) docDetailsImportInputRef.current.value = ''
+    }
+  }
 
   const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
     setReceipt(current => current
@@ -2025,36 +2133,70 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             title="DOC Details"
             description={`${docDetailRows.length} ${docDetailRows.length === 1 ? 'row' : 'rows'}`}
             actions={(
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={!canEditDocDetails}
-                  onClick={handleAddDocDetailsRow}
-                  className="rounded-r-none"
+                  onClick={() => {
+                    void exportDocDetailsTemplate().catch(error => {
+                      console.error(error)
+                      toast.error('Unable to export the DOC Details template.')
+                    })
+                  }}
                 >
-                  <Plus className="size-4" />
-                  {forceDocDetailsModal ? 'Add Row as Modal' : 'Add Row'}
+                  <FileSpreadsheet className="size-4" />
+                  Export Template
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      disabled={!canEditDocDetails}
-                      className="-ml-px rounded-l-none"
-                      aria-label="More add row options"
-                    >
-                      <ChevronDown className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={addDocDetailsUsingModal}>
-                      Add as modal
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <input
+                  ref={docDetailsImportInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    if (file) void handleDocDetailsImport(file)
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDocDetails || importingDocDetails}
+                  onClick={() => docDetailsImportInputRef.current?.click()}
+                >
+                  {importingDocDetails ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
+                  {importingDocDetails ? 'Importing...' : 'Import Excel'}
+                </Button>
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canEditDocDetails}
+                    onClick={handleAddDocDetailsRow}
+                    className="rounded-r-none"
+                  >
+                    <Plus className="size-4" />
+                    {forceDocDetailsModal ? 'Add Row as Modal' : 'Add Row'}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        disabled={!canEditDocDetails}
+                        className="-ml-px rounded-l-none"
+                        aria-label="More add row options"
+                      >
+                        <ChevronDown className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={addDocDetailsUsingModal}>
+                        Add as modal
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             )}
             className="rounded-none border-0 border-b shadow-none"
@@ -2125,6 +2267,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       </div>
                     </td>
                     {DOC_RECEIVING_DETAIL_COLUMNS.map(column => {
+                      const selectedBuildingEntry = selectableFarmBuildings.find(entry =>
+                        entry.building.id === row.building_warehouse_id
+                      )
                       const selectedRowBuilding = farmOpenFlockBuildings.find(building =>
                         building.warehouseId === row.building_warehouse_id &&
                         building.flockCardId === row.flock_card_id
@@ -2171,6 +2316,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 </option>
                               ))}
                             </select>
+                            {selectedBuildingEntry && !selectedBuildingEntry.activeCycle && (
+                              <button
+                                type="button"
+                                disabled={!canEditDocDetails}
+                                onClick={() => void beginCycleCreation(selectedBuildingEntry.building, { kind: 'row', rowId: row.id })}
+                                className="mt-1 text-left text-xs font-medium text-amber-700 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                No active cycle. Create cycle
+                              </button>
+                            )}
                             {hasAgeIssue && (
                               <p className="mt-1 text-xs font-medium text-red-700">
                                 Date Receive is outside the 7-calendar-date placement window from : {formatCalendarDate(firstPlacementDate)}
@@ -2209,6 +2364,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </tbody>
             </table>
           </FormTable>
+          {docDetailsImportIssues.length > 0 && (
+            <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="font-semibold">DOC Details import was not applied.</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {docDetailsImportIssues.map((issue, index) => <li key={`${index}-${issue}`}>{issue}</li>)}
+              </ul>
+            </div>
+          )}
           {docPlacementWindowError && (
             <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
               {docPlacementWindowError}

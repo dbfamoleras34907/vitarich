@@ -878,7 +878,10 @@ export default function NewGoodsIssue({
             const placementBatches = result.info?.cardNo
               ? await getDeliveryFlockCardPlacementBatches({
                   flockCardId: result.info.id,
+                  farmId: result.info.farmId,
+                  buildingWarehouseId: result.info.buildingWarehouseId,
                   buildingCode: result.info.buildingCode,
+                  cycleNumber: result.info.cycleNumber,
                 })
               : []
             return { lookupKey: result.lookupKey, placementBatches }
@@ -2048,21 +2051,21 @@ export default function NewGoodsIssue({
               />
             ) : (
             <div className="overflow-x-auto">
-              <table className={`${usesLineWarehouse ? 'min-w-[1840px]' : 'min-w-[1500px]'} w-full border-collapse text-sm`}>
-                <thead className="bg-stone-100 text-left text-xs uppercase tracking-wide text-stone-600">
+              <table className={`${usesLineWarehouse ? 'min-w-[1350px]' : 'min-w-[1090px]'} w-full table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs`}>
+                <thead className="bg-muted text-left text-[11px] text-muted-foreground">
                   <tr>
-                    <th className="w-12 px-3 py-3 text-center">#</th>
-                    <th className="w-[280px] px-3 py-3">Item</th>
+                    <th className="w-9 border border-border px-1 py-1 text-center">#</th>
+                    <th className="w-[240px] border border-border px-1.5 py-1">Item</th>
                     {usesLineWarehouse && (
-                      <th className="w-[340px] px-3 py-3">{warehouseLabel}</th>
+                      <th className="w-[260px] border border-border px-1.5 py-1">{warehouseLabel}</th>
                     )}
-                    <th className="w-[160px] px-3 py-3">UoM Group</th>
-                    <th className="w-[120px] px-3 py-3">Qty</th>
-                    <th className="w-[140px] px-3 py-3">Alt UoM</th>
-                    <th className="w-[180px] px-3 py-3">Base Qty</th>
-                    <th className="w-[240px] px-3 py-3">Batch</th>
-                    <th className="w-[130px] px-3 py-3">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand'}</th>
-                    <th className="w-14 px-3 py-3" />
+                    <th className="w-[140px] border border-border px-1.5 py-1">UoM Group</th>
+                    <th className="w-[90px] border border-border px-1.5 py-1">Qty</th>
+                    <th className="w-[100px] border border-border px-1.5 py-1">Alt UoM</th>
+                    <th className="w-[140px] border border-border px-1.5 py-1">Base Qty</th>
+                    <th className="w-[190px] border border-border px-1.5 py-1">Batch</th>
+                    <th className="w-[110px] border border-border px-1.5 py-1">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand'}</th>
+                    <th className="w-11 border border-border px-1 py-1" />
                   </tr>
                 </thead>
                 <tbody>
@@ -2076,9 +2079,9 @@ export default function NewGoodsIssue({
                     const isOver = canPostDocument && line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
 
                     return (
-                      <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
-                        <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
-                        <td className="px-3 py-2 align-middle">
+                      <tr key={line.id} className="odd:bg-background even:bg-muted/40 hover:bg-accent/40">
+                        <td className="border border-border bg-muted px-1 py-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={items}
                             codeLabel="item_code"
@@ -2090,7 +2093,7 @@ export default function NewGoodsIssue({
                           />
                         </td>
                         {usesLineWarehouse && (
-                          <td className="px-3 py-2 align-top">
+                          <td className="border border-border p-1 align-top">
                             <div className="space-y-2">
                               <SearchableDropdown
                                 list={farmWarehouses}
@@ -2115,11 +2118,11 @@ export default function NewGoodsIssue({
                             </div>
                           </td>
                         )}
-                        <td className="px-3 py-2 align-middle">
+                        <td className="border border-border p-1 align-middle">
                           <select
                             value={line.baseUom}
                             disabled
-                            className="h-9 w-full rounded-md border border-stone-300 bg-stone-100 px-2 text-sm text-stone-600 outline-none disabled:cursor-not-allowed disabled:opacity-100"
+                            className="h-7 w-full rounded-none border-0 bg-muted px-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-100"
                           >
                             <option value="">Select item</option>
                             {uomGroups.map(group => (
@@ -2129,7 +2132,7 @@ export default function NewGoodsIssue({
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="border border-border p-1 align-middle">
                           <Input
                             type="number"
                             min="0"
@@ -2142,10 +2145,10 @@ export default function NewGoodsIssue({
                                 baseQty: calculateBaseQty(altQty, line.altUom, line.baseUom),
                               })
                             }}
-                            className="border-stone-300 bg-white"
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                           />
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="border border-border p-1 align-middle">
                           <select
                             value={line.altUom}
                             disabled={!line.baseUom}
@@ -2156,7 +2159,7 @@ export default function NewGoodsIssue({
                                 baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
                               })
                             }}
-                            className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
+                            className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
                           >
                             <option value="">{line.baseUom ? 'Select Alt UoM' : 'Select item first'}</option>
                             {getGroupUoms(line.baseUom).map(conversion => (
@@ -2166,7 +2169,7 @@ export default function NewGoodsIssue({
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-3 align-middle text-stone-800">
+                        <td className="border border-border px-1.5 py-1 align-middle text-foreground">
                           {line.baseUom && line.altUom ? (
                             <div className="whitespace-nowrap">
                               <span className="font-medium tabular-nums">
@@ -2175,7 +2178,7 @@ export default function NewGoodsIssue({
                               <span className="text-stone-600">
                                 {getSelectedGroup(line.baseUom)?.baseUomCode}
                               </span>
-                              <div className="text-xs text-stone-500">
+                              <div className="text-[10px] leading-tight text-muted-foreground">
                                 {formatQuantity(line.altQty)}{' '}
                                 {line.altUom} x{' '}
                                 {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(QUANTITY_LOCALE, QUANTITY_FORMAT_OPTIONS)}
@@ -2185,7 +2188,7 @@ export default function NewGoodsIssue({
                             <span className="text-stone-400">-</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 align-middle">
+                        <td className="border border-border p-1 align-middle">
                           {needsBatch ? (
                             <div className="space-y-1.5">
                               <Button
@@ -2193,7 +2196,7 @@ export default function NewGoodsIssue({
                                 variant="outline"
                                 disabled={!canSearchBatches}
                                 onClick={() => openBatchSelector(line)}
-                                className={`h-9 w-full justify-start border-stone-300 px-2 text-left font-normal hover:bg-stone-50 ${
+                                className={`h-7 w-full justify-start rounded-none border-0 px-1.5 text-left text-xs font-normal hover:bg-accent ${
                                   line.batchNumber
                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                                     : 'bg-white text-stone-800'
@@ -2228,10 +2231,10 @@ export default function NewGoodsIssue({
                               )}
                             </div>
                           ) : (
-                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
+                            <span className="inline-flex h-7 items-center px-1 text-muted-foreground">Not required</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 align-middle">
+                        <td className="border border-border px-1.5 py-1 align-middle">
                           <div>
                             <div className="whitespace-nowrap">
                               <span className={`font-medium tabular-nums ${isOver ? 'text-red-600' : 'text-stone-800'}`}>
@@ -2250,14 +2253,14 @@ export default function NewGoodsIssue({
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center align-middle">
+                        <td className="border border-border p-1 text-center align-middle">
                           <button
                             type="button"
                             onClick={() => setIssue(current => current ? {
                               ...current,
                               lines: current.lines.filter(candidate => candidate.id !== line.id),
                             } : current)}
-                            className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                            className="inline-flex size-7 items-center justify-center rounded-none text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
                             aria-label={`Delete line ${index + 1}`}
                           >
                             <Trash2 className="size-4" />

@@ -20,8 +20,26 @@ const errorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-export default function BrCleanupSettingsLayout() {
-  const cannotEdit = usePermission("/brd/cu/settings/edit");
+type BrCleanupSettingsLayoutProps = {
+  fixedFarmId?: number;
+  fixedFarm?: UserFarm | null;
+  embedded?: boolean;
+  permissionBasePath?: string;
+  usePreviousFarmDefaults?: boolean;
+  saveLabel?: string;
+  onSaved?: () => void;
+};
+
+export default function BrCleanupSettingsLayout({
+  fixedFarmId,
+  fixedFarm = null,
+  embedded = false,
+  permissionBasePath = "/brd/cu/settings",
+  usePreviousFarmDefaults = false,
+  saveLabel,
+  onSaved,
+}: BrCleanupSettingsLayoutProps = {}) {
+  const cannotEdit = usePermission(`${permissionBasePath}/edit`);
   const { getValue } = useGlobalContext();
   const session = getValue("UserInfoAuthSession");
   const rawFarmDB = getValue("getFarmDB");
@@ -39,8 +57,8 @@ export default function BrCleanupSettingsLayout() {
     const farms = getAllowedUserFarms((rawFarmDB || []) as UserFarm[], (rawUserFarms || []) as unknown[]);
     return farms.length === 1 ? farms[0] : null;
   }, [rawFarmDB, rawUserFarms]);
-  const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
-  const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
+  const activeFarm = fixedFarm ?? selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
   const currentSnapshot = JSON.stringify({ farmId: activeFarmId, batchAutoSelection, targetCleanupAge });
   const isDirty = Boolean(savedSnapshot) && currentSnapshot !== savedSnapshot;
   const canSave = !saving && !loading && !cannotEdit && Boolean(activeFarmId);
@@ -57,7 +75,7 @@ export default function BrCleanupSettingsLayout() {
     if (!Number.isFinite(farmId) || farmId <= 0) return resetForm();
     setLoading(true);
     try {
-      const next = await getBrCleanupSettings(farmId);
+      const next = await getBrCleanupSettings(farmId, { usePreviousFarmDefaults });
       const autoSelect = next?.batch_auto_selection ?? true;
       const targetAge = String(next?.target_cleanup_age ?? 0);
       setSettings(next);
@@ -70,7 +88,7 @@ export default function BrCleanupSettingsLayout() {
     } finally {
       setLoading(false);
     }
-  }, [activeFarmId, resetForm]);
+  }, [activeFarmId, resetForm, usePreviousFarmDefaults]);
 
   useEffect(() => { void fetchSettings(); }, [fetchSettings]);
   useEffect(() => {
@@ -101,6 +119,7 @@ export default function BrCleanupSettingsLayout() {
       setTargetCleanupAge(String(saved.target_cleanup_age));
       setSavedSnapshot(JSON.stringify({ farmId: activeFarmId, batchAutoSelection: saved.batch_auto_selection, targetCleanupAge: String(saved.target_cleanup_age) }));
       toast("Clean up settings saved");
+      onSaved?.();
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to save Clean up settings"));
     } finally {
@@ -109,15 +128,15 @@ export default function BrCleanupSettingsLayout() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
-      <Breadcrumb FirstPreviewsPageName="Settings" CurrentPageName="Clean up Settings" />
-      <ModuleSettingsHeader title="Clean up Settings" description="Configure farm-specific cycle close-out rules." formId="cleanup-settings-form" loading={loading} saving={saving} disableRefresh={!activeFarmId} disableSave={!canSave} onRefresh={() => void fetchSettings()} />
+    <main className={embedded ? "space-y-3" : "mx-auto max-w-6xl space-y-3 p-3 sm:p-4"}>
+      {!embedded ? <Breadcrumb FirstPreviewsPageName="Settings" CurrentPageName="Clean up Settings" /> : null}
+      <ModuleSettingsHeader title="Clean up Settings" description="Configure farm-specific cycle close-out rules." formId="cleanup-settings-form" loading={loading} saving={saving} disableRefresh={!activeFarmId} disableSave={!canSave} saveLabel={saveLabel} onRefresh={() => void fetchSettings()} />
       <form id="cleanup-settings-form" onSubmit={handleSubmit} className="space-y-3">
-        <SettingsCategory title="Scope" description="Select the farm whose Clean up rules you want to maintain.">
+        {!fixedFarmId ? <SettingsCategory title="Scope" description="Select the farm whose Clean up rules you want to maintain.">
           <SettingRow label="Farm" description="Settings are stored independently for each authorized farm." settingKey="FARM_ID" required>
-            <UserFarmSearchCombobox label="Farm" required value={activeFarmId} onValueChange={(farmId, farm) => { setSelectedFarmId(farmId); setSelectedFarm(farm ?? null); }} />
+            <UserFarmSearchCombobox label="Farm" required farmType="BR" value={activeFarmId} onValueChange={(farmId, farm) => { setSelectedFarmId(farmId); setSelectedFarm(farm ?? null); }} />
           </SettingRow>
-        </SettingsCategory>
+        </SettingsCategory> : null}
         <SettingsCategory title="Clean-up Validation" description="Define when a building becomes eligible for cycle close-out.">
           <SettingRow label="Target Clean-up Age" description="Minimum DOC age in days required before a Clean up document can be posted." settingKey="TARGET_CLEANUP_AGE" required>
             <Input type="number" min="0" step="1" required value={targetCleanupAge} disabled={loading || saving || cannotEdit || !activeFarmId} onChange={event => setTargetCleanupAge(event.target.value)} />

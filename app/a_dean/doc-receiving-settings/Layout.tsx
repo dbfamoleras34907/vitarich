@@ -40,7 +40,8 @@ const toForm = (settings: DocReceivingSettings | null): FormState => ({
   rejectDoc: settings?.reject_doc == null ? '' : String(settings.reject_doc),
 })
 
-const toPayload = (form: FormState): DocReceivingSettings => ({
+const toPayload = (form: FormState, farmId: number): DocReceivingSettings => ({
+  farm_id: farmId,
   good_doc: form.goodDoc ? Number(form.goodDoc) : null,
   bad_doc: form.daoDoc ? Number(form.daoDoc) : null,
   reject_doc: form.rejectDoc ? Number(form.rejectDoc) : null,
@@ -57,9 +58,25 @@ const errorMessage = (error: unknown, fallback: string) => {
   return fallback
 }
 
-export default function DocReceivingSettingsLayout() {
-  const canAdd = usePermission('/a_dean/doc-receiving-settings/insert')
-  const canEdit = usePermission('/a_dean/doc-receiving-settings/edit')
+type DocReceivingSettingsLayoutProps = {
+  fixedFarmId?: number
+  embedded?: boolean
+  permissionBasePath?: string
+  usePreviousFarmDefaults?: boolean
+  saveLabel?: string
+  onSaved?: () => void
+}
+
+export default function DocReceivingSettingsLayout({
+  fixedFarmId,
+  embedded = false,
+  permissionBasePath = '/a_dean/doc-receiving-settings',
+  usePreviousFarmDefaults = false,
+  saveLabel,
+  onSaved,
+}: DocReceivingSettingsLayoutProps = {}) {
+  const canAdd = usePermission(`${permissionBasePath}/insert`)
+  const canEdit = usePermission(`${permissionBasePath}/edit`)
   const { getValue } = useGlobalContext()
   const session = getValue('UserInfoAuthSession')
   const rawFarmDB = getValue('getFarmDB')
@@ -80,7 +97,7 @@ export default function DocReceivingSettingsLayout() {
     [rawFarmDB, rawUserFarms],
   )
   const singleAllowedFarm = allowedFarms.length === 1 ? allowedFarms[0] : null
-  const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : '')
+  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : '')
 
   const canSave = useMemo(
     () => !saving && Boolean(activeFarmId) && (settings?.id ? !canEdit : !canAdd),
@@ -98,7 +115,7 @@ export default function DocReceivingSettingsLayout() {
     setLoading(true)
     try {
       const [nextSettings, nextItems] = await Promise.all([
-        getDocReceivingSettings(),
+        getDocReceivingSettings(Number(activeFarmId), { usePreviousFarmDefaults }),
         getDocItemOptions(),
       ])
       setSettings(nextSettings)
@@ -115,7 +132,7 @@ export default function DocReceivingSettingsLayout() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeFarmId, usePreviousFarmDefaults])
 
   useEffect(() => {
     fetchData()
@@ -182,7 +199,7 @@ export default function DocReceivingSettingsLayout() {
 
     setSaving(true)
     try {
-      const payload = toPayload(form)
+      const payload = toPayload(form, Number(activeFarmId))
       const saved = settings?.id
         ? await updateDocReceivingSettings(settings.id, payload)
         : await addDocReceivingSettings(payload)
@@ -196,6 +213,7 @@ export default function DocReceivingSettingsLayout() {
       setExcludedBuildingIds(savedExclusions)
       setSavedExcludedBuildingIds(savedExclusions)
       toast('DOC Placement settings saved')
+      onSaved?.()
     } catch (error) {
       toast('Error: ' + errorMessage(error, 'Unable to save DOC receiving settings'))
     } finally {
@@ -204,13 +222,13 @@ export default function DocReceivingSettingsLayout() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
-      <div>
+    <main className={embedded ? 'space-y-3' : 'mx-auto max-w-6xl space-y-3 p-3 sm:p-4'}>
+      {!embedded ? <div>
         <Breadcrumb
           FirstPreviewsPageName="Settings"
           CurrentPageName="DOC Placement Settings"
         />
-      </div>
+      </div> : null}
 
       <ModuleSettingsHeader
         title="DOC Placement Settings"
@@ -219,15 +237,16 @@ export default function DocReceivingSettingsLayout() {
         loading={loading}
         saving={saving}
         disableSave={!canSave}
+        saveLabel={saveLabel}
         onRefresh={handleRefresh}
       />
 
       <form id="doc-placement-settings-form" onSubmit={handleSubmit}>
-        <SettingsCategory title="Scope" description="Select the farm whose DOC cycle exclusions you want to maintain.">
+        {!fixedFarmId ? <SettingsCategory title="Scope" description="Select the farm whose DOC Placement settings you want to maintain.">
           <SettingRow label="Farm" description="Excluded Cycle Buildings are stored independently per farm." settingKey="FARM_ID" required>
-            <UserFarmSearchCombobox label="Farm" required value={activeFarmId} onValueChange={farmId => setSelectedFarmId(farmId)} />
+            <UserFarmSearchCombobox label="Farm" required farmType="BR" value={activeFarmId} onValueChange={farmId => setSelectedFarmId(farmId)} />
           </SettingRow>
-        </SettingsCategory>
+        </SettingsCategory> : null}
         <SettingsCategory title="DOC Classification" description="Map each placement outcome to the inventory item used by DOC Placement.">
           {([
             ['goodDoc', 'Good DOC', 'Item used for accepted and healthy chicks.', 'GOOD_DOC_ITEM'],

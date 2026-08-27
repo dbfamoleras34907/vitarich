@@ -702,7 +702,11 @@ export default function Layout() {
       if (isEditMode) {
         await updateFarmSetup(farmId, payload)
         toast.success('Farm updated successfully.')
-        router.push('/a_dean/farm')
+        router.push(
+          compact(farmData.farm_type).toUpperCase() === 'BR'
+            ? `/brd/settings/farm-setup?farmId=${farmId}`
+            : '/a_dean/farm'
+        )
         return
       }
 
@@ -710,7 +714,11 @@ export default function Layout() {
 
       if (result.approval?.required) {
         toast.success(`Farm setup created as pending approval. Request #${result.approval.request_id ?? ''}`)
-        router.push('/a_dean/farm')
+        router.push(
+          compact(farmData.farm_type).toUpperCase() === 'BR' && result.farmId
+            ? `/brd/settings/farm-setup?farmId=${result.farmId}`
+            : '/a_dean/farm'
+        )
         return
       }
 
@@ -719,7 +727,11 @@ export default function Layout() {
       }
 
       toast.success('Farm setup completed.')
-      router.push(`/a_dean/farm/${result.farmId}/edit`)
+      router.push(
+        compact(farmData.farm_type).toUpperCase() === 'BR'
+          ? `/brd/settings/farm-setup?farmId=${result.farmId}`
+          : `/a_dean/farm/${result.farmId}/edit`
+      )
     } catch (error) {
       toast.error('Error: ' + (error instanceof Error ? error.message : 'Unable to complete farm setup'))
     } finally {

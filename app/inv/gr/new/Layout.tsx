@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
@@ -100,6 +101,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
+  const manufacturingDateInputRef = useRef<HTMLInputElement>(null)
+  const quantityInputRefs = useRef(new Map<string, HTMLInputElement>())
+  const pendingQuantityFocusLineId = useRef<string | null>(null)
   const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
@@ -754,7 +758,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
     const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
-    updateLine(line.id, {
+    const nextLineChanges: Partial<GoodsReceiptLine> = {
       itemId: item.id,
       itemCode: item.item_code || '',
       description: getItemDescription(item),
@@ -766,7 +770,32 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       altUom: uom,
       baseUom: selectedGroupCode,
       baseQty: calculateBaseQty(line.altQty, uom, selectedGroupCode),
+    }
+    const nextLine = { ...line, ...nextLineChanges }
+    const batchRequirement = getBatchRequirement(nextLine)
+
+    if (!batchRequirement) {
+      updateLine(line.id, nextLineChanges)
+      return
+    }
+
+    flushSync(() => {
+      updateLine(line.id, {
+        ...nextLineChanges,
+        batchRuleId: batchRequirement.rule?.id ?? null,
+      })
+      setActiveBatchLineId(line.id)
     })
+
+    const dateInput = manufacturingDateInputRef.current
+    if (!dateInput) return
+
+    dateInput.focus()
+    try {
+      dateInput.showPicker()
+    } catch {
+      dateInput.focus()
+    }
   }
 
   const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
@@ -939,6 +968,26 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           ? 'Waiting for dates'
           : 'Waiting for MFG date'
 
+  const closeBatchDialog = () => {
+    pendingQuantityFocusLineId.current = activeBatchLine?.batchNumber.trim()
+      ? String(activeBatchLine.id)
+      : null
+    setActiveBatchLineId(null)
+  }
+
+  const focusQuantityAfterBatchClose = () => {
+    const lineId = pendingQuantityFocusLineId.current
+    pendingQuantityFocusLineId.current = null
+    if (!lineId) return false
+
+    const quantityInput = quantityInputRefs.current.get(lineId)
+    if (!quantityInput) return false
+
+    quantityInput.focus()
+    quantityInput.select()
+    return true
+  }
+
   return (
     <main className="min-h-[calc(100vh-80rem)]">
       <div className="mx-4 mt-4 flex items-center justify-between gap-3">
@@ -1096,20 +1145,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="w-full min-w-[1840px] table-fixed border-collapse text-sm">
+              <table className="w-full min-w-[1480px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
                 <thead>
                   <tr>
-                    <th className="w-12 border border-border bg-muted px-2 py-2 text-center font-medium text-foreground">#</th>
-                    <th className="w-80 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Item Code &amp; Description</th>
-                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Group</th>
-                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Sub Group</th>
-                    <th className="w-72 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Batch</th>
-                    <th className="w-44 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Base UOM Group</th>
-                    <th className="w-28 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Alt Qty</th>
-                    <th className="w-28 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Alt UoM</th>
-                    <th className="w-52 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Conversion UoM</th>
-                    <th className="w-48 border border-border bg-muted px-2 py-2 text-left font-medium text-foreground">Warehouse</th>
-                    <th className="w-20 border border-border bg-muted px-2 py-2 text-center font-medium text-foreground">Action</th>
+                    <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
+                    <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
+                    <th className="w-52 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Batch</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Base UOM Group</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt Qty</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt UoM</th>
+                    <th className="w-40 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Conversion UoM</th>
+                    <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Warehouse</th>
+                    <th className="w-14 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1130,12 +1179,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             onChange={(value) => selectItem(line, value)}
                           />
                         </td>
-                        <td className="border border-border p-2 align-middle text-muted-foreground">
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
                           <span className="block truncate" title={getItemGroupDisplay(line)}>
                             {getItemGroupDisplay(line)}
                           </span>
                         </td>
-                        <td className="border border-border p-2 align-middle text-muted-foreground">
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
                           <span className="block truncate" title={getSubItemGroupDisplay(line)}>
                             {getSubItemGroupDisplay(line)}
                           </span>
@@ -1145,7 +1194,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             <button
                               type="button"
                               onClick={() => openBatchDialog(line)}
-                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-left text-sm shadow-none transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/20"
+                              className="flex min-h-7 w-full items-center justify-between gap-1 rounded-none border-0 bg-background px-1.5 py-1 text-left text-xs shadow-none transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring/20"
                             >
                               <span className="min-w-0">
                                 <span className="flex items-center gap-2 font-medium text-foreground">
@@ -1154,7 +1203,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                     {line.batchNumber || 'Batch details'}
                                   </span>
                                 </span>
-                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                                <span className="flex flex-wrap gap-1 text-[10px] leading-tight text-muted-foreground">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
                                   {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
@@ -1165,7 +1214,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               <Hash className="size-4 shrink-0 text-muted-foreground" />
                             </button>
                           ) : (
-                            <span className="inline-flex h-9 items-center text-muted-foreground">Not required</span>
+                            <span className="inline-flex h-7 items-center px-1 text-muted-foreground">Not required</span>
                           )}
                         </td>
                       <td className="border border-border p-1 align-middle">
@@ -1187,7 +1236,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-border bg-muted px-2 text-sm text-muted-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
+                          className="h-7 w-full rounded-none border-0 bg-muted px-1.5 text-xs text-muted-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
                         >
                           <option value="">Select UoM group</option>
                           {uomGroups.map(group => (
@@ -1199,6 +1248,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       </td>
                       <td className="border border-border p-1 align-middle">
                         <Input
+                          ref={element => {
+                            const lineId = String(line.id)
+                            if (element) quantityInputRefs.current.set(lineId, element)
+                            else quantityInputRefs.current.delete(lineId)
+                          }}
                           type="number"
                           min="0"
                           step="any"
@@ -1211,7 +1265,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               line.baseUom,
                             ),
                           })}
-                          className="border-border bg-background shadow-none focus-visible:ring-ring/20"
+                          className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/20"
                         />
                       </td>
                       <td className="border border-border p-1 align-middle">
@@ -1225,7 +1279,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
+                          className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
                         >
                           <option value="">
                             {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
@@ -1240,7 +1294,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="border border-border p-2 align-middle text-foreground">
+                      <td className="border border-border px-1.5 py-1 align-middle text-foreground">
                         {line.baseUom && line.altUom ? (
                           <div className="whitespace-nowrap">
                             <span className="font-medium tabular-nums">
@@ -1249,7 +1303,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             <span className="text-muted-foreground">
                               {getSelectedGroup(line.baseUom)?.baseUomCode}
                             </span>
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-[10px] leading-tight text-muted-foreground">
                               {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
                               {line.altUom} ×{' '}
                               {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
@@ -1280,7 +1334,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             ...current,
                             lines: current.lines.filter(candidate => candidate.id !== line.id),
                           } : current)}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive/20"
+                          className="inline-flex size-7 items-center justify-center rounded-none text-destructive transition hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive/20"
                           aria-label={`Delete line ${index + 1}`}
                         >
                           <Trash2 className="size-4" />
@@ -1296,7 +1350,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           <BatchDetailsDialog
             open={Boolean(activeBatchLine)}
             itemCode={activeBatchLine?.itemCode}
-            onClose={() => setActiveBatchLineId(null)}
+            onClose={closeBatchDialog}
+            onCloseAutoFocus={focusQuantityAfterBatchClose}
           >
 
               {activeBatchLine && activeBatchRequirement && (
@@ -1356,6 +1411,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         <div className="space-y-2">
                           <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
                           <Input
+                            ref={manufacturingDateInputRef}
                             id="gr-manufacturing-date"
                             type="date"
                             value={activeBatchLine.manufacturingDate}

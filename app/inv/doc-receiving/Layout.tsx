@@ -112,7 +112,7 @@ export default function GoodsReceiveHistory() {
         key: 'status',
         label: 'Status',
         render: row => (
-          <span className={getInventoryStatusBadgeClass(row.status)}>
+          <span className={getInventoryStatusBadgeClass(row.status) + 'h-3' }>
             {row.status}
           </span>
         ),
@@ -128,8 +128,9 @@ export default function GoodsReceiveHistory() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
+                size="xs"
+                className="h-5"
                 type="button"
-                size="icon"
                 variant="outline"
                 disabled={row.id === null || (canView && canInsert)}
                 aria-label={`Open actions for ${row.grNo}`}

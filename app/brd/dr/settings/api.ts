@@ -12,7 +12,10 @@ export type BrDeliverySettings = {
   updated_at?: string | null;
 };
 
-export async function getBrDeliverySettings(farmId: number) {
+export async function getBrDeliverySettings(
+  farmId: number,
+  options: { usePreviousFarmDefaults?: boolean } = {},
+) {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
   const { data, error } = await db
@@ -25,7 +28,32 @@ export async function getBrDeliverySettings(farmId: number) {
     .maybeSingle();
 
   if (error) throw error;
-  return data as BrDeliverySettings | null;
+  if (data || !options.usePreviousFarmDefaults) {
+    return data as BrDeliverySettings | null;
+  }
+
+  const { data: previous, error: previousError } = await db
+    .from("brd_dr_settings")
+    .select("*")
+    .eq("void", "1")
+    .lt("farm_id", farmId)
+    .order("farm_id", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (previousError) throw previousError;
+  if (!previous) return null;
+
+  return {
+    ...(previous as BrDeliverySettings),
+    id: undefined,
+    farm_id: farmId,
+    farm_code: null,
+    farm_name: null,
+    created_at: undefined,
+    updated_at: undefined,
+  };
 }
 
 export async function saveBrDeliverySettings(payload: BrDeliverySettings) {

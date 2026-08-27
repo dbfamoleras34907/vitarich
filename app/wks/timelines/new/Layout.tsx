@@ -28,7 +28,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { formatDateTime } from '@/lib/formatDate'
 import { getWorkspaceActivityTypes, getWorkspaceTimesheetById, getWorkspaceTimesheetEntryOptionsForUser, getWorkspaceTimesheetSettings } from '@/lib/data/repositories/workspace'
 import { saveTimesheet } from './api'
 import { toast } from 'sonner'
@@ -351,12 +350,26 @@ export default function Layout({ timesheetId }: Props = {}) {
       return
     }
 
-    const filteredRows =
-      rows.filter(r =>
-        r.project_id &&
-        r.task_id &&
-        r.activity_type
-      )
+    if (!formValues.doc_date) {
+      toast.error('Select a timesheet date')
+      return
+    }
+
+    const startedRows = rows.filter(row => Boolean(
+      row.hrs ||
+      row.project_id ||
+      row.task_id ||
+      row.remarks.trim()
+    ))
+
+    const incompleteRowIndex = startedRows.findIndex(row => !isCompleteLine(row))
+    if (incompleteRowIndex >= 0) {
+      const lineNumber = startedRows[incompleteRowIndex].line_num
+      toast.error(`Complete Activity, From Time, Hours, Project, and Task on line ${lineNumber}`)
+      return
+    }
+
+    const filteredRows = startedRows.filter(isCompleteLine)
 
     if (!filteredRows.length) {
       toast.error('Add at least one complete timesheet line')
@@ -368,7 +381,7 @@ export default function Layout({ timesheetId }: Props = {}) {
     const payload = {
       header: {
         id: timesheetId ?? null,
-        doc_date: formatDateTime(String(formValues.doc_date),'mmddyyyy'),
+        doc_date: format(formValues.doc_date, 'yyyy-MM-dd'),
         assigned_to: formValues.assigned_to
       },
       lines: filteredRows.map((r, i) => ({
@@ -391,7 +404,10 @@ export default function Layout({ timesheetId }: Props = {}) {
       router.push(`/wks/timelines/${data}`)
     } catch (error) {
       console.error(error)
-      toast.error('Failed to save timesheet')
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Failed to save timesheet'
+      toast.error(message)
       setIsLoading(false)
     }
   }
@@ -448,6 +464,18 @@ export default function Layout({ timesheetId }: Props = {}) {
         const session = await Promise.resolve(getValue('UserInfoAuthSession'))
         const userId = Number(existingTimesheet?.header.assigned_to ?? session?.[0]?.id)
         if (!userId) throw new Error('Unable to resolve the timesheet owner')
+
+        // The owner is required for saving and must not depend on optional
+        // activity, project, task, or settings lookups succeeding.
+        setFormValues(current => existingTimesheet
+          ? {
+            doc_date: new Date(existingTimesheet.header.doc_date),
+            assigned_to: existingTimesheet.header.assigned_to ?? userId,
+          }
+          : {
+            ...current,
+            assigned_to: userId,
+          })
 
         const [activities, entryOptions, settings] = await Promise.all([
           getWorkspaceActivityTypes(),
@@ -510,15 +538,6 @@ export default function Layout({ timesheetId }: Props = {}) {
           },
           {}
         ))
-        setFormValues(current => existingTimesheet
-          ? {
-            doc_date: new Date(existingTimesheet.header.doc_date),
-            assigned_to: existingTimesheet.header.assigned_to ?? userId,
-          }
-          : {
-            ...current,
-            assigned_to: userId,
-          })
       } catch (error) {
         console.error(error)
         toast.error(timesheetId

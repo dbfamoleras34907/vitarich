@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/Supabase/supabaseClient'
 import { calculateFlockAgeFromStartDate } from '@/app/brd/fc/age'
+import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 import { Items, WarehouseData } from '@/lib/types'
 import {
@@ -139,16 +140,15 @@ export async function getCleanupCycleSummaries(params: {
     animal_qty: number | null
   }>
   const warehouseCodes = Array.from(new Set(uniqueCards.map(getCardBuildingCode).filter(Boolean)))
-  const itemCodes = Array.from(new Set(origins.map(origin => String(origin.item_code ?? '').trim()).filter(Boolean)))
 
   let postings: CleanupSummaryPostingRow[] = []
-  if (warehouseCodes.length > 0 && itemCodes.length > 0) {
+  if (warehouseCodes.length > 0) {
     const postingResult = await db
       .from('inventory_postings')
       .select('source_doc_type, source_docentry, item_code, warehouse_code, batch_number, ref, qty, transfer_type')
       .in('warehouse_code', warehouseCodes)
-      .in('item_code', itemCodes)
       .in('source_doc_type', [
+        'DOC_RECEIVING_CONSOLIDATION',
         'FLOCK_CARD_ORIGIN',
         'FLOCK_CARD_ORIGIN_VOID',
         'BRD_FC_MORT_THIN_USAGE',
@@ -174,19 +174,33 @@ export async function getCleanupCycleSummaries(params: {
       `${String(origin.item_code ?? '').trim().toUpperCase()}|${String(origin.batch_no ?? '').trim().toUpperCase()}`,
     ))
     const buildingCode = getCardBuildingCode(card)
+    const buildingWarehouseId = Number(card.building_whse_id ?? 0)
+    const cycleNumber = String(card.cycle_no ?? '').trim()
+    const consolidatedBatchNumber = buildingWarehouseId > 0 && cycleNumber
+      ? `DOC:F${farmId}:B${buildingWarehouseId}:${cycleNumber}`.toUpperCase()
+      : ''
     const cleanupId = Number(card.extra?.closed_by_docentry ?? 0)
     const cardPostings = postings.filter(posting => {
       const sourceType = String(posting.source_doc_type ?? '').toUpperCase()
       if ((sourceType === 'BR_CLEANUP' || sourceType === 'BR_CLEANUP_VARIANCE') && cleanupId > 0 && Number(posting.source_docentry) !== cleanupId) return false
-      const key = `${String(posting.item_code ?? '').trim().toUpperCase()}|${String(posting.batch_number ?? posting.ref ?? '').trim().toUpperCase()}`
-      return String(posting.warehouse_code ?? '').trim().toUpperCase() === buildingCode.toUpperCase() && originKeys.has(key)
+      const postingBatchNumber = String(posting.batch_number ?? posting.ref ?? '').trim().toUpperCase()
+      const key = `${String(posting.item_code ?? '').trim().toUpperCase()}|${postingBatchNumber}`
+      return String(posting.warehouse_code ?? '').trim().toUpperCase() === buildingCode.toUpperCase() && (
+        originKeys.has(key) ||
+        Boolean(consolidatedBatchNumber && postingBatchNumber === consolidatedBatchNumber)
+      )
     })
     const movementTotal = (types: string[]) => cardPostings
       .filter(posting => types.includes(String(posting.source_doc_type ?? '').toUpperCase()))
       .reduce((total, posting) => total + signedQty(posting), 0)
-    const postedPlacement = Math.max(movementTotal(['FLOCK_CARD_ORIGIN', 'FLOCK_CARD_ORIGIN_VOID']), 0)
+    const consolidatedPlacement = Math.max(movementTotal(['DOC_RECEIVING_CONSOLIDATION']), 0)
+    const legacyPostedPlacement = Math.max(movementTotal(['FLOCK_CARD_ORIGIN', 'FLOCK_CARD_ORIGIN_VOID']), 0)
     const savedPlacement = cardOrigins.reduce((total, origin) => total + Number(origin.animal_qty ?? 0), 0)
-    const totalPlacement = postedPlacement > 0 ? postedPlacement : Math.max(savedPlacement, 0)
+    const totalPlacement = consolidatedPlacement > 0
+      ? consolidatedPlacement
+      : legacyPostedPlacement > 0
+        ? legacyPostedPlacement
+        : Math.max(savedPlacement, 0)
     const totalMortality = Math.max(-movementTotal([
       'BRD_FC_MORT_THIN_USAGE',
       'BRD_FC_MORT_THIN_TRANSFER_OUT',
@@ -681,7 +695,10 @@ export async function getAvailableDeliveryFlockCards(params: {
     eligibleCards.map(async card => {
       const batches = await getDeliveryFlockCardPlacementBatches({
         flockCardId: card.id,
+        farmId: card.farmId,
+        buildingWarehouseId: card.buildingWarehouseId,
         buildingCode: card.buildingCode,
+        cycleNumber: card.cycleNumber,
       })
       return batches.some(batch => batch.onHandQty > 0) ? card : null
     }),
@@ -700,7 +717,10 @@ export async function getAvailableDeliveryFlockCards(params: {
 
 export async function getDeliveryFlockCardPlacementBatches(params: {
   flockCardId: number | null
+  farmId?: number | null
+  buildingWarehouseId?: number | null
   buildingCode: string
+  cycleNumber?: string | null
 }): Promise<GoodsIssuePlacementBatch[]> {
   const flockCardId = Number(params.flockCardId ?? 0)
   const destinationWarehouseCode = params.buildingCode.trim()
@@ -716,6 +736,40 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
   if (error) throwReferenceError('Flock card placement', error)
 
   const originRows = (data ?? []) as FlockCardOriginBatchRow[]
+  if (originRows.length === 0) {
+    const farmId = Number(params.farmId ?? 0)
+    const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
+    const cycleNumber = String(params.cycleNumber ?? '').trim()
+
+    if (
+      Number.isFinite(farmId) && farmId > 0 &&
+      Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0 &&
+      cycleNumber && destinationWarehouseCode
+    ) {
+      const consolidatedBatchNumber = `DOC:F${farmId}:B${buildingWarehouseId}:${cycleNumber}`
+      const postingBatches = await getFarmOriginBatchesForFlockCard(
+        farmId,
+        destinationWarehouseCode,
+      )
+
+      return postingBatches
+        .filter(batch =>
+          batch.onHandQty > 0 &&
+          batch.batchNumber.trim().toUpperCase() === consolidatedBatchNumber.toUpperCase(),
+        )
+        .map(batch => ({
+          id: batch.id,
+          itemCode: batch.itemCode,
+          itemName: batch.itemName,
+          batchNumber: batch.batchNumber,
+          manufacturingDate: batch.manufacturingDate,
+          expiryDate: batch.expiryDate,
+          warehouseCode: batch.warehouseCode,
+          onHandQty: batch.onHandQty,
+        }))
+    }
+  }
+
   const itemCodes = Array.from(new Set(
     originRows
       .map(row => String(row.item_code ?? '').trim())

@@ -12,7 +12,10 @@ export type BrCleanupSettings = {
   updated_at?: string | null;
 };
 
-export async function getBrCleanupSettings(farmId: number) {
+export async function getBrCleanupSettings(
+  farmId: number,
+  options: { usePreviousFarmDefaults?: boolean } = {},
+) {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
   const { data, error } = await db
@@ -25,7 +28,32 @@ export async function getBrCleanupSettings(farmId: number) {
     .maybeSingle();
 
   if (error) throw error;
-  return data as BrCleanupSettings | null;
+  if (data || !options.usePreviousFarmDefaults) {
+    return data as BrCleanupSettings | null;
+  }
+
+  const { data: previous, error: previousError } = await db
+    .from("brd_cu_settings")
+    .select("*")
+    .eq("void", "1")
+    .lt("farm_id", farmId)
+    .order("farm_id", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (previousError) throw previousError;
+  if (!previous) return null;
+
+  return {
+    ...(previous as BrCleanupSettings),
+    id: undefined,
+    farm_id: farmId,
+    farm_code: null,
+    farm_name: null,
+    created_at: undefined,
+    updated_at: undefined,
+  };
 }
 
 export async function saveBrCleanupSettings(payload: BrCleanupSettings) {

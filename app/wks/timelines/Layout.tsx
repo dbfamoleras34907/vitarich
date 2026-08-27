@@ -164,7 +164,7 @@ export default function Layout() {
                   )}
                 >
                   <SelectTrigger
-                    size="xs"
+                    size="sm"
                     className={`h-5 min-w-32 rounded-full border-0 px-3 text-xs font-medium ${
                       statusColors[status as WorkspaceTimesheetStatus] || 'bg-gray-100 text-gray-800'
                     }`}

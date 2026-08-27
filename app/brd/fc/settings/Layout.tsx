@@ -31,8 +31,26 @@ const errorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-export default function FlockCardSettingsLayout() {
-  const canEdit = usePermission("/brd/fc/settings/edit");
+type FlockCardSettingsLayoutProps = {
+  fixedFarmId?: number;
+  fixedFarm?: UserFarm | null;
+  embedded?: boolean;
+  permissionBasePath?: string;
+  usePreviousFarmDefaults?: boolean;
+  saveLabel?: string;
+  onSaved?: () => void;
+};
+
+export default function FlockCardSettingsLayout({
+  fixedFarmId,
+  fixedFarm = null,
+  embedded = false,
+  permissionBasePath = "/brd/fc/settings",
+  usePreviousFarmDefaults = false,
+  saveLabel,
+  onSaved,
+}: FlockCardSettingsLayoutProps = {}) {
+  const canEdit = usePermission(`${permissionBasePath}/edit`);
   const { getValue, setValue } = useGlobalContext();
   const session = getValue("UserInfoAuthSession");
   const rawFarmDB = getValue("getFarmDB");
@@ -59,8 +77,8 @@ export default function FlockCardSettingsLayout() {
     return allowedFarms.length === 1 ? allowedFarms[0] : null;
   }, [rawFarmDB, rawUserFarms]);
 
-  const activeFarmId = selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
-  const activeFarm = selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
+  const activeFarm = fixedFarm ?? selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
   const currentSnapshot = JSON.stringify({
     farmId: activeFarmId,
     feedGroupId,
@@ -111,7 +129,7 @@ export default function FlockCardSettingsLayout() {
 
     setLoading(true);
     try {
-      const nextSettings = await getFlockCardSettings(farmId);
+      const nextSettings = await getFlockCardSettings(farmId, { usePreviousFarmDefaults });
       setSettings(nextSettings);
       setValue("FlockCardSettings", nextSettings);
       setFeedGroupId(nextSettings?.feed_group_id ? String(nextSettings.feed_group_id) : "");
@@ -139,7 +157,7 @@ export default function FlockCardSettingsLayout() {
     } finally {
       setLoading(false);
     }
-  }, [activeFarmId, setValue]);
+  }, [activeFarmId, setValue, usePreviousFarmDefaults]);
 
   useEffect(() => {
     fetchSettings();
@@ -206,6 +224,7 @@ export default function FlockCardSettingsLayout() {
         autoMortalityRateBatchSelection: Boolean(saved.auto_mortality_rate_batch_selection),
       }));
       toast("Growing & Farm Condition settings saved");
+      onSaved?.();
     } catch (error) {
       toast("Error: " + errorMessage(error, "Unable to save Flock Card settings"));
     } finally {
@@ -214,13 +233,13 @@ export default function FlockCardSettingsLayout() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
-      <div>
+    <main className={embedded ? "space-y-3" : "mx-auto max-w-6xl space-y-3 p-3 sm:p-4"}>
+      {!embedded ? <div>
         <Breadcrumb
           FirstPreviewsPageName="Settings"
           CurrentPageName="Growing & Farm Condition Settings"
         />
-      </div>
+      </div> : null}
 
       <ModuleSettingsHeader
         title="Growing & Farm Condition Settings"
@@ -230,15 +249,17 @@ export default function FlockCardSettingsLayout() {
         saving={saving}
         disableRefresh={!activeFarmId}
         disableSave={!canSave}
+        saveLabel={saveLabel}
         onRefresh={handleRefresh}
       />
 
       <form id="growing-farm-condition-settings-form" onSubmit={handleSubmit} className="space-y-3">
-        <SettingsCategory title="Scope" description="Select the farm whose operational settings you want to maintain.">
+        {!fixedFarmId ? <SettingsCategory title="Scope" description="Select the farm whose operational settings you want to maintain.">
           <SettingRow label="Farm" description="Settings are stored independently for each authorized farm." settingKey="FARM_ID" required>
                 <UserFarmSearchCombobox
                   label="Farm"
                   required
+                  farmType="BR"
                   value={activeFarmId}
                   onValueChange={(farmId, farm) => {
                     if (farmId !== activeFarmId && isDirty && !window.confirm("Discard unsaved settings?")) return;
@@ -247,7 +268,7 @@ export default function FlockCardSettingsLayout() {
                   }}
                 />
           </SettingRow>
-        </SettingsCategory>
+        </SettingsCategory> : null}
 
         <SettingsCategory title="Posting & Inventory" description="Control posting dates and automatic inventory allocation behavior.">
           <SettingRow label="Feed Group" description="Select the item group used for feed inventory in Growing & Farm Condition." settingKey="FEED_GROUP_ID" required>

@@ -22,7 +22,10 @@ export type FlockCardSettings = {
   updated_at?: string | null;
 };
 
-export async function getFlockCardSettings(farmId: number) {
+export async function getFlockCardSettings(
+  farmId: number,
+  options: { usePreviousFarmDefaults?: boolean } = {},
+) {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
   const { data, error } = await db
@@ -35,9 +38,36 @@ export async function getFlockCardSettings(farmId: number) {
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) return null;
 
-  const settings = data as FlockCardSettings;
+  let resolvedData = data;
+  if (!resolvedData && options.usePreviousFarmDefaults) {
+    const { data: previous, error: previousError } = await db
+      .from("brd_fc_settings")
+      .select("*")
+      .eq("void", "1")
+      .lt("farm_id", farmId)
+      .order("farm_id", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousError) throw previousError;
+    resolvedData = previous
+      ? {
+          ...previous,
+          id: undefined,
+          farm_id: farmId,
+          farm_code: null,
+          farm_name: null,
+          created_at: undefined,
+          updated_at: undefined,
+        }
+      : null;
+  }
+
+  if (!resolvedData) return null;
+
+  const settings = resolvedData as FlockCardSettings;
   const feedGroupId = Number(settings.feed_group_id);
   if (!Number.isFinite(feedGroupId) || feedGroupId <= 0) return settings;
 

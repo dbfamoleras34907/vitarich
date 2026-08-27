@@ -12,6 +12,7 @@ type ModuleSettingsHeaderProps = {
   saving: boolean
   disableRefresh?: boolean
   disableSave?: boolean
+  saveLabel?: string
   onRefresh: () => void
 }
 
@@ -23,6 +24,7 @@ export function ModuleSettingsHeader({
   saving,
   disableRefresh = false,
   disableSave = false,
+  saveLabel = 'Save Settings',
   onRefresh,
 }: ModuleSettingsHeaderProps) {
   return (
@@ -44,7 +46,7 @@ export function ModuleSettingsHeader({
         </Button>
         <Button type="submit" form={formId} disabled={loading || saving || disableSave}>
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          {saving ? 'Saving...' : 'Save Settings'}
+          {saving ? 'Saving...' : saveLabel}
         </Button>
       </div>
     </header>
