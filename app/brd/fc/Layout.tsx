@@ -424,10 +424,11 @@ export default function Layout() {
           </div>
         ) : (
           <>
-            <Table className="min-w-[1040px] bg-white dark:bg-card">
+            <Table className="min-w-[1120px] bg-white dark:bg-card">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[220px]">Building</TableHead>
+                  <TableHead className="w-[100px]">Cycle Age</TableHead>
                   <TableHead className="w-[90px]">Age</TableHead>
                   <TableHead className="w-[140px]">Start date</TableHead>
                   <TableHead>Code</TableHead>
@@ -456,6 +457,11 @@ export default function Layout() {
                         <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
                       </TableCell>
                       <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
+                      <TableCell className="font-medium">
+                        {flockCard?.actualAge !== null && flockCard?.actualAge !== undefined
+                          ? `${flockCard.actualAge}d`
+                          : "-"}
+                      </TableCell>
                       <TableCell className="tabular-nums">{flockCard ? formatDateValue(flockCard.startDate) : "-"}</TableCell>
                       <TableCell className="min-w-0">
                         <div className="max-w-[220px] truncate font-medium">

@@ -153,6 +153,8 @@ begin
   order by settings.created_at desc
   limit 1;
 
+  v_target_age := coalesce(v_target_age, 0);
+
   perform pg_advisory_xact_lock(hashtext('BR-CU:' || coalesce(new.farm_id::text, '') || ':' || building.warehouse_code))
   from (
     select distinct line.from_warehouse_code as warehouse_code
@@ -168,11 +170,20 @@ begin
     where line.br_cleanup_id = new.id
       and line.void = '1'
   ), active_cycles as (
-    select selected.from_warehouse_code, cycle.id, cycle.building_name, cycle.start_date
+    select selected.from_warehouse_code, cycle.id, cycle.building_name, cycle.actual_age
     from selected_buildings selected
     left join lateral (
-      select card.id, card.building_name, card.start_date
+      select card.id, card.building_name, growing.actual_age
       from public.flock_card card
+      left join lateral (
+        select daily.actual_age
+        from public.brd_fc daily
+        where daily.card_no = card.card_no
+          and daily.farm_id = card.farm_id
+          and daily.void = '1'
+        order by daily.id desc
+        limit 1
+      ) growing on true
       where card.farm_id = new.farm_id
         and card.void = '1'
         and card.status = 'Saved'
@@ -188,7 +199,8 @@ begin
   into v_invalid_building
   from active_cycles active
   where active.id is null
-     or current_date - active.start_date < v_target_age
+     or active.actual_age is null
+     or active.actual_age < v_target_age
   limit 1;
 
   if v_invalid_building is not null then

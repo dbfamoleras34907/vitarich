@@ -171,6 +171,12 @@ export default function DeliveryReceipt({
                       <th className="border border-black px-2 py-2 text-left">Description</th>
                       <th className="border border-black px-2 py-2 text-left">Batch</th>
                       <th className="border border-black px-2 py-2 text-left">Building</th>
+                      {!isCleanup && <>
+                        <th className="border border-black px-2 py-2 text-left">Hauler Name</th>
+                        <th className="border border-black px-2 py-2 text-left">Plate Number</th>
+                        <th className="border border-black px-2 py-2 text-left">Destination</th>
+                        <th className="border border-black px-2 py-2 text-left">Truck Seal</th>
+                      </>}
                       <th className="border border-black px-2 py-2 text-right">Quantity</th>
                       <th className="border border-black px-2 py-2 text-center">UOM</th>
                       {isCleanup && <th className="border border-black px-2 py-2 text-left">Remarks</th>}
@@ -185,6 +191,17 @@ export default function DeliveryReceipt({
                         <td className="border border-black px-2 py-2">{line.description || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.batchNumber || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.fromWarehouseCode || '-'}</td>
+                        {!isCleanup && <>
+                          <td className="border border-black px-2 py-2">{line.haulerName || '-'}</td>
+                          <td className="border border-black px-2 py-2">{line.plateNumber || '-'}</td>
+                          <td className="border border-black px-2 py-2">
+                            <div>{line.destination || '-'}</div>
+                            {line.liveSalesCustomerName && (
+                              <div className="text-[10px]">{line.liveSalesCustomerName}</div>
+                            )}
+                          </td>
+                          <td className="border border-black px-2 py-2">{line.truckSeal ?? '-'}</td>
+                        </>}
                         <td className="border border-black px-2 py-2 text-right tabular-nums">{formatQuantity(line.baseQty)}</td>
                         <td className="border border-black px-2 py-2 text-center">{line.baseUom || '-'}</td>
                         {isCleanup && <td className="border border-black px-2 py-2">{line.lineRemarks || '-'}</td>}
@@ -209,7 +226,7 @@ export default function DeliveryReceipt({
                       )
                     })}
                     <tr>
-                      <td colSpan={isCleanup ? 6 : 5} className="border border-black px-2 py-2 text-right font-bold uppercase">{isCleanup ? 'Total Clean up' : 'Total'}</td>
+                      <td colSpan={isCleanup ? 6 : 9} className="border border-black px-2 py-2 text-right font-bold uppercase">{isCleanup ? 'Total Clean up' : 'Total'}</td>
                       <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalQuantity)}</td>
                       <td className="border border-black px-2 py-2" />
                       {isCleanup && <td className="border border-black px-2 py-2" />}

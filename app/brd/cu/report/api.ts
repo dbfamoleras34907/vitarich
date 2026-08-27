@@ -1,6 +1,7 @@
 'use client'
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from '@/lib/data/repositories/broilerGrowing'
 
 export type CleanupReportBuilding = {
   id: number
@@ -14,7 +15,7 @@ export type CleanupReportRow = {
   buildingName: string
   flockCard: string
   growingNumber: string
-  age: number
+  age: number | null
   totalPlacement: number
   totalMortality: number
   totalDelivered: number
@@ -52,14 +53,6 @@ type PostingRow = {
 }
 
 const normalize = (value: unknown) => String(value ?? '').trim().toUpperCase()
-
-function calculateAge(startDate: string | null, endDate: string | null) {
-  if (!startDate || !endDate) return 0
-  const start = new Date(`${startDate}T00:00:00`)
-  const end = new Date(`${endDate}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
-  return Math.max(Math.floor((end.getTime() - start.getTime()) / 86_400_000), 0)
-}
 
 export async function getCleanupReportBuildings(farmId: number): Promise<CleanupReportBuilding[]> {
   if (!Number.isFinite(farmId) || farmId <= 0) return []
@@ -121,6 +114,9 @@ export async function getCleanupReport(params: {
   const cleanupDates = new Map((cleanupResult.data ?? []).map(row => [Number(row.id), String(row.issue_date ?? '')]))
   const cards = candidateCards.filter(card => cleanupDates.has(Number(card.extra?.closed_by_docentry ?? 0)))
   if (cards.length === 0) return []
+  const growingHeaders = await getLatestBroilerGrowingHeaders(
+    cards.map(card => String(card.card_no ?? '')),
+  )
 
   const originResult = await db
     .from('flock_card_origin')
@@ -182,7 +178,7 @@ export async function getCleanupReport(params: {
       buildingName: String(card.building_name ?? '').trim(),
       flockCard: String(card.card_no ?? '').trim(),
       growingNumber: String(card.cycle_no ?? '').trim(),
-      age: calculateAge(card.start_date, cleanupDates.get(cleanupId) ?? null),
+      age: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ''))?.actualAge ?? null,
       totalPlacement: postedPlacement > 0 ? postedPlacement : Math.max(savedPlacement, 0),
       totalMortality: Math.max(-movementTotal(['BRD_FC_MORT_THIN_USAGE', 'BRD_FC_MORT_THIN_TRANSFER_OUT', 'BRD_FC_MORT_THIN_REVERSAL']), 0),
       totalDelivered: Math.max(-movementTotal(['BR_DELIVERY']), 0),

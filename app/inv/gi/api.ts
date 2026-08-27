@@ -6,6 +6,12 @@ export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
 export type GoodsIssueLine = {
   id: number | string
+  allocationGroupKey?: string
+  haulerName?: string
+  plateNumber?: string
+  destination?: string
+  liveSalesCustomerName?: string
+  truckSeal?: number | null
   itemId: number | null
   itemCode: string
   description: string
@@ -93,6 +99,12 @@ type GoodsIssueItemRow = {
   from_warehouse_code: string | null
   from_warehouse_name: string | null
   void: string
+  allocation_group_key?: string | null
+  hauler_name?: string | null
+  plate_number?: string | null
+  destination?: string | null
+  live_sales_customer_name?: string | null
+  truck_seal?: number | null
 }
 
 type GoodsIssueListItemRow = {
@@ -168,8 +180,18 @@ function errorDetails(error: unknown) {
     : String(error)
 }
 
-const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
+const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): GoodsIssueLine => ({
   id: row.id,
+  allocationGroupKey: row.allocation_group_key?.trim() || (
+    row.br_delivery_id
+      ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
+      : `line:${row.id}`
+  ),
+  haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
+  plateNumber: row.plate_number ?? legacyHeader?.plate_number ?? '',
+  destination: row.destination ?? legacyHeader?.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? legacyHeader?.live_sales_customer_name ?? '',
+  truckSeal: row.truck_seal ?? legacyHeader?.truck_seal ?? null,
   itemId: row.item_id,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -208,12 +230,13 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   destination: row.destination ?? '',
   liveSalesCustomerName: row.live_sales_customer_name ?? '',
   status: row.status,
-  lines: lines.map(toIssueLine),
+  lines: lines.map(line => toIssueLine(line, row)),
   createdAt: row.created_at,
 })
 
 const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
   id: `${getListLineHeaderId(row)}-${row.item_code}`,
+  allocationGroupKey: `list:${getListLineHeaderId(row)}:${row.item_code}`,
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -518,13 +541,6 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     from_warehouse_name: issue.fromWarehouseName || null,
     triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
-    ...(issue.triggeredBy === 'BR-DR' ? {
-      hauler_name: issue.haulerName.trim() || null,
-      plate_number: issue.plateNumber,
-      truck_seal: issue.truckSeal,
-      destination: issue.destination.trim() || null,
-      live_sales_customer_name: issue.liveSalesCustomerName.trim() || null,
-    } : {}),
     status: saveStatus,
     ...(issue.id ? { updated_by: userId } : { created_by: userId }),
   }
@@ -579,6 +595,14 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       item_id: line.itemId,
       item_code: line.itemCode,
       description: line.description || null,
+      ...(issue.triggeredBy === 'BR-DR' ? {
+        allocation_group_key: line.allocationGroupKey || String(line.id),
+        hauler_name: line.haulerName?.trim() || null,
+        plate_number: line.plateNumber?.trim() || null,
+        destination: line.destination?.trim() || null,
+        live_sales_customer_name: line.liveSalesCustomerName?.trim() || null,
+        truck_seal: line.truckSeal ?? null,
+      } : {}),
       ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
       ...(issue.triggeredBy === 'BR-CU' ? {
         batch_total_qty: Number(line.batchTotalQty ?? 0),

@@ -35,6 +35,12 @@ create table if not exists public.br_delivery_lines (
   updated_at timestamp with time zone null,
   br_delivery_id bigint not null references public.br_delivery (id) on delete cascade,
   line_no integer not null,
+  allocation_group_key text null,
+  hauler_name text null,
+  plate_number text null,
+  destination text null,
+  live_sales_customer_name text null,
+  truck_seal numeric null,
   item_id bigint null references public.items (id),
   item_code text not null,
   description text null,
@@ -53,6 +59,14 @@ create table if not exists public.br_delivery_lines (
   constraint br_delivery_lines_delivery_line_key unique (br_delivery_id, line_no),
   constraint br_delivery_lines_qty_check check (alt_qty >= 0 and base_qty >= 0)
 );
+
+alter table public.br_delivery_lines
+  add column if not exists allocation_group_key text null,
+  add column if not exists hauler_name text null,
+  add column if not exists plate_number text null,
+  add column if not exists destination text null,
+  add column if not exists live_sales_customer_name text null,
+  add column if not exists truck_seal numeric null;
 
 create index if not exists br_delivery_issue_date_idx on public.br_delivery (issue_date desc);
 create index if not exists br_delivery_farm_id_idx on public.br_delivery (farm_id);
@@ -106,6 +120,25 @@ join public.goods_issue header on header.id = line.goods_issue_id
 where header.triggered_by = 'BR-DR'
 on conflict (id) do nothing;
 
+update public.br_delivery_lines line
+set allocation_group_key = concat(
+  'legacy:',
+  line.br_delivery_id,
+  ':',
+  upper(trim(coalesce(line.from_warehouse_code, ''))),
+  ':',
+  upper(trim(line.item_code))
+)
+where nullif(trim(line.allocation_group_key), '') is null;
+
+alter table public.br_delivery_lines
+  alter column allocation_group_key set default gen_random_uuid()::text,
+  alter column allocation_group_key set not null;
+
+create index if not exists br_delivery_lines_allocation_group_key_idx
+  on public.br_delivery_lines (br_delivery_id, allocation_group_key)
+  where void = '1';
+
 update public.inventory_postings posting
 set source_doc_type = 'BR_DELIVERY'
 where posting.source_doc_type = 'GOODS_ISSUE'
@@ -139,6 +172,78 @@ begin
   return new;
 end;
 $$;
+
+create or replace function public.validate_br_delivery_actual_age()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_target_age integer := 0;
+  v_invalid_building text;
+begin
+  select coalesce(settings.target_delivery_age, 0)
+  into v_target_age
+  from public.brd_dr_settings settings
+  where settings.farm_id = new.farm_id
+    and settings.void = '1'
+  order by settings.created_at desc
+  limit 1;
+
+  v_target_age := coalesce(v_target_age, 0);
+
+  with selected_buildings as (
+    select distinct line.from_warehouse_id, line.from_warehouse_code
+    from public.br_delivery_lines line
+    where line.br_delivery_id = new.id
+      and line.void = '1'
+  ), active_cycles as (
+    select selected.from_warehouse_code, cycle.id, cycle.building_name, cycle.actual_age
+    from selected_buildings selected
+    left join lateral (
+      select card.id, card.building_name, growing.actual_age
+      from public.flock_card card
+      left join lateral (
+        select daily.actual_age
+        from public.brd_fc daily
+        where daily.card_no = card.card_no
+          and daily.farm_id = card.farm_id
+          and daily.void = '1'
+        order by daily.id desc
+        limit 1
+      ) growing on true
+      where card.farm_id = new.farm_id
+        and card.void = '1'
+        and card.status = 'Saved'
+        and (
+          (selected.from_warehouse_id is not null and card.building_whse_id = selected.from_warehouse_id)
+          or card.building_code = selected.from_warehouse_code
+        )
+      order by card.start_date desc, card.id desc
+      limit 1
+    ) cycle on true
+  )
+  select coalesce(active.building_name, active.from_warehouse_code)
+  into v_invalid_building
+  from active_cycles active
+  where active.id is null
+     or active.actual_age is null
+     or active.actual_age < v_target_age
+  limit 1;
+
+  if v_invalid_building is not null then
+    raise exception '% has no eligible Growing age for Harvest & Delivery. Actual age must be at least %.', v_invalid_building, v_target_age;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_br_delivery_actual_age_trigger on public.br_delivery;
+create trigger validate_br_delivery_actual_age_trigger
+before update of status on public.br_delivery
+for each row
+when (new.status = 'Posted' and old.status is distinct from 'Posted')
+execute function public.validate_br_delivery_actual_age();
 
 create or replace function public.post_br_delivery_inventory()
 returns trigger
