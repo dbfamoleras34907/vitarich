@@ -10,6 +10,7 @@ import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
 import {
   getWorkspaceActivityTypes,
+  getWorkspaceEmailRecipientUsers,
   getWorkspaceSupervisorUsers,
   getWorkspaceTaskTypes,
   getWorkspaceTimesheetSettings,
@@ -21,10 +22,12 @@ export default function Layout() {
   const [activities, setActivities] = useState<ComboboxItemType[]>([])
   const [taskTypes, setTaskTypes] = useState<ComboboxItemType[]>([])
   const [supervisorUsers, setSupervisorUsers] = useState<ComboboxItemType[]>([])
+  const [emailRecipientUsers, setEmailRecipientUsers] = useState<ComboboxItemType[]>([])
   const [defaultActivityId, setDefaultActivityId] = useState('')
   const [defaultPriority, setDefaultPriority] = useState('mid')
   const [defaultTaskTypeId, setDefaultTaskTypeId] = useState('')
   const [supervisorUserId, setSupervisorUserId] = useState('')
+  const [defaultCcUserIds, setDefaultCcUserIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -33,10 +36,11 @@ export default function Layout() {
 
     const loadSettings = async () => {
       try {
-        const [activityRows, taskTypeRows, supervisorRows, settings] = await Promise.all([
+        const [activityRows, taskTypeRows, supervisorRows, emailRecipientRows, settings] = await Promise.all([
           getWorkspaceActivityTypes(),
           getWorkspaceTaskTypes(),
           getWorkspaceSupervisorUsers(),
+          getWorkspaceEmailRecipientUsers(),
           getWorkspaceTimesheetSettings(),
         ])
         if (cancelled) return
@@ -60,6 +64,16 @@ export default function Layout() {
             name: `${fullName || user.email} - ${user.email} - ${tag}`,
           }
         }))
+        setEmailRecipientUsers(emailRecipientRows.map(user => {
+          const fullName = [user.firstname, user.middlename, user.lastname]
+            .map(value => String(value ?? '').trim())
+            .filter(Boolean)
+            .join(' ')
+          return {
+            code: String(user.id),
+            name: `${fullName || user.email} - ${user.email}`,
+          }
+        }))
         setDefaultActivityId(settings.default_activity_type_id
           ? String(settings.default_activity_type_id)
           : '')
@@ -70,6 +84,7 @@ export default function Layout() {
         setSupervisorUserId(settings.supervisor_user_id
           ? String(settings.supervisor_user_id)
           : '')
+        setDefaultCcUserIds((settings.default_cc_user_ids ?? []).map(String))
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Unable to load timesheet settings')
       } finally {
@@ -113,8 +128,10 @@ export default function Layout() {
         default_priority: defaultPriority as 'low' | 'mid' | 'high',
         default_task_type_id: Number(defaultTaskTypeId),
         supervisor_user_id: Number(supervisorUserId),
+        default_cc_user_ids: defaultCcUserIds.map(Number),
       })
       setSupervisorUserId(String(saved.supervisor_user_id ?? ''))
+      setDefaultCcUserIds((saved.default_cc_user_ids ?? []).map(String))
       toast.success('Timesheet settings saved')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to save timesheet settings')
@@ -193,13 +210,33 @@ export default function Layout() {
               required
               items={supervisorUsers}
               value={supervisorUserId}
-              onValueChange={setSupervisorUserId}
+              onValueChange={value => {
+                setSupervisorUserId(value)
+                setDefaultCcUserIds(current => current.filter(userId => userId !== value))
+              }}
               className="w-full max-w-none"
               placeholder={loading ? 'Loading supervisors...' : 'Select Admin or Super Admin'}
               disabled={editDenied || loading || saving}
             />
             <p className="mt-1 text-xs text-muted-foreground">
               Used as the default recipient when sending the Timesheet Report.
+            </p>
+          </div>
+
+          <div>
+            <SearchableCombobox
+              multiple
+              label="Default CC Recipients"
+              items={emailRecipientUsers.filter(user => user.code !== supervisorUserId)}
+              value={defaultCcUserIds}
+              onValueChange={setDefaultCcUserIds}
+              allowSelectAll={false}
+              className="w-full max-w-none"
+              placeholder={loading ? 'Loading email recipients...' : 'Select users to copy'}
+              disabled={editDenied || loading || saving}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              These users are copied automatically when sending the Timesheet Report.
             </p>
           </div>
 

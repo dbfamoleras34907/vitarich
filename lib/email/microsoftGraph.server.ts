@@ -9,6 +9,7 @@ type CachedToken = {
 
 type MicrosoftGraphEmail = {
   to: string
+  cc?: string
   subject: string
   html: string
   messageId?: string
@@ -94,10 +95,11 @@ function recipients(value: string) {
     .map(address => ({ emailAddress: { address } }))
 }
 
-export async function sendMicrosoftGraphEmail({ to, subject, html, messageId }: MicrosoftGraphEmail) {
+export async function sendMicrosoftGraphEmail({ to, cc, subject, html, messageId }: MicrosoftGraphEmail) {
   const sender = getEmailSenderAddress()
   if (!sender) throw new Error("Microsoft Graph email is not configured: OUTLOOK_EMAIL is missing.")
   const toRecipients = recipients(to)
+  const ccRecipients = recipients(cc ?? '')
   if (toRecipients.length === 0) throw new Error("Email recipient is missing.")
 
   const token = await getAccessToken()
@@ -114,6 +116,7 @@ export async function sendMicrosoftGraphEmail({ to, subject, html, messageId }: 
           subject,
           body: { contentType: "HTML", content: html },
           toRecipients,
+          ...(ccRecipients.length > 0 ? { ccRecipients } : {}),
           ...(messageId ? {
             internetMessageHeaders: [{
               name: "x-vita-fms-message-id",

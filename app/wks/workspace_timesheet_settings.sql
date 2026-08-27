@@ -8,6 +8,7 @@ create table if not exists public.workspace_timesheet_settings (
   default_task_type_id bigint null,
   supervisor_user_id bigint null,
   supervisor_email text null,
+  default_cc_user_ids bigint[] not null default '{}'::bigint[],
   created_at timestamptz not null default now(),
   updated_at timestamptz null,
   constraint workspace_timesheet_settings_singleton_check check (id = 1),
@@ -45,6 +46,9 @@ alter table public.workspace_timesheet_settings
   add column if not exists supervisor_user_id bigint null;
 
 alter table public.workspace_timesheet_settings
+  add column if not exists default_cc_user_ids bigint[] not null default '{}'::bigint[];
+
+alter table public.workspace_timesheet_settings
   drop constraint if exists workspace_timesheet_settings_priority_check;
 
 alter table public.workspace_timesheet_settings
@@ -77,7 +81,8 @@ insert into public.workspace_timesheet_settings (
   default_priority,
   default_task_type_id,
   supervisor_user_id,
-  supervisor_email
+  supervisor_email,
+  default_cc_user_ids
 )
 select
   1,
@@ -97,7 +102,8 @@ select
     limit 1
   ),
   null,
-  null
+  null,
+  '{}'::bigint[]
 on conflict (id) do nothing;
 
 update public.workspace_timesheet_settings settings
@@ -122,6 +128,23 @@ set search_path = public
 as $$
 begin
   new.id := 1;
+
+  select coalesce(array_agg(distinct selected_user_id order by selected_user_id), '{}'::bigint[])
+  into new.default_cc_user_ids
+  from unnest(coalesce(new.default_cc_user_ids, '{}'::bigint[])) as selected(selected_user_id)
+  where selected_user_id is not null
+    and selected_user_id is distinct from new.supervisor_user_id;
+
+  if exists (
+    select 1
+    from unnest(new.default_cc_user_ids) as selected(selected_user_id)
+    left join public.users cc_user on cc_user.id = selected_user_id
+    where cc_user.id is null
+       or btrim(coalesce(cc_user.isactive::text, '')) <> '1'
+       or btrim(coalesce(cc_user.email, '')) !~* '^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$'
+  ) then
+    raise exception 'Default CC recipients must be active users with valid email addresses.';
+  end if;
 
   if new.supervisor_user_id is null then
     new.supervisor_email := null;

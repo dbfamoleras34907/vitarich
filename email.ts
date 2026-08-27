@@ -21,6 +21,7 @@ const transporter = nodemailer.createTransport({
 
 type SendEmailProps = {
   to: string
+  cc?: string
   subject: string
   html: string
   fromName?: string
@@ -29,6 +30,7 @@ type SendEmailProps = {
 
 export async function sendEmail({
   to,
+  cc,
   subject,
   html,
   fromName = 'WKS Timesheet',
@@ -37,12 +39,13 @@ export async function sendEmail({
   try {
     const transport = String(process.env.EMAIL_TRANSPORT ?? 'smtp').trim().toLowerCase()
     if (transport === 'microsoft-graph' || transport === 'graph') {
-      return await sendMicrosoftGraphEmail({ to, subject, html, messageId })
+      return await sendMicrosoftGraphEmail({ to, cc, subject, html, messageId })
     }
 
     const info = await transporter.sendMail({
       from: `"${fromName}" <${senderEmail}>`,
       to,
+      ...(cc ? { cc } : {}),
       subject,
       html,
       ...(messageId ? { messageId } : {}),

@@ -1,6 +1,9 @@
 import { format } from "date-fns"
 import { db } from "@/lib/Supabase/supabaseClient"
-import type { WorkspaceTaskStatus } from "@/lib/data/repositories/workspace"
+import type {
+  WorkspaceTaskStatus,
+  WorkspaceTimesheetStatus,
+} from "@/lib/data/repositories/workspace"
 
 export type SaveWorkspaceProjectPayload = {
   id?: number | null
@@ -83,6 +86,21 @@ export async function saveWorkspaceTimesheet(payload: SaveWorkspaceTimesheetPayl
   return Number(data)
 }
 
+export async function updateWorkspaceTimesheetStatus(
+  timesheetId: number,
+  status: WorkspaceTimesheetStatus
+) {
+  const { data, error } = await db
+    .from("timesheets")
+    .update({ status })
+    .eq("id", timesheetId)
+    .select("id, status")
+    .single()
+
+  if (error) throw error
+  return data as { id: number; status: WorkspaceTimesheetStatus }
+}
+
 export async function moveWorkspaceTask(taskId: number, statusId: number) {
   const { error } = await db
     .from("tasks")
@@ -127,6 +145,7 @@ export async function saveWorkspaceTimesheetSettings(payload: {
   default_priority: "low" | "mid" | "high"
   default_task_type_id: number | null
   supervisor_user_id: number | null
+  default_cc_user_ids: number[]
 }) {
   const values = {
     id: 1,
@@ -134,13 +153,14 @@ export async function saveWorkspaceTimesheetSettings(payload: {
     default_priority: payload.default_priority,
     default_task_type_id: payload.default_task_type_id,
     supervisor_user_id: payload.supervisor_user_id,
+    default_cc_user_ids: payload.default_cc_user_ids,
     updated_at: new Date().toISOString(),
   }
 
   const { data, error } = await db
     .from("workspace_timesheet_settings")
     .upsert(values, { onConflict: "id" })
-    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
+    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, default_cc_user_ids, created_at, updated_at")
     .single()
 
   if (error) throw error

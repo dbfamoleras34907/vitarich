@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
 
     const {
       to,
+      cc,
       subject,
       html,
     } = body
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
 
     const result = await sendEmail({
       to,
+      cc: typeof cc === 'string' ? cc : undefined,
       subject,
       html,
     })

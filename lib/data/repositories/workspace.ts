@@ -46,6 +46,7 @@ export type WorkspaceTimesheetSettings = {
   default_task_type_id: number | null
   supervisor_user_id: number | null
   supervisor_email: string | null
+  default_cc_user_ids: number[]
   created_at?: string | null
   updated_at?: string | null
 }
@@ -68,9 +69,27 @@ export type WorkspaceTimesheetHeader = {
   id: number
   doc_date: string
   assigned_to: number | null
-  status?: string | null
+  status?: WorkspaceTimesheetStatus | null
   total_hours?: number | string | null
 }
+
+export type WorkspaceEmailRecipientUser = {
+  id: number
+  email: string
+  firstname: string | null
+  middlename: string | null
+  lastname: string | null
+  user_type: number | null
+}
+
+export const WORKSPACE_TIMESHEET_STATUSES = [
+  "Draft",
+  "Submitted",
+  "Approved",
+  "Rejected",
+] as const
+
+export type WorkspaceTimesheetStatus = typeof WORKSPACE_TIMESHEET_STATUSES[number]
 
 export type WorkspaceTimesheetLine = {
   id?: number | null
@@ -166,7 +185,7 @@ export async function getWorkspaceActivityTypes() {
 export async function getWorkspaceTimesheetSettings() {
   const { data, error } = await db
     .from("workspace_timesheet_settings")
-    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, created_at, updated_at")
+    .select("id, default_activity_type_id, default_priority, default_task_type_id, supervisor_user_id, supervisor_email, default_cc_user_ids, created_at, updated_at")
     .eq("id", 1)
     .maybeSingle()
 
@@ -178,6 +197,7 @@ export async function getWorkspaceTimesheetSettings() {
     default_task_type_id: null,
     supervisor_user_id: null,
     supervisor_email: null,
+    default_cc_user_ids: [],
   }) as WorkspaceTimesheetSettings
 }
 
@@ -374,4 +394,17 @@ export async function getWorkspaceTimesheetReportForUser(userId: number) {
       const dateOrder = right.doc_date.localeCompare(left.doc_date)
       return dateOrder || left.docentry - right.docentry
     })
+}
+
+export async function getWorkspaceEmailRecipientUsers() {
+  const { data, error } = await db
+    .from("users")
+    .select("id, email, firstname, middlename, lastname, user_type")
+    .eq("isactive", "1")
+    .not("email", "is", null)
+    .order("firstname")
+    .order("lastname")
+
+  if (error) throw error
+  return (data ?? []).filter(user => String(user.email ?? "").trim()) as WorkspaceEmailRecipientUser[]
 }

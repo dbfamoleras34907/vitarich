@@ -22,16 +22,31 @@ import {
   Loader2,
   Mail,
   Printer,
+  RefreshCw,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { getTimesheets } from './api'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getTimesheetEmailContext, getTimesheets } from './api'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { getWorkspaceTimesheetSupervisorEmail } from '@/lib/data/repositories/workspace'
 import { addDays, format, startOfWeek } from 'date-fns'
+
+type TimesheetEmailContext = Awaited<ReturnType<typeof getTimesheetEmailContext>>
+
+const escapeHtml = (value: unknown) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;')
+
+const formatEmailDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return value || 'Not specified'
+  return format(new Date(year, month - 1, day), 'MMMM d, yyyy')
+}
 
 const currentWorkWeek = () => {
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -49,6 +64,7 @@ export default function Layout() {
   const [emailOpen, setEmailOpen] = useState(false)
   // const [emailFrom, setEmailFrom] = useState('')
   const [emailTo, setEmailTo] = useState('')
+  const [emailContext, setEmailContext] = useState<TimesheetEmailContext | null>(null)
   const [sendingEmail, setSendingEmail] = useState(false)
 
   const [initialRows, setInitialRows] = useState<RowDataKey[]>([])
@@ -76,28 +92,28 @@ export default function Layout() {
   }, [route])
 
   // LOAD DATA
-  useEffect(() => {
-    const loadTasks = async () => {
-      setLoading(true)
+  const loadTimesheets = useCallback(async () => {
+    setLoading(true)
 
-      try {
-        const [data, supervisorEmail] = await Promise.all([
-          getTimesheets(),
-          getWorkspaceTimesheetSupervisorEmail().catch(() => null),
-        ])
+    try {
+      const [data, context] = await Promise.all([
+        getTimesheets(),
+        getTimesheetEmailContext().catch(() => null),
+      ])
 
-        setInitialRows(data)
-        setFilteredRows(data)
-        setEmailTo(supervisorEmail ?? '')
-      } catch (err) {
-        console.error(err)
-      }
-
+      setInitialRows(data)
+      setEmailContext(context)
+      setEmailTo(context?.supervisorEmail ?? '')
+    } catch (err) {
+      console.error(err)
+    } finally {
       setLoading(false)
     }
-
-    loadTasks()
   }, [])
+
+  useEffect(() => {
+    void loadTimesheets()
+  }, [loadTimesheets])
 
   // PREFETCH DETAILS
   useEffect(() => {
@@ -357,6 +373,20 @@ export default function Layout() {
 
       setSendingEmail(true)
 
+      const employeeName = emailContext?.employeeName || 'Employee'
+      const groupName = emailContext?.groupName || 'No user group'
+      const supervisorName = emailContext?.supervisorName || emailTo
+      const totalHours = filteredRows.reduce(
+        (sum, row) => sum + Number(row.hrs || 0),
+        0
+      )
+      const availableDates = filteredRows
+        .map(row => String(row.doc_date ?? '').slice(0, 10))
+        .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+        .sort()
+      const periodStart = availableDates[0] || dateFrom || ''
+      const periodEnd = availableDates.at(-1) || dateTo || ''
+
       // GROUP DATA
       const groupedRows: Record<string, RowDataKey[]> = {}
 
@@ -388,30 +418,30 @@ export default function Layout() {
                           border:1px solid #ddd;
                           padding:8px;
                         ">
-                        ${date}
+                        ${escapeHtml(date)}
                       </td>
                     `
                   : ''
                 }
 
                 <td style="border:1px solid #ddd;padding:8px;">
-                  ${row.project_name || '-'}
+                  ${escapeHtml(row.project_name || '-')}
                 </td>
 
                 <td style="border:1px solid #ddd;padding:8px;">
-                  ${row.subject || '-'}
+                  ${escapeHtml(row.subject || '-')}
                 </td>
 
                 <td style="border:1px solid #ddd;padding:8px;">
-                  ${row.remarks || '-'}
+                  ${escapeHtml(row.remarks || '-')}
                 </td>
 
                 <td style="border:1px solid #ddd;padding:8px;text-align:center;">
-                  ${row.from_time || '-'}
+                  ${escapeHtml(row.from_time || '-')}
                 </td>
 
                 <td style="border:1px solid #ddd;padding:8px;text-align:center;">
-                  ${row.hrs || '-'}
+                  ${escapeHtml(row.hrs || '-')}
                 </td>
               </tr>
             `
@@ -421,13 +451,24 @@ export default function Layout() {
         .join('')
 
       const html = `
-      <div style="font-family:Arial,sans-serif;">
-        <h2 style="margin-bottom:4px;">
-          Timesheet Report
-        </h2>
+      <div style="font-family:Arial,sans-serif;color:#111;line-height:1.5;">
+        <p style="margin:0 0 12px;">
+          Good day ${escapeHtml(supervisorName)} (${escapeHtml(emailTo)}),
+        </p>
 
-        <p style="color:#666;margin-top:0;">
-          Employee work output and logged hours summary
+        <p style="margin:0 0 12px;">
+          <strong>${escapeHtml(employeeName)}</strong> has rendered
+          <strong>${escapeHtml(totalHours)} hours</strong> in this week,
+          <strong>${escapeHtml(formatEmailDate(periodStart))}</strong> to
+          <strong>${escapeHtml(formatEmailDate(periodEnd))}</strong>.
+        </p>
+
+        <p style="margin:0 0 12px;color:#555;">
+          User Group: <strong>${escapeHtml(groupName)}</strong>
+        </p>
+
+        <p style="margin:0;">
+          Please see the details below.
         </p>
 
         <table
@@ -473,12 +514,32 @@ export default function Layout() {
         <div style="margin-top:20px;font-size:13px;color:#666;">
           Total Records: ${filteredRows.length}
           <br />
-          Total Hours:
-          ${filteredRows.reduce(
-        (sum, row) => sum + Number(row.hrs || 0),
-        0
-      )}
+          Total Hours: ${escapeHtml(totalHours)}
         </div>
+
+        <table style="width:100%;border-collapse:collapse;margin-top:32px;">
+          <thead>
+            <tr>
+              <th style="width:50%;padding:8px 0;text-align:left;border-bottom:1px solid #d1d5db;">
+                Employee Name
+              </th>
+              <th style="width:50%;padding:8px 0;text-align:left;border-bottom:1px solid #d1d5db;">
+                Approved By
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:10px 0;vertical-align:top;">
+                <strong>${escapeHtml(employeeName)}</strong><br />
+                <span style="color:#666;">${escapeHtml(groupName)}</span>
+              </td>
+              <td style="padding:10px 0;vertical-align:top;">
+                <strong>${escapeHtml(supervisorName)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     `
 
@@ -490,6 +551,7 @@ export default function Layout() {
         },
         body: JSON.stringify({
           to: emailTo,
+          cc: emailContext?.ccRecipients.map(recipient => recipient.email).join(', ') || undefined,
           subject: 'Timesheet Report',
           html,
         }),
@@ -523,6 +585,15 @@ export default function Layout() {
         />
 
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={loading}
+            onClick={() => void loadTimesheets()}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
 
           <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
             <DialogTrigger asChild>
@@ -616,6 +687,15 @@ export default function Layout() {
                     value={emailTo}
                     readOnly
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>CC Recipients (from Timesheet Settings)</Label>
+                  <div className="min-h-10 rounded-md border bg-background px-3 py-2 text-sm">
+                    {emailContext?.ccRecipients.length
+                      ? emailContext.ccRecipients.map(recipient => recipient.name).join(', ')
+                      : 'No default CC recipients'}
+                  </div>
                 </div>
 
                 {/* SUMMARY */}
