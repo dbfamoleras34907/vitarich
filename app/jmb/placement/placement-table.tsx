@@ -15,7 +15,12 @@ import {
   Search,
   UsersRound,
 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
 import {
@@ -96,7 +101,13 @@ export default function PlacementTable() {
       getUserInfo().catch(() => []),
     ])
       .then(
-        async ([placementRows, cycleRows, farmRows, locationRows, defaultFarmRows]) => {
+        async ([
+          placementRows,
+          cycleRows,
+          farmRows,
+          locationRows,
+          defaultFarmRows,
+        ]) => {
           const historyRows = await listBuildingHistory(placementRows);
           if (cancelled) return;
           setPlacements(placementRows);
@@ -247,7 +258,7 @@ export default function PlacementTable() {
                 onValueChange={setSelectedFarmId}
                 placeholder="Select breeder farm..."
                 showCode
-                className="w-full min-w-[280px] lg:w-[420px]"
+                className="w-full min-w-70 lg:w-105"
               />
             </div>
 
@@ -304,7 +315,7 @@ export default function PlacementTable() {
             </div>
             <div className="mt-1 font-medium">{selectedFarm?.name || "-"}</div>
           </div>
-          <div className="min-w-[260px] flex-1 border-r px-5 py-3">
+          <div className="min-w-65flex-1 border-r px-5 py-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">
               Farm Address
             </div>
@@ -312,7 +323,7 @@ export default function PlacementTable() {
               {selectedFarm?.address || "-"}
             </div>
           </div>
-          <div className="min-w-[180px] px-5 py-3">
+          <div className="min-w-45 px-5 py-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">
               Assigned TA
             </div>
@@ -347,20 +358,16 @@ export default function PlacementTable() {
           </div>
         ) : (
           <>
-            <Table className="min-w-[900px]">
+            <Table className="min-w-225">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Building Name</TableHead>
-                  <TableHead className="w-[130px]">Start Date</TableHead>
-                  <TableHead className="w-[100px]">Cycle #</TableHead>
+                  <TableHead className="w-32.5">Start Date</TableHead>
+                  <TableHead className="w-32.5">Cycle #</TableHead>
                   <TableHead>Remarks</TableHead>
-                  <TableHead className="w-[140px] text-right">
-                    Total Birds
-                  </TableHead>
-                  <TableHead className="w-[130px]">Status</TableHead>
-                  <TableHead className="w-[260px] text-right">
-                    Actions
-                  </TableHead>
+                  <TableHead className="w-35 text-right">Total Birds</TableHead>
+                  <TableHead className="w-32.5">Status</TableHead>
+                  <TableHead className="w-64 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -372,11 +379,17 @@ export default function PlacementTable() {
                     (cycle) => cycle.status.toLowerCase() === "active",
                   );
                   const cycleNo = buildingCycles.length
-                    ? Math.max(...buildingCycles.map((cycle) => Number(cycle.cycle_no)))
+                    ? Math.max(
+                        ...buildingCycles.map((cycle) =>
+                          Number(cycle.cycle_no),
+                        ),
+                      )
                     : null;
                   const nextCycleNo = allBuildingCycles.length
                     ? Math.max(
-                        ...allBuildingCycles.map((cycle) => Number(cycle.cycle_no)),
+                        ...allBuildingCycles.map((cycle) =>
+                          Number(cycle.cycle_no),
+                        ),
                       ) + 1
                     : 1;
                   const currentCycles = buildingCycles.filter(
@@ -454,9 +467,7 @@ export default function PlacementTable() {
                             ) : (
                               <Plus className="size-4" />
                             )}
-                            {latest
-                              ? "Edit/View"
-                              : "New Placement"}
+                            {latest ? "Edit/View" : "New Placement"}
                           </Button>
                         </div>
                       </TableCell>
@@ -498,42 +509,36 @@ export default function PlacementTable() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <Table className="min-w-[2130px]">
+              <Table className="min-w-532.5">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Building Name</TableHead>
-                    <TableHead className="w-[130px]">Placement Date</TableHead>
-                    <TableHead className="w-[90px]">Cycle #</TableHead>
-                    <TableHead className="w-[140px] text-right">
+                    <TableHead className="w-32.5">Placement Date</TableHead>
+                    <TableHead className="w-22.5">Cycle #</TableHead>
+                    <TableHead className="w-35 text-right">
                       Total Placement
                     </TableHead>
-                    <TableHead className="w-[100px] text-right">DOA</TableHead>
-                    <TableHead className="w-[110px] text-right">Rejects</TableHead>
-                    <TableHead className="w-[130px] text-right">
+                    <TableHead className="w-25 text-right">DOA</TableHead>
+                    <TableHead className="w-27.5 text-right">Rejects</TableHead>
+                    <TableHead className="w-32.5 text-right">
                       Short Count
                     </TableHead>
-                    <TableHead className="w-[130px] text-right">
+                    <TableHead className="w-32.5 text-right">
                       Total Birds
                     </TableHead>
-                    <TableHead className="w-[170px] text-right">
+                    <TableHead className="w-42.5 text-right">
                       Total Egg Production
                     </TableHead>
-                    <TableHead className="w-[140px] text-right">
+                    <TableHead className="w-35 text-right">
                       Total Mortality
                     </TableHead>
-                    <TableHead className="w-[110px] text-right">
-                      Culls
-                    </TableHead>
-                    <TableHead className="w-[110px] text-right">
-                      Kitchen
-                    </TableHead>
-                    <TableHead className="w-[110px] text-right">
-                      Condem
-                    </TableHead>
-                    <TableHead className="w-[140px] text-right">
+                    <TableHead className="w-27.5 text-right">Culls</TableHead>
+                    <TableHead className="w-27.5 text-right">Kitchen</TableHead>
+                    <TableHead className="w-27.5 text-right">Condem</TableHead>
+                    <TableHead className="w-35 text-right">
                       Total Clean Up
                     </TableHead>
-                    <TableHead className="w-[150px] text-right">Action</TableHead>
+                    <TableHead className="w-37.5 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -589,10 +594,15 @@ export default function PlacementTable() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => openHistory(record, "growing")}>
-                              <FileSpreadsheet className="size-4" /> View Growing
+                            <DropdownMenuItem
+                              onSelect={() => openHistory(record, "growing")}
+                            >
+                              <FileSpreadsheet className="size-4" /> View
+                              Growing
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => openHistory(record, "laying")}>
+                            <DropdownMenuItem
+                              onSelect={() => openHistory(record, "laying")}
+                            >
                               <Egg className="size-4" /> View Laying
                             </DropdownMenuItem>
                           </DropdownMenuContent>

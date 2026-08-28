@@ -113,7 +113,7 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
       female += count(row.trans_in_female) - count(row.mc_female) - count(row.cull_female) - count(row.trans_out_female) - count(row.kitchen_female) - count(row.condem_female);
     });
     const latest = rows.at(-1);
-    return { ...placement, farm_code: farmCode.get(placement.farm_id) ?? null, male_available: Math.max(0, male), female_available: Math.max(0, female), avg_body_weight_male: count(latest?.avg_body_weight_male) || placement.m_avg_bodyw || placement.avg_bodyw, avg_body_weight_female: count(latest?.avg_body_weight_female) || placement.f_avg_bodyw || placement.avg_bodyw };
+    return { ...placement, farm_code: farmCode.get(placement.farm_id) ?? null, male_available: Math.max(0, male), female_available: Math.max(0, female), avg_body_weight_male: count(latest?.avg_body_weight_male) || placement.m_avg_bodyw, avg_body_weight_female: count(latest?.avg_body_weight_female) || placement.f_avg_bodyw };
   }).filter((row) => row.male_available > 0 || row.female_available > 0);
 }
 

@@ -83,7 +83,6 @@ export type Placement = {
   m_shortcount: number;
   m_endingbalance: number | null;
   m_remarks: string | null;
-  avg_bodyw: number | null;
   f_avg_bodyw: number | null;
   m_avg_bodyw: number | null;
   remarks: string | null;
@@ -112,7 +111,6 @@ export type PlacementInsert = Pick<
   | "m_doa"
   | "m_reject"
   | "m_shortcount"
-  | "avg_bodyw"
   | "f_avg_bodyw"
   | "m_avg_bodyw"
   | "remarks"
