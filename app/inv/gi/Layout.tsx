@@ -6,6 +6,7 @@ import { Copy, Eye, MoreHorizontal, Plus, Printer, RefreshCw } from 'lucide-reac
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,9 +38,11 @@ type GoodsIssueHistoryConfig = {
   emptyMessage: string
   noResultsMessage: string
   useDefaultFarm: boolean
+  showFarmFilter: boolean
   showDeliveryReceipt: boolean
   showDuplicateAction: boolean
   receiptLabel: string
+  showWarehouseName: boolean
 }
 
 const defaultConfig: GoodsIssueHistoryConfig = {
@@ -54,9 +57,11 @@ const defaultConfig: GoodsIssueHistoryConfig = {
   emptyMessage: 'No item stock out transactions found',
   noResultsMessage: 'No matching item stock out transactions found',
   useDefaultFarm: false,
+  showFarmFilter: false,
   showDeliveryReceipt: false,
   showDuplicateAction: false,
   receiptLabel: 'Delivery Receipt',
+  showWarehouseName: false,
 }
 
 type GoodsIssueTableRow = Record<string, unknown> & {
@@ -122,6 +127,10 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const defaultFarmId = config.useDefaultFarm
     ? normalizeFarmId(getValue('DefaultFarmId'))
     : null
+  const [selectedFarmId, setSelectedFarmId] = useState('')
+  const activeFarmId = config.showFarmFilter
+    ? selectedFarmId || defaultFarmId
+    : defaultFarmId
   const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
@@ -132,7 +141,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       setIssues(await getGoodsIssues(
         100,
         config.triggeredBy,
-        defaultFarmId,
+        activeFarmId,
       ))
     } catch (error) {
       const message = getErrorMessage(error)
@@ -143,7 +152,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     } finally {
       setLoading(false)
     }
-  }, [config.triggeredBy, defaultFarmId])
+  }, [activeFarmId, config.triggeredBy])
 
   useEffect(() => {
     router.prefetch(`${config.basePath}/new`)
@@ -161,12 +170,14 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         itemDescription: getIssueItemSummary(issue),
         farmName: issue.farmName || '-',
         issueDate: issue.issueDate,
-        warehouse: issue.fromWarehouseCode || '-',
+        warehouse: config.showWarehouseName
+          ? issue.fromWarehouseName || issue.fromWarehouseCode || '-'
+          : issue.fromWarehouseCode || '-',
         issueQty: issue.lines.reduce((sum, line) => sum + Number(line.baseQty || 0), 0),
         status: issue.status,
         issue,
       })),
-    [issues],
+    [config.showWarehouseName, issues],
   )
 
   const columns = useMemo<Column<GoodsIssueTableRow>[]>(
@@ -298,6 +309,17 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       </div>
 
       <div className="mt-4 space-y-3">
+        {config.showFarmFilter && (
+          <div className="w-full sm:max-w-sm">
+            <UserFarmSearchCombobox
+              label="Farm"
+              farmType="BR"
+              value={activeFarmId}
+              onValueChange={setSelectedFarmId}
+            />
+          </div>
+        )}
+
         <DynamicTable
           loading={loading}
           initialFilters={[]}

@@ -84,6 +84,7 @@ const newLine = (): GoodsIssueLine => {
   return {
     id,
     allocationGroupKey: id,
+    tsDrNo: '',
     haulerName: '',
     plateNumber: '',
     destination: '',
@@ -277,8 +278,11 @@ type NewGoodsIssueProps = {
   showFlockCardInformation?: boolean
   warehouseScope?: 'header' | 'line'
   allowImmediatePost?: boolean
+  allowLockedRowDelete?: boolean
   showLineRemarks?: boolean
   lineQuantityLabel?: string
+  bodyWeightLabel?: string
+  showLineTsDrNumber?: boolean
   showLineQuantityAllocationWarnings?: boolean
   showLineOnHandQuantity?: boolean
   showLineVariance?: boolean
@@ -325,8 +329,11 @@ export default function NewGoodsIssue({
   showFlockCardInformation = false,
   warehouseScope = 'header',
   allowImmediatePost = false,
+  allowLockedRowDelete = false,
   showLineRemarks = false,
   lineQuantityLabel = 'To Transfer',
+  bodyWeightLabel = 'Weight g',
+  showLineTsDrNumber = false,
   showLineQuantityAllocationWarnings = true,
   showLineOnHandQuantity = true,
   showLineVariance = false,
@@ -2020,8 +2027,11 @@ export default function NewGoodsIssue({
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
                 lockCycleCloseout={isCleanup}
+                allowLockedRowDelete={allowLockedRowDelete}
                 showLineRemarks={showLineRemarks}
                 quantityLabel={lineQuantityLabel}
+                bodyWeightLabel={bodyWeightLabel}
+                showTsDrNumber={showLineTsDrNumber}
                 showQuantityAllocationWarnings={showLineQuantityAllocationWarnings}
                 showOnHandQuantity={showLineOnHandQuantity}
                 showRemainingOnHand={triggeredBy === 'BR-DR'}

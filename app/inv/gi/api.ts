@@ -7,6 +7,7 @@ export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 export type GoodsIssueLine = {
   id: number | string
   allocationGroupKey?: string
+  tsDrNo?: string
   haulerName?: string
   plateNumber?: string
   destination?: string
@@ -100,6 +101,7 @@ type GoodsIssueItemRow = {
   from_warehouse_name: string | null
   void: string
   allocation_group_key?: string | null
+  ts_dr_no?: string | null
   hauler_name?: string | null
   plate_number?: string | null
   destination?: string | null
@@ -187,6 +189,7 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
       : `line:${row.id}`
   ),
+  tsDrNo: row.ts_dr_no ?? '',
   haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
   plateNumber: row.plate_number ?? legacyHeader?.plate_number ?? '',
   destination: row.destination ?? legacyHeader?.destination ?? '',
@@ -237,6 +240,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
 const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
   id: `${getListLineHeaderId(row)}-${row.item_code}`,
   allocationGroupKey: `list:${getListLineHeaderId(row)}:${row.item_code}`,
+  tsDrNo: '',
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -509,7 +513,41 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
   )
 }
 
+type BrDeliveryTransactionResult = {
+  header: GoodsIssueRow
+  lines: GoodsIssueItemRow[]
+}
+
+async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
+  const { data, error } = await db.rpc('save_br_delivery_transaction', {
+    p_document: {
+      id: issue.id,
+      giNo: issue.giNo,
+      issueDate: issue.issueDate,
+      farmId: issue.farmId,
+      fromWarehouseId: issue.fromWarehouseId,
+      fromWarehouseCode: issue.fromWarehouseCode,
+      fromWarehouseName: issue.fromWarehouseName,
+      remarks: issue.remarks,
+      status: issue.status,
+      lines: issue.lines,
+    },
+  })
+
+  if (error) throw error
+  const result = data as BrDeliveryTransactionResult | null
+  if (!result?.header || !Array.isArray(result.lines)) {
+    throw new Error('Harvest & Delivery transaction did not return the saved document.')
+  }
+
+  return toIssue(result.header, result.lines)
+}
+
 export async function saveGoodsIssue(issue: GoodsIssue) {
+  if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
+    return saveBrDeliveryTransaction(issue)
+  }
+
   const tables = getIssueTables(issue.triggeredBy)
   const userId = await getSessionUserId()
   const previousStatus = issue.id
@@ -597,6 +635,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       description: line.description || null,
       ...(issue.triggeredBy === 'BR-DR' ? {
         allocation_group_key: line.allocationGroupKey || String(line.id),
+        ts_dr_no: line.tsDrNo?.trim() || null,
         hauler_name: line.haulerName?.trim() || null,
         plate_number: line.plateNumber?.trim() || null,
         destination: line.destination?.trim() || null,

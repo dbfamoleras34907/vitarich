@@ -15,8 +15,10 @@ export default function Layout() {
         emptyMessage: 'No clean-up transactions found',
         noResultsMessage: 'No matching clean-up transactions found',
         useDefaultFarm: true,
+        showFarmFilter: true,
         showDeliveryReceipt: true,
         receiptLabel: 'Clean-up Receipt',
+        showWarehouseName: true,
       }}
     />
   )

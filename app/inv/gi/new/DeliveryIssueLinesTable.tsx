@@ -26,8 +26,11 @@ type DeliveryIssueLinesTableProps = {
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
   lockCycleCloseout?: boolean
+  allowLockedRowDelete?: boolean
   showLineRemarks?: boolean
   quantityLabel?: string
+  bodyWeightLabel?: string
+  showTsDrNumber?: boolean
   showQuantityAllocationWarnings?: boolean
   showOnHandQuantity?: boolean
   showRemainingOnHand?: boolean
@@ -68,8 +71,11 @@ export default function DeliveryIssueLinesTable({
   loadingLinePlacementBatches,
   activeDocumentIsPosted,
   lockCycleCloseout = false,
+  allowLockedRowDelete = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
+  bodyWeightLabel = 'Weight g',
+  showTsDrNumber = false,
   showQuantityAllocationWarnings = true,
   showOnHandQuantity = true,
   showRemainingOnHand = false,
@@ -115,7 +121,7 @@ export default function DeliveryIssueLinesTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className={`${showTransportFields ? 'min-w-[2500px]' : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
+      <table className={`${showTransportFields ? (showTsDrNumber ? 'min-w-[2660px]' : 'min-w-[2500px]') : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
@@ -123,12 +129,13 @@ export default function DeliveryIssueLinesTable({
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
             <th className="w-[10%] border-r px-3 py-2">Cycle Count</th>
             <th className="w-[7%] border-r px-3 py-2">Age</th>
-            <th className="w-[8%] border-r px-3 py-2">Weight g</th>
+            <th className="w-[8%] border-r px-3 py-2">{bodyWeightLabel}</th>
             <th className="w-[16%] border-r px-3 py-2">Item {requiredMark}</th>
             <th className="w-[11%] border-r px-3 py-2">{quantityLabel} {requiredMark}</th>
             {showVariance && <th className="w-[11%] border-r px-3 py-2">Variance</th>}
             <th className="w-[16%] border-r px-3 py-2">Batch {requiredMark}</th>
             <th className="w-[10%] border-r px-3 py-2">UOM {requiredMark}</th>
+            {showTsDrNumber && <th className="w-[160px] border-r px-3 py-2">TS/DR #</th>}
             {showOnHandQuantity && (
               <th className="w-[11%] border-r px-3 py-2">
                 {activeDocumentIsPosted ? 'Used Qty' : showRemainingOnHand ? 'Remaining On Hand' : 'On Hand Qty'}
@@ -196,7 +203,6 @@ export default function DeliveryIssueLinesTable({
               .filter(allocation => allocation.batchNumber)
               .map(allocation => `${allocation.batchNumber} (${formatQuantity(allocation.altQty)})`)
               .join(', ')
-
             return (
               <tr key={line.id} className="border-t odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
                 <td className="border-r p-0 text-center align-middle text-stone-500">
@@ -398,6 +404,17 @@ export default function DeliveryIssueLinesTable({
                     ))}
                   </select>
                 </td>
+                {showTsDrNumber && (
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={line.tsDrNo ?? ''}
+                      placeholder="Enter TS/DR #"
+                      readOnly={activeDocumentIsPosted}
+                      onChange={event => updateAllocationGroup(allocationGroupKey, { tsDrNo: event.target.value })}
+                      className="h-8 rounded-sm shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                )}
                 {showOnHandQuantity && <td className="border-r p-1 align-middle">
                   <Input
                     value={`${formatQuantity(
@@ -509,7 +526,7 @@ export default function DeliveryIssueLinesTable({
                       return { ...current, lines: nextLines.length > 0 ? nextLines : [newLine()] }
                     })}
                     aria-label={`Delete row ${index + 1}`}
-                    disabled={lockCycleCloseout}
+                    disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
                   >
                     <Trash2 className="size-4" />
                   </Button>

@@ -1,11 +1,13 @@
 'use client'
 
 import Breadcrumb from '@/lib/Breadcrumb'
+import SearchableCombobox from '@/components/SearchableCombobox'
 import DynamicTable from '@/components/ui/DataTableV2'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -20,7 +22,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   getWarehouseReport,
+  getWarehouseReportFarms,
   getWarehouseReportWarehouses,
+  type WarehouseReportFarm,
   type WarehouseReportRow,
   type WarehouseReportWarehouse,
 } from './api'
@@ -38,8 +42,11 @@ const formatQuantity = (value: number) =>
   Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
 
 export default function Layout() {
+  const { getValue } = useGlobalContext()
   const today = useMemo(() => new Date(), [])
   const monthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today])
+  const [farms, setFarms] = useState<WarehouseReportFarm[]>([])
+  const [selectedFarmCode, setSelectedFarmCode] = useState('')
   const [warehouses, setWarehouses] = useState<WarehouseReportWarehouse[]>([])
   const [selectedCodes, setSelectedCodes] = useState<string[]>([])
   const [warehouseSearch, setWarehouseSearch] = useState('')
@@ -47,18 +54,55 @@ export default function Layout() {
   const [to, setTo] = useState(dateInput(today))
   const [separateByBatch, setSeparateByBatch] = useState(true)
   const [rows, setRows] = useState<WarehouseReportRow[]>([])
-  const [loadingReferences, setLoadingReferences] = useState(true)
+  const [loadingFarms, setLoadingFarms] = useState(true)
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    getWarehouseReportWarehouses()
-      .then(setWarehouses)
+    getWarehouseReportFarms()
+      .then(data => {
+        setFarms(data)
+        const defaultFarmId = getValue('DefaultFarmId')
+        const defaultFarm = data.find(farm => String(farm.id) === String(defaultFarmId))
+        setSelectedFarmCode(current => current || defaultFarm?.code || data[0]?.code || '')
+      })
       .catch(error => {
         console.error(error)
-        toast.error('Unable to load warehouses')
+        toast.error('Unable to load farms')
       })
-      .finally(() => setLoadingReferences(false))
-  }, [])
+      .finally(() => setLoadingFarms(false))
+  }, [getValue])
+
+  const selectedFarm = useMemo(
+    () => farms.find(farm => farm.code === selectedFarmCode),
+    [farms, selectedFarmCode],
+  )
+
+  useEffect(() => {
+    let active = true
+
+    setWarehouses([])
+    setSelectedCodes([])
+    setWarehouseSearch('')
+    setRows([])
+
+    if (!selectedFarm) return () => { active = false }
+
+    setLoadingWarehouses(true)
+    getWarehouseReportWarehouses(selectedFarm.id)
+      .then(data => {
+        if (active) setWarehouses(data)
+      })
+      .catch(error => {
+        console.error(error)
+        if (active) toast.error('Unable to load warehouses')
+      })
+      .finally(() => {
+        if (active) setLoadingWarehouses(false)
+      })
+
+    return () => { active = false }
+  }, [selectedFarm])
 
   const selectedLabel = selectedCodes.length === 0
     ? 'Select warehouses'
@@ -87,6 +131,10 @@ export default function Layout() {
   }
 
   const generate = async () => {
+    if (!selectedFarm) {
+      toast.warning('Select a farm')
+      return
+    }
     if (selectedCodes.length === 0) {
       toast.warning('Select at least one warehouse or building')
       return
@@ -102,7 +150,13 @@ export default function Layout() {
 
     setLoading(true)
     try {
-      setRows(await getWarehouseReport({ warehouseCodes: selectedCodes, from, to, separateByBatch }))
+      setRows(await getWarehouseReport({
+        farmId: selectedFarm.id,
+        warehouseCodes: selectedCodes,
+        from,
+        to,
+        separateByBatch,
+      }))
     } catch (error) {
       console.error(error)
       toast.error(error instanceof Error ? error.message : 'Unable to generate warehouse report')
@@ -192,13 +246,29 @@ export default function Layout() {
       <Breadcrumb CurrentPageName="Warehouse Report" />
       <Separator />
 
-      <div className="grid grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(260px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto_auto]">
+      <div className="grid grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto_auto]">
+        <SearchableCombobox
+          label="Farm"
+          required
+          showCode
+          items={farms}
+          value={selectedFarmCode}
+          onValueChange={setSelectedFarmCode}
+          placeholder={loadingFarms ? 'Loading farms...' : 'Select farm...'}
+          disabled={loadingFarms}
+          className="w-full"
+        />
+
         <label className="space-y-1">
           <span className="text-sm font-medium">Warehouses / Buildings</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full justify-between font-normal" disabled={loadingReferences}>
-                {loadingReferences ? 'Loading warehouses...' : selectedLabel}
+              <Button
+                variant="outline"
+                className="w-full justify-between font-normal"
+                disabled={!selectedFarm || loadingWarehouses}
+              >
+                {loadingWarehouses ? 'Loading warehouses...' : selectedFarm ? selectedLabel : 'Select farm first'}
                 <ChevronDown className="h-4 w-4 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
@@ -206,7 +276,7 @@ export default function Layout() {
               <div className="sticky top-0 z-10 bg-white p-2">
                 <Input
                   autoFocus
-                  placeholder="Search code, name, type, or farm..."
+                  placeholder="Search code, name, or type..."
                   value={warehouseSearch}
                   onChange={event => setWarehouseSearch(event.target.value)}
                   onKeyDown={event => event.stopPropagation()}

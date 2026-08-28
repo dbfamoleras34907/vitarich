@@ -24,6 +24,7 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       showFlockCardInformation
       warehouseScope="line"
       allowImmediatePost
+      allowLockedRowDelete={mode === 'draft'}
       showLineRemarks
       showRemarksInActionRow
       lineQuantityLabel="Clean up Quantity"

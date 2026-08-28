@@ -36,6 +36,7 @@ create table if not exists public.br_delivery_lines (
   br_delivery_id bigint not null references public.br_delivery (id) on delete cascade,
   line_no integer not null,
   allocation_group_key text null,
+  ts_dr_no text null,
   hauler_name text null,
   plate_number text null,
   destination text null,
@@ -62,6 +63,7 @@ create table if not exists public.br_delivery_lines (
 
 alter table public.br_delivery_lines
   add column if not exists allocation_group_key text null,
+  add column if not exists ts_dr_no text null,
   add column if not exists hauler_name text null,
   add column if not exists plate_number text null,
   add column if not exists destination text null,
