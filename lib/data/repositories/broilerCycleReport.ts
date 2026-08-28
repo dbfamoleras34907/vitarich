@@ -118,16 +118,24 @@ function movementMatchesCard(
   line: UnknownRow,
   card: UnknownRow,
   originKeys: Set<string>,
+  consolidatedBatchNumber: string,
 ) {
+  const lineWarehouseId = numberValue(line.from_warehouse_id)
   const headerWarehouseId = numberValue(header.from_warehouse_id)
   const cardWarehouseId = numberValue(card.building_whse_id)
+  const movementWarehouseId = lineWarehouseId || headerWarehouseId
+  const lineWarehouseCode = normalized(line.from_warehouse_code)
   const headerWarehouseCode = normalized(header.from_warehouse_code)
   const cardWarehouseCode = normalized(card.building_code)
-  const warehouseMatches = cardWarehouseId > 0
-    ? headerWarehouseId === cardWarehouseId
-    : Boolean(cardWarehouseCode) && headerWarehouseCode === cardWarehouseCode
-  const itemBatchKey = `${normalized(line.item_code)}|${normalized(line.batch_number)}`
-  return warehouseMatches && originKeys.has(itemBatchKey)
+  const movementWarehouseCode = lineWarehouseCode || headerWarehouseCode
+  const warehouseMatches = cardWarehouseId > 0 && movementWarehouseId > 0
+    ? movementWarehouseId === cardWarehouseId
+    : Boolean(cardWarehouseCode) && movementWarehouseCode === cardWarehouseCode
+  const lineBatchNumber = normalized(line.batch_number)
+  const itemBatchKey = `${normalized(line.item_code)}|${lineBatchNumber}`
+  const batchMatches = originKeys.has(itemBatchKey)
+    || Boolean(consolidatedBatchNumber && lineBatchNumber === consolidatedBatchNumber)
+  return warehouseMatches && batchMatches
 }
 
 export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCycleReport | null> {
@@ -147,7 +155,7 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
     db.from('farms').select('id, code, name').eq('id', farmId).maybeSingle(),
     db
       .from('flock_card')
-      .select('id, card_no, flock_code, building_whse_id, building_code, building_name, start_date, breed, animal_qty, status, remarks, void')
+      .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, start_date, breed, animal_qty, status, remarks, void')
       .eq('farm_cycle_id', cycleId)
       .order('building_name')
       .order('start_date'),
@@ -220,15 +228,9 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
   const receiptHeaders = (receiptHeaderResult.data ?? []) as UnknownRow[]
   const receiptItems = (receiptItemResult.data ?? []) as UnknownRow[]
   const growingLines = (growingLineResult.data ?? []) as UnknownRow[]
-  const warehouseIds = Array.from(new Set(cards.map(card => numberValue(card.building_whse_id)).filter(Boolean)))
-
   const [deliveryHeaderResult, cleanupHeaderResult] = await Promise.all([
-    warehouseIds.length
-      ? db.from('br_delivery').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId).in('from_warehouse_id', warehouseIds)
-      : Promise.resolve({ data: [], error: null }),
-    warehouseIds.length
-      ? db.from('br_cleanup').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId).in('from_warehouse_id', warehouseIds)
-      : Promise.resolve({ data: [], error: null }),
+    db.from('br_delivery').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId),
+    db.from('br_cleanup').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId),
   ])
   if (deliveryHeaderResult.error) throwQueryError(deliveryHeaderResult.error, 'Unable to load Harvest & Delivery headers')
   if (cleanupHeaderResult.error) throwQueryError(cleanupHeaderResult.error, 'Unable to load Clean Up headers')
@@ -239,10 +241,10 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
   const cleanupIds = cleanupHeaders.map(row => numberValue(row.id)).filter(Boolean)
   const [deliveryLineResult, cleanupLineResult] = await Promise.all([
     deliveryIds.length
-      ? db.from('br_delivery_lines').select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, void').in('br_delivery_id', deliveryIds)
+      ? db.from('br_delivery_lines').select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, from_warehouse_id, from_warehouse_code, void').in('br_delivery_id', deliveryIds)
       : Promise.resolve({ data: [], error: null }),
     cleanupIds.length
-      ? db.from('br_cleanup_lines').select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, variance_qty, remarks, void').in('br_cleanup_id', cleanupIds)
+      ? db.from('br_cleanup_lines').select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, variance_qty, remarks, from_warehouse_id, from_warehouse_code, void').in('br_cleanup_id', cleanupIds)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (deliveryLineResult.error) throwQueryError(deliveryLineResult.error, 'Unable to load Harvest & Delivery lines')
@@ -257,6 +259,11 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
     const cardNo = textValue(card.card_no)
     const cardOrigins = origins.filter(row => numberValue(row.fc_id) === flockCardId)
     const originKeys = new Set(cardOrigins.map(row => `${normalized(row.item_code)}|${normalized(row.batch_no)}`))
+    const buildingWarehouseId = numberValue(card.building_whse_id)
+    const buildingCycleNumber = textValue(card.cycle_no) || textValue(cycle.cycle_no)
+    const consolidatedBatchNumber = farmId > 0 && buildingWarehouseId > 0 && buildingCycleNumber
+      ? normalized(`DOC:F${farmId}:B${buildingWarehouseId}:${buildingCycleNumber}`)
+      : ''
     const activeGrowingHeader = growingHeaders.find(row => textValue(row.card_no) === cardNo && textValue(row.void) === '1')
       ?? growingHeaders.find(row => textValue(row.card_no) === cardNo)
     const growingId = numberValue(activeGrowingHeader?.id)
@@ -294,7 +301,7 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
     const toMovementRecords = (headers: UnknownRow[], lines: UnknownRow[], foreignKey: string, cleanup = false) =>
       headers.flatMap(header => lines
         .filter(line => numberValue(line[foreignKey]) === numberValue(header.id))
-        .filter(line => movementMatchesCard(header, line, card, originKeys))
+        .filter(line => movementMatchesCard(header, line, card, originKeys, consolidatedBatchNumber))
         .map(line => ({
           id: numberValue(line.id),
           documentNo: textValue(header.gi_no),

@@ -1,6 +1,7 @@
 'use client'
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getBrCleanupIdentityByDocumentNo } from '@/lib/data/repositories/brCleanup'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
@@ -550,11 +551,26 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
 
   const tables = getIssueTables(issue.triggeredBy)
   const userId = await getSessionUserId()
-  const previousStatus = issue.id
+  let documentId = issue.id
+
+  if (!documentId && issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
+    const existingCleanup = await getBrCleanupIdentityByDocumentNo(issue.giNo)
+    if (existingCleanup) {
+      if (existingCleanup.status !== 'Draft') {
+        throw new Error(`Clean Up ${issue.giNo} already exists and is not an editable draft.`)
+      }
+      if (existingCleanup.createdBy && userId && existingCleanup.createdBy !== userId) {
+        throw new Error(`Clean Up ${issue.giNo} belongs to another user and cannot be overwritten.`)
+      }
+      documentId = Number(existingCleanup.id)
+    }
+  }
+
+  const previousStatus = documentId
     ? await db
         .from(tables.header)
         .select('status')
-        .eq('id', issue.id)
+        .eq('id', documentId)
         .maybeSingle()
     : { data: null, error: null }
 
@@ -580,11 +596,11 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
     status: saveStatus,
-    ...(issue.id ? { updated_by: userId } : { created_by: userId }),
+    ...(documentId ? { updated_by: userId } : { created_by: userId }),
   }
 
-  const { data: savedHeader, error: headerError } = issue.id
-    ? await db.from(tables.header).update(headerPayload).eq('id', issue.id).select('*').single()
+  const { data: savedHeader, error: headerError } = documentId
+    ? await db.from(tables.header).update(headerPayload).eq('id', documentId).select('*').single()
     : await db.from(tables.header).insert(headerPayload).select('*').single()
 
   if (headerError) throw headerError

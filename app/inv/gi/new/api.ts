@@ -3,7 +3,11 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
-import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from '@/lib/data/repositories/broilerGrowing'
+import {
+  getBroilerGrowingHeader,
+  getLastMortalityAge,
+  getLatestBroilerGrowingHeaders,
+} from '@/lib/data/repositories/broilerGrowing'
 import { Items, WarehouseData } from '@/lib/types'
 import {
   AssociatedWarehouse,
@@ -439,9 +443,12 @@ async function getLatestFlockCardGrowingMetrics(row: FlockCardInfoRow) {
   const cardNo = String(row.card_no ?? '').trim()
   if (!cardNo) return { actualAge: null, bodyWeight: null }
 
-  const headers = await getLatestBroilerGrowingHeaders([cardNo])
+  const [actualAge, headers] = await Promise.all([
+    getLastMortalityAge(Number(row.id)),
+    getLatestBroilerGrowingHeaders([cardNo]),
+  ])
   const header = getBroilerGrowingHeader(headers, cardNo)
-  if (!header) return { actualAge: null, bodyWeight: null }
+  if (!header) return { actualAge, bodyWeight: null }
 
   const lineResult = await db
     .from('brd_fc_line')
@@ -459,7 +466,7 @@ async function getLatestFlockCardGrowingMetrics(row: FlockCardInfoRow) {
   const line = lineResult.data as FlockCardBodyWeightLineRow | null
   const bodyWeight = Number(line?.body_wt ?? 0)
   return {
-    actualAge: header.actualAge,
+    actualAge,
     bodyWeight: Number.isFinite(bodyWeight) && bodyWeight > 0 ? bodyWeight : null,
   }
 }
@@ -731,39 +738,40 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
   if (error) throwReferenceError('Flock card placement', error)
 
   const originRows = (data ?? []) as FlockCardOriginBatchRow[]
-  if (originRows.length === 0) {
-    const farmId = Number(params.farmId ?? 0)
-    const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
-    const cycleNumber = String(params.cycleNumber ?? '').trim()
+  const farmId = Number(params.farmId ?? 0)
+  const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
+  const cycleNumber = String(params.cycleNumber ?? '').trim()
 
-    if (
-      Number.isFinite(farmId) && farmId > 0 &&
-      Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0 &&
-      cycleNumber && destinationWarehouseCode
-    ) {
-      const consolidatedBatchNumber = `DOC:F${farmId}:B${buildingWarehouseId}:${cycleNumber}`
-      const postingBatches = await getFarmOriginBatchesForFlockCard(
-        farmId,
-        destinationWarehouseCode,
-      )
+  if (
+    Number.isFinite(farmId) && farmId > 0 &&
+    Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0 &&
+    cycleNumber && destinationWarehouseCode
+  ) {
+    const consolidatedBatchNumber = `DOC:F${farmId}:B${buildingWarehouseId}:${cycleNumber}`
+    const postingBatches = await getFarmOriginBatchesForFlockCard(
+      farmId,
+      destinationWarehouseCode,
+    )
+    const consolidatedBatches = postingBatches.filter(batch =>
+      batch.onHandQty > 0 &&
+      batch.batchNumber.trim().toUpperCase() === consolidatedBatchNumber.toUpperCase(),
+    )
 
-      return postingBatches
-        .filter(batch =>
-          batch.onHandQty > 0 &&
-          batch.batchNumber.trim().toUpperCase() === consolidatedBatchNumber.toUpperCase(),
-        )
-        .map(batch => ({
-          id: batch.id,
-          itemCode: batch.itemCode,
-          itemName: batch.itemName,
-          batchNumber: batch.batchNumber,
-          manufacturingDate: batch.manufacturingDate,
-          expiryDate: batch.expiryDate,
-          warehouseCode: batch.warehouseCode,
-          onHandQty: batch.onHandQty,
-        }))
+    if (consolidatedBatches.length > 0) {
+      return consolidatedBatches.map(batch => ({
+        id: batch.id,
+        itemCode: batch.itemCode,
+        itemName: batch.itemName,
+        batchNumber: batch.batchNumber,
+        manufacturingDate: batch.manufacturingDate,
+        expiryDate: batch.expiryDate,
+        warehouseCode: batch.warehouseCode,
+        onHandQty: batch.onHandQty,
+      }))
     }
   }
+
+  if (originRows.length === 0) return []
 
   const itemCodes = Array.from(new Set(
     originRows

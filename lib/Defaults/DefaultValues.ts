@@ -553,18 +553,6 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
-            id: 78,
-            type: "Module",
-            title: "Hatchery Process Wizard",
-            url: "/wiz/hatchery-process-wizard",
-            view: true,
-            void: false,
-            insert: false,
-            edit: false,
-            approval: false,
-          },
-
-          {
             id: 14,
             type: "Module",
             title: "Egg Storage",
@@ -671,6 +659,18 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: true,
+            approval: false,
+          },
+
+          {
+            id: 78,
+            type: "Module",
+            title: "Hatchery Process Wizard",
+            url: "/wiz/hatchery-process-wizard",
+            view: true,
+            void: false,
+            insert: false,
+            edit: false,
             approval: false,
           },
 
@@ -903,6 +903,7 @@ export const NavFolders: NavFolder[] = [
             type: "Report",
             title: "Warehouse Content List",
             url: "/inv/whse-report",
+            hideFromNavigation: true,
             view: false,
             insert: false,
             edit: false,

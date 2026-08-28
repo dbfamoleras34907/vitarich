@@ -51,3 +51,20 @@ export function getBroilerGrowingHeader(
 ) {
   return headers[normalizeCardNo(cardNo)] ?? null
 }
+
+export async function getLastMortalityAge(flockCardId: number): Promise<number | null> {
+  const normalizedFlockCardId = Number(flockCardId)
+  if (!Number.isFinite(normalizedFlockCardId) || normalizedFlockCardId <= 0) return null
+
+  const result = await db.rpc('get_brd_fc_last_mortality_age', {
+    p_flock_card_id: normalizedFlockCardId,
+  })
+
+  if (result.error) {
+    throw new Error(`Unable to load the last mortality age: ${result.error.message}`)
+  }
+
+  if (result.data === null || result.data === undefined) return null
+  const age = Number(result.data)
+  return Number.isFinite(age) ? age : null
+}

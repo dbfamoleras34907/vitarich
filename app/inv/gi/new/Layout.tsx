@@ -1664,9 +1664,11 @@ export default function NewGoodsIssue({
           lines: linesToSave,
         })
         if (ageShortage) {
-          const currentAgeText = ageShortage.currentAge === null
+          const currentAgeText = !ageShortage.hasFlockCard
             ? 'has no saved flock card'
-            : `is only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'} old`
+            : ageShortage.currentAge === null
+              ? 'has no mortality input to determine its actual age'
+              : `has a last mortality age of only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'}`
           toast(
             `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for ${isCleanup ? 'clean up' : 'delivery'}.`,
           )
