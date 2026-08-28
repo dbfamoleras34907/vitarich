@@ -267,8 +267,8 @@ export default function CycleReportLayout() {
         ['Created', formatDate(report.createdAt)],
         ['Closed', formatDate(report.closedAt)],
         [],
-        ['Building', 'Flock Card', 'Breed', 'Placement Date', 'Starting Population', 'Status'],
-        ...report.buildings.map(row => [row.buildingName || row.buildingCode, row.cardNo, row.breed, row.startDate, row.startingPopulation, row.status]),
+        ['Building', 'Flock Card', 'Breed', 'Placement Date', 'Status'],
+        ...report.buildings.map(row => [row.buildingName || row.buildingCode, row.cardNo, row.breed, row.startDate, row.status]),
       ]
 
       for (const stage of STAGES) {
@@ -365,12 +365,11 @@ export default function CycleReportLayout() {
                       <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Building</div><div className="text-lg font-semibold">{building.buildingName || building.buildingCode || '-'}</div></div>
                       <StatusBadge {...stageStatus(building, selectedStage)} />
                     </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <HeaderMetric label="Flock Card" value={building.cardNo || '-'} />
                       <HeaderMetric label="Flock Code" value={building.flockCode || '-'} />
                       <HeaderMetric label="Placement Date" value={formatDate(building.startDate)} />
                       <HeaderMetric label="Breed" value={building.breed || '-'} />
-                      <HeaderMetric label="Starting Population" value={formatNumber(building.startingPopulation)} />
                     </div>
                   </div>
                   <CardContent className="min-w-0 space-y-3 p-3">
