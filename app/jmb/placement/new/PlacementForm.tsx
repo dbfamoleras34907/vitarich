@@ -146,14 +146,6 @@ function withoutPlacementDate(payload: PlacementInsert) {
   return rest;
 }
 
-function clampDecimal(raw: string, decimalPlaces: number) {
-  if (raw === "") return "";
-  const cleaned = raw.replace(/[^0-9.]/g, "");
-  const [integerPart, ...decimalParts] = cleaned.split(".");
-  if (!decimalParts.length) return integerPart;
-  return `${integerPart}.${decimalParts.join("").slice(0, decimalPlaces)}`;
-}
-
 const TableWidths = {
   tableMin: "min-w-[1320px]",
   pen: "w-[72px] min-w-[72px]",
@@ -384,8 +376,8 @@ export default function PlacementForm() {
             m_doa: String(candidate.m_doa ?? 0),
             m_reject: String(candidate.m_reject ?? 0),
             m_shortcount: String(candidate.m_shortcount ?? 0),
-            f_avg_bodyw: String(candidate.f_avg_bodyw ?? candidate.avg_bodyw ?? 0),
-            m_avg_bodyw: String(candidate.m_avg_bodyw ?? candidate.avg_bodyw ?? 0),
+            f_avg_bodyw: String(candidate.f_avg_bodyw ?? 0),
+            m_avg_bodyw: String(candidate.m_avg_bodyw ?? 0),
           })),
         );
       } catch (error: unknown) {
@@ -495,7 +487,7 @@ export default function PlacementForm() {
                 field.includes("shortcount")
                   ? clampInteger(value)
                   : field === "f_avg_bodyw" || field === "m_avg_bodyw"
-                    ? clampDecimal(value, 2)
+                    ? clampInteger(value)
                   : value,
             }
           : row,
@@ -639,7 +631,6 @@ export default function PlacementForm() {
         m_doa: asNumber(row.m_doa),
         m_reject: asNumber(row.m_reject),
         m_shortcount: asNumber(row.m_shortcount),
-        avg_bodyw: Math.round((asNumber(row.f_avg_bodyw) + asNumber(row.m_avg_bodyw)) / 2),
         f_avg_bodyw: asNumber(row.f_avg_bodyw),
         m_avg_bodyw: asNumber(row.m_avg_bodyw),
         remarks: form.remarks.trim() || null,
@@ -1120,9 +1111,9 @@ export default function PlacementForm() {
                             >
                               <Input
                                 type="number"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 min="0"
-                                step="0.01"
+                                step="1"
                                 value={row.f_avg_bodyw}
                                 onChange={(e) =>
                                   handleRowChange(
@@ -1230,9 +1221,9 @@ export default function PlacementForm() {
                             >
                               <Input
                                 type="number"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 min="0"
-                                step="0.01"
+                                step="1"
                                 value={row.m_avg_bodyw}
                                 onChange={(e) =>
                                   handleRowChange(
