@@ -1,5 +1,5 @@
 begin;
--- 
+
 -- Definitive BR-CU deployment: replaces the complete mortality-age,
 -- normalized balance-validation, cleanup posting, and variance posting functions.
 create or replace function public.get_brd_fc_last_mortality_age(p_flock_card_id bigint)
