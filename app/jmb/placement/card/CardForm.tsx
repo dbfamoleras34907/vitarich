@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeftRight, ChevronDown, ChevronUp, Loader2, Plus, Save, Send } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -68,7 +68,35 @@ const gridColumnByField: Partial<Record<NumericKey, number>> = {
   avg_body_weight_female: 13,
 };
 
+type FeedTypeKey = "male_feedtype_id" | "female_feedtype_id";
+type PopulationPasteColumn =
+  | { kind: "numeric"; field: NumericKey }
+  | { kind: "feedType"; field: FeedTypeKey }
+  | { kind: "locked" };
+
+const populationPasteColumns: PopulationPasteColumn[] = [
+  { kind: "numeric", field: "mc_male" },
+  { kind: "numeric", field: "mc_female" },
+  { kind: "numeric", field: "cull_male" },
+  { kind: "numeric", field: "cull_female" },
+  { kind: "locked" },
+  { kind: "locked" },
+  { kind: "locked" },
+  { kind: "locked" },
+  { kind: "numeric", field: "kitchen_male" },
+  { kind: "numeric", field: "kitchen_female" },
+  { kind: "numeric", field: "condem_male" },
+  { kind: "numeric", field: "condem_female" },
+  { kind: "numeric", field: "avg_body_weight_male" },
+  { kind: "numeric", field: "avg_body_weight_female" },
+  { kind: "numeric", field: "feed_consumption_male" },
+  { kind: "feedType", field: "male_feedtype_id" },
+  { kind: "numeric", field: "feed_consumption_female" },
+  { kind: "feedType", field: "female_feedtype_id" },
+];
+
 const gridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const PERIOD_DAYS = 30;
 
 const zeroFields = {
   mc_male: 0,
@@ -120,6 +148,15 @@ function count(value: number | null | undefined) {
   return Number(value ?? 0).toLocaleString("en-PH", { maximumFractionDigits: 3 });
 }
 
+function parseClipboardGrid(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line, index, lines) => line !== "" || index < lines.length - 1)
+    .map((line) => line.split("\t").map((value) => value.trim()));
+}
+
 function placementInventory(placement: Placement | null, sex: "male" | "female") {
   if (!placement) return 0;
   return sex === "male"
@@ -152,7 +189,8 @@ function buildDailyRows(
     (latest, row) => Math.max(latest, ageOn(placement.placement_date, row.daterec)),
     0,
   );
-  const sourceRows = Array.from({ length: Math.max(31, lastSavedDay) }, (_, age): EditableRow => {
+  const rowCount = Math.max(PERIOD_DAYS, Math.ceil(lastSavedDay / PERIOD_DAYS) * PERIOD_DAYS);
+  const sourceRows = Array.from({ length: rowCount }, (_, age): EditableRow => {
     const daterec = addDays(placement.placement_date, age);
     const saved = savedByDate.get(daterec);
     return {
@@ -199,6 +237,28 @@ function negativeInventoryMessage(sourceRows: EditableRow[]) {
   return `${sex} inventory cannot be below zero on ${row.daterec}.`;
 }
 
+function summarizeDailyRows(sourceRows: EditableRow[]) {
+  return sourceRows.reduce((total, row) => ({
+    mcFemale: total.mcFemale + row.mc_female,
+    cullFemale: total.cullFemale + row.cull_female,
+    inFemale: total.inFemale + row.trans_in_female,
+    outFemale: total.outFemale + row.trans_out_female,
+    kitchenFemale: total.kitchenFemale + row.kitchen_female,
+    condemFemale: total.condemFemale + row.condem_female,
+    feedFemale: total.feedFemale + row.feed_consumption_female,
+    mcMale: total.mcMale + row.mc_male,
+    cullMale: total.cullMale + row.cull_male,
+    inMale: total.inMale + row.trans_in_male,
+    outMale: total.outMale + row.trans_out_male,
+    kitchenMale: total.kitchenMale + row.kitchen_male,
+    condemMale: total.condemMale + row.condem_male,
+    feedMale: total.feedMale + row.feed_consumption_male,
+  }), {
+    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, kitchenFemale: 0, condemFemale: 0, feedFemale: 0,
+    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, kitchenMale: 0, condemMale: 0, feedMale: 0,
+  });
+}
+
 function headerClass(groupEnd = false) {
   return `fc-grid-header fc-grid-header-border sticky z-30 px-2 py-0 text-center text-xs font-semibold ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"}`;
 }
@@ -214,6 +274,7 @@ export default function CardForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [periodIndex, setPeriodIndex] = useState(0);
   const [headerOpen, setHeaderOpen] = useState(true);
   const [explicitZeroCells, setExplicitZeroCells] = useState<Set<string>>(() => new Set());
   const [transferModal, setTransferModal] = useState<TransferModalState | null>(null);
@@ -284,6 +345,115 @@ export default function CardForm() {
     moveGridFocus(rowIndex, columnIndex, movement[0], movement[1]);
   }
 
+  function handleGridPaste(
+    event: ClipboardEvent<HTMLElement>,
+    startRowIndex: number,
+    startColumnIndex: number,
+  ) {
+    if (!placement) return;
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    event.preventDefault();
+    const pastedRows = parseClipboardGrid(text);
+    if (!pastedRows.length) return;
+
+    const nextRows = rows.map((row) => ({ ...row }));
+    const nextExplicitZeroCells = new Set(explicitZeroCells);
+    const feedTypeLabels = new Map<number, string>();
+    feedTypes.forEach((feedType) => {
+      feedTypeLabels.set(feedType.id, String(feedType.description ?? "").trim().toLocaleLowerCase());
+    });
+    let changedCellCount = 0;
+    let skippedLockedCellCount = 0;
+    let invalidCellCount = 0;
+
+    pastedRows.forEach((pastedRow, pastedRowIndex) => {
+      const targetRowIndex = startRowIndex + pastedRowIndex;
+      const targetRow = nextRows[targetRowIndex];
+      if (!targetRow) return;
+
+      const rowAge = ageOn(placement.placement_date, targetRow.daterec);
+      const hasLeadingAgeCell = pastedRow.length > 1 && String(pastedRow[0] ?? "").trim() === String(rowAge);
+      const rowValues = hasLeadingAgeCell ? pastedRow.slice(1) : pastedRow;
+      const rowStartColumnIndex = hasLeadingAgeCell ? 0 : startColumnIndex;
+
+      rowValues.forEach((rawValue, pastedColumnIndex) => {
+        const targetColumnIndex = rowStartColumnIndex + pastedColumnIndex;
+        const column = populationPasteColumns[targetColumnIndex];
+        if (!column) return;
+        if (targetRow.daterec > localDate() || column.kind === "locked") {
+          skippedLockedCellCount += 1;
+          return;
+        }
+
+        if (column.kind === "numeric") {
+          const normalizedValue = rawValue.replace(/,/g, "").trim();
+          if (column.field.includes("feed_consumption") && !/^\d*(?:\.\d{0,2})?$/.test(normalizedValue)) {
+            invalidCellCount += 1;
+            return;
+          }
+          const parsedValue = normalizedValue === "" ? 0 : Number(normalizedValue);
+          if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+            invalidCellCount += 1;
+            return;
+          }
+          targetRow[column.field] = parsedValue;
+          const cellKey = numericCellKey(targetRowIndex, column.field);
+          if (normalizedValue !== "" && parsedValue === 0) nextExplicitZeroCells.add(cellKey);
+          else nextExplicitZeroCells.delete(cellKey);
+          changedCellCount += 1;
+          return;
+        }
+
+        const normalizedFeedType = rawValue.trim().toLocaleLowerCase();
+        if (!normalizedFeedType) {
+          targetRow[column.field] = null;
+          changedCellCount += 1;
+          return;
+        }
+        const numericFeedTypeId = Number(normalizedFeedType);
+        const matchingFeedType = feedTypes.find((feedType) =>
+          (Number.isInteger(numericFeedTypeId) && feedType.id === numericFeedTypeId)
+          || feedTypeLabels.get(feedType.id) === normalizedFeedType
+          || `${feedTypeLabels.get(feedType.id)}${feedType.uom ? ` (${feedType.uom})` : ""}`.toLocaleLowerCase() === normalizedFeedType
+        );
+        if (!matchingFeedType) {
+          invalidCellCount += 1;
+          return;
+        }
+        targetRow[column.field] = matchingFeedType.id;
+        changedCellCount += 1;
+      });
+    });
+
+    if (!changedCellCount) {
+      toast.error(
+        invalidCellCount > 0
+          ? "No cells were pasted because the copied values are invalid."
+          : skippedLockedCellCount > 0
+            ? "Pasted cells are locked or dated in the future."
+            : "No editable cells found in pasted data.",
+      );
+      return;
+    }
+
+    const recalculatedRows = recalculateInventories(placement, nextRows);
+    const inventoryError = negativeInventoryMessage(recalculatedRows);
+    if (inventoryError) {
+      toast.error(inventoryError);
+      return;
+    }
+
+    setRows(recalculatedRows);
+    setExplicitZeroCells(nextExplicitZeroCells);
+    const notes = [
+      invalidCellCount ? `${invalidCellCount} invalid skipped` : "",
+      skippedLockedCellCount ? `${skippedLockedCellCount} locked skipped` : "",
+    ].filter(Boolean);
+    toast.success(`Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`);
+  }
+
   useEffect(() => { refreshSessionx(router); }, [router]);
 
   useEffect(() => {
@@ -305,6 +475,11 @@ export default function CardForm() {
         setFeedTypes(feedRows);
         setPenPlacements(penRows);
         setRows(buildDailyRows(placementRow, dailyRows));
+        const lastSavedDay = dailyRows.reduce(
+          (latest, row) => Math.max(latest, ageOn(placementRow.placement_date, row.daterec)),
+          0,
+        );
+        setPeriodIndex(Math.floor(Math.max(0, lastSavedDay - 1) / PERIOD_DAYS));
         setExplicitZeroCells(new Set());
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Unable to load breeder pen card."))
@@ -313,25 +488,7 @@ export default function CardForm() {
   }, [placementId]);
 
   const latest = rows.at(-1);
-  const totals = useMemo(() => rows.reduce((total, row) => ({
-    mcFemale: total.mcFemale + row.mc_female,
-    cullFemale: total.cullFemale + row.cull_female,
-    inFemale: total.inFemale + row.trans_in_female,
-    outFemale: total.outFemale + row.trans_out_female,
-    kitchenFemale: total.kitchenFemale + row.kitchen_female,
-    condemFemale: total.condemFemale + row.condem_female,
-    feedFemale: total.feedFemale + row.feed_consumption_female,
-    mcMale: total.mcMale + row.mc_male,
-    cullMale: total.cullMale + row.cull_male,
-    inMale: total.inMale + row.trans_in_male,
-    outMale: total.outMale + row.trans_out_male,
-    kitchenMale: total.kitchenMale + row.kitchen_male,
-    condemMale: total.condemMale + row.condem_male,
-    feedMale: total.feedMale + row.feed_consumption_male,
-  }), {
-    mcFemale: 0, cullFemale: 0, inFemale: 0, outFemale: 0, kitchenFemale: 0, condemFemale: 0, feedFemale: 0,
-    mcMale: 0, cullMale: 0, inMale: 0, outMale: 0, kitchenMale: 0, condemMale: 0, feedMale: 0,
-  }), [rows]);
+  const totals = useMemo(() => summarizeDailyRows(rows), [rows]);
   const cumulativeMortality = useMemo(() => {
     let male = 0;
     let female = 0;
@@ -341,9 +498,17 @@ export default function CardForm() {
       return { male, female };
     });
   }, [rows]);
+  const periodStartIndex = periodIndex * PERIOD_DAYS;
+  const visibleRows = useMemo(
+    () => rows.slice(periodStartIndex, periodStartIndex + PERIOD_DAYS),
+    [periodStartIndex, rows],
+  );
+  const periodTotals = useMemo(() => summarizeDailyRows(visibleRows), [visibleRows]);
   const exportRows = useMemo(() => {
     const feedTypeById = new Map(feedTypes.map((feedType) => [feedType.id, feedType.description ?? ""]));
-    return rows.map((row, index) => ({
+    return visibleRows.map((row, visibleIndex) => {
+      const index = periodStartIndex + visibleIndex;
+      return {
       age: placement ? ageOn(placement.placement_date, row.daterec) : 1,
       date: row.daterec,
       values: [
@@ -359,9 +524,10 @@ export default function CardForm() {
         `${row.feed_consumption_male}${row.male_feedtype_id ? ` / ${feedTypeById.get(row.male_feedtype_id) ?? ""}` : ""}`,
         `${row.feed_consumption_female}${row.female_feedtype_id ? ` / ${feedTypeById.get(row.female_feedtype_id) ?? ""}` : ""}`,
       ],
-    }));
-  }, [cumulativeMortality, feedTypes, placement, rows]);
-  const templateRows = useMemo<BreederImportRow[]>(() => rows.map((row) => ({
+    };
+    });
+  }, [cumulativeMortality, feedTypes, periodStartIndex, placement, visibleRows]);
+  const templateRows = useMemo<BreederImportRow[]>(() => visibleRows.map((row) => ({
     daterec: row.daterec,
     inv_male: row.inv_male,
     inv_female: row.inv_female,
@@ -383,7 +549,7 @@ export default function CardForm() {
     feed_consumption_female: row.feed_consumption_female,
     male_feedtype_id: row.male_feedtype_id,
     female_feedtype_id: row.female_feedtype_id,
-  })), [rows]);
+  })), [visibleRows]);
 
   function updateRow(index: number, key: keyof EditableRow, value: string | number | null) {
     if (!placement) return;
@@ -397,22 +563,28 @@ export default function CardForm() {
     setRows(recalculated);
   }
 
-  function addDailyRow() {
+  function showNextPeriod() {
     if (!placement) return;
+    const nextPeriodIndex = periodIndex + 1;
+    const requiredRowCount = (nextPeriodIndex + 1) * PERIOD_DAYS;
     setRows((current) => {
-      const daterec = addDays(current.at(-1)?.daterec ?? placement.placement_date, 1);
-      const nextRow: EditableRow = {
-        placement_id: placement.id,
-        daterec,
-        inv_male: 0,
-        inv_female: 0,
-        ...zeroFields,
-        male_feedtype_id: null,
-        female_feedtype_id: null,
-        isactive: true,
-      };
-      return recalculateInventories(placement, [...current, nextRow]);
+      if (current.length >= requiredRowCount) return current;
+      const nextRows = [...current];
+      while (nextRows.length < requiredRowCount) {
+        nextRows.push({
+          placement_id: placement.id,
+          daterec: addDays(placement.placement_date, nextRows.length),
+          inv_male: 0,
+          inv_female: 0,
+          ...zeroFields,
+          male_feedtype_id: null,
+          female_feedtype_id: null,
+          isactive: true,
+        });
+      }
+      return recalculateInventories(placement, nextRows);
     });
+    setPeriodIndex(nextPeriodIndex);
   }
 
   async function save() {
@@ -477,7 +649,9 @@ export default function CardForm() {
       }
 
       const dataRows = excelRows.slice(1).filter((row) => row.some((value) => value != null && String(value).trim() !== ""));
-      if (dataRows.length !== 31) throw new Error(`The import must contain exactly 31 daily rows (Day 1 through Day 31); found ${dataRows.length}.`);
+      if (dataRows.length !== PERIOD_DAYS) {
+        throw new Error(`The import must contain exactly ${PERIOD_DAYS} daily rows for the selected period; found ${dataRows.length}.`);
+      }
 
       const errors: string[] = [];
       const validFeedTypeIds = new Set(feedTypes.map((feedType) => feedType.id));
@@ -492,9 +666,10 @@ export default function CardForm() {
         if (excelRow.slice(BREEDER_IMPORT_HEADERS.length).some((value) => value != null && String(value).trim() !== "")) {
           errors.push(`Row ${rowNumber}: contains data outside the exact ${BREEDER_IMPORT_HEADERS.length}-field template.`);
         }
-        const expectedDate = addDays(placement.placement_date, index);
+        const targetIndex = periodStartIndex + index;
+        const expectedDate = addDays(placement.placement_date, targetIndex);
         const daterec = normalizeImportedDate(excelRow[0]);
-        if (daterec !== expectedDate) errors.push(`Row ${rowNumber}: daterec must be ${expectedDate} for Day ${index + 1}.`);
+        if (daterec !== expectedDate) errors.push(`Row ${rowNumber}: daterec must be ${expectedDate} for Day ${targetIndex + 1}.`);
         const values: Record<string, number | null> = {};
 
         BREEDER_IMPORT_HEADERS.slice(1).forEach((field, fieldIndex) => {
@@ -533,15 +708,16 @@ export default function CardForm() {
         });
 
         const typed = values as Record<Exclude<(typeof BREEDER_IMPORT_HEADERS)[number], "daterec">, number | null>;
+        const existingRow = rows[targetIndex];
         return {
-          ...(rows[index]?.id ? { id: rows[index].id } : {}),
+          ...(existingRow?.id ? { id: existingRow.id } : {}),
           placement_id: placement.id,
           daterec: expectedDate,
           inv_male: Number(typed.inv_male), inv_female: Number(typed.inv_female),
           mc_male: Number(typed.mc_male), mc_female: Number(typed.mc_female),
           cull_male: Number(typed.cull_male), cull_female: Number(typed.cull_female),
-          trans_in_male: Number(rows[index]?.trans_in_male ?? 0), trans_in_female: Number(rows[index]?.trans_in_female ?? 0),
-          trans_out_male: Number(rows[index]?.trans_out_male ?? 0), trans_out_female: Number(rows[index]?.trans_out_female ?? 0),
+          trans_in_male: Number(existingRow?.trans_in_male ?? 0), trans_in_female: Number(existingRow?.trans_in_female ?? 0),
+          trans_out_male: Number(existingRow?.trans_out_male ?? 0), trans_out_female: Number(existingRow?.trans_out_female ?? 0),
           kitchen_male: Number(typed.kitchen_male), kitchen_female: Number(typed.kitchen_female),
           condem_male: Number(typed.condem_male), condem_female: Number(typed.condem_female),
           avg_body_weight_male: Number(typed.avg_body_weight_male), avg_body_weight_female: Number(typed.avg_body_weight_female),
@@ -552,18 +728,24 @@ export default function CardForm() {
         };
       });
 
-      const recalculatedImportedRows = recalculateInventories(placement, importedRows);
-      const inventoryError = negativeInventoryMessage(recalculatedImportedRows);
+      const validationRows = rows.map((row) => ({ ...row }));
+      importedRows.forEach((row, index) => { validationRows[periodStartIndex + index] = row; });
+      const recalculatedValidationRows = recalculateInventories(placement, validationRows);
+      const inventoryError = negativeInventoryMessage(recalculatedValidationRows);
       if (inventoryError) errors.push(inventoryError);
 
       if (errors.length) throw new Error(errors.slice(0, 15).join("\n"));
       const today = localDate();
-      setRows((current) => recalculateInventories(
-        placement,
-        recalculatedImportedRows.map((row, index) => row.daterec <= today ? row : current[index]),
-      ));
+      setRows((current) => {
+        const mergedRows = current.map((row) => ({ ...row }));
+        importedRows.forEach((row, index) => {
+          const targetIndex = periodStartIndex + index;
+          if (row.daterec <= today) mergedRows[targetIndex] = row;
+        });
+        return recalculateInventories(placement, mergedRows);
+      });
       const ignoredFutureCount = importedRows.filter((row) => row.daterec > today).length;
-      toast.success(`Excel imported for ${placement.pen_no || `Pen ${placement.id}`}.${ignoredFutureCount ? ` ${ignoredFutureCount} future rows were validated but left unchanged.` : ""}`);
+      toast.success(`Excel imported for Days ${periodStartIndex + 1}-${periodStartIndex + PERIOD_DAYS}.${ignoredFutureCount ? ` ${ignoredFutureCount} future rows were validated but left unchanged.` : ""}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to import the Excel file.", { duration: 10000 });
     } finally {
@@ -597,6 +779,7 @@ export default function CardForm() {
           data-pop-row={!readOnly ? rowIndex : undefined}
           data-pop-column={!readOnly ? gridColumn : undefined}
           onKeyDown={!readOnly && gridColumn != null ? (event) => handleGridKeyDown(event, rowIndex, gridColumn) : undefined}
+          onPaste={!readOnly && gridColumn != null ? (event) => handleGridPaste(event, rowIndex, gridColumn) : undefined}
           onChange={readOnly ? undefined : (event) => updateNumericCell(rowIndex, field, event.target.value)}
           className={`h-8 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
         />
@@ -703,6 +886,7 @@ export default function CardForm() {
             data-pop-column={sex === "male" ? 14 : 16}
             title="Feed consumption"
             onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 14 : 16)}
+            onPaste={(event) => handleGridPaste(event, rowIndex, sex === "male" ? 14 : 16)}
             onChange={(event) => updateNumericCell(rowIndex, consumptionField, event.target.value)}
             className={`h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0 ${gridInputClass}`}
           />
@@ -713,6 +897,7 @@ export default function CardForm() {
             data-pop-column={sex === "male" ? 15 : 17}
             title="Feed type"
             onKeyDown={(event) => handleGridKeyDown(event, rowIndex, sex === "male" ? 15 : 17)}
+            onPaste={(event) => handleGridPaste(event, rowIndex, sex === "male" ? 15 : 17)}
             onChange={(event) => updateRow(rowIndex, feedTypeField, event.target.value ? Number(event.target.value) : null)}
             className="h-8 w-[52%] min-w-0 border-l bg-transparent px-1 text-[10px] outline-none disabled:cursor-not-allowed"
           >
@@ -747,6 +932,15 @@ export default function CardForm() {
   const transferDestination = transferPlacements.find((item) => String(item.id) === transferModal?.destination_placement_id) ?? null;
   const transferMinimumDate = [transferSource?.placement_date, transferDestination?.placement_date].filter(Boolean).sort().at(-1) ?? placement.placement_date;
   const transferLabel = (item: TransferPlacement) => `${item.building_no} - ${item.pen_no}`;
+  const periodEndIndex = periodStartIndex + visibleRows.length;
+  const periodFirstRow = visibleRows[0];
+  const periodLastRow = visibleRows.at(-1);
+  const periodClosingMale = liveInventory(periodLastRow, "male");
+  const periodClosingFemale = liveInventory(periodLastRow, "female");
+  const periodLatestRecord = [...visibleRows].reverse().find(hasDailyRecord) ?? periodLastRow;
+  const periodEndCumulative = cumulativeMortality[Math.max(0, periodEndIndex - 1)] ?? { male: 0, female: 0 };
+  const canShowNextPeriod = periodEndIndex < rows.length
+    || addDays(placement.placement_date, periodEndIndex) <= localDate();
 
   return (
     <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
@@ -791,7 +985,7 @@ export default function CardForm() {
                     pen={penLabel}
                     placementDate={placement.placement_date}
                     placedBirds={placedTotal}
-                    liveBirds={liveFemale + liveMale}
+                    liveBirds={periodClosingFemale + periodClosingMale}
                     rows={exportRows}
                     templateRows={templateRows}
                     importing={importing}
@@ -821,7 +1015,7 @@ export default function CardForm() {
                   <div className="text-sm font-semibold tabular-nums">{count(liveMale)} / {count(totals.mcMale)}</div>
                 </div>
                 <div className="w-[170px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-                  <div className="text-xs font-medium text-muted-foreground">Daily rows</div>
+                  <div className="text-xs font-medium text-muted-foreground">Generated days</div>
                   <div className="text-sm font-semibold tabular-nums">{rows.length}</div>
                 </div>
               </div>
@@ -844,7 +1038,7 @@ export default function CardForm() {
                 pen={penLabel}
                 placementDate={placement.placement_date}
                 placedBirds={placedTotal}
-                liveBirds={liveFemale + liveMale}
+                liveBirds={periodClosingFemale + periodClosingMale}
                 rows={exportRows}
                 templateRows={templateRows}
                 importing={importing}
@@ -859,6 +1053,27 @@ export default function CardForm() {
           ) : null}
         </Collapsible>
 
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-4 py-2 dark:bg-background/50">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPeriodIndex((current) => Math.max(0, current - 1))}
+            disabled={periodIndex === 0}
+          >
+            <ChevronLeft className="size-4" /> Previous 30 Days
+          </Button>
+          <div className="text-center">
+            <div className="text-sm font-semibold">Days {periodStartIndex + 1}-{periodStartIndex + PERIOD_DAYS}</div>
+            <div className="text-xs text-muted-foreground">
+              {formatDate(periodFirstRow?.daterec)} – {formatDate(periodLastRow?.daterec)} · Inventory carries over from the previous period
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={showNextPeriod} disabled={!canShowNextPeriod}>
+            Next 30 Days <ChevronRight className="size-4" />
+          </Button>
+        </div>
+
         <div className="relative flex-1 overflow-auto">
           <table ref={gridRef} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm" style={{ minWidth: 2228 }}>
             <colgroup>
@@ -870,7 +1085,7 @@ export default function CardForm() {
                 <th rowSpan={2} className="fc-grid-header fc-grid-header-border sticky left-0 top-0 z-40 text-center text-xs" style={{ minWidth: 132 }}>Date</th>
                 <th rowSpan={2} className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-[132px] top-0 z-40 text-center text-xs" style={{ minWidth: 52 }}>Age</th>
                 {[
-                  "Inventory (pc)", "Mortality (pc)", "Cumm Mortality (pc)", "Culls (pc)", "Transfer In (pc)",
+                  "Beginning Inventory (pc)", "Mortality (pc)", "Cumm Mortality (pc)", "Culls (pc)", "Transfer In (pc)",
                   "Transfer Out (pc)", "Kitchen (pc)", "Condem (pc)", "Grams/Birds (kg/pc)", "Feeds Consumption (kg)",
                 ].map((label) => (
                   <th key={label} colSpan={label === "Transfer Out (pc)" ? 3 : 2} className={`${headerClass(true)} fc-grid-header-group capitalize`} style={{ top: 0 }}>{label}</th>
@@ -883,7 +1098,9 @@ export default function CardForm() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, rowIndex) => (
+              {visibleRows.map((row, visibleRowIndex) => {
+                const rowIndex = periodStartIndex + visibleRowIndex;
+                return (
                 <tr key={row.id ?? `new-${rowIndex}`} className="fc-grid-row border-0">
                   <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider(rowIndex)}`} style={{ minWidth: 132 }}><Input type="date" value={row.daterec} readOnly disabled={row.daterec > localDate()} className="h-8 rounded-none border-0 bg-transparent px-1 text-center text-xs shadow-none focus-visible:ring-0 disabled:opacity-100" /></td>
                   <td className={`fc-grid-age sticky left-[132px] z-20 p-0 text-center font-semibold ${rowDivider(rowIndex)}`} style={{ minWidth: 52 }}><div className="flex h-8 items-center justify-center">{ageOn(placement.placement_date, row.daterec)}</div></td>
@@ -911,35 +1128,31 @@ export default function CardForm() {
                   {renderFeedCell(row, rowIndex, "male")}
                   {renderFeedCell(row, rowIndex, "female", true)}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
             <tfoot>
               <tr>
                 <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">Total</td>
-                <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-[132px] z-40 text-center font-semibold">{rows.length} days</td>
+                <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-[132px] z-40 text-center font-semibold">{visibleRows.length} days</td>
                 {[
-                  liveMale, liveFemale,
-                  totals.mcMale, totals.mcFemale,
-                  totals.mcMale, totals.mcFemale,
-                  totals.cullMale, totals.cullFemale,
-                  totals.inMale, totals.inFemale,
-                  totals.outMale, totals.outFemale,
+                  periodFirstRow?.inv_male ?? 0, periodFirstRow?.inv_female ?? 0,
+                  periodTotals.mcMale, periodTotals.mcFemale,
+                  periodEndCumulative.male, periodEndCumulative.female,
+                  periodTotals.cullMale, periodTotals.cullFemale,
+                  periodTotals.inMale, periodTotals.inFemale,
+                  periodTotals.outMale, periodTotals.outFemale,
                 ].map((value, index) => <td key={`before-${index}`} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}
                 <td className="fc-grid-footer-cell fc-grid-group-divider sticky bottom-0" />
                 {[
-                  totals.kitchenMale, totals.kitchenFemale,
-                  totals.condemMale, totals.condemFemale,
-                  latest?.avg_body_weight_male ?? 0, latest?.avg_body_weight_female ?? 0,
-                  totals.feedMale, totals.feedFemale,
+                  periodTotals.kitchenMale, periodTotals.kitchenFemale,
+                  periodTotals.condemMale, periodTotals.condemFemale,
+                  periodLatestRecord?.avg_body_weight_male ?? 0, periodLatestRecord?.avg_body_weight_female ?? 0,
+                  periodTotals.feedMale, periodTotals.feedFemale,
                 ].map((value, index) => <td key={`after-${index}`} className={`fc-grid-footer-cell sticky bottom-0 text-center font-semibold ${index % 2 === 1 ? "fc-grid-group-divider" : "fc-grid-border-r"}`}>{count(value)}</td>)}
               </tr>
             </tfoot>
           </table>
-          <div className="sticky left-0 flex w-fit p-3">
-            <Button type="button" size="sm" onClick={addDailyRow} disabled={saving}>
-              <Plus className="size-4" /> Add Date
-            </Button>
-          </div>
         </div>
       </div>
       <Dialog open={Boolean(transferModal)} onOpenChange={(open) => { if (!open && !transferSaving) setTransferModal(null); }}>

@@ -7,6 +7,7 @@ import { Bird, Scale, Skull, Wheat } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
+import SearchableCombobox from "@/components/SearchableCombobox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,9 +21,13 @@ import {
 } from "@/components/ui/table";
 import {
   getBreederDashboard,
+  listBreederDashboardFarms,
+  type BreederDashboardFarm,
   type BreederDashboardSummary,
 } from "./api";
 import BreederTrends from "./BreederTrends";
+
+const ALL_FARMS = "__all__";
 
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("en-US", {
@@ -65,6 +70,8 @@ export default function BreederDashboard() {
     from: addDays(new Date(), -60),
     to: new Date(),
   });
+  const [farmId, setFarmId] = useState(ALL_FARMS);
+  const [farms, setFarms] = useState<BreederDashboardFarm[]>([]);
   const [summary, setSummary] = useState<BreederDashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -74,8 +81,33 @@ export default function BreederDashboard() {
     return {
       from: format(date.from, "yyyy-MM-dd"),
       to: format(date.to, "yyyy-MM-dd"),
+      farmId: farmId === ALL_FARMS ? undefined : Number(farmId),
     };
-  }, [date]);
+  }, [date, farmId]);
+
+  useEffect(() => {
+    let active = true;
+    void listBreederDashboardFarms()
+      .then((rows) => {
+        if (active) setFarms(rows);
+      })
+      .catch((loadError: unknown) => {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : "Unable to load breeder farms.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const farmOptions = useMemo(
+    () => [
+      { code: ALL_FARMS, name: "All farms" },
+      ...farms.map((farm) => ({ code: String(farm.id), name: farm.name })),
+    ],
+    [farms],
+  );
 
   useEffect(() => {
     if (!filter) return;
@@ -120,7 +152,19 @@ export default function BreederDashboard() {
           <Breadcrumb SecondPreviewPageName="Breeder" CurrentPageName="Breeder Dashboard" />
           <Separator />
           <Card className="p-4">
-            <DatePickerWithRange label="Production Date Range" date={date} setDate={setDate} />
+            <div className="flex flex-wrap items-end gap-4">
+              <DatePickerWithRange label="Production Date Range" date={date} setDate={setDate} />
+              <div className="w-60">
+                <SearchableCombobox
+                  label="Farm"
+                  items={farmOptions}
+                  value={farmId}
+                  onValueChange={setFarmId}
+                  placeholder="All farms"
+                  className="w-full"
+                />
+              </div>
+            </div>
           </Card>
         </div>
 
@@ -169,7 +213,7 @@ export default function BreederDashboard() {
           </div>
         )}
 
-        {filter ? <BreederTrends from={filter.from} to={filter.to} /> : null}
+        {filter ? <BreederTrends from={filter.from} to={filter.to} farmId={filter.farmId} /> : null}
 
         <Card>
           <CardHeader>
@@ -217,7 +261,7 @@ export default function BreederDashboard() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
-                      No breeder performance records found for the selected date range.
+                      No breeder performance records found for the selected date range and farm.
                     </TableCell>
                   </TableRow>
                 )}

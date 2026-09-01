@@ -137,9 +137,9 @@ export default function BreederDispatchTable() {
             <Stat icon={<Bird className="size-3.5" />} label="Units dispatched" value={postedUnits} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search document, farm, destination, hauler, or plate..." className="pl-9" /></div>
-          <SearchableCombobox items={farms} value={farmFilter} onValueChange={setFarmFilter} placeholder="All farms" showCode className="w-full lg:w-72" />
+          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={setFarmFilter} placeholder="All farms" showCode className="w-full lg:w-72" />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select>
           <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
         </div>

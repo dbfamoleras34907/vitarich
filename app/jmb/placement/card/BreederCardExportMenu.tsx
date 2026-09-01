@@ -71,7 +71,7 @@ export const BREEDER_IMPORT_HEADERS = [
 
 const headers = [
   "Date", "Age",
-  "Inventory Male (pc)", "Inventory Female (pc)",
+  "Beginning Inventory Male (pc)", "Beginning Inventory Female (pc)",
   "Mortality Male (pc)", "Mortality Female (pc)", "Cumm Mortality Male (pc)", "Cumm Mortality Female (pc)",
   "Culls Male (pc)", "Culls Female (pc)", "Transfer In Male (pc)", "Transfer In Female (pc)",
   "Transfer Out Male (pc)", "Transfer Out Female (pc)", "Kitchen Male (pc)", "Kitchen Female (pc)",
