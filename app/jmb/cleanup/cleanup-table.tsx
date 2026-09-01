@@ -178,7 +178,7 @@ export default function CleanupTable() {
             <Stat label="Male cleaned up" value={maleTotal} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -189,6 +189,7 @@ export default function CleanupTable() {
             />
           </div>
           <SearchableCombobox
+            label="Farm"
             items={farms}
             value={farmFilter}
             onValueChange={setFarmFilter}

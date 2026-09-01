@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
   createEggLaying,
@@ -141,6 +142,15 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
   const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
   const elapsedDays = Math.floor((endUtc - startUtc) / 86_400_000);
   return elapsedDays >= 0 ? elapsedDays + 1 : 0;
+}
+
+function parseClipboardGrid(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line, index, lines) => line !== "" || index < lines.length - 1)
+    .map((line) => line.split("\t").map((value) => value.trim()));
 }
 
 function formatAge(days: number | null | undefined) {
@@ -445,6 +455,87 @@ export default function EggLayingForm() {
     if (!offset) return;
     event.preventDefault();
     moveProductionFocus(rowIndex, columnIndex, offset[0], offset[1]);
+  }
+
+  function handleProductionGridPaste(
+    event: ClipboardEvent<HTMLInputElement>,
+    startRowIndex: number,
+    startColumnIndex: number,
+  ) {
+    if (disabledAll) return;
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    event.preventDefault();
+    const pastedRows = parseClipboardGrid(text);
+    if (!pastedRows.length) return;
+
+    const nextRows = productionRows.map((row) => ({ ...row }));
+    const requiredRowCount = startRowIndex + pastedRows.length;
+    if (!isEdit) {
+      while (nextRows.length < requiredRowCount) {
+        const previousDate = nextRows.at(-1)?.date_laying;
+        nextRows.push(createProductionRow(previousDate ? addDays(previousDate, 1) : getToday()));
+      }
+    }
+
+    let changedCellCount = 0;
+    let invalidCellCount = 0;
+    let ignoredCellCount = 0;
+
+    pastedRows.forEach((pastedRow, pastedRowIndex) => {
+      const targetRow = nextRows[startRowIndex + pastedRowIndex];
+      if (!targetRow) {
+        ignoredCellCount += pastedRow.length;
+        return;
+      }
+
+      pastedRow.forEach((rawValue, pastedColumnIndex) => {
+        const targetColumnIndex = startColumnIndex + pastedColumnIndex;
+        if (targetColumnIndex === 0) {
+          const dateLaying = normalizeImportedDate(rawValue);
+          if (!dateLaying || dateLaying > getToday()) {
+            invalidCellCount += 1;
+            return;
+          }
+          targetRow.date_laying = dateLaying;
+          changedCellCount += 1;
+          return;
+        }
+
+        const field = productionNumberFields[targetColumnIndex - 1];
+        if (!field) {
+          ignoredCellCount += 1;
+          return;
+        }
+        const normalizedValue = rawValue.replace(/,/g, "").trim();
+        if (normalizedValue === "") {
+          targetRow[field] = "";
+          changedCellCount += 1;
+          return;
+        }
+        const parsedValue = Number(normalizedValue);
+        if (!Number.isSafeInteger(parsedValue) || parsedValue < 0) {
+          invalidCellCount += 1;
+          return;
+        }
+        targetRow[field] = String(parsedValue);
+        changedCellCount += 1;
+      });
+    });
+
+    if (!changedCellCount) {
+      toast.error(invalidCellCount ? "No cells were pasted because the copied values are invalid." : "No editable cells found in pasted data.");
+      return;
+    }
+
+    setProductionRows(nextRows);
+    setImportError("");
+    const notes = [
+      invalidCellCount ? `${invalidCellCount} invalid skipped` : "",
+      ignoredCellCount ? `${ignoredCellCount} outside the editable grid ignored` : "",
+    ].filter(Boolean);
+    toast.success(`Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`);
   }
 
   async function exportTemplate() {
@@ -763,6 +854,7 @@ export default function EggLayingForm() {
                         <Input type="date" value={row.date_laying} max={getToday()}
                           data-production-row={rowIndex} data-production-column={0}
                           onChange={(event) => updateProductionRow(rowIndex, "date_laying", event.target.value)}
+                          onPaste={(event) => handleProductionGridPaste(event, rowIndex, 0)}
                           onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}
                           className="h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-[10px] shadow-none focus-visible:ring-0" />
                       </td>
@@ -779,6 +871,7 @@ export default function EggLayingForm() {
                             step="1"
                             value={row[field]}
                             onChange={(event) => updateProductionRow(rowIndex, field, clampInteger(event.target.value))}
+                            onPaste={(event) => handleProductionGridPaste(event, rowIndex, fieldIndex + 1)}
                             onFocus={(event) => event.target.select()}
                             onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, fieldIndex + 1)}
                             data-production-row={rowIndex}

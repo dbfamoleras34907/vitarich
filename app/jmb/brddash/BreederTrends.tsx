@@ -35,7 +35,15 @@ function periodLabel(period: string, groupBy: BreederTrendGroup) {
   return format(value, "MMM d");
 }
 
-export default function BreederTrends({ from, to }: { from: string; to: string }) {
+export default function BreederTrends({
+  from,
+  to,
+  farmId,
+}: {
+  from: string;
+  to: string;
+  farmId?: number;
+}) {
   const [groupBy, setGroupBy] = useState<BreederTrendGroup>("daily");
   const [rows, setRows] = useState<BreederTrendRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +56,7 @@ export default function BreederTrends({ from, to }: { from: string; to: string }
         if (!active) return null;
         setLoading(true);
         setError("");
-        return getBreederTrend({ from, to }, groupBy);
+        return getBreederTrend({ from, to, farmId }, groupBy);
       })
       .then((data) => {
         if (active && data) setRows(data);
@@ -64,7 +72,7 @@ export default function BreederTrends({ from, to }: { from: string; to: string }
     return () => {
       active = false;
     };
-  }, [from, groupBy, to]);
+  }, [farmId, from, groupBy, to]);
 
   const chartRows = rows.map((row) => ({
     ...row,
@@ -76,7 +84,7 @@ export default function BreederTrends({ from, to }: { from: string; to: string }
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Breeder Production Trends</h2>
-          <p className="text-sm text-muted-foreground">Performance across all breeder buildings</p>
+          <p className="text-sm text-muted-foreground">Performance across the selected breeder buildings</p>
         </div>
         <div className="flex items-center gap-2">
           {groups.map((group) => (

@@ -30,6 +30,12 @@ type PerformanceRow = {
 export type BreederDashboardFilter = {
   from: string;
   to: string;
+  farmId?: number;
+};
+
+export type BreederDashboardFarm = {
+  id: number;
+  name: string;
 };
 
 export type BuildingDashboardRow = {
@@ -129,10 +135,14 @@ export async function getBreederTrend(
   filter: BreederDashboardFilter,
   groupBy: BreederTrendGroup,
 ): Promise<BreederTrendRow[]> {
-  const { data: placementData, error: placementError } = await db
+  let placementQuery = db
     .from(PLACEMENT_TABLE)
     .select("id")
     .lte("placement_date", filter.to);
+
+  if (filter.farmId) placementQuery = placementQuery.eq("farm_id", filter.farmId);
+
+  const { data: placementData, error: placementError } = await placementQuery;
 
   if (placementError) throw new Error(errorMessage(placementError));
   const placementIds = (placementData ?? []).map((row) => numeric(row.id));
@@ -205,10 +215,14 @@ export async function getBreederTrend(
 export async function getBreederDashboard(
   filter: BreederDashboardFilter,
 ): Promise<BreederDashboardSummary> {
-  const { data: placementData, error: placementError } = await db
+  let placementQuery = db
     .from(PLACEMENT_TABLE)
     .select("id, farm_id, farm_name, building_id, building_no")
     .lte("placement_date", filter.to);
+
+  if (filter.farmId) placementQuery = placementQuery.eq("farm_id", filter.farmId);
+
+  const { data: placementData, error: placementError } = await placementQuery;
 
   if (placementError) throw new Error(errorMessage(placementError));
   const placements = (placementData ?? []) as PlacementRow[];
@@ -347,4 +361,29 @@ export async function getBreederDashboard(
     : 0;
 
   return { buildings: result, totals };
+}
+
+export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {
+  const farms = new Map<number, BreederDashboardFarm>();
+
+  for (let page = 0; ; page += 1) {
+    const from = page * PAGE_SIZE;
+    const { data, error } = await db
+      .from(PLACEMENT_TABLE)
+      .select("farm_id, farm_name")
+      .order("farm_name", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) throw new Error(errorMessage(error));
+    const rows = (data ?? []) as Pick<PlacementRow, "farm_id" | "farm_name">[];
+    rows.forEach((row) => {
+      const id = numeric(row.farm_id);
+      if (id && !farms.has(id)) {
+        farms.set(id, { id, name: row.farm_name || `Farm ${id}` });
+      }
+    });
+    if (rows.length < PAGE_SIZE) break;
+  }
+
+  return [...farms.values()].sort((left, right) => left.name.localeCompare(right.name));
 }

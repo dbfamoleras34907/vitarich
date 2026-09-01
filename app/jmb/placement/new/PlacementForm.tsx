@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ClipboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -16,6 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, Loader2, Paperclip, Save, X } from "lucide-react";
+import { toast } from "sonner";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
@@ -49,6 +50,27 @@ type PlacementRow = {
   f_avg_bodyw: string;
   m_avg_bodyw: string;
 };
+
+type PlacementNumericField = Exclude<keyof PlacementRow, "placement_id" | "pen_id" | "pen_no">;
+type PlacementPasteColumn =
+  | { kind: "numeric"; field: PlacementNumericField }
+  | { kind: "locked" };
+
+const placementPasteColumns: PlacementPasteColumn[] = [
+  { kind: "locked" },
+  { kind: "numeric", field: "f_beg" },
+  { kind: "numeric", field: "f_doa" },
+  { kind: "numeric", field: "f_reject" },
+  { kind: "numeric", field: "f_shortcount" },
+  { kind: "locked" },
+  { kind: "numeric", field: "f_avg_bodyw" },
+  { kind: "numeric", field: "m_beg" },
+  { kind: "numeric", field: "m_doa" },
+  { kind: "numeric", field: "m_reject" },
+  { kind: "numeric", field: "m_shortcount" },
+  { kind: "locked" },
+  { kind: "numeric", field: "m_avg_bodyw" },
+];
 
 type FormState = {
   placement_date: string;
@@ -144,6 +166,15 @@ function withoutPlacementDate(payload: PlacementInsert) {
   void placementDate;
   void cycleId;
   return rest;
+}
+
+function parseClipboardGrid(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line, index, lines) => line !== "" || index < lines.length - 1)
+    .map((line) => line.split("\t").map((value) => value.trim()));
 }
 
 const TableWidths = {
@@ -531,6 +562,78 @@ export default function PlacementForm() {
     nextInput.select();
   }
 
+  function handlePlacementGridPaste(event: ClipboardEvent<HTMLTableElement>) {
+    if (disabledAll) return;
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    const target = event.target as HTMLElement;
+    const currentCell = target.closest("td");
+    const currentRow = currentCell?.parentElement;
+    const tableBody = currentRow?.parentElement;
+    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+
+    const tableRows = Array.from(tableBody.querySelectorAll("tr"));
+    const rowCells = Array.from(currentRow.querySelectorAll("td"));
+    const startRowIndex = tableRows.indexOf(currentRow as HTMLTableRowElement);
+    const startColumnIndex = rowCells.indexOf(currentCell as HTMLTableCellElement);
+    if (startRowIndex < 0 || startColumnIndex < 0) return;
+
+    event.preventDefault();
+    const pastedRows = parseClipboardGrid(text);
+    const nextRows = rows.map((row) => ({ ...row }));
+    let changedCellCount = 0;
+    let skippedLockedCellCount = 0;
+    let invalidCellCount = 0;
+
+    pastedRows.forEach((pastedRow, pastedRowIndex) => {
+      const targetRowIndex = startRowIndex + pastedRowIndex;
+      const targetRow = nextRows[targetRowIndex];
+      if (!targetRow) return;
+
+      pastedRow.forEach((rawValue, pastedColumnIndex) => {
+        const column = placementPasteColumns[startColumnIndex + pastedColumnIndex];
+        if (!column) return;
+        if (column.kind === "locked") {
+          skippedLockedCellCount += 1;
+          return;
+        }
+
+        const normalizedValue = rawValue.replace(/,/g, "").trim();
+        if (normalizedValue === "") {
+          targetRow[column.field] = "";
+          changedCellCount += 1;
+          return;
+        }
+        const parsedValue = Number(normalizedValue);
+        if (!Number.isSafeInteger(parsedValue) || parsedValue < 0) {
+          invalidCellCount += 1;
+          return;
+        }
+        targetRow[column.field] = String(parsedValue);
+        changedCellCount += 1;
+      });
+    });
+
+    if (!changedCellCount) {
+      toast.error(
+        invalidCellCount
+          ? "No cells were pasted because the copied values are invalid."
+          : skippedLockedCellCount
+            ? "The pasted Placement Details cells are read-only."
+            : "No editable cells found in pasted data.",
+      );
+      return;
+    }
+
+    setRows(nextRows);
+    const notes = [
+      invalidCellCount ? `${invalidCellCount} invalid skipped` : "",
+      skippedLockedCellCount ? `${skippedLockedCellCount} read-only skipped` : "",
+    ].filter(Boolean);
+    toast.success(`Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`);
+  }
+
   function renderSourceSelect(
     value: string,
     onValueChange: (nextValue: string) => void,
@@ -894,6 +997,7 @@ export default function PlacementForm() {
                 <table
                   className={`w-full ${TableWidths.tableMin} border-collapse table-fixed text-sm`}
                   onKeyDownCapture={handlePlacementGridKeyDown}
+                  onPasteCapture={handlePlacementGridPaste}
                 >
                   <thead>
                     <tr>
