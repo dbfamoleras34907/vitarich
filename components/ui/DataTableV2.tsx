@@ -17,8 +17,9 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import ExcelTableGrid, { type ExcelCellChange } from './ExcelTableGrid'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,13 @@ export type Column<T> = {
   sortable?: boolean
   searchable?: boolean
   render?: (row: T) => React.ReactNode
+  editable?: boolean | ((row: T) => boolean)
+  editor?: 'text' | 'number' | 'date' | 'checkbox'
+  parseValue?: (value: string, row: T) => unknown
+  width?: number
+  minWidth?: number
+  maxWidth?: number
+  frozen?: boolean
 }
 
 type Operator = 'equals' | 'like'
@@ -66,6 +74,10 @@ type Props<T> = {
   onRowClick?: (row: T) => void
   getRowClassName?: (row: T, index: number) => string
   compact?: boolean
+  ExcelTable?: boolean
+  onDataChange?: (data: T[]) => void
+  createRow?: () => T
+  frozenColumns?: number
 }
 
 type SortState = {
@@ -166,6 +178,10 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   onRowClick,
   getRowClassName,
   compact = true,
+  ExcelTable = false,
+  onDataChange,
+  createRow,
+  frozenColumns = 1,
 }: Props<T>) {
   const tableId = useId()
   const [sort, setSort] = useState<SortState>({ key: null, direction: 'asc' })
@@ -175,6 +191,14 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   const [draftFilters, setDraftFilters] = useState<FilterRule[]>(initialFilters ?? [])
   const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>(initialFilters ?? [])
   const [showFilter, setShowFilter] = useState(false)
+  const [excelState, setExcelState] = useState<{ source: T[]; rows: T[] }>({
+    source: data,
+    rows: data,
+  })
+  const excelRowIdsRef = useRef(new WeakMap<object, string>())
+  const excelRowIdCounterRef = useRef(0)
+  const excelData = excelState.source === data ? excelState.rows : data
+  const tableData = ExcelTable ? excelData : data
 
   useEffect(() => {
     if (!showFilter) return
@@ -250,7 +274,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   }, [appliedFilters])
 
   const filteredData = useMemo(() => {
-    let result = data.filter(rowMatchesFilters)
+    let result = tableData.filter(rowMatchesFilters)
 
     if (enableSearch && search) {
       const lower = search.toLowerCase()
@@ -265,7 +289,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     }
 
     return result
-  }, [data, rowMatchesFilters, search, searchableColumns, enableSearch])
+  }, [tableData, rowMatchesFilters, search, searchableColumns, enableSearch])
 
   const sortedData = useMemo(() => {
     if (!sort.key) return filteredData
@@ -306,7 +330,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     ? Math.min(safePage * pageSize, sortedData.length)
     : sortedData.length
   const hasActiveSearchOrFilters = Boolean(search || activeFilterCount > 0)
-  const showFooter = enablePagination && (data.length > 0 || sortedData.length > 0)
+  const showFooter = enablePagination && (tableData.length > 0 || sortedData.length > 0)
 
   const openFilterDialog = () => {
     setDraftFilters(buildColumnFilterRules(appliedFilters))
@@ -331,6 +355,85 @@ export default function DynamicTable<T extends Record<string, unknown>>({
       ? fallbackKey
       : index
   }
+
+  const getExcelRowId = useCallback((row: T) => {
+    const rowIndex = excelData.indexOf(row)
+    if (typeof rowKey === 'function') return String(rowKey(row, rowIndex))
+    if (rowKey) {
+      const configuredKey = row[rowKey]
+      if (configuredKey !== null && configuredKey !== undefined) return String(configuredKey)
+    }
+
+    const fallbackKey = row.id ?? row._id
+    if (typeof fallbackKey === 'string' || typeof fallbackKey === 'number') {
+      return String(fallbackKey)
+    }
+
+    const existingKey = excelRowIdsRef.current.get(row)
+    if (existingKey) return existingKey
+    excelRowIdCounterRef.current += 1
+    const generatedKey = `${tableId}-excel-row-${excelRowIdCounterRef.current}`
+    excelRowIdsRef.current.set(row, generatedKey)
+    return generatedKey
+  }, [excelData, rowKey, tableId])
+
+  const commitExcelData = useCallback((nextData: T[]) => {
+    setExcelState({ source: data, rows: nextData })
+    onDataChange?.(nextData)
+  }, [data, onDataChange])
+
+  const handleExcelCellsChange = useCallback((changes: ExcelCellChange<T>[]) => {
+    if (changes.length === 0) return
+
+    const changesByRowId = new Map<string, Map<string, unknown>>()
+    changes.forEach(change => {
+      const rowId = getExcelRowId(change.row)
+      const rowChanges = changesByRowId.get(rowId) ?? new Map<string, unknown>()
+      rowChanges.set(change.columnKey, change.value)
+      changesByRowId.set(rowId, rowChanges)
+    })
+
+    const nextData = excelData.map(row => {
+      const rowId = getExcelRowId(row)
+      const rowChanges = changesByRowId.get(rowId)
+      if (!rowChanges) return row
+
+      const nextRow = { ...row }
+      rowChanges.forEach((value, columnKey) => {
+        nextRow[columnKey as keyof T] = value as T[keyof T]
+      })
+      excelRowIdsRef.current.set(nextRow, rowId)
+      return nextRow
+    })
+
+    commitExcelData(nextData)
+  }, [commitExcelData, excelData, getExcelRowId])
+
+  const handleExcelAddRow = useCallback(() => {
+    const nextRow = createRow?.() ?? Object.fromEntries(
+      columns
+        .filter(column => column.type !== 'button')
+        .map(column => [
+          String(column.key),
+          column.editor === 'checkbox' ? false : '',
+        ])
+    ) as T
+    const nextData = [...excelData, nextRow]
+
+    commitExcelData(nextData)
+    setSearch('')
+    setDraftFilters([])
+    setAppliedFilters([])
+    setSort({ key: null, direction: 'asc' })
+    setPage(enablePagination ? Math.max(1, Math.ceil(nextData.length / pageSize)) : 1)
+  }, [columns, commitExcelData, createRow, enablePagination, excelData, pageSize])
+
+  const handleExcelDeleteRows = useCallback((rowsToDelete: T[]) => {
+    const rowIdsToDelete = new Set(rowsToDelete.map(getExcelRowId))
+    commitExcelData(
+      excelData.filter(row => !rowIdsToDelete.has(getExcelRowId(row)))
+    )
+  }, [commitExcelData, excelData, getExcelRowId])
 
   const renderCell = (row: T, column: Column<T>) => {
     const value = row[column.key as keyof T]
@@ -447,7 +550,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                 </p>
               )}
               <p className={`${compact ? 'text-xs' : 'mt-1 text-sm'} text-muted-foreground`} aria-live="polite">
-                {sortedData.length} of {data.length} rows
+                {sortedData.length} of {tableData.length} rows
               </p>
             </div>
 
@@ -685,6 +788,23 @@ export default function DynamicTable<T extends Record<string, unknown>>({
         </div>
       )}
 
+      {ExcelTable ? (
+        <ExcelTableGrid
+          columns={columns}
+          rows={paginatedData}
+          allRows={tableData}
+          loading={loading}
+          sort={sort}
+          firstRowNumber={firstRow || 1}
+          frozenColumns={Math.max(0, frozenColumns)}
+          getRowId={getExcelRowId}
+          renderCell={renderCell}
+          onSort={handleSort}
+          onCellsChange={handleExcelCellsChange}
+          onAddRow={handleExcelAddRow}
+          onDeleteRows={handleExcelDeleteRows}
+        />
+      ) : (
       <div className="block w-full min-w-0 max-w-full overflow-x-auto">
         <table
           className={`w-full table-auto border-collapse ${compact ? 'text-xs' : 'text-sm'}`}
@@ -793,6 +913,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
           </tbody>
         </table>
       </div>
+      )}
 
       {!loading && sortedData.length === 0 && (
         <div className={`flex flex-col items-center justify-center gap-2 border-t px-4 text-center ${compact ? 'py-6' : 'py-10'}`}>
