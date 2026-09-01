@@ -1,6 +1,6 @@
 'use client'
 import { Button } from "@/components/ui/button"
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CommandDialog,
@@ -165,6 +165,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFilter, setSelectedFilter] = useState("All")
+  const resultsListRef = useRef<HTMLDivElement>(null)
   const navtype = ["All", "Settings", "Navigation"]
   const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
@@ -310,6 +311,10 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     return () => document.removeEventListener("keydown", down)
   }, [])
 
+  useEffect(() => {
+    resultsListRef.current?.scrollTo({ top: 0 })
+  }, [searchQuery])
+
   const runCommand = (command: () => void) => {
     setOpen(false)
     command()
@@ -383,7 +388,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             </Button>
           ))}
         </div>
-        <CommandList className="max-h-100">
+        <CommandList ref={resultsListRef} className="max-h-100">
           {rankedResults.length === 0 && (
             <div className="py-6 text-center text-sm">No results found.</div>
           )}
