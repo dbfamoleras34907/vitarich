@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Edit, List, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Edit, List, Loader2, Plus, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import DynamicTable, { type Column } from '@/components/ui/DataTableV2'
 import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
 import {
@@ -29,6 +30,11 @@ import {
   voidItemGroup,
   type ItemGroup,
 } from '../../api'
+import {
+  getItemGroupDescendants,
+  ITEM_GROUP_MAX_DEPTH,
+  ITEM_GROUP_MAX_SUBGROUP_LEVELS,
+} from '@/lib/data/repositories/itemGroups'
 
 type ItemGroupForm = {
   code: string
@@ -41,6 +47,16 @@ type SubItemGroupForm = {
   code: string
   name: string
   remarks: string
+}
+
+type HierarchyRow = Record<string, unknown> & {
+  id: number
+  code: string
+  name: string
+  remarks: string
+  depth: number
+  hasChildren: boolean
+  itemGroup: ItemGroup
 }
 
 const emptySubItemGroup: SubItemGroupForm = {
@@ -107,6 +123,8 @@ export default function EditItemGroupLayout() {
   const [subItemGroupSaving, setSubItemGroupSaving] = useState(false)
   const [voidingId, setVoidingId] = useState<number | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addParent, setAddParent] = useState<{ id: number; code: string; name: string; depth: number } | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [editingSubItemGroup, setEditingSubItemGroup] = useState<ItemGroup | null>(null)
   const [subItemGroups, setSubItemGroups] = useState<ItemGroup[]>([])
   const [subItemGroupForm, setSubItemGroupForm] = useState<SubItemGroupForm>(emptySubItemGroup)
@@ -120,7 +138,10 @@ export default function EditItemGroupLayout() {
   const loadSubItemGroups = useCallback(async () => {
     setSubItemGroupsLoading(true)
     try {
-      setSubItemGroups(await getSubItemGroups(itemGroupId))
+      const allSubItemGroups = await getSubItemGroups()
+      const descendants = getItemGroupDescendants(allSubItemGroups, itemGroupId)
+      setSubItemGroups(descendants)
+      setExpandedIds(new Set(descendants.flatMap(group => group.id == null ? [] : [Number(group.id)])))
     } catch (error) {
       const message = getSaveErrorMessage(error, 'Unable to load sub item groups')
       toast('Error: ' + message)
@@ -190,20 +211,21 @@ export default function EditItemGroupLayout() {
   const handleAddSubItemGroup = async (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!subItemGroupForm.name.trim()) {
+    if (!addParent || !subItemGroupForm.name.trim()) {
       toast('Please fill in the name.')
       return
     }
 
     setSubItemGroupSaving(true)
     try {
-      await addSubItemGroup(itemGroupId, {
+      await addSubItemGroup(addParent.id, {
         name: subItemGroupForm.name.trim(),
         remarks: subItemGroupForm.remarks.trim(),
       })
       toast('Sub item group added successfully')
       setSubItemGroupForm(emptySubItemGroup)
       setAddDialogOpen(false)
+      setAddParent(null)
       await loadSubItemGroups()
     } catch (error) {
       const message = getSaveErrorMessage(error, 'Unable to add sub item group')
@@ -264,6 +286,131 @@ export default function EditItemGroupLayout() {
       setVoidingId(null)
     }
   }
+
+  const hierarchyRows = useMemo(() => {
+    const childrenByParent = new Map<number, ItemGroup[]>()
+    subItemGroups.forEach(group => {
+      if (group.father == null) return
+      const parentId = Number(group.father)
+      const children = childrenByParent.get(parentId) ?? []
+      children.push(group)
+      childrenByParent.set(parentId, children)
+    })
+
+    const rows: HierarchyRow[] = []
+    const appendChildren = (parentId: number, depth: number) => {
+      const children = childrenByParent.get(parentId) ?? []
+      children.forEach(group => {
+        if (group.id == null) return
+        const id = Number(group.id)
+        const hasChildren = (childrenByParent.get(id)?.length ?? 0) > 0
+        rows.push({
+          id,
+          code: group.code,
+          name: group.name,
+          remarks: group.remarks || '',
+          depth,
+          hasChildren,
+          itemGroup: group,
+        })
+        if (hasChildren && expandedIds.has(id)) appendChildren(id, depth + 1)
+      })
+    }
+
+    appendChildren(itemGroupId, 2)
+    return rows
+  }, [expandedIds, itemGroupId, subItemGroups])
+
+  const hierarchyColumns: Column<HierarchyRow>[] = [
+    {
+      key: 'code',
+      label: 'Code',
+      width: 110,
+      editable: false,
+    },
+    {
+      key: 'name',
+      label: 'Hierarchy / Name',
+      width: 320,
+      editable: false,
+      render: row => (
+        <div className="flex min-w-0 items-center" style={{ paddingLeft: `${(row.depth - 2) * 20}px` }}>
+          {row.hasChildren ? (
+            <button
+              type="button"
+              className="mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded hover:bg-muted"
+              aria-label={expandedIds.has(row.id) ? `Collapse ${row.name}` : `Expand ${row.name}`}
+              onClick={() => setExpandedIds(current => {
+                const next = new Set(current)
+                if (next.has(row.id)) next.delete(row.id)
+                else next.add(row.id)
+                return next
+              })}
+            >
+              {expandedIds.has(row.id) ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            </button>
+          ) : <span className="mr-1 size-5 shrink-0" />}
+          <span className="truncate">{row.name}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'depth',
+      label: 'Sub Group Level',
+      width: 70,
+      align: 'center',
+      editable: false,
+      render: row => String(row.depth - 1),
+    },
+    {
+      key: 'remarks',
+      label: 'Remarks',
+      width: 260,
+      editable: false,
+      render: row => row.remarks || '-',
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      type: 'button',
+      sortable: false,
+      width: 250,
+      align: 'right',
+      render: row => (
+        <div className="flex justify-end gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[11px]"
+            disabled={insertDisabled || row.depth >= ITEM_GROUP_MAX_DEPTH}
+            title={row.depth >= ITEM_GROUP_MAX_DEPTH ? `Maximum Sub Group Level ${ITEM_GROUP_MAX_SUBGROUP_LEVELS} reached` : undefined}
+            onClick={() => {
+              setAddParent({ id: row.id, code: row.code, name: row.name, depth: row.depth })
+              setSubItemGroupForm(emptySubItemGroup)
+              setAddDialogOpen(true)
+            }}
+          >
+            <Plus className="size-3" /> Add Child
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openEditSubItemGroup(row.itemGroup)}>
+            <Edit className="size-3" /> Edit
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="h-6 px-2 text-[11px]"
+            disabled={voidDisabled || voidingId === row.id}
+            onClick={() => handleVoidSubItemGroup(row.itemGroup)}
+          >
+            {voidingId === row.id ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+            Void
+          </Button>
+        </div>
+      ),
+    },
+  ]
 
   if (loading) return <ItemGroupEditSkeleton />
 
@@ -329,12 +476,13 @@ export default function EditItemGroupLayout() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-3 py-3 dark:border-border">
                 <div>
                   <h2 className="text-base font-semibold">Sub Item Groups</h2>
-                  <p className="text-xs text-muted-foreground">One level of sub item groups under {form.code}.</p>
+                  <p className="text-xs text-muted-foreground">Expandable hierarchy with up to {ITEM_GROUP_MAX_SUBGROUP_LEVELS} optional Sub Group levels below the root. Items can be assigned only to leaves.</p>
                 </div>
                 <Button
                   type="button"
                   disabled={insertDisabled}
                   onClick={() => {
+                    setAddParent({ id: itemGroupId, code: form.code, name: form.name, depth: 1 })
                     setSubItemGroupForm(emptySubItemGroup)
                     setAddDialogOpen(true)
                   }}
@@ -344,70 +492,37 @@ export default function EditItemGroupLayout() {
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-sm">
-                  <thead className="bg-stone-100 text-left text-xs uppercase tracking-wide text-stone-600 dark:bg-muted dark:text-muted-foreground">
-                    <tr>
-                      <th className="w-12 px-3 py-3 text-center">#</th>
-                      <th className="w-48 px-3 py-3">Code</th>
-                      <th className="px-3 py-3">Name</th>
-                      <th className="px-3 py-3">Remarks</th>
-                      <th className="w-48 px-3 py-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {subItemGroupsLoading ? (
-                      Array.from({ length: 3 }).map((_, index) => (
-                        <tr key={index} className="border-t">
-                          <td colSpan={5} className="px-3 py-2"><Skeleton className="h-9 w-full" /></td>
-                        </tr>
-                      ))
-                    ) : subItemGroups.length === 0 ? (
-                      <tr className="border-t">
-                        <td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">
-                          No sub item groups added yet.
-                        </td>
-                      </tr>
-                    ) : subItemGroups.map((itemGroup, index) => (
-                      <tr key={itemGroup.id} className="border-t odd:bg-white even:bg-stone-50/70 hover:bg-stone-50 dark:odd:bg-card dark:even:bg-muted/40 dark:hover:bg-muted/60">
-                        <td className="px-3 py-3 text-center text-muted-foreground">{index + 1}</td>
-                        <td className="px-3 py-3 font-medium">{itemGroup.code}</td>
-                        <td className="px-3 py-3">{itemGroup.name}</td>
-                        <td className="px-3 py-3 text-muted-foreground">{itemGroup.remarks || '-'}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end gap-2">
-                            <Button type="button" size="sm" variant="outline" onClick={() => openEditSubItemGroup(itemGroup)}>
-                              <Edit className="size-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="destructive"
-                              disabled={voidDisabled || voidingId === itemGroup.id}
-                              onClick={() => handleVoidSubItemGroup(itemGroup)}
-                            >
-                              {voidingId === itemGroup.id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                              {voidingId === itemGroup.id ? 'Voiding...' : 'Void'}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DynamicTable
+                columns={hierarchyColumns}
+                data={hierarchyRows}
+                loading={subItemGroupsLoading}
+                rowKey="id"
+                ExcelTable
+                excelRowActions={false}
+                enablePagination={false}
+                enableFilters={false}
+                emptyMessage="No sub item groups added yet."
+                searchPlaceholder="Search sub item groups..."
+                frozenColumns={2}
+              />
             </section>
           </div>
         )}
       </section>
 
-      <Dialog open={addDialogOpen} onOpenChange={(open) => !subItemGroupSaving && setAddDialogOpen(open)}>
+      <Dialog open={addDialogOpen} onOpenChange={(open) => {
+        if (!subItemGroupSaving) {
+          setAddDialogOpen(open)
+          if (!open) setAddParent(null)
+        }
+      }}>
         <DialogContent>
           <form onSubmit={handleAddSubItemGroup} className="space-y-4">
             <DialogHeader>
               <DialogTitle>Add Sub Item Group</DialogTitle>
-              <DialogDescription>Add a direct child under {form.code} - {form.name}.</DialogDescription>
+              <DialogDescription>
+                Add Sub Group Level {addParent?.depth ?? 1} under {addParent?.code} - {addParent?.name}.
+              </DialogDescription>
             </DialogHeader>
             <SubItemGroupFields form={subItemGroupForm} setForm={setSubItemGroupForm} hideCode />
             <DialogFooter>

@@ -78,6 +78,7 @@ type Props<T> = {
   onDataChange?: (data: T[]) => void
   createRow?: () => T
   frozenColumns?: number
+  excelRowActions?: boolean
 }
 
 type SortState = {
@@ -182,6 +183,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   onDataChange,
   createRow,
   frozenColumns = 1,
+  excelRowActions = true,
 }: Props<T>) {
   const tableId = useId()
   const [sort, setSort] = useState<SortState>({ key: null, direction: 'asc' })
@@ -518,7 +520,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
 
   return (
     <section
-      className="w-full min-w-0 max-w-full overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] [contain:inline-size]"
+      className={`w-full min-w-0 max-w-full rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] ${ExcelTable ? 'overflow-visible' : 'overflow-hidden [contain:inline-size]'}`}
       aria-labelledby={title ? `${tableId}-title` : undefined}
     >
       <div
@@ -803,6 +805,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
           onCellsChange={handleExcelCellsChange}
           onAddRow={handleExcelAddRow}
           onDeleteRows={handleExcelDeleteRows}
+          enableRowActions={excelRowActions}
         />
       ) : (
       <div className="block w-full min-w-0 max-w-full overflow-x-auto">

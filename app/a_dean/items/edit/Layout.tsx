@@ -23,7 +23,8 @@ import { Textarea } from '@/components/ui/textarea'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { usePermission } from '@/hooks/usePermission'
 import { getItemById, getItemUomGroups, itemHasInventoryMovement, ItemInsert, ItemRow, ItemUomGroup, updateItem } from '../api'
-import { getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
+import { getItemGroupChildren, getItemGroupPath, getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
+import SubItemGroupCascade from '../SubItemGroupCascade'
 
 type ItemForm = {
   item_code: string
@@ -136,6 +137,7 @@ export default function EditItemPage() {
   const [subItemGroups, setSubItemGroups] = useState<ItemGroup[]>([])
   const [uomGroups, setUomGroups] = useState<ItemUomGroup[]>([])
   const [form, setForm] = useState<ItemForm | null>(null)
+  const [selectedSubItemGroupIds, setSelectedSubItemGroupIds] = useState<string[]>([])
   const [hasInventoryMovement, setHasInventoryMovement] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingPayload, setPendingPayload] = useState<ItemInsert | null>(null)
@@ -143,24 +145,6 @@ export default function EditItemPage() {
   const selectedGroup = useMemo(
     () => itemGroups.find(group => group.code === form?.item_group),
     [form?.item_group, itemGroups],
-  )
-  const availableSubItemGroups = useMemo(
-    () => subItemGroups.filter(group => Number(group.father) === selectedGroup?.id),
-    [selectedGroup?.id, subItemGroups],
-  )
-  const subItemGroupOptions = useMemo(
-    () => [
-      { id: '', label: 'No sub item group' },
-      ...availableSubItemGroups.map(group => ({
-        id: String(group.id),
-        label: `${group.code} - ${group.name}`,
-      })),
-    ],
-    [availableSubItemGroups],
-  )
-  const selectedSubItemGroup = useMemo(
-    () => availableSubItemGroups.find(group => String(group.id) === form?.sub_item_group_id),
-    [availableSubItemGroups, form?.sub_item_group_id],
   )
   const selectedUomGroup = useMemo(
     () => uomGroups.find(group => group.code === form?.uom_group_code),
@@ -201,13 +185,19 @@ export default function EditItemPage() {
 
         const nextForm = toForm(itemRow)
         const rootGroup = (groups || []).find(group => group.code === nextForm.item_group)
-        const selectedSubGroupIsValid = (subGroups || []).some(group =>
-          String(group.id) === nextForm.sub_item_group_id &&
-          Number(group.father) === rootGroup?.id,
+        const selectedPath = rootGroup?.id && nextForm.sub_item_group_id
+          ? getItemGroupPath(subGroups || [], Number(rootGroup.id), Number(nextForm.sub_item_group_id))
+          : []
+        const selectedLeaf = selectedPath.at(-1)
+        const selectedSubGroupIsValid = Boolean(
+          selectedLeaf?.id && getItemGroupChildren(subGroups || [], Number(selectedLeaf.id)).length === 0,
         )
         if (!selectedSubGroupIsValid) nextForm.sub_item_group_id = ''
 
         setForm(nextForm)
+        setSelectedSubItemGroupIds(selectedSubGroupIsValid
+          ? selectedPath.map(group => String(group.id))
+          : [])
         setItemGroups((groups || []) as ItemGroup[])
         setSubItemGroups((subGroups || []) as ItemGroup[])
         setUomGroups(uomGroupData)
@@ -245,6 +235,14 @@ export default function EditItemPage() {
     if (!form.item_code.trim() || !form.item_name.trim() || !form.uom_group_code.trim() || !form.item_group.trim() || !form.fms_group.trim()) {
       setMessage('Please complete the required item fields.')
       return false
+    }
+
+    if (form.sub_item_group_id) {
+      const selectedSubItemGroup = subItemGroups.find(group => String(group.id) === form.sub_item_group_id)
+      if (!selectedSubItemGroup?.id || getItemGroupChildren(subItemGroups, Number(selectedSubItemGroup.id)).length > 0) {
+        setMessage('Continue selecting Sub Item Groups until you reach a leaf group, or clear Sub Group Level 1.')
+        return false
+      }
     }
 
     if (form.manage_batch_numbers && form.batch_management_method === 'NONE') {
@@ -364,26 +362,25 @@ export default function EditItemPage() {
                 nameLabel="name"
                 value={form.item_group}
                 list={itemGroups}
-                onChange={value => setForm(current => current ? ({
-                  ...current,
-                  item_group: value,
-                  sub_item_group_id: '',
-                }) : current)}
+                onChange={value => {
+                  setForm(current => current ? ({
+                    ...current,
+                    item_group: value,
+                    sub_item_group_id: '',
+                  }) : current)
+                  setSelectedSubItemGroupIds([])
+                }}
               />
             </Field>
-            {availableSubItemGroups.length > 0 && (
-              <Field label="Sub Item Group" hint={selectedSubItemGroup?.name}>
-                <SearchableDropdown
-                  codeLabel="id"
-                  nameLabel="label"
-                  list={subItemGroupOptions}
-                  value={form.sub_item_group_id}
-                  placeholder="Select sub item group"
-                  showNameOnly
-                  onChange={value => updateForm('sub_item_group_id', value)}
-                />
-              </Field>
-            )}
+            <SubItemGroupCascade
+              groups={subItemGroups}
+              rootGroupId={selectedGroup?.id}
+              selectedIds={selectedSubItemGroupIds}
+              onChange={selectedIds => {
+                setSelectedSubItemGroupIds(selectedIds)
+                updateForm('sub_item_group_id', selectedIds.at(-1) ?? '')
+              }}
+            />
             <Field label="FMS Group" required>
               <SelectNative value={form.fms_group} onChange={value => updateForm('fms_group', value)}>
                 <option value="">Select FMS group</option>

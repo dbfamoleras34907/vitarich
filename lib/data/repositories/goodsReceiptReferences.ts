@@ -64,6 +64,7 @@ export type GoodsReceiptItemGroup = {
   id: number
   code: string
   name: string
+  father: number | null
 }
 
 export type GoodsReceiptExistingBatch = {
@@ -298,7 +299,7 @@ export async function getGoodsReceiptReferences() {
       .order('code'),
     db
       .from('item_groups')
-      .select('id, code, name')
+      .select('id, code, name, father')
       .eq('void', '1')
       .order('code'),
     db
@@ -370,7 +371,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .order('code'),
     db
       .from('item_groups')
-      .select('id, code, name')
+      .select('id, code, name, father')
       .eq('void', '1')
       .order('code'),
     db

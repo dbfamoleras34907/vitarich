@@ -28,14 +28,16 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const id = Number(body.id)
+    const actionId = typeof body.actionId === 'string' ? body.actionId.trim() : ''
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const remarks = typeof body.remarks === 'string' ? body.remarks.trim() : ''
 
     if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid item group ID.')
+    if (!actionId) throw new Error('Invalid action ID.')
     if (!code || !name) throw new Error('Code and name are required.')
 
-    const data = await updateItemGroupForAuthorizedUser(authData.user.id, id, {
+    const data = await updateItemGroupForAuthorizedUser(authData.user.id, id, actionId, {
       code,
       name,
       remarks: remarks || null,

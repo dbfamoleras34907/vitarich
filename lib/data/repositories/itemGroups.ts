@@ -13,6 +13,56 @@ export type ItemGroup = {
 
 export type NewSubItemGroup = Pick<ItemGroup, 'name' | 'remarks'>
 
+export const ITEM_GROUP_MAX_SUBGROUP_LEVELS = 5
+export const ITEM_GROUP_MAX_DEPTH = ITEM_GROUP_MAX_SUBGROUP_LEVELS + 1
+
+export function getItemGroupChildren(groups: ItemGroup[], fatherId: number) {
+  return groups.filter(group =>
+    group.id != null && group.father != null && Number(group.father) === fatherId,
+  )
+}
+
+export function getItemGroupDescendants(groups: ItemGroup[], rootId: number) {
+  const descendants: ItemGroup[] = []
+  const pendingParentIds = new Set([rootId])
+
+  for (let depth = 2; depth <= ITEM_GROUP_MAX_DEPTH; depth += 1) {
+    const level = groups.filter(group =>
+      group.id != null && group.father != null && pendingParentIds.has(Number(group.father)),
+    )
+    if (level.length === 0) break
+
+    descendants.push(...level)
+    pendingParentIds.clear()
+    level.forEach(group => pendingParentIds.add(Number(group.id)))
+  }
+
+  return descendants
+}
+
+export function getLeafItemGroups(groups: ItemGroup[], rootId: number) {
+  const descendants = getItemGroupDescendants(groups, rootId)
+  const activeParentIds = new Set(descendants.map(group => Number(group.father)))
+  return descendants.filter(group => group.id != null && !activeParentIds.has(Number(group.id)))
+}
+
+export function getItemGroupPath(groups: ItemGroup[], rootId: number, groupId: number) {
+  const byId = new Map(groups.flatMap(group => group.id == null ? [] : [[Number(group.id), group]]))
+  const path: ItemGroup[] = []
+  const visited = new Set<number>()
+  let currentId: number | null = groupId
+
+  while (currentId != null && currentId !== rootId && !visited.has(currentId)) {
+    visited.add(currentId)
+    const group = byId.get(currentId)
+    if (!group) return []
+    path.unshift(group)
+    currentId = group.father == null ? null : Number(group.father)
+  }
+
+  return currentId === rootId ? path : []
+}
+
 export async function getRootItemGroups() {
   const { data, error } = await db
     .from('item_groups')
@@ -86,7 +136,7 @@ export async function addSubItemGroup(fatherId: number, payload: NewSubItemGroup
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ fatherId, ...payload }),
+    body: JSON.stringify({ fatherId, actionId: crypto.randomUUID(), ...payload }),
   })
 
   const result = await response.json() as { data?: ItemGroup; error?: string }
@@ -113,7 +163,7 @@ export async function updateItemGroup(
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ id, ...payload }),
+    body: JSON.stringify({ id, actionId: crypto.randomUUID(), ...payload }),
   })
 
   const result = await response.json() as { data?: ItemGroup; error?: string }
@@ -125,12 +175,25 @@ export async function updateItemGroup(
 }
 
 export async function voidItemGroup(id: number) {
-  const { error } = await db
-    .from('item_groups')
-    .update({
-      void: '0',
-    })
-    .eq('id', id)
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
 
-  if (error) throw error
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
+
+  const response = await fetch('/api/a_dean/itemgroups/void', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id, actionId: crypto.randomUUID() }),
+  })
+
+  const result = await response.json() as { data?: ItemGroup; error?: string }
+  if (!response.ok || !result.data) {
+    throw new Error(result.error || 'Unable to void item group.')
+  }
+
+  return result.data
 }

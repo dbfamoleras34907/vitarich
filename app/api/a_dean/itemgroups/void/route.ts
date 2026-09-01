@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { admin_db } from '@/lib/Supabase/supabaseAdmin'
-import { addSubItemGroupForAuthorizedUser } from '@/lib/data/repositories/itemGroups.server'
+import { voidItemGroupForAuthorizedUser } from '@/lib/data/repositories/itemGroups.server'
 
 export const runtime = 'nodejs'
 
@@ -11,7 +11,7 @@ function getErrorMessage(error: unknown) {
     const message = error.message
     if (typeof message === 'string' && message) return message
   }
-  return 'Unable to add sub item group.'
+  return 'Unable to void item group.'
 }
 
 export async function POST(request: Request) {
@@ -27,25 +27,17 @@ export async function POST(request: Request) {
     if (!authData.user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
     const body = await request.json()
-    const fatherId = Number(body.fatherId)
+    const id = Number(body.id)
     const actionId = typeof body.actionId === 'string' ? body.actionId.trim() : ''
-    const name = typeof body.name === 'string' ? body.name.trim() : ''
-    const remarks = typeof body.remarks === 'string' ? body.remarks.trim() : ''
-
-    if (!Number.isInteger(fatherId) || fatherId <= 0) throw new Error('Invalid item group ID.')
+    if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid item group ID.')
     if (!actionId) throw new Error('Invalid action ID.')
-    if (!name) throw new Error('Name is required.')
 
-    const data = await addSubItemGroupForAuthorizedUser(authData.user.id, fatherId, actionId, {
-      name,
-      remarks: remarks || null,
-    })
-
+    const data = await voidItemGroupForAuthorizedUser(authData.user.id, id, actionId)
     return NextResponse.json({ data })
   } catch (error) {
     const message = getErrorMessage(error)
     return NextResponse.json(
-      { error: message === 'FORBIDDEN' ? 'You do not have permission to add sub item groups.' : message },
+      { error: message === 'FORBIDDEN' ? 'You do not have permission to void item groups.' : message },
       { status: message === 'FORBIDDEN' ? 403 : 400 },
     )
   }

@@ -49,6 +49,7 @@ type Props<T extends Record<string, unknown>> = {
   onCellsChange: (changes: ExcelCellChange<T>[]) => void
   onAddRow: () => void
   onDeleteRows: (rows: T[]) => void
+  enableRowActions: boolean
 }
 
 const ROW_HEADER_WIDTH = 38
@@ -110,6 +111,7 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
   onCellsChange,
   onAddRow,
   onDeleteRows,
+  enableRowActions,
 }: Props<T>) {
   const gridRef = useRef<HTMLDivElement | null>(null)
   const dragSelectingRef = useRef(false)
@@ -385,10 +387,10 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
   )
 
   return (
-    <div>
+    <div className="w-max min-w-full">
       <div
         ref={gridRef}
-        className="block w-full min-w-0 max-w-full overflow-auto outline-none"
+        className="block w-full overflow-visible outline-none"
         role="grid"
         aria-multiselectable="true"
         onKeyDown={handleGridKeyDown}
@@ -415,21 +417,23 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                 className="sticky left-0 top-0 z-40 h-7 border-b border-r bg-secondary px-1 text-center text-[10px] font-semibold text-muted-foreground"
                 scope="col"
               >
-                <input
-                  type="checkbox"
-                  aria-label="Select all visible rows"
-                  checked={allVisibleRowsSelected}
-                  onChange={() => {
-                    setSelectedRowIds(previous => {
-                      const next = new Set(previous)
-                      visibleRowIds.forEach(id => {
-                        if (allVisibleRowsSelected) next.delete(id)
-                        else next.add(id)
+                {enableRowActions ? (
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible rows"
+                    checked={allVisibleRowsSelected}
+                    onChange={() => {
+                      setSelectedRowIds(previous => {
+                        const next = new Set(previous)
+                        visibleRowIds.forEach(id => {
+                          if (allVisibleRowsSelected) next.delete(id)
+                          else next.add(id)
+                        })
+                        return next
                       })
-                      return next
-                    })
-                  }}
-                />
+                    }}
+                  />
+                ) : '#'}
               </th>
               {columns.map((column, columnIndex) => {
                 const key = String(column.key)
@@ -493,22 +497,24 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                     scope="row"
                     className="sticky left-0 z-20 h-7 border-b border-r bg-secondary/90 px-1 text-center text-[10px] font-medium text-muted-foreground"
                   >
-                    <label className="flex cursor-pointer items-center justify-center gap-1">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select row ${firstRowNumber + rowIndex}`}
-                        checked={rowSelected}
-                        onChange={() => {
-                          setSelectedRowIds(previous => {
-                            const next = new Set(previous)
-                            if (next.has(rowId)) next.delete(rowId)
-                            else next.add(rowId)
-                            return next
-                          })
-                        }}
-                      />
-                      <span>{firstRowNumber + rowIndex}</span>
-                    </label>
+                    {enableRowActions ? (
+                      <label className="flex cursor-pointer items-center justify-center gap-1">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select row ${firstRowNumber + rowIndex}`}
+                          checked={rowSelected}
+                          onChange={() => {
+                            setSelectedRowIds(previous => {
+                              const next = new Set(previous)
+                              if (next.has(rowId)) next.delete(rowId)
+                              else next.add(rowId)
+                              return next
+                            })
+                          }}
+                        />
+                        <span>{firstRowNumber + rowIndex}</span>
+                      </label>
+                    ) : firstRowNumber + rowIndex}
                   </th>
                   {columns.map((column, columnIndex) => {
                     const position = { row: rowIndex, column: columnIndex }
@@ -609,18 +615,19 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
         </table>
       </div>
 
-      <div className="flex min-h-10 flex-wrap items-center gap-2 border-t bg-secondary/40 px-2 py-1.5">
+      {enableRowActions && <div className="flex min-h-10 flex-wrap items-center gap-2 border-t bg-secondary/40 px-2 py-1.5">
         <button
           type="button"
+          disabled={loading}
           onClick={onAddRow}
-          className="inline-flex h-7 items-center gap-1 rounded border bg-background px-2 text-xs font-semibold text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/20"
+          className="inline-flex h-7 items-center gap-1 rounded border bg-background px-2 text-xs font-semibold text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Add row
         </button>
         <button
           type="button"
-          disabled={selectedRows.length === 0}
+          disabled={loading || selectedRows.length === 0}
           onClick={() => {
             onDeleteRows(selectedRows)
             setSelectedRowIds(new Set())
@@ -635,7 +642,7 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
         <span className="ml-auto text-[11px] text-muted-foreground">
           Double-click or type to edit · Ctrl+C / Ctrl+V to copy and paste
         </span>
-      </div>
+      </div>}
     </div>
   )
 }

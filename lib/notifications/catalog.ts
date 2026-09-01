@@ -51,6 +51,13 @@ export const notificationCatalog: NotificationCatalog = [
     baseUrl: "/a_dean/itemgroups",
     events: [
       {
+        key: NOTIFICATION_EVENT_KEYS.ITEM_GROUP.POSTED,
+        label: "Item Group Posted",
+        description: "Triggered after an Item Group or Sub Item Group is created.",
+        action: "posted",
+        farmRouting: "none",
+      },
+      {
         key: NOTIFICATION_EVENT_KEYS.ITEM_GROUP.EDITED,
         label: "Item Group Edited",
         description: "Triggered after an existing Item Group or Sub Item Group is edited.",
@@ -76,6 +83,13 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Item Master Data/view",
     baseUrl: "/a_dean/items",
     events: [
+      {
+        key: NOTIFICATION_EVENT_KEYS.ITEM_MASTER.POSTED,
+        label: "Item Created",
+        description: "Triggered after a new Item Master record is created.",
+        action: "posted",
+        farmRouting: "none",
+      },
       {
         key: NOTIFICATION_EVENT_KEYS.ITEM_MASTER.EDITED,
         label: "Item Edited",

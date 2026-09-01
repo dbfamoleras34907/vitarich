@@ -32,6 +32,7 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
+import { getItemGroupPath } from '@/lib/data/repositories/itemGroups'
 import {
   createGoodsReceiptNumber,
   getGoodsReceiptById,
@@ -538,11 +539,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   const getSubItemGroupDisplay = (line: GoodsReceiptLine) => {
-    const subItemGroupId = Number(getSelectedItem(line)?.sub_item_group_id ?? 0)
-    if (!subItemGroupId) return 'No sub group'
+    const item = getSelectedItem(line)
+    const subItemGroupId = Number(item?.sub_item_group_id ?? 0)
+    if (!item || !subItemGroupId) return 'No sub group'
 
-    const group = itemGroups.find(candidate => candidate.id === subItemGroupId)
-    return group ? `${group.code} - ${group.name}` : 'Sub group unavailable'
+    const rootGroupId = getItemGroupId(item)
+    if (!rootGroupId) return 'Sub group unavailable'
+
+    const path = getItemGroupPath(itemGroups, rootGroupId, subItemGroupId)
+    return path.length > 0
+      ? path.map(group => `${group.code} - ${group.name}`).join(' / ')
+      : 'Sub group unavailable'
   }
 
   const getBatchRuleForLine = (line: GoodsReceiptLine) => {
