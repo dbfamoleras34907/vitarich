@@ -9,8 +9,8 @@ import {
   ClipboardList,
   Eye,
   Loader2,
+  ListPlus,
   MapPin,
-  Plus,
   Printer,
   RefreshCw,
   Search,
@@ -82,7 +82,11 @@ export default function BreederDispatchTable() {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { void load(); router.prefetch("/jmb/breederdispatch/new"); }, [load, router]);
+  useEffect(() => {
+    void load();
+    router.prefetch("/jmb/breederdispatch/new");
+    router.prefetch("/jmb/breederdispatch/multiple");
+  }, [load, router]);
   useEffect(() => setValue("loading_g", loading || working), [loading, setValue, working]);
 
   const farms = useMemo(() => {
@@ -129,7 +133,9 @@ export default function BreederDispatchTable() {
               <div className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"><Bird className="size-5" /></div>
               <div><h1 className="text-xl font-semibold">Breeder dispatch</h1><p className="text-sm text-muted-foreground">Population Record and Egg Laying dispatch register</p></div>
             </div>
-            <Button onClick={() => router.push("/jmb/breederdispatch/new")}><Plus className="size-4" />New dispatch</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => router.push("/jmb/breederdispatch/multiple")}><ListPlus className="size-4" />New dispatch</Button>
+            </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <Stat icon={<ClipboardList className="size-3.5" />} label="Posted documents" value={posted.length} />
