@@ -7,46 +7,72 @@ export type ItemGroup = {
   remarks?: string
   void?: string
   father?: number | null
+  root_item_group_id?: number | null
+  subgroup_level?: number | null
   created_at?: string
   updated_at?: string | null
 }
 
 export type NewSubItemGroup = Pick<ItemGroup, 'name' | 'remarks'>
 
-export const ITEM_GROUP_MAX_SUBGROUP_LEVELS = 5
+export const ITEM_GROUP_MAX_SUBGROUP_LEVELS = 3
 export const ITEM_GROUP_MAX_DEPTH = ITEM_GROUP_MAX_SUBGROUP_LEVELS + 1
 
-export function getItemGroupChildren(groups: ItemGroup[], fatherId: number) {
+export function getItemGroupChildren(
+  groups: ItemGroup[],
+  parentId: number,
+) {
   return groups.filter(group =>
-    group.id != null && group.father != null && Number(group.father) === fatherId,
+    group.id != null && group.father != null && Number(group.father) === parentId,
   )
 }
 
-export function getItemGroupDescendants(groups: ItemGroup[], rootId: number) {
+export function getItemGroupDescendants(
+  groups: ItemGroup[],
+  rootId: number,
+) {
   const descendants: ItemGroup[] = []
   const pendingParentIds = new Set([rootId])
+  const includedIds = new Set<number>()
 
-  for (let depth = 2; depth <= ITEM_GROUP_MAX_DEPTH; depth += 1) {
-    const level = groups.filter(group =>
-      group.id != null && group.father != null && pendingParentIds.has(Number(group.father)),
-    )
+  for (let depth = 1; depth <= ITEM_GROUP_MAX_SUBGROUP_LEVELS; depth += 1) {
+    const levelIds = new Set<number>()
+    const level = Array.from(pendingParentIds).flatMap(parentId =>
+      getItemGroupChildren(groups, parentId),
+    ).filter(group => {
+      if (group.id == null) return false
+      const groupId = Number(group.id)
+      if (includedIds.has(groupId) || levelIds.has(groupId)) return false
+      levelIds.add(groupId)
+      return true
+    })
     if (level.length === 0) break
 
     descendants.push(...level)
     pendingParentIds.clear()
-    level.forEach(group => pendingParentIds.add(Number(group.id)))
+    level.forEach(group => {
+      includedIds.add(Number(group.id))
+      pendingParentIds.add(Number(group.id))
+    })
   }
 
   return descendants
 }
 
-export function getLeafItemGroups(groups: ItemGroup[], rootId: number) {
+export function getLeafItemGroups(
+  groups: ItemGroup[],
+  rootId: number,
+) {
   const descendants = getItemGroupDescendants(groups, rootId)
-  const activeParentIds = new Set(descendants.map(group => Number(group.father)))
-  return descendants.filter(group => group.id != null && !activeParentIds.has(Number(group.id)))
+  return descendants.filter(group => group.id != null &&
+    getItemGroupChildren(groups, Number(group.id)).length === 0)
 }
 
-export function getItemGroupPath(groups: ItemGroup[], rootId: number, groupId: number) {
+export function getItemGroupPath(
+  groups: ItemGroup[],
+  rootId: number,
+  groupId: number,
+) {
   const byId = new Map(groups.flatMap(group => group.id == null ? [] : [[Number(group.id), group]]))
   const path: ItemGroup[] = []
   const visited = new Set<number>()
@@ -123,7 +149,11 @@ export async function getSubItemGroups(fatherId?: number) {
   return (data || []) as ItemGroup[]
 }
 
-export async function addSubItemGroup(fatherId: number, payload: NewSubItemGroup) {
+export async function addSubItemGroup(
+  rootItemGroupId: number,
+  subgroupLevel: number,
+  payload: NewSubItemGroup,
+) {
   const { data: sessionData, error: sessionError } = await db.auth.getSession()
   if (sessionError) throw sessionError
 
@@ -136,7 +166,7 @@ export async function addSubItemGroup(fatherId: number, payload: NewSubItemGroup
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ fatherId, actionId: crypto.randomUUID(), ...payload }),
+    body: JSON.stringify({ rootItemGroupId, subgroupLevel, actionId: crypto.randomUUID(), ...payload }),
   })
 
   const result = await response.json() as { data?: ItemGroup; error?: string }

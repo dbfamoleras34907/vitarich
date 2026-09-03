@@ -3,6 +3,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Edit, FileSpreadsheet, FileUp, Loader2, Plus, RefreshCcw } from 'lucide-react'
@@ -19,7 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { addItem, getItemUomGroups, getRecentItems } from './api'
+import { getItemUomGroups, getRecentItems } from './api'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import DynamicTable from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -27,6 +28,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { getItemGroups, getSubItemGroups } from '../itemgroups/api'
 import { parseItemMasterImport, type ItemMasterImportRow } from './itemMasterImport'
 import { exportItemMasterTemplate } from './itemMasterTemplate'
+import { importItemMasterRows } from '@/lib/data/repositories/itemMasterImport'
 
 export default function Layout() {
   const router = useRouter()
@@ -41,6 +43,7 @@ export default function Layout() {
   const [importMessage, setImportMessage] = useState<string | null>(null)
   const [pendingImportRows, setPendingImportRows] = useState<ItemMasterImportRow[]>([])
   const [confirmImportOpen, setConfirmImportOpen] = useState(false)
+  const [skipExistingItems, setSkipExistingItems] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const columns: ColumnConfig[] = useMemo(
@@ -141,29 +144,23 @@ export default function Layout() {
     setImporting(true)
     setImportIssues([])
     setImportMessage(null)
-    let importedCount = 0
-
     try {
-      for (const row of rowsToImport) {
-        try {
-          await addItem(row.payload)
-          importedCount += 1
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : 'Unable to create the item.'
-          throw new Error(`Row ${row.rowNumber}: ${detail}`)
-        }
-      }
+      const { importedCount, skippedCount } = await importItemMasterRows(rowsToImport, {
+        skipExisting: skipExistingItems,
+      })
 
-      setImportMessage(`${importedCount} ${importedCount === 1 ? 'item was' : 'items were'} imported successfully.`)
+      setImportMessage([
+        `${importedCount} ${importedCount === 1 ? 'item was' : 'items were'} imported successfully.`,
+        skippedCount > 0
+          ? `${skippedCount} existing ${skippedCount === 1 ? 'item was' : 'items were'} skipped.`
+          : '',
+      ].filter(Boolean).join(' '))
       setPendingImportRows([])
+      setSkipExistingItems(false)
       await fetchData()
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'The import could not be completed.'
-      setImportIssues([
-        importedCount > 0
-          ? `${importedCount} ${importedCount === 1 ? 'item was' : 'items were'} created before the import stopped. ${detail}`
-          : detail,
-      ])
+      setImportIssues([`No items were created. The entire import was rolled back. ${detail}`])
       await fetchData()
     } finally {
       setImporting(false)
@@ -245,13 +242,17 @@ export default function Layout() {
             key: col.key,
             label: col.label,
             align: col.key === 'action' ? 'right' : 'left',
+            editable: false,
 
             render: (row: RowDataKey) => {
               if (col.key === 'action') {
                 return (
-                  <div className="flex  gap-2">
+                  <div className="flex justify-end">
                     <Button
+                      type="button"
+                      size="sm"
                       variant="outline"
+                      className="h-6 px-2 text-[11px]"
                       disabled={!canEdit}
                       onClick={() => {
                         router.push(
@@ -259,7 +260,7 @@ export default function Layout() {
                         )
                       }}
                     >
-                    <Edit/>  Edit
+                      <Edit className="size-3" /> Edit
                     </Button>
                   </div>
                 )
@@ -282,6 +283,10 @@ export default function Layout() {
           }))}
 
           data={rows}
+          rowKey="id"
+          ExcelTable
+          excelRowActions={false}
+          frozenColumns={0}
         />
       )}
 
@@ -290,8 +295,21 @@ export default function Layout() {
           <AlertDialogHeader>
             <AlertDialogTitle>Import {pendingImportRows.length} new {pendingImportRows.length === 1 ? 'item' : 'items'}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The workbook passed validation. Item Codes will be generated from each selected Item Group. This import creates new records and does not edit existing items.
+              The workbook passed validation. Item Codes will be generated from each selected Item Group. The complete workbook is saved as one transaction: if any row fails, no items are created. Existing items are not edited.
             </AlertDialogDescription>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={skipExistingItems}
+                onCheckedChange={checked => setSkipExistingItems(checked === true)}
+              />
+              <span>
+                <span className="block font-medium">Skip already existing items</span>
+                <span className="block text-xs text-muted-foreground">
+                  Skip a row when the same Item Name already exists in the selected Item Group. Existing records are not updated.
+                </span>
+              </span>
+            </label>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={importing}>Cancel</AlertDialogCancel>

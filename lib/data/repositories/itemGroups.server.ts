@@ -9,7 +9,19 @@ type ItemGroupUpdatePayload = {
 
 type ItemGroupInsertPayload = Pick<ItemGroupUpdatePayload, 'name' | 'remarks'>
 
-const ITEM_GROUP_MAX_DEPTH = 6
+type SavedItemGroupChild = {
+  id: number
+  code: string
+  name: string
+  remarks: string | null
+  void: string
+  father: number
+  root_item_group_id: number
+  subgroup_level: number
+  created_at: string
+  updated_at: string | null
+  was_created: boolean
+}
 
 async function requireItemGroupAccess(
   authId: string,
@@ -93,77 +105,25 @@ export async function updateItemGroupForAuthorizedUser(
 
 export async function addSubItemGroupForAuthorizedUser(
   authId: string,
-  fatherId: number,
+  rootItemGroupId: number,
+  subgroupLevel: number,
   actionId: string,
   payload: ItemGroupInsertPayload,
 ) {
   await requireItemGroupAccess(authId, 'insert')
 
-  const { data: groups, error: groupsError } = await admin_db
-    .from('item_groups')
-    .select('id, father, void')
-
-  if (groupsError) throw groupsError
-
-  const byId = new Map((groups ?? []).map(group => [Number(group.id), group]))
-  const parent = byId.get(fatherId)
-  if (!parent || String(parent.void).trim() !== '1') {
-    throw new Error('The parent item group must be active.')
-  }
-
-  let depth = 1
-  let current = parent
-  const visited = new Set<number>()
-  while (current.father != null) {
-    const currentId = Number(current.id)
-    if (visited.has(currentId)) throw new Error('The item group hierarchy contains a cycle.')
-    visited.add(currentId)
-    depth += 1
-    const next = byId.get(Number(current.father))
-    if (!next) throw new Error('The item group hierarchy is incomplete.')
-    current = next
-  }
-
-  if (depth >= ITEM_GROUP_MAX_DEPTH) {
-    throw new Error('Item groups are limited to 5 sub item group levels below the root Item Group.')
-  }
-
-  const { count: assignedItemCount, error: assignedItemError } = await admin_db
-    .from('items')
-    .select('id', { count: 'exact', head: true })
-    .eq('sub_item_group_id', fatherId)
-    .eq('void', '1')
-
-  if (assignedItemError) throw assignedItemError
-  if ((assignedItemCount ?? 0) > 0) {
-    throw new Error('Move or void the active items assigned to this group before adding a child.')
-  }
-
-  const temporaryCode = `PENDING-${crypto.randomUUID()}`
-  const { data: inserted, error: insertError } = await admin_db
-    .from('item_groups')
-    .insert({
-      code: temporaryCode,
-      name: payload.name,
-      remarks: payload.remarks,
-      father: fatherId,
-      void: '1',
-    })
-    .select('id')
-    .single()
-
-  if (insertError) throw insertError
-
-  const { data, error } = await admin_db
-    .from('item_groups')
-    .update({ code: String(inserted.id) })
-    .eq('id', inserted.id)
-    .select('id, code, name, remarks, void, father, created_at, updated_at')
-    .single()
+  const { data: savedRows, error } = await admin_db.rpc('save_item_group_catalog_entry', {
+    p_root_item_group_id: rootItemGroupId,
+    p_subgroup_level: subgroupLevel,
+    p_name: payload.name,
+    p_remarks: payload.remarks,
+  })
 
   if (error) throw error
+  const data = (Array.isArray(savedRows) ? savedRows[0] : savedRows) as SavedItemGroupChild | null
+  if (!data?.id) throw new Error('Unable to save the sub item group relationship.')
 
-  await enqueueNotificationEventAfterCommit({
+  if (data.was_created) await enqueueNotificationEventAfterCommit({
     moduleKey: 'ITEM_GROUP',
     eventKey: 'ITEM_GROUP_POSTED',
     entityType: 'item_groups',
@@ -176,8 +136,15 @@ export async function addSubItemGroupForAuthorizedUser(
     title: 'Item Group posted',
     message: 'Item Group {document_no} was posted by {initiator_name}.',
     dedupeKey: `ITEM_GROUP_POSTED:${data.id}`,
-    metadata: { code: data.code, name: data.name, father: data.father, actionId },
-  }).catch(error => console.error('Unable to enqueue Item Group post event:', error))
+    metadata: {
+      code: data.code,
+      name: data.name,
+      father: data.father,
+      rootItemGroupId: data.root_item_group_id,
+      subgroupLevel: data.subgroup_level,
+      actionId,
+    },
+  }).catch(error => console.error('Unable to enqueue Item Group save event:', error))
 
   return data
 }
@@ -195,52 +162,41 @@ export async function voidItemGroupForAuthorizedUser(authId: string, id: number,
   if (!target) throw new Error('The item group was not found.')
   if (String(target.void).trim() !== '1') return target
 
-  const [{ count: childCount, error: childError }, { count: itemCount, error: itemError }] = await Promise.all([
-    admin_db
-      .from('item_groups')
-      .select('id', { count: 'exact', head: true })
-      .eq('father', id)
-      .eq('void', '1'),
-    admin_db
-      .from('items')
-      .select('id', { count: 'exact', head: true })
-      .eq('sub_item_group_id', id)
-      .eq('void', '1'),
-  ])
+  const { count: itemCount, error: itemError } = await admin_db
+    .from('items')
+    .select('id', { count: 'exact', head: true })
+    .or(`sub_item_group_level_1_id.eq.${id},sub_item_group_level_2_id.eq.${id},sub_item_group_level_3_id.eq.${id}`)
+    .eq('void', '1')
 
-  if (childError) throw childError
   if (itemError) throw itemError
-  if ((childCount ?? 0) > 0) throw new Error('Void or move the active child groups first.')
   if ((itemCount ?? 0) > 0) throw new Error('Move or void the active items assigned to this group first.')
 
   const { data, error } = await admin_db
     .from('item_groups')
     .update({ void: '0' })
     .eq('id', id)
-    .eq('void', '1')
     .select('id, code, name, remarks, void, father, created_at, updated_at')
-    .maybeSingle()
+    .single()
 
   if (error) throw error
-  const result = data ?? target
+  if (String(data.void).trim() === '1') throw new Error('The item group was not voided.')
+  const result = data
 
-  if (data) {
-    await enqueueNotificationEventAfterCommit({
-      moduleKey: 'ITEM_GROUP',
-      eventKey: 'ITEM_GROUP_VOIDED',
-      entityType: 'item_groups',
-      entityId: result.id,
-      documentNo: result.code,
-      actorAuthId: authId,
-      targetUrl: '/a_dean/itemgroups',
-      permissionGroup: 'Menus',
-      permissionTitle: 'Item Group/view',
-      title: 'Item Group voided',
-      message: 'Item Group {document_no} was voided by {initiator_name}.',
-      dedupeKey: `ITEM_GROUP_VOIDED:${result.id}`,
-      metadata: { code: result.code, name: result.name, father: result.father, actionId },
-    }).catch(error => console.error('Unable to enqueue Item Group void event:', error))
-  }
+  await enqueueNotificationEventAfterCommit({
+    moduleKey: 'ITEM_GROUP',
+    eventKey: 'ITEM_GROUP_VOIDED',
+    entityType: 'item_groups',
+    entityId: result.id,
+    documentNo: result.code,
+    actorAuthId: authId,
+    targetUrl: '/a_dean/itemgroups',
+    permissionGroup: 'Menus',
+    permissionTitle: 'Item Group/view',
+    title: 'Item Group voided',
+    message: 'Item Group {document_no} was voided by {initiator_name}.',
+    dedupeKey: `ITEM_GROUP_VOIDED:${result.id}`,
+    metadata: { code: result.code, name: result.name, father: result.father, actionId },
+  }).catch(error => console.error('Unable to enqueue Item Group void event:', error))
 
   return result
 }

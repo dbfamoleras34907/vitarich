@@ -66,6 +66,7 @@ export default function ItemGroupsLayout() {
 
     try {
       await voidItemGroup(row.id)
+      setRows(current => current.filter(item => Number(item.id) !== Number(row.id)))
       toast('Item group voided successfully')
       await fetchData()
     } catch (error) {

@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { usePermission } from '@/hooks/usePermission'
 import { getItemById, getItemUomGroups, itemHasInventoryMovement, ItemInsert, ItemRow, ItemUomGroup, updateItem } from '../api'
-import { getItemGroupChildren, getItemGroupPath, getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
+import { getItemGroupPath, getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
 import SubItemGroupCascade from '../SubItemGroupCascade'
 
 type ItemForm = {
@@ -97,7 +97,11 @@ const toForm = (item: ItemRow): ItemForm => ({
   max_on_hand: item.max_on_hand == null ? '' : String(item.max_on_hand),
 })
 
-const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert => ({
+const toPayload = (
+  form: ItemForm,
+  selectedSubItemGroupIds: string[],
+  selectedUomGroup?: ItemUomGroup,
+): ItemInsert => ({
   item_code: form.item_code,
   item_name: form.item_name,
   description: form.description,
@@ -106,6 +110,9 @@ const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert 
   inventory_uom: form.uom_group_code,
   item_group: form.item_group,
   sub_item_group_id: form.sub_item_group_id ? Number(form.sub_item_group_id) : null,
+  sub_item_group_level_1_id: selectedSubItemGroupIds[0] ? Number(selectedSubItemGroupIds[0]) : null,
+  sub_item_group_level_2_id: selectedSubItemGroupIds[1] ? Number(selectedSubItemGroupIds[1]) : null,
+  sub_item_group_level_3_id: selectedSubItemGroupIds[2] ? Number(selectedSubItemGroupIds[2]) : null,
   fms_group: form.fms_group,
   group: form.item_group,
   is_inventory_item: form.is_inventory_item,
@@ -185,14 +192,22 @@ export default function EditItemPage() {
 
         const nextForm = toForm(itemRow)
         const rootGroup = (groups || []).find(group => group.code === nextForm.item_group)
-        const selectedPath = rootGroup?.id && nextForm.sub_item_group_id
-          ? getItemGroupPath(subGroups || [], Number(rootGroup.id), Number(nextForm.sub_item_group_id))
-          : []
-        const selectedLeaf = selectedPath.at(-1)
-        const selectedSubGroupIsValid = Boolean(
-          selectedLeaf?.id && getItemGroupChildren(subGroups || [], Number(selectedLeaf.id)).length === 0,
-        )
-        if (!selectedSubGroupIsValid) nextForm.sub_item_group_id = ''
+        const storedPathIds = [
+          itemRow.sub_item_group_level_1_id,
+          itemRow.sub_item_group_level_2_id,
+          itemRow.sub_item_group_level_3_id,
+        ].filter((value): value is number => value != null)
+        const selectedPath = storedPathIds.length > 0
+          ? storedPathIds.flatMap(pathId => {
+              const group = (subGroups || []).find(candidate => Number(candidate.id) === Number(pathId))
+              return group ? [group] : []
+            })
+          : rootGroup?.id && nextForm.sub_item_group_id
+            ? getItemGroupPath(subGroups || [], Number(rootGroup.id), Number(nextForm.sub_item_group_id))
+            : []
+        const selectedSubGroupIsValid = selectedPath.length === storedPathIds.length ||
+          (storedPathIds.length === 0 && selectedPath.length > 0)
+        if (nextForm.sub_item_group_id && !selectedSubGroupIsValid) nextForm.sub_item_group_id = ''
 
         setForm(nextForm)
         setSelectedSubItemGroupIds(selectedSubGroupIsValid
@@ -237,14 +252,6 @@ export default function EditItemPage() {
       return false
     }
 
-    if (form.sub_item_group_id) {
-      const selectedSubItemGroup = subItemGroups.find(group => String(group.id) === form.sub_item_group_id)
-      if (!selectedSubItemGroup?.id || getItemGroupChildren(subItemGroups, Number(selectedSubItemGroup.id)).length > 0) {
-        setMessage('Continue selecting Sub Item Groups until you reach a leaf group, or clear Sub Group Level 1.')
-        return false
-      }
-    }
-
     if (form.manage_batch_numbers && form.batch_management_method === 'NONE') {
       setMessage('Choose a batch management method.')
       return false
@@ -276,7 +283,7 @@ export default function EditItemPage() {
     if (!id || !form) return
     if (!validateForm()) return
 
-    setPendingPayload(toPayload(form, selectedUomGroup))
+    setPendingPayload(toPayload(form, selectedSubItemGroupIds, selectedUomGroup))
     setConfirmOpen(true)
   }
 

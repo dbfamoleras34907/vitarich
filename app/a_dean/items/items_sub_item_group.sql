@@ -1,71 +1,113 @@
 alter table public.items
-  add column if not exists sub_item_group_id bigint null;
+  add column if not exists sub_item_group_id bigint null,
+  add column if not exists sub_item_group_level_1_id bigint null,
+  add column if not exists sub_item_group_level_2_id bigint null,
+  add column if not exists sub_item_group_level_3_id bigint null;
 
 alter table public.items
-  drop constraint if exists items_sub_item_group_id_fkey;
+  drop constraint if exists items_sub_item_group_id_fkey,
+  drop constraint if exists items_sub_item_group_level_1_id_fkey,
+  drop constraint if exists items_sub_item_group_level_2_id_fkey,
+  drop constraint if exists items_sub_item_group_level_3_id_fkey;
 
 alter table public.items
-  add constraint items_sub_item_group_id_fkey
-  foreign key (sub_item_group_id)
-  references public.item_groups (id);
+  add constraint items_sub_item_group_id_fkey foreign key (sub_item_group_id) references public.item_groups (id),
+  add constraint items_sub_item_group_level_1_id_fkey foreign key (sub_item_group_level_1_id) references public.item_groups (id),
+  add constraint items_sub_item_group_level_2_id_fkey foreign key (sub_item_group_level_2_id) references public.item_groups (id),
+  add constraint items_sub_item_group_level_3_id_fkey foreign key (sub_item_group_level_3_id) references public.item_groups (id);
 
 create index if not exists items_sub_item_group_id_idx
   on public.items (sub_item_group_id);
+create index if not exists items_sub_item_group_level_1_id_idx on public.items (sub_item_group_level_1_id);
+create index if not exists items_sub_item_group_level_2_id_idx on public.items (sub_item_group_level_2_id);
+create index if not exists items_sub_item_group_level_3_id_idx on public.items (sub_item_group_level_3_id);
+
+with recursive lineage as (
+  select item.id as item_id, selected.id, selected.father, selected.subgroup_level
+  from public.items item
+  join public.item_groups selected on selected.id = item.sub_item_group_id
+  where item.sub_item_group_id is not null
+  union all
+  select lineage.item_id, parent.id, parent.father, parent.subgroup_level
+  from lineage
+  join public.item_groups parent on parent.id = lineage.father
+  where lineage.father is not null
+)
+update public.items item
+set sub_item_group_level_1_id = levels.level_1_id,
+    sub_item_group_level_2_id = levels.level_2_id,
+    sub_item_group_level_3_id = levels.level_3_id
+from (
+  select item_id,
+    max(id) filter (where subgroup_level = 1) as level_1_id,
+    max(id) filter (where subgroup_level = 2) as level_2_id,
+    max(id) filter (where subgroup_level = 3) as level_3_id
+  from lineage group by item_id
+) levels
+where item.id = levels.item_id
+  and item.sub_item_group_level_1_id is null;
 
 create or replace function public.validate_item_sub_item_group()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_root_id bigint;
+  v_deepest_id bigint := coalesce(
+    new.sub_item_group_level_3_id,
+    new.sub_item_group_level_2_id,
+    new.sub_item_group_level_1_id
+  );
 begin
-  if new.sub_item_group_id is null then
+  if new.sub_item_group_level_1_id is null then
+    if new.sub_item_group_level_2_id is not null or new.sub_item_group_level_3_id is not null
+       or new.sub_item_group_id is not null then
+      raise exception 'Sub Group Level 1 is required before a deeper level.';
+    end if;
     return new;
   end if;
-
-  -- Serialize Item assignment against adding a child or voiding the same
-  -- group so the leaf-only rule cannot be bypassed by concurrent requests.
-  perform 1
-  from public.item_groups selected
-  where selected.id = new.sub_item_group_id
-  for update;
-
-  if not exists (
-    with recursive lineage as (
-      select selected.id, selected.father, selected.code, selected.void::text as void, 1 as depth
-      from public.item_groups selected
-      where selected.id = new.sub_item_group_id
-
-      union all
-
-      select parent.id, parent.father, parent.code, parent.void::text, lineage.depth + 1
-      from public.item_groups parent
-      join lineage on parent.id = lineage.father
-      where lineage.depth < 6
-    )
-    select 1
-    from lineage root
-    where root.father is null
-      and upper(btrim(root.code)) = upper(btrim(coalesce(new.item_group, '')))
-      and not exists (
-        select 1 from lineage node
-        where btrim(coalesce(node.void, '0')) <> '1'
-      )
-      and not exists (
-        select 1 from public.item_groups child
-        where child.father = new.sub_item_group_id
-          and btrim(coalesce(child.void::text, '0')) = '1'
-      )
-  ) then
-    raise exception 'The selected sub item group must be an active leaf under item group %.', new.item_group;
+  if new.sub_item_group_level_2_id is null and new.sub_item_group_level_3_id is not null then
+    raise exception 'Sub Group Level 2 is required before Level 3.';
+  end if;
+  if new.sub_item_group_id is distinct from v_deepest_id then
+    raise exception 'sub_item_group_id must match the deepest selected Sub Group level.';
   end if;
 
+  select root.id into v_root_id
+  from public.item_groups root
+  where upper(btrim(root.code)) = upper(btrim(coalesce(new.item_group, '')))
+    and root.father is null and btrim(coalesce(root.void::text, '0')) = '1';
+  if v_root_id is null then raise exception 'The selected Item Group is not active.'; end if;
+
+  if not exists (
+    select 1 from public.item_groups level_1
+    where level_1.id = new.sub_item_group_level_1_id
+      and level_1.root_item_group_id = v_root_id and level_1.subgroup_level = 1
+      and btrim(coalesce(level_1.void::text, '0')) = '1'
+  ) then raise exception 'Sub Group Level 1 is not active under the selected Item Group.'; end if;
+
+  if new.sub_item_group_level_2_id is not null and not exists (
+    select 1 from public.item_groups level_2
+    where level_2.id = new.sub_item_group_level_2_id
+      and level_2.root_item_group_id = v_root_id and level_2.subgroup_level = 2
+      and btrim(coalesce(level_2.void::text, '0')) = '1'
+  ) then raise exception 'Sub Group Level 2 is not active under the selected Item Group.'; end if;
+
+  if new.sub_item_group_level_3_id is not null and not exists (
+    select 1 from public.item_groups level_3
+    where level_3.id = new.sub_item_group_level_3_id
+      and level_3.root_item_group_id = v_root_id and level_3.subgroup_level = 3
+      and btrim(coalesce(level_3.void::text, '0')) = '1'
+  ) then raise exception 'Sub Group Level 3 is not active under the selected Item Group.'; end if;
   return new;
 end;
 $$;
 
 drop trigger if exists items_validate_sub_item_group on public.items;
 create trigger items_validate_sub_item_group
-before insert or update of item_group, sub_item_group_id
+before insert or update of item_group, sub_item_group_id,
+  sub_item_group_level_1_id, sub_item_group_level_2_id, sub_item_group_level_3_id
 on public.items
 for each row
 execute function public.validate_item_sub_item_group();
@@ -104,7 +146,12 @@ begin
       'itemCode', new.item_code,
       'itemName', new.item_name,
       'itemGroup', new.item_group,
-      'subItemGroupId', new.sub_item_group_id
+      'subItemGroupId', new.sub_item_group_id,
+      'subItemGroupPath', jsonb_build_array(
+        new.sub_item_group_level_1_id,
+        new.sub_item_group_level_2_id,
+        new.sub_item_group_level_3_id
+      )
     ),
     'ITEM_MASTER_POSTED:' || new.id::text,
     now()
@@ -145,7 +192,9 @@ begin
   where changed.value is distinct from previous.value
     and changed.key = any(array[
       'item_code', 'item_name', 'description', 'barcode', 'unit_measure',
-      'inventory_uom', 'item_group', 'sub_item_group_id', 'fms_group', 'group',
+      'inventory_uom', 'item_group', 'sub_item_group_id',
+      'sub_item_group_level_1_id', 'sub_item_group_level_2_id',
+      'sub_item_group_level_3_id', 'fms_group', 'group',
       'is_inventory_item', 'is_sales_item', 'is_purchase_item',
       'is_delivery_item', 'manage_batch_numbers', 'manage_serial_numbers',
       'batch_management_method', 'default_shelf_life_days',
@@ -174,6 +223,11 @@ begin
       'itemName', new.item_name,
       'itemGroup', new.item_group,
       'subItemGroupId', new.sub_item_group_id,
+      'subItemGroupPath', jsonb_build_array(
+        new.sub_item_group_level_1_id,
+        new.sub_item_group_level_2_id,
+        new.sub_item_group_level_3_id
+      ),
       'changedFields', to_jsonb(v_changed_fields)
     ),
     'ITEM_MASTER_EDITED:' || new.id::text || ':' || txid_current()::text,
@@ -189,7 +243,8 @@ drop trigger if exists items_enqueue_edited_event on public.items;
 create trigger items_enqueue_edited_event
 after update of
   item_code, item_name, description, barcode, unit_measure, inventory_uom,
-  item_group, sub_item_group_id, fms_group, "group", is_inventory_item,
+  item_group, sub_item_group_id, sub_item_group_level_1_id,
+  sub_item_group_level_2_id, sub_item_group_level_3_id, fms_group, "group", is_inventory_item,
   is_sales_item, is_purchase_item, is_delivery_item, manage_batch_numbers,
   manage_serial_numbers, batch_management_method, default_shelf_life_days,
   default_expiration_months, default_expiry_required, allow_negative_batch_stock,

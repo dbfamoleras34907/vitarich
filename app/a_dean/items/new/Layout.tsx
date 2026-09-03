@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { usePermission } from '@/hooks/usePermission'
 import { addItem, getItemUomGroups, getNextItemCode, ItemInsert, ItemUomGroup } from '../api'
-import { getItemGroupChildren, getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
+import { getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
 import SubItemGroupCascade from '../SubItemGroupCascade'
 
 type ItemForm = {
@@ -103,7 +103,11 @@ const optionalQuantityValue = (value: string) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
-const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert => ({
+const toPayload = (
+  form: ItemForm,
+  selectedSubItemGroupIds: string[],
+  selectedUomGroup?: ItemUomGroup,
+): ItemInsert => ({
   item_name: form.item_name,
   description: form.description,
   barcode: form.barcode,
@@ -111,6 +115,9 @@ const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert 
   inventory_uom: form.uom_group_code,
   item_group: form.item_group,
   sub_item_group_id: form.sub_item_group_id ? Number(form.sub_item_group_id) : null,
+  sub_item_group_level_1_id: selectedSubItemGroupIds[0] ? Number(selectedSubItemGroupIds[0]) : null,
+  sub_item_group_level_2_id: selectedSubItemGroupIds[1] ? Number(selectedSubItemGroupIds[1]) : null,
+  sub_item_group_level_3_id: selectedSubItemGroupIds[2] ? Number(selectedSubItemGroupIds[2]) : null,
   fms_group: form.fms_group,
   group: form.item_group,
   is_inventory_item: form.is_inventory_item,
@@ -228,14 +235,6 @@ export default function AddItemPage() {
       return false
     }
 
-    if (form.sub_item_group_id) {
-      const selectedSubItemGroup = subItemGroups.find(group => String(group.id) === form.sub_item_group_id)
-      if (!selectedSubItemGroup?.id || getItemGroupChildren(subItemGroups, Number(selectedSubItemGroup.id)).length > 0) {
-        setMessage('Continue selecting Sub Item Groups until you reach a leaf group, or clear Sub Group Level 1.')
-        return false
-      }
-    }
-
     if (form.manage_batch_numbers && form.batch_management_method === 'NONE') {
       setMessage('Choose a batch management method.')
       return false
@@ -265,7 +264,7 @@ export default function AddItemPage() {
   function prepareSave(mode: SaveMode = 'createAnother') {
     if (!validateForm()) return
 
-    setPendingPayload(toPayload(form, selectedUomGroup))
+    setPendingPayload(toPayload(form, selectedSubItemGroupIds, selectedUomGroup))
     setPendingSaveMode(mode)
     setConfirmOpen(true)
   }

@@ -3,7 +3,6 @@
 import { Label } from '@/components/ui/label'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import {
-  getItemGroupChildren,
   ITEM_GROUP_MAX_SUBGROUP_LEVELS,
   type ItemGroup,
 } from '../itemgroups/api'
@@ -29,19 +28,23 @@ export default function SubItemGroupCascade({
   if (!rootGroupId) return null
 
   const fields: React.ReactNode[] = []
-  let parentId = rootGroupId
 
   for (const levelIndex of Array.from({ length: ITEM_GROUP_MAX_SUBGROUP_LEVELS }, (_, index) => index)) {
-    const children = getItemGroupChildren(groups, parentId)
-    if (children.length === 0) break
+    if (levelIndex > 0 && !selectedIds[levelIndex - 1]) break
+    const level = levelIndex + 1
+    const levelGroups = groups.filter(group =>
+      Number(group.root_item_group_id) === rootGroupId && Number(group.subgroup_level) === level,
+    )
+    if (levelGroups.length === 0) break
 
     const selectedId = selectedIds[levelIndex] ?? ''
-    const selectedGroup = children.find(group => String(group.id) === selectedId)
-    const selectedHasChildren = selectedGroup?.id != null &&
-      getItemGroupChildren(groups, Number(selectedGroup.id)).length > 0
+    const selectedGroup = levelGroups.find(group => String(group.id) === selectedId)
+    const nextLevelAvailable = groups.some(group =>
+      Number(group.root_item_group_id) === rootGroupId && Number(group.subgroup_level) === level + 1,
+    )
     const options: CascadeOption[] = [
       { id: '', label: levelIndex === 0 ? 'No sub item group' : 'Clear this level' },
-      ...children.map(group => ({
+      ...levelGroups.map(group => ({
         id: String(group.id),
         label: `${group.code} - ${group.name}`,
       })),
@@ -52,7 +55,7 @@ export default function SubItemGroupCascade({
         <div className="flex items-center justify-between gap-2">
           <Label>Sub Group Level {levelIndex + 1}</Label>
           <span className="text-xs text-stone-400">
-            {selectedGroup ? (selectedHasChildren ? `Continue to Level ${levelIndex + 2}` : 'Leaf group') : 'Optional'}
+            {selectedGroup ? (nextLevelAvailable ? `Optional: continue to Level ${levelIndex + 2}` : 'Selected') : 'Optional'}
           </span>
         </div>
         <SearchableDropdown
@@ -71,9 +74,6 @@ export default function SubItemGroupCascade({
         />
       </div>,
     )
-
-    if (!selectedGroup?.id) break
-    parentId = Number(selectedGroup.id)
   }
 
   return <div className="contents">{fields}</div>

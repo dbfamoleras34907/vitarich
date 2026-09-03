@@ -32,7 +32,6 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
-import { getItemGroupPath } from '@/lib/data/repositories/itemGroups'
 import {
   createGoodsReceiptNumber,
   getGoodsReceiptById,
@@ -543,10 +542,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const subItemGroupId = Number(item?.sub_item_group_id ?? 0)
     if (!item || !subItemGroupId) return 'No sub group'
 
-    const rootGroupId = getItemGroupId(item)
-    if (!rootGroupId) return 'Sub group unavailable'
-
-    const path = getItemGroupPath(itemGroups, rootGroupId, subItemGroupId)
+    const pathIds = [
+      item.sub_item_group_level_1_id,
+      item.sub_item_group_level_2_id,
+      item.sub_item_group_level_3_id,
+    ].filter((value): value is number => value != null)
+    const path = pathIds.flatMap(pathId => {
+      const group = itemGroups.find(candidate => Number(candidate.id) === Number(pathId))
+      return group ? [group] : []
+    })
     return path.length > 0
       ? path.map(group => `${group.code} - ${group.name}`).join(' / ')
       : 'Sub group unavailable'

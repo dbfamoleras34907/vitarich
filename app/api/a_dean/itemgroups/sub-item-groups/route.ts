@@ -27,16 +27,20 @@ export async function POST(request: Request) {
     if (!authData.user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
     const body = await request.json()
-    const fatherId = Number(body.fatherId)
+    const rootItemGroupId = Number(body.rootItemGroupId)
+    const subgroupLevel = Number(body.subgroupLevel)
     const actionId = typeof body.actionId === 'string' ? body.actionId.trim() : ''
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const remarks = typeof body.remarks === 'string' ? body.remarks.trim() : ''
 
-    if (!Number.isInteger(fatherId) || fatherId <= 0) throw new Error('Invalid item group ID.')
+    if (!Number.isInteger(rootItemGroupId) || rootItemGroupId <= 0) throw new Error('Invalid item group ID.')
+    if (!Number.isInteger(subgroupLevel) || subgroupLevel < 1 || subgroupLevel > 3) {
+      throw new Error('Sub Group Level must be 1, 2, or 3.')
+    }
     if (!actionId) throw new Error('Invalid action ID.')
     if (!name) throw new Error('Name is required.')
 
-    const data = await addSubItemGroupForAuthorizedUser(authData.user.id, fatherId, actionId, {
+    const data = await addSubItemGroupForAuthorizedUser(authData.user.id, rootItemGroupId, subgroupLevel, actionId, {
       name,
       remarks: remarks || null,
     })

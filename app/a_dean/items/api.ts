@@ -10,6 +10,9 @@ export type ItemInsert = {
   inventory_uom?: string
   item_group?: string
   sub_item_group_id?: number | null
+  sub_item_group_level_1_id?: number | null
+  sub_item_group_level_2_id?: number | null
+  sub_item_group_level_3_id?: number | null
   fms_group?: string
   group?: string
   is_inventory_item?: boolean
@@ -44,6 +47,9 @@ export type ItemRow = Required<Pick<ItemInsert, 'item_code'>> & {
   inventory_uom: string | null
   item_group: string | null
   sub_item_group_id: number | null
+  sub_item_group_level_1_id: number | null
+  sub_item_group_level_2_id: number | null
+  sub_item_group_level_3_id: number | null
   fms_group: string | null
   group: string | null
   is_inventory_item: boolean
@@ -146,6 +152,9 @@ const cleanItemPayload = (payload: ItemInsert, itemCode: string) => {
     inventory_uom: payload.inventory_uom?.trim() || payload.unit_measure?.trim() || 'pcs',
     item_group: payload.item_group?.trim() || null,
     sub_item_group_id: payload.sub_item_group_id ?? null,
+    sub_item_group_level_1_id: payload.sub_item_group_level_1_id ?? null,
+    sub_item_group_level_2_id: payload.sub_item_group_level_2_id ?? null,
+    sub_item_group_level_3_id: payload.sub_item_group_level_3_id ?? null,
     fms_group: payload.fms_group?.trim() || null,
     group: payload.group?.trim() || payload.item_group?.trim() || null,
     is_inventory_item: payload.is_inventory_item ?? true,

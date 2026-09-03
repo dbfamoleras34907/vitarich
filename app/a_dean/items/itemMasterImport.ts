@@ -1,9 +1,5 @@
 import type { ItemInsert, ItemUomGroup } from './api'
-import {
-  getItemGroupChildren,
-  ITEM_GROUP_MAX_SUBGROUP_LEVELS,
-  type ItemGroup,
-} from '../itemgroups/api'
+import { ITEM_GROUP_MAX_SUBGROUP_LEVELS, type ItemGroup } from '../itemgroups/api'
 
 export type ItemMasterImportRow = {
   rowNumber: number
@@ -14,8 +10,6 @@ const SUB_ITEM_GROUP_HEADERS = [
   'Sub Group Level 1',
   'Sub Group Level 2',
   'Sub Group Level 3',
-  'Sub Group Level 4',
-  'Sub Group Level 5',
 ] as const
 
 if (SUB_ITEM_GROUP_HEADERS.length !== ITEM_GROUP_MAX_SUBGROUP_LEVELS) {
@@ -54,7 +48,7 @@ type ItemMasterImportReferences = {
   uomGroups: ItemUomGroup[]
 }
 
-const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase()
+const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const textValue = (value: unknown) => String(value ?? '').trim()
 const normalizedCode = (value: unknown) => normalize(value).replace(/\s+-\s+.*$/, '')
 
@@ -115,8 +109,9 @@ export function parseItemMasterImport(
       normalize(group.code) === normalizedCode(rawItemGroup) ||
       normalize(`${group.code} - ${group.name}`) === normalize(rawItemGroup),
     )
-    let parentId = itemGroup?.id == null ? null : Number(itemGroup.id)
+    const rootItemGroupId = itemGroup?.id == null ? null : Number(itemGroup.id)
     let subItemGroup: ItemGroup | undefined
+    const selectedSubItemGroupIds: number[] = []
     let hierarchyInvalid = false
 
     rawSubItemGroups.forEach((rawSubItemGroup, levelIndex) => {
@@ -127,33 +122,31 @@ export function parseItemMasterImport(
         }
         return
       }
-      if (hierarchyInvalid || parentId == null) return
+      if (hierarchyInvalid || rootItemGroupId == null) return
 
-      const availableChildren = getItemGroupChildren(references.subItemGroups, parentId)
-      const matchedGroup = availableChildren.find(group =>
+      const availableGroups = references.subItemGroups.filter(group =>
+        Number(group.root_item_group_id) === rootItemGroupId &&
+        Number(group.subgroup_level) === levelIndex + 1,
+      )
+      const matchedGroup = availableGroups.find(group =>
         normalize(group.code) === normalizedCode(rawSubItemGroup) ||
+        normalize(group.name) === normalize(rawSubItemGroup) ||
+        normalize(group.remarks) === normalize(rawSubItemGroup) ||
         normalize(`${group.code} - ${group.name}`) === normalize(rawSubItemGroup),
       )
       if (!matchedGroup?.id) {
-        issues.push(`Row ${rowNumber}: Sub Group Level ${levelIndex + 1} is not active under the previously selected group.`)
+        issues.push(`Row ${rowNumber}: Sub Group Level ${levelIndex + 1} does not match an active Category Segment, Category Description, or ID under the selected Item Group.`)
         hierarchyInvalid = true
-        parentId = null
         return
       }
 
       subItemGroup = matchedGroup
-      parentId = Number(matchedGroup.id)
+      selectedSubItemGroupIds[levelIndex] = Number(matchedGroup.id)
     })
 
     if (!itemName) issues.push(`Row ${rowNumber}: Item Name is required.`)
     if (!uomGroup) issues.push(`Row ${rowNumber}: UoM Group is not active or valid.`)
     if (!itemGroup) issues.push(`Row ${rowNumber}: Item Group is not active or valid.`)
-    if (
-      subItemGroup?.id &&
-      getItemGroupChildren(references.subItemGroups, Number(subItemGroup.id)).length > 0
-    ) {
-      issues.push(`Row ${rowNumber}: Continue the Sub Group selection until a leaf group is reached.`)
-    }
     if (!['broiler', 'breeder', 'hatchery'].includes(rawFmsGroup)) {
       issues.push(`Row ${rowNumber}: FMS Group must be Broiler, Breeder, or Hatchery.`)
     }
@@ -204,6 +197,9 @@ export function parseItemMasterImport(
         inventory_uom: uomGroup?.code || rawUomGroup,
         item_group: itemGroup?.code || rawItemGroup,
         sub_item_group_id: subItemGroup?.id == null ? null : Number(subItemGroup.id),
+        sub_item_group_level_1_id: selectedSubItemGroupIds[0] ?? null,
+        sub_item_group_level_2_id: selectedSubItemGroupIds[1] ?? null,
+        sub_item_group_level_3_id: selectedSubItemGroupIds[2] ?? null,
         fms_group: rawFmsGroup,
         group: itemGroup?.code || rawItemGroup,
         is_inventory_item: booleans['Inventory Item'] ?? true,

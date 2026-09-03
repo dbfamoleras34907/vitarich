@@ -387,16 +387,17 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
   )
 
   return (
-    <div className="w-max min-w-full">
-      <div
-        ref={gridRef}
-        className="block w-full overflow-visible outline-none"
-        role="grid"
-        aria-multiselectable="true"
-        onKeyDown={handleGridKeyDown}
-        onCopy={handleCopy}
-        onPaste={handlePaste}
-      >
+    <div className="w-full min-w-0 max-w-full">
+      <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+        <div
+          ref={gridRef}
+          className="block w-max min-w-full outline-none"
+          role="grid"
+          aria-multiselectable="true"
+          onKeyDown={handleGridKeyDown}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
+        >
         <table
           className="table-fixed border-collapse text-xs"
           style={{ minWidth: Math.max(640, tableWidth), width: tableWidth }}
@@ -613,6 +614,7 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {enableRowActions && <div className="flex min-h-10 flex-wrap items-center gap-2 border-t bg-secondary/40 px-2 py-1.5">
