@@ -604,6 +604,12 @@ The catalog declares `farmRouting: 'destination'`. Regular Admin and User recipi
 
 The Hatchery DOC Dispatch outbox metadata calculates committed line count and total quantity from `dispatch_doc_item`. These values populate the email template when Email is enabled on the winning rule.
 
+## Vaccination and Meds integration
+
+Vaccination and Meds registers `VACCINATION_MEDS_POSTED`, `VACCINATION_MEDS_EDITED`, and `VACCINATION_MEDS_VOIDED` with `document` farm routing. The authoritative `save_vnm_draft`, `save_and_post_vnm_document`, and `void_vnm_document` RPCs persist the business action and its outbox event in one database transaction. Posting also validates locked batch balances and inserts `VACCINATION_MEDS` OUT postings; voiding inserts matching `VACCINATION_MEDS_VOID` IN reversals.
+
+Every event copies the committed `vnm_documents.farm_id` to both `farm_id` and `recipient_farm_id`. The dispatcher requires a matching source document, FMS type, farm, action/version, and lifecycle state before recipient resolution; missing or mismatched data marks the event Invalid. Retry identity is `document ID + edit/post version` for Edit/Post and the document ID for the one-time Void transition. An unmatched or inactive rule safely produces no deliveries and does not change the saved document or its inventory result.
+
 ## Planned implementation order
 
 1. Create notification database tables, constraints, indexes, policies, and secured processing functions.

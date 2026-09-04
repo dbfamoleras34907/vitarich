@@ -100,6 +100,21 @@ export const notificationCatalog: NotificationCatalog = [
     ],
   },
   {
+    key: NOTIFICATION_MODULE_KEYS.VACCINATION_MEDS,
+    label: "Vaccination and Meds",
+    description: "Farm medication usage and its inventory issue lifecycle.",
+    fmsTypes: ["Broiler", "Breeder"],
+    defaultRecipientFmsTypes: ["Broiler", "Breeder"],
+    permissionGroup: "Animal Health",
+    permissionTitle: "Vaccination and Meds/view",
+    baseUrl: "/vnm",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.POSTED, label: "Document Posted", description: "Triggered after inventory is successfully issued for a Vaccination and Meds document.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.EDITED, label: "Draft Edited", description: "Triggered after an existing Vaccination and Meds draft is saved.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.VOIDED, label: "Document Voided", description: "Triggered once after a posted Vaccination and Meds document is voided and inventory is restored.", action: "voided", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.WORKSPACE_PROJECT,
     label: "Workspace Project",
     description: "Cross-FMS workspace projects and their lifecycle.",

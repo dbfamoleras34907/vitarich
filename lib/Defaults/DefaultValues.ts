@@ -14,6 +14,7 @@ import {
   ShoppingCartIcon,
   Wrench,
   Drumstick,
+  HeartPulse,
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
@@ -907,6 +908,48 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 5,
+    title: "Wellbeing",
+    url: "/vnm",
+    icon: HeartPulse,
+    fmsTypes: ["Broiler", "Breeder"],
+    items: [
+      {
+        group: "Animal Health",
+        children: [
+          {
+            id: 80,
+            type: "Module",
+            title: "Medicine",
+            url: "/vnm",
+            newDocumentUrl: "/vnm/new",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
+            approval: false,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 81,
+            type: "Module",
+            title: "Medicine Settings",
+            url: "/vnm/settings",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
           },
         ],
       },

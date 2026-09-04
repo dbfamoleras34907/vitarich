@@ -433,6 +433,53 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'VACCINATION_MEDS'
+            and v_event.event_key in ('VACCINATION_MEDS_POSTED', 'VACCINATION_MEDS_EDITED', 'VACCINATION_MEDS_VOIDED') then
+        if v_event.entity_id !~ '^[0-9]+$' then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Vaccination and Meds source ID is invalid.'
+          where id = v_event.id;
+          continue;
+        end if;
+
+        if v_event.farm_id is null or v_event.recipient_farm_id is null then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Vaccination and Meds document farm is missing.'
+          where id = v_event.id;
+          continue;
+        end if;
+
+        select exists (
+          select 1
+          from public.vnm_documents document
+          join public.farms farm on farm.id = document.farm_id
+          where document.id = v_event.entity_id::bigint
+            and document.farm_id = v_event.farm_id
+            and document.farm_id = v_event.recipient_farm_id
+            and document.fms_type = v_event.fms_type
+            and (
+              (v_event.event_key = 'VACCINATION_MEDS_EDITED'
+                and coalesce((v_event.metadata ->> 'editVersion')::integer, -1) between 1 and document.edit_version)
+              or (v_event.event_key = 'VACCINATION_MEDS_POSTED'
+                and document.status in ('Posted', 'Void')
+                and document.posted_at is not null
+                and document.posting_version = v_event.posting_version)
+              or (v_event.event_key = 'VACCINATION_MEDS_VOIDED'
+                and document.status = 'Void'
+                and document.voided_at is not null
+                and document.posting_version = v_event.posting_version)
+            )
+        ) into v_source_valid;
+
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Vaccination and Meds source does not match the recorded event version and farm.'
+          where id = v_event.id;
+          continue;
+        end if;
       end if;
 
       with initiator_profile as (
