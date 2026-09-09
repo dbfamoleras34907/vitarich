@@ -24,9 +24,11 @@ import {
   createGradingBatch,
   getGradingById,
   getGradingPlacementById,
+  listGradingHistoryByFarm,
   listGradingPlacements,
   updateGrading,
   type Grading,
+  type GradingFarmHistory,
   type GradingInsert,
   type GradingPlacement,
 } from "./api";
@@ -61,11 +63,27 @@ function optionalNumber(value: string) {
   return value === "" ? null : asNumber(value);
 }
 
+function formatNumber(value: string | number | null | undefined) {
+  const parsed = asNumber(value);
+  return parsed ? parsed.toLocaleString("en-US") : "";
+}
+
 function cleanDecimal(raw: string) {
   if (raw === "") return "";
   const cleaned = raw.replace(/[^0-9.]/g, "");
   const parts = cleaned.split(".");
   return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join("")}` : cleaned;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
 }
 
 function getFarmKey(placement: GradingPlacement) {
@@ -87,8 +105,9 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
   return elapsedDays < 0 ? 0 : elapsedDays + 1;
 }
 
-function getWeekNumber(days: number) {
-  return days > 0 ? Math.ceil(days / 7) : 0;
+function formatWeeksDays(days: number) {
+  if (days <= 0) return "0.0";
+  return `${Math.floor(days / 7)}.${days % 7}`;
 }
 
 function createInitialForm(): FormState {
@@ -137,6 +156,7 @@ export default function GradingForm() {
   const [selectedBuildingNo, setSelectedBuildingNo] = useState("");
   const [selectedPlacement, setSelectedPlacement] =
     useState<GradingPlacement | null>(null);
+  const [history, setHistory] = useState<GradingFarmHistory[]>([]);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -144,7 +164,7 @@ export default function GradingForm() {
   const ageDays = selectedPlacement
     ? getAgeInDays(selectedPlacement.placement_date, form.daterec)
     : 0;
-  const weekNumber = getWeekNumber(ageDays);
+  const weekNumber = formatWeeksDays(ageDays);
   const farmOptions = useMemo(() => {
     const values = new Map<string, string>();
     placements.forEach((placement) => {
@@ -289,6 +309,33 @@ export default function GradingForm() {
       }
     })();
   }, [idParam, router]);
+
+  useEffect(() => {
+    if (
+      (!selectedPlacement?.farm_id && !selectedPlacement?.farm_name) ||
+      !selectedBuildingNo
+    ) {
+      setHistory([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const rows = await listGradingHistoryByFarm({
+          farmId: selectedPlacement.farm_id ?? null,
+          farmName: selectedPlacement.farm_name ?? null,
+          buildingNo: selectedBuildingNo,
+        });
+        setHistory(rows);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to load history.");
+      }
+    })();
+  }, [
+    selectedBuildingNo,
+    selectedPlacement?.farm_id,
+    selectedPlacement?.farm_name,
+  ]);
 
   function handleRowChange(
     placementId: string,
@@ -446,15 +493,12 @@ export default function GradingForm() {
                     ["Age (Days)", String(ageDays)],
                     ["Farm", selectedPlacement?.farm_name ?? ""],
                     ["Building", selectedPlacement?.building_no ?? ""],
-                    ["Pen", selectedPlacement?.pen_no ?? ""],
-                    ["Week #", String(weekNumber)],
+                    ["Week #", weekNumber],
                   ].map(([label, value]) => (
                     <div
                       key={label}
                       className={
-                        label === "Farm" ||
-                        label === "Building" ||
-                        label === "Pen"
+                        label === "Farm" || label === "Building"
                           ? "rounded-md border border-emerald-200 bg-emerald-50 p-3"
                           : "rounded-md border border-slate-200 bg-slate-50 p-3"
                       }
@@ -567,6 +611,101 @@ export default function GradingForm() {
               cancelPath="/jmb/growing"
               onSave={onSave}
             />
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium">Grading History</h3>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPlacement?.farm_name && selectedBuildingNo
+                    ? `Showing recent transactions for ${selectedPlacement.farm_name} / ${selectedBuildingNo}.`
+                    : "Select a farm and building to show history."}
+                </p>
+              </div>
+
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[980px] text-sm">
+                  <thead className="bg-green-50">
+                    <tr className="border-b">
+                      <th className="px-3 py-2 text-left font-medium">
+                        Record Date
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">Farm</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Building
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">Pen</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Age
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Week #
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Old Qty
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female New Qty
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Old Qty
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male New Qty
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Remarks
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.length ? (
+                      history.map((row) => (
+                        <tr key={row.id} className="border-b last:border-0">
+                          <td className="px-3 py-2">
+                            {formatDate(row.record_date)}
+                          </td>
+                          <td className="px-3 py-2">{row.farm ?? ""}</td>
+                          <td className="px-3 py-2">{row.building ?? ""}</td>
+                          <td className="px-3 py-2">{row.pen ?? ""}</td>
+                          <td className="px-3 py-2 text-right">
+                            {formatNumber(row.age)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {row.week_no ?? formatWeeksDays(Number(row.age ?? 0))}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatNumber(row.female_qty_old)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatNumber(row.female_qty_new)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatNumber(row.male_qty_old)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatNumber(row.male_qty_new)}
+                          </td>
+                          <td className="max-w-70 truncate px-3 py-2">
+                            {row.remarks ?? ""}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={11}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          No grading history found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

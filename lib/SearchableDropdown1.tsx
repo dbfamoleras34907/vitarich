@@ -19,7 +19,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Check, Search } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Props<T> = {
   list: T[];
@@ -32,9 +33,11 @@ type Props<T> = {
   placeholder?: string;
   width?: number;
   disabled?: boolean;
+  triggerClassName?: string;
+  clearable?: boolean;
 };
 
-export default function SearchableDropdown<T extends Record<string, any>>({
+export default function SearchableDropdown<T extends Record<string, unknown>>({
   list,
   codeLabel,
   nameLabel,
@@ -43,8 +46,10 @@ export default function SearchableDropdown<T extends Record<string, any>>({
   showNameOnly = false,
   width = 400,
   disabled = false,
+  triggerClassName,
   onChange,
   multiple = false,
+  clearable = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -122,8 +127,12 @@ export default function SearchableDropdown<T extends Record<string, any>>({
         <PopoverTrigger asChild>
           <TooltipTrigger asChild>
             <Button
+              data-slot="searchable-dropdown-trigger"
               disabled={disabled}
-              className="bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50"
+              className={cn(
+                "h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary bg-white text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-muted-foreground disabled:opacity-100 dark:bg-input/30 dark:disabled:bg-input/20",
+                triggerClassName,
+              )}
             >
               <span className="truncate flex items-center gap-2">
                 {!value || value.length === 0 ? (
@@ -152,6 +161,19 @@ export default function SearchableDropdown<T extends Record<string, any>>({
           <CommandEmpty>No results found.</CommandEmpty>
 
           <CommandGroup>
+            {clearable && value.length > 0 ? (
+              <CommandItem
+                onSelect={() => {
+                  onChange([]);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className="flex items-center gap-2 px-4 text-muted-foreground"
+              >
+                <X size={16} />
+                Clear selection
+              </CommandItem>
+            ) : null}
             {filtered.map((item, idx) => {
               const val = String(item[codeLabel]);
               const isSelected = value.includes(val);

@@ -2,7 +2,7 @@
 
 
 "use client";
-import React, { useEffect, useState } from "react"; // Added useState
+import React, { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom"; // Added createPortal
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ type ModalProps = {
   description?: string;
   children?: React.ReactNode;
   className?: string;
+  overlayClassName?: string;
+  overlayZIndex?: number;
 };
 
 export function Modal({
@@ -23,10 +25,14 @@ export function Modal({
   description,
   children,
   className,
+  overlayClassName,
+  overlayZIndex,
 }: ModalProps) {
-  // 1. Handle Hydration (Next.js needs this for Portals)
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
 
   const overlayRef = React.useRef<HTMLDivElement>(null);
 
@@ -55,7 +61,14 @@ export function Modal({
       onClick={(e) => {
         if (e.target === overlayRef.current) onOpenChange?.(false);
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4",
+        overlayClassName
+      )}
+      style={{
+        pointerEvents: "auto",
+        ...(overlayZIndex == null ? {} : { zIndex: overlayZIndex }),
+      }}
     >
       <div
         className={cn(

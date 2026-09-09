@@ -12,12 +12,13 @@ import { format } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { parse } from 'path'
 import { getProjectById } from './api'
 import { saveProject, SaveProjectPayload } from '../new/api'
-import { Modal } from '@/lib/Moda'
 import NewProjectTask from './NewProjectTask'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getWorkspaceTaskStatuses, getWorkspaceTasksByProject, type WorkspaceTask, type WorkspaceTaskStatus } from '@/lib/data/repositories/workspace'
+import { toast } from 'sonner'
+import { usePermission } from '@/hooks/usePermission'
+import ProjectTaskBoard from './ProjectTaskBoard'
 
 export default function Layout() {
   const { setValue, getValue } = useGlobalContext();
@@ -26,6 +27,10 @@ export default function Layout() {
   const { id } = useParams()
   const [modalOpen, setmodalOpen] = useState(false)
   const [formValues, setFormValues] = useState<Partial<SaveProjectPayload>>({})
+  const [projectTasks, setProjectTasks] = useState<WorkspaceTask[]>([])
+  const [taskStatuses, setTaskStatuses] = useState<WorkspaceTaskStatus[]>([])
+  const editDenied = usePermission('/wks/projects/edit')
+  const taskInsertDenied = usePermission('/wks/tasks/insert')
   const components = [
     { name: "project_name", label: "Project Name", type: "text", required: true, placeholder: "Enter project name" },
     { name: "description", label: "Description", type: "text", required: false, placeholder: "Enter project description" },
@@ -76,8 +81,11 @@ export default function Layout() {
 
   const getActiveUsers = async () => {
     try {
-      const data = await getValue("activeUsers");
-      setactiveUsers(data);
+      const data = getValue("activeUsers");
+      setactiveUsers((Array.isArray(data) ? data : []).map((user: { code: string | number; name: string }) => ({
+        code: String(user.code),
+        name: String(user.name),
+      })))
     } catch (error) {
       console.error("Error fetching active users:", error);
     }
@@ -85,16 +93,17 @@ export default function Layout() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    setIsLoading(true)
     if (
       !formValues.project_name ||
       !formValues.start_date ||
       !formValues.end_date ||
       !formValues.project_type
     ) {
-      console.error("Missing required fields")
+      toast.error("Please fill all required fields")
       return
     }
+
+    setIsLoading(true)
 
     const payload: SaveProjectPayload = {
       id: parseInt(id as string) || null,
@@ -102,16 +111,16 @@ export default function Layout() {
       description: formValues.description,
       start_date: formValues.start_date,
       end_date: formValues.end_date,
-      project_manager: formValues.project_manager,
+      project_manager: formValues.project_manager ? Number(formValues.project_manager) : null,
       project_type: formValues.project_type,
-      project_members: formValues.project_members ?? []
+      project_members: (formValues.project_members ?? []).map(Number)
     }
-    console.log({ payload })
     try {
-      const id = await saveProject(payload)
-      console.log("Saved project:", id)
+      await saveProject(payload)
+      toast.success("Project updated successfully")
     } catch (err) {
       console.error(err)
+      toast.error("Failed to update project")
     }
     setIsLoading(false)
   }
@@ -121,11 +130,14 @@ export default function Layout() {
     setIsLoading(true)
     try {
       const data = await getProjectById(Number(id))
+      if (!data.start_date || !data.end_date || !data.project_type) {
+        throw new Error('Project data is incomplete')
+      }
 
       setFormValues({
         id: data.id,
         project_name: data.project_name,
-        description: data.description,
+        description: data.description ?? undefined,
         start_date: new Date(data.start_date),
         end_date: new Date(data.end_date),
         project_manager: data.project_manager,
@@ -138,8 +150,29 @@ export default function Layout() {
     setIsLoading(false)
   }
 
+  const loadProjectTasks = async () => {
+    if (!id) return
+    try {
+      setProjectTasks(await getWorkspaceTasksByProject(Number(id)))
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load project tasks')
+    }
+  }
+
+  const loadTaskStatuses = async () => {
+    try {
+      setTaskStatuses(await getWorkspaceTaskStatuses())
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load task workflow')
+    }
+  }
+
   useEffect(() => {
     loadProject()
+    loadProjectTasks()
+    loadTaskStatuses()
   }, [id])
 
   useEffect(() => {
@@ -166,7 +199,7 @@ export default function Layout() {
               type="button"
               variant={"secondary"}
               onClick={() => setmodalOpen(true)}
-              disabled={isLoading}
+              disabled={isLoading || taskInsertDenied}
             >
               New Task
             </Button>
@@ -174,7 +207,7 @@ export default function Layout() {
 
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || editDenied}
             >
               Save
             </Button>
@@ -310,18 +343,32 @@ export default function Layout() {
               </button>
             </div>
 
-            <NewProjectTask projectId={id as string} />
+            <NewProjectTask
+              projectId={id as string}
+              onClose={() => setmodalOpen(false)}
+              onCreated={() => loadProjectTasks()}
+            />
 
           </div>
         </div>
       )}
 
 
-      {/* <NewProjectTask projectId={id as string} />  update */}
-      {/* /task list */}
-      <div>
-            // task list here
-      </div>
+      <Card className="mt-4 shadow-none">
+        <div className="border-b px-4 py-3">
+          <h2 className="font-semibold">Project Tasks</h2>
+          <p className="text-sm text-muted-foreground">
+            {projectTasks.length} task{projectTasks.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div className="p-3">
+          {taskStatuses.length > 0 ? (
+            <ProjectTaskBoard tasks={projectTasks} statuses={taskStatuses} onTasksChange={setProjectTasks} />
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">Apply Workspace task workflow settings to enable the board.</p>
+          )}
+        </div>
+      </Card>
     </div >
   )
 }

@@ -1,68 +1,125 @@
+export const runtime = "nodejs"
+
+import { NextResponse } from "next/server"
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
-import { db } from "@/lib/Supabase/supabaseClient"
 import { decryptValue } from "@/lib/decrypt"
 
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status })
+}
+
+async function findAuthUserIdByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+
+  // Prefer the application profile because it gives us the auth id directly.
+  const { data: profile, error: profileError } = await admin_db
+    .from("users")
+    .select("auth_id")
+    .ilike("email", normalizedEmail)
+    .limit(1)
+    .maybeSingle()
+
+  if (profileError) throw profileError
+  if (profile?.auth_id) return profile.auth_id
+
+  // Older accounts may exist in Supabase Auth without a complete public.users profile.
+  const perPage = 1000
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await admin_db.auth.admin.listUsers({ page, perPage })
+    if (error) throw error
+
+    const match = data.users.find(
+      (user) => user.email?.trim().toLowerCase() === normalizedEmail
+    )
+    if (match) return match.id
+    if (data.users.length < perPage) return null
+  }
+}
+
 export async function POST(req: Request) {
+  try {
+    const authorization = req.headers.get("authorization")
+    const accessToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length).trim()
+      : ""
 
-  const { requestId, approvedBy } = await req.json()
+    if (!accessToken) return errorResponse("Your session has expired. Please sign in again.", 401)
 
-  /* get approval request */
-  const { data: request, error } = await db
-    .from("approval_requests")
-    .select("*")
-    .eq("id", requestId)
-    .single()
+    const { data: authData, error: authError } = await admin_db.auth.getUser(accessToken)
+    if (authError || !authData.user) {
+      return errorResponse("Your session has expired. Please sign in again.", 401)
+    }
 
-  if (error) throw error
-  if (!request) throw new Error("Request not found")
-
-  /* PASSWORD RESET APPROVAL */
-  if (request.request_type === "password_reset") {
-
-    const password = decryptValue(request.value_encrypted)
-
-    const { data: userRow, error: userError } = await db
+    const { data: approver, error: approverError } = await admin_db
       .from("users")
-      .select("auth_id")
-      .eq("email", request.user_email)
+      .select("id, issuper")
+      .eq("auth_id", authData.user.id)
       .single()
 
-    if (userError) throw userError
-    if (!userRow) throw new Error("User not found")
+    if (approverError || !approver) return errorResponse("Approver profile not found.", 403)
 
-    const authId = userRow.auth_id
+    const isApprovalAdmin = ["1", "true", "t", "yes"].includes(
+      String(approver.issuper ?? "").toLowerCase()
+    )
+    if (!isApprovalAdmin) return errorResponse("You are not authorized to approve password resets.", 403)
 
-    await admin_db.auth.admin.updateUserById(authId, {
-      password
+    const body = await req.json()
+    const requestId = Number(body.requestId)
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      return errorResponse("Invalid approval request id.", 400)
+    }
+
+    const { data: request, error: requestError } = await admin_db
+      .from("approval_requests")
+      .select("id, request_type, status, user_email, value_encrypted")
+      .eq("id", requestId)
+      .single()
+
+    if (requestError || !request) return errorResponse("Approval request not found.", 404)
+    if (request.request_type !== "password_reset") {
+      return errorResponse("This endpoint only approves password reset requests.", 400)
+    }
+    if (request.status !== "pending") {
+      return errorResponse(`This request is already ${request.status}.`, 409)
+    }
+    if (!request.user_email || !request.value_encrypted) {
+      return errorResponse("The password reset request is incomplete.", 400)
+    }
+
+    const password = decryptValue(request.value_encrypted)
+    if (!password) {
+      return errorResponse("The requested password could not be decrypted.", 400)
+    }
+
+    const targetAuthId = await findAuthUserIdByEmail(request.user_email)
+    if (!targetAuthId) {
+      return errorResponse(
+        `No Supabase Auth login account exists for ${request.user_email.trim()}.`,
+        404
+      )
+    }
+
+    const { error: passwordError } = await admin_db.auth.admin.updateUserById(targetAuthId, {
+      password,
     })
+    if (passwordError) return errorResponse(passwordError.message, 400)
+
+    const { error: updateError } = await admin_db
+      .from("approval_requests")
+      .update({
+        status: "approved",
+        approved_by: approver.id,
+        approved_at: new Date().toISOString(),
+      })
+      .eq("id", requestId)
+      .eq("status", "pending")
+
+    if (updateError) return errorResponse(updateError.message, 400)
+
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unable to approve password reset request."
+    console.error("Password reset approval error:", error)
+    return errorResponse(message, 500)
   }
-
-  /* USER ACTIVATION APPROVAL */
-  // if (request.request_type === "user_activation") {
-
-  //   const email = request.value_encrypted
-
-  //   const { error: activateError } = await db
-  //     .from("users")
-  //     .update({
-  //       isactive: '1'
-  //     })
-  //     .eq("email", email)
-
-  //   if (activateError) throw activateError
-  // }
-
-  /* update approval request */
-  const { error: updateError } = await db
-    .from("approval_requests")
-    .update({
-      status: "approved",
-      approved_by: approvedBy,
-      approved_at: new Date()
-    })
-    .eq("id", requestId)
-
-  if (updateError) throw updateError
-
-  return Response.json({ success: true })
 }

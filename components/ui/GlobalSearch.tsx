@@ -1,6 +1,6 @@
 'use client'
 import { Button } from "@/components/ui/button"
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CommandDialog,
@@ -11,32 +11,201 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
-import { Search, FileText, Package, Settings, ArrowUp, ArrowDown, CornerDownLeft, Smartphone } from "lucide-react"
+import { Search, Settings, ArrowUp, ArrowDown, CornerDownLeft, ExternalLink } from "lucide-react"
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
+import { getModuleIcon } from '@/lib/sidebar/moduleIcons'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { Modal } from "@/lib/Moda"
-import GlobalFarmUserSettings, { getAllowedFarms } from "./GlobalFarmUserSettings"
+import GlobalFarmUserSettings from "./GlobalFarmUserSettings"
 import { Kbd } from "./kbd"
 
 interface collapsed {
   collapsed: boolean
 }
 
-export default function GlobalSearch({ collapsed }: collapsed) {
-  const [open, setOpen] = useState(false)
-  const [selectedFilter, setSelectedFilter] = useState("All")
-  const navtype = ["All", "Settings", "Navigation"]
-  // internal modal state example
-  const [farmModalOpen, setFarmModalOpen] = useState(false)
+type NavCommandChild = {
+  id?: number | string
+  title: string
+  url: string
+  type?: string
+  insert?: boolean
+  newDocumentUrl?: string
+  hideFromNavigation?: boolean
+}
 
+type NavCommandGroup = {
+  group: string
+  children: NavCommandChild[]
+}
+
+type NavCommandFolder = {
+  id: number | string
+  title: string
+  items?: NavCommandGroup[]
+}
+
+type RankedSearchItem =
+  | {
+      kind: "settings"
+      key: string
+      title: string
+      description: string
+      group: string
+      score: number
+      order: number
+      icon: typeof Settings
+      action: () => void
+    }
+  | {
+      kind: "navigation"
+      key: string
+      title: string
+      description: string
+      type?: string
+      url: string
+      score: number
+      order: number
+    }
+
+const normalizeSearchText = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+
+const fuzzyScore = (text: string, token: string) => {
+  let tokenIndex = 0
+  let firstMatch = -1
+  let lastMatch = -1
+
+  for (let textIndex = 0; textIndex < text.length && tokenIndex < token.length; textIndex += 1) {
+    if (text[textIndex] === token[tokenIndex]) {
+      if (firstMatch === -1) firstMatch = textIndex
+      lastMatch = textIndex
+      tokenIndex += 1
+    }
+  }
+
+  if (tokenIndex < token.length || firstMatch === -1) return 0
+
+  const spread = lastMatch - firstMatch + 1
+  return Math.max(8, 48 - spread - firstMatch)
+}
+
+const tokenScore = (text: string, token: string) => {
+  if (!text || !token) return 0
+
+  if (text === token) return 420
+  if (text.startsWith(token)) return 360 - Math.min(text.length - token.length, 40)
+
+  const words = text.split(" ")
+  let best = 0
+
+  words.forEach((word, index) => {
+    if (word === token) {
+      best = Math.max(best, 340 - index * 8)
+      return
+    }
+
+    if (word.startsWith(token)) {
+      best = Math.max(best, 300 - index * 8 - Math.min(word.length - token.length, 30))
+      return
+    }
+
+    const wordIndex = word.indexOf(token)
+    if (wordIndex > -1) {
+      best = Math.max(best, 180 - index * 6 - wordIndex)
+    }
+  })
+
+  const textIndex = text.indexOf(token)
+  if (textIndex > -1) best = Math.max(best, 130 - Math.min(textIndex, 80))
+
+  return Math.max(best, fuzzyScore(text, token))
+}
+
+const scoreText = (text: string, search: string) => {
+  const normalizedText = normalizeSearchText(text)
+  const normalizedSearch = normalizeSearchText(search)
+
+  if (!normalizedSearch) return 1
+  if (!normalizedText) return 0
+
+  if (normalizedText === normalizedSearch) return 2000
+  if (normalizedText.startsWith(normalizedSearch)) return 1600
+  if (normalizedText.includes(normalizedSearch)) return 1200 - normalizedText.indexOf(normalizedSearch)
+
+  const tokens = normalizedSearch.split(" ")
+  let total = 0
+
+  for (const token of tokens) {
+    const score = tokenScore(normalizedText, token)
+    if (score === 0) return 0
+    total += score
+  }
+
+  return total / tokens.length
+}
+
+const globalSearchFilter = (value: string, search: string, keywords?: string[]) => {
+  const keywordText = keywords?.join(" ") ?? ""
+  const titleScore = scoreText(value, search)
+  const combinedScore = scoreText(`${value} ${keywordText}`, search) * 0.65
+  const keywordScore = scoreText(keywordText, search) * 0.35
+
+  return Math.max(titleScore, combinedScore, keywordScore)
+}
+
+export default function GlobalSearch({ collapsed }: collapsed) {
   const router = useRouter()
   const { getValue } = useGlobalContext()
 
+  const [open, setOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedFilter, setSelectedFilter] = useState("All")
+  const resultsListRef = useRef<HTMLDivElement>(null)
+  const navtype = ["All", "Settings", "Navigation"]
+  const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
+
+  const rawPermissions = getValue("UserPermission")
+  const rawSession = getValue("UserInfoAuthSession")
+  const accessProfile = Array.isArray(rawSession) ? rawSession[0] : null
+  const userType = Number(accessProfile?.user_type ?? 3)
+  let userPermissions: Array<{
+    group_name: string
+    title: string
+    ilink?: string
+    is_visible: boolean
+  }> = []
+
+  try {
+    userPermissions = typeof rawPermissions === "string"
+      ? JSON.parse(rawPermissions)
+      : rawPermissions || []
+  } catch {
+    userPermissions = []
+  }
+
   const filteredFolders = filterNavFolders(
     NavFolders,
-    getValue("UserPermission") || []
-  )
+    userPermissions,
+    accessProfile,
+  ).map(folder => ({
+    ...folder,
+    items: folder.items?.map(group => ({
+      ...group,
+      children: group.children.filter(child => !child.hideFromNavigation),
+    })).filter(group => group.children.length > 0),
+  })).filter(folder => Boolean(folder.items?.length)) as NavCommandFolder[]
+
+  const canInsertDocument = (child: NavCommandChild) =>
+    child.insert === true &&
+    Boolean(child.newDocumentUrl) &&
+    (userType === 1 || userPermissions.some(
+      (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
+    ))
 
   /**
    * INTERNAL COMMANDS
@@ -51,15 +220,81 @@ export default function GlobalSearch({ collapsed }: collapsed) {
           icon: Settings,
           action: () => setFarmModalOpen(true),
         },
+        {
+          title: "Approval",
+          description: "Manage approval templates, stages, approvers, and requests",
+          icon: Settings,
+          action: () => router.push("/admin/approval"),
+        },
       ],
     },
   ]
 
-  useEffect(() => {
-    if (getValue('DefaultFarmId') == null || getValue('DefaultFarmId') == undefined) setFarmModalOpen(true)
-  }, [getValue])
+  const isSearching = normalizeSearchText(searchQuery).length > 0
+  const canShowSettings = selectedFilter === "All" || selectedFilter === "Settings"
+  const canShowNavigation = selectedFilter === "All" || selectedFilter === "Navigation"
 
+  const rankedResults: RankedSearchItem[] = [
+    ...(canShowSettings
+      ? commands.flatMap((group, groupIndex) =>
+          group.items.map((cmd, itemIndex) => ({
+            kind: "settings" as const,
+            key: `${group.group}-${cmd.title}`,
+            title: cmd.title,
+            description: cmd.description,
+            group: group.group,
+            score: globalSearchFilter(cmd.title, searchQuery, [group.group, cmd.description]),
+            order: groupIndex * 1000 + itemIndex,
+            icon: cmd.icon,
+            action: cmd.action,
+          }))
+        )
+      : []),
+    ...(canShowNavigation
+      ? filteredFolders.flatMap((folder, folderIndex) =>
+          folder.items?.flatMap((group, groupIndex) =>
+            group.children.flatMap((child, childIndex) => {
+              const navigationItem: RankedSearchItem = {
+                kind: "navigation",
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-navigation`,
+                title: child.title,
+                description: `${folder.title} > ${group.group}`,
+                type: child.type,
+                url: child.url,
+                score: globalSearchFilter(child.title, searchQuery, [folder.title, group.group, child.type ?? ""]),
+                order: folderIndex * 10000 + groupIndex * 1000 + childIndex * 2,
+              }
 
+              if (!canInsertDocument(child)) return [navigationItem]
+
+              const newDocumentTitle = `${child.title} New Document`
+              const newDocumentItem: RankedSearchItem = {
+                kind: "navigation",
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-new-document`,
+                title: newDocumentTitle,
+                description: `${folder.title} > ${group.group} > New Document`,
+                type: child.type,
+                url: child.newDocumentUrl!,
+                score: globalSearchFilter(newDocumentTitle, searchQuery, [
+                  folder.title,
+                  group.group,
+                  child.type ?? "",
+                  "new insert create add",
+                ]),
+                order: folderIndex * 10000 + groupIndex * 1000 + childIndex * 2 + 1,
+              }
+
+              return [navigationItem, newDocumentItem]
+            })
+          ) ?? []
+        )
+      : []),
+  ]
+    .filter((item) => !isSearching || item.score > 0)
+    .sort((left, right) => {
+      if (!isSearching) return left.order - right.order
+      return right.score - left.score || left.order - right.order
+    })
 
   /**
    * Keyboard shortcut (CTRL+K / CMD+K)
@@ -76,28 +311,57 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     return () => document.removeEventListener("keydown", down)
   }, [])
 
+  useEffect(() => {
+    resultsListRef.current?.scrollTo({ top: 0 })
+  }, [searchQuery])
+
   const runCommand = (command: () => void) => {
     setOpen(false)
     command()
   }
+
+  const openInNewWindow = (url: string) => {
+    const newWindow = window.open(url, "_blank", "noopener,noreferrer")
+    if (newWindow) newWindow.opener = null
+    setOpen(false)
+  }
+
+  const openInNewWindowButton = (title: string, url: string) => (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+        openInNewWindow(url)
+      }}
+      className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100 md:group-data-[selected=true]/route:opacity-100"
+      aria-label={`Open ${title} in a new window`}
+      title="Open in new window"
+    >
+      <ExternalLink className="size-3.5" />
+    </button>
+  )
 
   return (
     <>
       {/* SEARCH BUTTON */}
       <Button
         type="button"
-        variant={"secondary"}
+        variant="ghost"
         onClick={() => setOpen(true)}
-        className={`mr-5 bg-muted relative h-9 w-48   gap-2 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50  : ""
-          }`}
+        className={`relative h-9 gap-2 rounded-xl border border-border/80 bg-card py-2 text-sm font-normal text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/40 ${collapsed ? "w-9 justify-center px-0" : "w-full justify-start px-3"}`}
+        aria-label="Open global search"
       >
         <Search className="h-4 w-4" />
 
         {!collapsed && (
           <>
-            <span className="flex-1 text-left">Search...</span>
+            <span className="flex-1 text-left">Search settings...</span>
 
-            <kbd className="pointer-events-none absolute right-1.5 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+            <kbd className="pointer-events-none absolute right-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted/70 px-1.5 font-mono text-[10px] font-medium opacity-80 sm:flex">
               <span className="text-xs">⌘</span>K
             </kbd>
           </>
@@ -105,25 +369,87 @@ export default function GlobalSearch({ collapsed }: collapsed) {
       </Button>
 
       {/* COMMAND DIALOG */}
-      <CommandDialog open={open} onOpenChange={setOpen} >
-        <CommandInput placeholder="Search modules, reports, or commands..." />
+      <CommandDialog open={open} onOpenChange={setOpen} filter={globalSearchFilter} shouldFilter={!isSearching}>
+        <CommandInput
+          placeholder="Search modules, reports, or commands..."
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+        />
         <div className="p-2 flex gap-2 text-center items-center pb-2 border-b">
           {navtype.map((filter) => (
             <Button
               key={filter}
               size={"xs"}
               variant={selectedFilter === filter ? "default" : "outline"}
-              className={`${selectedFilter === filter ? "bg-black hover:bg-black/70" : "bg-transparent"} h-6 px-2`}
+              className={`${selectedFilter === filter ? "" : "bg-transparent"} h-6 px-2`}
               onClick={() => setSelectedFilter(filter)}
             >
               {filter}
             </Button>
           ))}
         </div>
-        <CommandList className="max-h-100">
-          <CommandEmpty>No results found.</CommandEmpty>
+        <CommandList ref={resultsListRef} className="max-h-100">
+          {rankedResults.length === 0 && (
+            <div className="py-6 text-center text-sm">No results found.</div>
+          )}
 
-          {(selectedFilter === "All" || selectedFilter === "Settings") && (
+          {isSearching && rankedResults.length > 0 && (
+            <CommandGroup heading="Results">
+              {rankedResults.map((item) => {
+                if (item.kind === "settings") {
+                  const Icon = item.icon
+
+                  return (
+                    <CommandItem
+                      key={item.key}
+                      value={item.title}
+                      onSelect={() => runCommand(item.action)}
+                    >
+                      <Icon className="mr-2 h-4 w-4 text-green-500" />
+
+                      <div className="flex flex-col">
+                        <span>{item.title}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {item.description}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  )
+                }
+
+                const Icon = getModuleIcon(item.title, item.type)
+
+                return (
+                  <CommandItem
+                    key={item.key}
+                    value={item.title}
+                    className="group/route pr-10"
+                    onSelect={() => {
+                      if (item.url !== "#") {
+                        runCommand(() => router.push(item.url))
+                      }
+                    }}
+                  >
+                    <Icon className="mr-2 h-4 w-4 text-muted-foreground" />
+
+                    <div className="flex flex-col">
+                      <span>{item.title}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {item.description}
+                      </span>
+                    </div>
+                    {openInNewWindowButton(item.title, item.url)}
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          )}
+
+          {!isSearching && (
+            <>
+              <CommandEmpty>No results found.</CommandEmpty>
+
+          {canShowSettings && (
             commands.map((group) => (
               <React.Fragment key={group.group}>
                 <CommandGroup heading={group.group}>
@@ -133,7 +459,8 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                     return (
                       <CommandItem
                         key={cmd.title}
-                        value={`${group.group} ${cmd.title}`}
+                        value={cmd.title}
+                        keywords={[group.group, cmd.description]}
                         onSelect={() =>
                           runCommand(cmd.action)
                         }
@@ -158,14 +485,18 @@ export default function GlobalSearch({ collapsed }: collapsed) {
 
 
 
-          {(selectedFilter === "All" || selectedFilter === "Navigation") && filteredFolders.map((folder) => (
+          {canShowNavigation && filteredFolders.map((folder) => (
             <React.Fragment key={folder.id}>
               <CommandGroup heading={folder.title}>
-                {folder.items.map((group: any) =>
-                  group.children.map((child: any) => (
+                {folder.items?.map((group) =>
+                  group.children.flatMap((child) => {
+                    const Icon = getModuleIcon(child.title, child.type)
+                    const items = [(
                     <CommandItem
                       key={child.url + child.title}
-                      value={`${folder.title} ${child.title} ${group.group}`}
+                      value={child.title}
+                      keywords={[folder.title, group.group, child.type ?? ""]}
+                      className="group/route pr-10"
                       onSelect={() => {
                         if (child.url !== "#") {
                           runCommand(() =>
@@ -174,26 +505,51 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                         }
                       }}
                     >
-                      {child.type === "Module" ? (
-                        <Package className="mr-2 h-4 w-4 text-blue-500" />
-                      ) : (
-                        <FileText className="mr-2 h-4 w-4 text-orange-500" />
-                      )}
+                      <Icon className="mr-2 h-4 w-4 text-muted-foreground" />
 
                       <div className="flex flex-col">
                         <span>{child.title}</span>
                         <span className="text-[10px] text-muted-foreground">
-                          {folder.title} › {group.group}
+                          {folder.title} &gt; {group.group}
                         </span>
                       </div>
+                      {openInNewWindowButton(child.title, child.url)}
                     </CommandItem>
-                  ))
+                    )]
+
+                    if (canInsertDocument(child)) {
+                      const newDocumentTitle = `${child.title} New Document`
+                      items.push(
+                        <CommandItem
+                          key={`${child.newDocumentUrl}-${newDocumentTitle}`}
+                          value={newDocumentTitle}
+                          keywords={[folder.title, group.group, child.type ?? "", "new insert create add"]}
+                          className="group/route pr-10"
+                          onSelect={() => runCommand(() => router.push(child.newDocumentUrl!))}
+                        >
+                          <Icon className="mr-2 h-4 w-4 text-green-500" />
+
+                          <div className="flex flex-col">
+                            <span>{newDocumentTitle}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {folder.title} &gt; {group.group} &gt; New Document
+                            </span>
+                          </div>
+                          {openInNewWindowButton(newDocumentTitle, child.newDocumentUrl!)}
+                        </CommandItem>
+                      )
+                    }
+
+                    return items
+                  })
                 )}
               </CommandGroup>
 
               <CommandSeparator />
             </React.Fragment>
           ))}
+            </>
+          )}
 
         </CommandList>
         <div className="flex items-center border-t p-2 mt-auto gap-4 px-6">
@@ -238,7 +594,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
         </div>
         <Button
           onClick={() => setFarmModalOpen(false)}
-          className="bg-black text-white float-right mx-4 mb-3 hover:bg-black/70" size={"xs"}>Close</Button>
+          className="float-right mx-4 mb-3" size={"xs"}>Close</Button>
       </Modal>
     </>
   )

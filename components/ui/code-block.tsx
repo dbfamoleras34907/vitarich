@@ -48,7 +48,7 @@ export default function CodeBlock({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-2xl border bg-background',
+        'overflow-hidden rounded-md border bg-background',
         className
       )}
     >

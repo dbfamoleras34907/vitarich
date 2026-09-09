@@ -1,252 +1,1927 @@
 'use client'
 
-import DataTable from '@/components/DataTable'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  ArrowRightCircle,
+  CalendarDays,
+  FileSpreadsheet,
+  FileUp,
+  Hash,
+  List,
+  Loader2,
+  PackageCheck,
+  Plus,
+  Save,
+  Trash2,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import readXlsxFile from 'read-excel-file/browser'
+
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { FormTable, FormTableFooter } from '@/components/ui/form-table'
+import SearchableCombobox from '@/components/SearchableCombobox'
+import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
-import { getInventoriableModules, NavFolders } from '@/lib/Defaults/DefaultValues'
-import SearchableDropdown from '@/lib/SearchableDropdown'
-import { DataTableColumn, Items, Warehouse } from '@/lib/types'
-import { useRouter } from 'next/navigation'
-import React, { useEffect, useState } from 'react'
-import { upsertInventoryMapping } from './api'
-import { Plus } from 'lucide-react'
-import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
+import { useSidebar } from '@/lib/sidebar/SidebarProvider'
+import { Items, WarehouseData } from '@/lib/types'
+import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
+import {
+  createGoodsReceiptNumber,
+  getGoodsReceiptById,
+  GoodsReceipt,
+  GoodsReceiptLine,
+  saveGoodsReceipt,
+} from '../api'
+import {
+  findExistingItemBatch,
+  GoodsReceiptBatchRule,
+  GoodsReceiptBatchSeries,
+  GoodsReceiptExistingBatch,
+  GoodsReceiptPrefetchReferences,
+  getGoodsReceiptReferences,
+  GoodsReceiptFarm,
+  GoodsReceiptItemGroup,
+  UomConversionOption,
+  UomGroupOption,
+} from './api'
+import {
+  BatchTransactionTrail,
+  getBatchTransactionTrail,
+} from '../../btch/api'
+import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
+import BatchDetailsDialog from './BatchDetailsDialog'
+import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
+import { parseGoodsReceiptLinesImport } from './goodsReceiptLinesImport'
+import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
+import {
+  FMS_TYPE_OPTIONS,
+  addMonthsToDate,
+  asArray,
+  buildBatchNumber,
+  duplicateReceipt,
+  emptyReceipt,
+  formatBatchDatePart,
+  formatDateTime,
+  formatQuantity,
+  getCachedWarehouses,
+  getAssociatedWarehouseCode,
+  getDefaultReceivingWarehouse,
+  getFarmFmsType,
+  getItemDescription,
+  getItemFmsType,
+  getWarehouseFmsType,
+  getWarehousesForFarm,
+  isDocItem,
+  newLine,
+  numberValue,
+  type GoodsReceiveFormMode,
+} from './formUtils'
 
+type NewGoodsReceiveProps = {
+  mode?: GoodsReceiveFormMode
+}
 
-export default function Layout() {
-  const { setValue, getValue } = useGlobalContext()
-  const [loading, setLoading] = useState(false)
-  const route = useRouter()
+export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { getValue } = useGlobalContext()
+  const { setCollapsed } = useSidebar()
+  const receiptId = searchParams.get('id')
+  const duplicateId = searchParams.get('duplicateId')
+  const isPostMode = mode === 'post'
+  const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
+  const [items, setItems] = useState<Items[]>([])
+  const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
+  const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
+  const [uomGroups, setUomGroups] = useState<UomGroupOption[]>([])
+  const [conversions, setConversions] = useState<UomConversionOption[]>([])
+  const [itemGroups, setItemGroups] = useState<GoodsReceiptItemGroup[]>([])
+  const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
+  const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
+  const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
+  const manufacturingDateInputRef = useRef<HTMLInputElement>(null)
+  const quantityInputRefs = useRef(new Map<string, HTMLInputElement>())
+  const pendingQuantityFocusLineId = useRef<string | null>(null)
+  const goodsReceiptLinesImportInputRef = useRef<HTMLInputElement>(null)
+  const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
+  const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
+  const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
+  const [postConfirmOpen, setPostConfirmOpen] = useState(false)
+  const [lineCount, setLineCount] = useState(1)
+  const [loadingReferences, setLoadingReferences] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [importingGoodsReceiptLines, setImportingGoodsReceiptLines] = useState(false)
+  const [goodsReceiptLinesImportIssues, setGoodsReceiptLinesImportIssues] = useState<string[]>([])
 
-  const [pickedRows, setPickedRows] = useState<Record<string, any>[]>([])
-  const [items, setitems] = useState<Items[]>([])
-  const [whs, setwhs] = useState<Warehouse[]>([])
+  useEffect(() => {
+    setCollapsed(true)
+  }, [setCollapsed])
 
-  const [header, setHeader] = useState({
-    section: '',
-    module: '',
-  })
+  useEffect(() => {
+    let cancelled = false
 
-  const inventoriableList = getInventoriableModules(NavFolders)
+    async function loadPageData() {
+      try {
+        if (isPostMode && !receiptId) {
+          toast('Select a draft goods receipt to post.')
+          router.push('/inv/gr')
+          return
+        }
 
-  const headerComponents: DataTableColumn[] = [
-    { code: "vendor", name: "Vendor", type: "text", },
-    { code: "id", name: "Document No.", type: "text", },
-    { code: "vendor_ref", name: "Venrod Ref. No.", type: "text", },
-    { code: "Due Date", name: "Due Date", type: "text", },
-    { code: "doc_date", name: "Document Date", type: "text", },// created date no need to create in the table
-    { code: "remarks", name: "Remarks", type: "text", },// created date no need to create in the table
-    // {
-    //   code: "module",
-    //   name: "Module",
-    //   type: "search",
-    //   list: () =>
-    //     inventoriableList
-    //       .filter((ee) => ee.section === header.section)
-    //       .map((e) => ({
-    //         code: e.code,
-    //         name: e.name,
-    //       }))
-    // },
-  ]
+        const cachedItems = asArray<Items>(getValue('itemmaster'))
+          .filter(item => item.void === 1 || item.void == null)
+        const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
+          .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
+        const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
+        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
+          farm => typeof farm.farm_type !== 'undefined',
+        )
+        const canUseCachedReferences = cachedItems.length > 0 &&
+          cachedWarehouses.length > 0 &&
+          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
+          cachedReferencesHaveFarmMetadata
 
-  const components: DataTableColumn[] = [
-    {
-      code: "action",
-      name: "Option",
-      type: "button",
-      render: () => (
-        <Button size="sm" variant="secondary" type='button'>
-          ...
-        </Button>
-      ),
-    },
-    {
-      code: "itemType",
-      name: "Item Type",
-      type: "search",
-      list: [
-        { code: "E", name: "Eggs" },
-        { code: "F", name: "Feeds" },
-        { code: "C", name: "Consumables" },
-        { code: "T", name: "Tools" }
-      ]
-    },
-    {
-      code: "item",
-      name: "item",
-      type: "search",
-      list: (row) =>
-        items
-          .filter((ee) => ee.group === row?.itemType)
-          .map((e) => ({
-            code: e.id,
-            name: e.item_code + " - " + e.item_name,
+        const referencesPromise = canUseCachedReferences
+          ? Promise.resolve({
+              items: cachedItems,
+              warehouses: cachedWarehouses,
+              farms: cachedGrReferences?.farms ?? [],
+              uomGroups: cachedGrReferences?.uomGroups ?? [],
+              conversions: cachedGrReferences?.conversions ?? [],
+              itemGroups: cachedGrReferences?.itemGroups ?? [],
+              batchRules: cachedGrReferences?.batchRules ?? [],
+              batchSeries: cachedGrReferences?.batchSeries ?? [],
+            })
+          : getGoodsReceiptReferences()
+
+        const [references, savedReceipt, grNo] = await Promise.all([
+          referencesPromise,
+          receiptId
+            ? getGoodsReceiptById(Number(receiptId))
+            : duplicateId
+              ? getGoodsReceiptById(Number(duplicateId))
+              : Promise.resolve(null),
+          receiptId && !duplicateId ? Promise.resolve('') : createGoodsReceiptNumber(),
+        ])
+
+        if (cancelled) return
+
+        setReceipt(duplicateId && savedReceipt
+          ? duplicateReceipt(savedReceipt, grNo)
+          : savedReceipt ?? emptyReceipt(grNo))
+        setItems(references.items)
+        setWarehouses(references.warehouses)
+        setFarms(references.farms)
+        setUomGroups(references.uomGroups)
+        setConversions(references.conversions)
+        setItemGroups(references.itemGroups)
+        setBatchRules(references.batchRules)
+        setBatchSeries(references.batchSeries)
+      } catch (error) {
+        console.error(error)
+        toast('Reference data could not be loaded.')
+      } finally {
+        if (!cancelled) setLoadingReferences(false)
+      }
+    }
+
+    loadPageData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [duplicateId, getValue, isPostMode, receiptId, router])
+
+  const totalQuantity = useMemo(
+    () => receipt?.lines.reduce(
+      (total, line) => total + Number(line.baseQty || 0),
+      0,
+    ) ?? 0,
+    [receipt],
+  )
+
+  const selectedFarm = useMemo(
+    () => farms.find(farm => farm.id === receipt?.farmId),
+    [farms, receipt?.farmId],
+  )
+
+  const farmWarehouses = useMemo(
+    () => getWarehousesForFarm(selectedFarm, warehouses),
+    [selectedFarm, warehouses],
+  )
+
+  const farmOptions = useMemo(
+    () => farms.map(farm => ({
+      code: String(farm.id),
+      name: farm.code ? `${farm.code} - ${farm.name}` : farm.name || String(farm.id),
+    })),
+    [farms],
+  )
+
+  const availableItems = useMemo(() => {
+    const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
+    if (!fmsType) return []
+
+    return items.filter(item => getItemFmsType(item) === fmsType && !isDocItem(item))
+  }, [items, receipt?.fmsType])
+
+  const itemDropdownOptions = useMemo(
+    () => availableItems.map(item => ({
+      ...item,
+      itemDisplayDescription: getItemDescription(item),
+    })),
+    [availableItems],
+  )
+
+  const itemGroupIdByCode = useMemo(() => {
+    const map = new Map<string, number>()
+
+    itemGroups.forEach(group => {
+      const code = String(group.code ?? '').trim().toUpperCase()
+      if (code) map.set(code, group.id)
+    })
+
+    return map
+  }, [itemGroups])
+
+  useEffect(() => {
+    if (loadingReferences || !receipt?.farmId) return
+
+    const allowedCodes = new Set(
+      farmWarehouses.map(warehouse => String(warehouse.whse_code ?? '').trim())
+    )
+    const currentDefaultWarehouse = receipt.defaultWarehouseId == null
+      ? null
+      : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    // The farm receiving warehouse is an initial fallback only. Once a user
+    // selects a valid warehouse for this receipt, preserve that choice.
+    const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
+    const nextDefaultWarehouse = currentDefaultWarehouse ?? defaultWarehouse
+    const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
+    const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
+
+    const nextLines = receipt.lines.map(line => {
+      if (line.warehouseCode && allowedCodes.has(line.warehouseCode)) return line
+      if (!line.warehouseCode && !nextDefaultWarehouse) return line
+
+      return {
+        ...line,
+        warehouseId: nextDefaultWarehouse?.id ?? null,
+        warehouseCode: nextDefaultWarehouse?.whse_code ?? '',
+        warehouseName: nextDefaultWarehouse?.whse_name ?? '',
+      }
+    })
+
+    const linesChanged = nextLines.some((line, index) => line !== receipt.lines[index])
+    const defaultWarehouseChanged = receipt.defaultWarehouseId !== nextDefaultWarehouseId
+    const fmsTypeChanged = Boolean(nextFmsType) && receipt.fmsType !== nextFmsType
+
+    if (!defaultWarehouseChanged && !fmsTypeChanged && !linesChanged) return
+
+    setReceipt(current => current ? {
+      ...current,
+      fmsType: nextFmsType || current.fmsType,
+      defaultWarehouseId: nextDefaultWarehouseId,
+      lines: nextLines,
+    } : current)
+  }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.fmsType, receipt?.lines, selectedFarm])
+
+  useEffect(() => {
+    if (loadingReferences || receipt?.farmId || farms.length !== 1) return
+
+    const [farm] = farms
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
+    const allowedCodes = new Set(
+      (farm.associated_warehouses ?? [])
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean)
+    )
+
+    setReceipt(current => {
+      if (!current || current.farmId) return current
+
+      return {
+        ...current,
+        farmId: farm.id,
+        farmCode: farm.code,
+        farmName: farm.name ?? '',
+        fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+        defaultWarehouseId: defaultWarehouse?.id ?? null,
+        lines: current.lines.map(line =>
+          allowedCodes.has(line.warehouseCode)
+            ? line
+            : {
+              ...line,
+              warehouseId: defaultWarehouse?.id ?? null,
+              warehouseCode: defaultWarehouse?.whse_code ?? '',
+              warehouseName: defaultWarehouse?.whse_name ?? '',
+            }
+        ),
+      }
+    })
+  }, [farms, loadingReferences, receipt?.farmId, warehouses])
+
+  useEffect(() => {
+    const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
+    if (!fmsType || !receipt?.lines.length) return
+
+    const allowedItemCodes = new Set(
+      availableItems
+        .map(item => String(item.item_code ?? '').trim())
+        .filter(Boolean)
+    )
+
+    const nextLines = receipt.lines.map(line =>
+      !line.itemCode || allowedItemCodes.has(line.itemCode)
+        ? line
+        : {
+          ...line,
+          itemId: null,
+          itemCode: '',
+          description: '',
+          batchRuleId: null,
+          batchNumber: '',
+          supplierBatchNumber: '',
+          manufacturingDate: '',
+          expiryDate: '',
+          altUom: '',
+          baseUom: '',
+        }
+    )
+
+    if (nextLines.every((line, index) => line === receipt.lines[index])) return
+
+    setReceipt(current => current ? {
+      ...current,
+      lines: nextLines,
+    } : current)
+  }, [availableItems, receipt?.fmsType, receipt?.lines])
+
+  const batchLineForLookup = receipt?.lines.find(line => line.id === activeBatchLineId) ?? null
+  const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
+  const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
+
+  useEffect(() => {
+    const lineId = batchLineForLookup?.id
+    const lineKey = lineId == null ? '' : String(lineId)
+
+    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate) {
+      if (lineKey) {
+        setBatchMatches(current => ({
+          ...current,
+          [lineKey]: null,
+        }))
+      }
+      return
+    }
+
+    let cancelled = false
+    findExistingItemBatch(
+      batchLineForLookup.itemCode,
+      batchLineForLookup.manufacturingDate,
+      batchLineForLookup.expiryDate,
+    )
+      .then(existingBatch => {
+        if (cancelled) return
+
+        setBatchMatches(current => ({
+          ...current,
+          [lineKey]: existingBatch,
+        }))
+
+        if (existingBatch?.batch_number) {
+          setReceipt(current => current ? {
+            ...current,
+            lines: current.lines.map(line =>
+              line.id === lineId && line.batchNumber !== existingBatch.batch_number
+                ? { ...line, batchNumber: existingBatch.batch_number }
+                : line
+            ),
+          } : current)
+        }
+      })
+      .catch(error => {
+        console.error(error)
+        if (!cancelled) {
+          setBatchMatches(current => ({
+            ...current,
+            [lineKey]: null,
           }))
-    },
-    { code: "UoM", name: "UoM", type: "input" }
-  ]
+        }
+      })
 
-  // ✅ SUBMIT (RPC STYLE)
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    batchLineForLookup?.id,
+    batchLineForLookup?.itemCode,
+    batchLineForLookup?.manufacturingDate,
+    batchLineForLookup?.expiryDate,
+  ])
 
-  //   try {
-  //     setLoading(true)
+  useEffect(() => {
+    if (!activeBatchLineId || !batchTrailItemCode || !batchTrailNumber) {
+      setBatchTrailRows([])
+      setLoadingBatchTrail(false)
+      return
+    }
 
-  //     const payload = {
-  //       header,
-  //       rows: pickedRows,
-  //     }
+    let cancelled = false
+    setLoadingBatchTrail(true)
+    setBatchTrailRows([])
 
-  //     const res = await upsertInventoryMapping(payload)
+    getBatchTransactionTrail(
+      batchTrailItemCode,
+      batchTrailNumber,
+    )
+      .then(rows => {
+        if (!cancelled) setBatchTrailRows(rows)
+      })
+      .catch(error => {
+        console.error(error)
+        if (!cancelled) {
+          setBatchTrailRows([])
+          toast.error('Unable to load batch transaction trail')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBatchTrail(false)
+      })
 
-  //     console.log('Saved:', res)
+    return () => {
+      cancelled = true
+    }
+  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber])
 
-  //     toast('Saved successfully!')
+  if (!receipt) return <GoodsReceiveLoadingShell />
 
-  //   } catch (err: any) {
-  //     console.error(err)
-  //     toast(err.message)
-  //   } finally {
-  //     setLoading(false)
-  //   }
-  // }
-  // ✅ SUBMIT (RPC STYLE)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const updateLine = (id: GoodsReceiptLine['id'], changes: Partial<GoodsReceiptLine>) => {
+    setReceipt(current => current
+      ? { ...current, lines: current.lines.map(line => line.id === id ? { ...line, ...changes } : line) }
+      : current,
+    )
+  }
 
-    try {
-      // HEADER VALIDATION
-      if (!header.section || !header.module) {
-        toast("Please complete all header fields.")
-        return
-      }
+  const calculateBaseQty = (
+    altQty: number,
+    altUom: string,
+    groupCode: string,
+  ) => {
+    if (!altUom || !groupCode) return 0
 
-      // ROW VALIDATION
-      if (pickedRows.length === 0) {
-        toast("Please add at least one row.")
-        return
-      }
+    const normalizedAlt = altUom.trim().toUpperCase()
+    const normalizedGroup = groupCode.trim().toUpperCase()
+    const conversion = conversions.find(
+      option =>
+        option.groupCode.toUpperCase() === normalizedGroup &&
+        option.uomCode.toUpperCase() === normalizedAlt,
+    )
 
-      const hasInvalidRow = pickedRows.some(
-        (row) =>
-          !row.itemType ||
-          !row.item ||
-          !row.warehouse ||
-          row.transtype === undefined ||
-          row.transtype === null ||
-          row.transtype === ''
-      )
+    return conversion ? altQty * conversion.baseQty : 0
+  }
 
-      if (hasInvalidRow) {
-        toast("Please complete all required row fields.")
-        return
-      }
+  const getGroupUoms = (groupCode: string) => {
+    const seen = new Set<string>()
 
-      setLoading(true)
+    return conversions
+      .filter(conversion => conversion.groupCode === groupCode)
+      .filter(conversion => {
+        const code = conversion.uomCode.toUpperCase()
+        if (seen.has(code)) return false
+        seen.add(code)
+        return true
+      })
+  }
 
-      const payload = {
-        header,
-        rows: pickedRows,
-      }
+  const getSelectedGroup = (groupCode: string) =>
+    uomGroups.find(group => group.code === groupCode)
 
-      const res = await upsertInventoryMapping(payload)
+  const getSelectedConversion = (groupCode: string, uomCode: string) =>
+    conversions.find(
+      conversion =>
+        conversion.groupCode === groupCode &&
+        conversion.uomCode.toUpperCase() === uomCode.toUpperCase(),
+    )
 
-      console.log('Saved:', res)
+  const getSelectedItem = (line: GoodsReceiptLine) =>
+    items.find(item => item.id === line.itemId)
 
-      toast('Saved successfully!')
+  const getItemGroupId = (item: Items) => {
+    const rawGroup = String(item.item_group ?? '').trim()
+    const numericGroup = Number(rawGroup)
 
-    } catch (err: any) {
-      console.error(err)
-      toast(err.message)
-    } finally {
-      setLoading(false)
+    if (Number.isFinite(numericGroup) && numericGroup > 0) return numericGroup
+
+    return itemGroupIdByCode.get(rawGroup.toUpperCase()) ?? null
+  }
+
+  const getItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    const rawGroup = String(item?.item_group ?? '').trim()
+    if (!item || !rawGroup) return '-'
+
+    const groupId = getItemGroupId(item)
+    const group = groupId == null
+      ? itemGroups.find(candidate => candidate.code.trim().toUpperCase() === rawGroup.toUpperCase())
+      : itemGroups.find(candidate => candidate.id === groupId)
+
+    return group ? `${group.code} - ${group.name}` : rawGroup
+  }
+
+  const getSubItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    const subItemGroupId = Number(item?.sub_item_group_id ?? 0)
+    if (!item || !subItemGroupId) return 'No sub group'
+
+    const pathIds = [
+      item.sub_item_group_level_1_id,
+      item.sub_item_group_level_2_id,
+      item.sub_item_group_level_3_id,
+    ].filter((value): value is number => value != null)
+    const path = pathIds.flatMap(pathId => {
+      const group = itemGroups.find(candidate => Number(candidate.id) === Number(pathId))
+      return group ? [group] : []
+    })
+    return path.length > 0
+      ? path.map(group => `${group.code} - ${group.name}`).join(' / ')
+      : 'Sub group unavailable'
+  }
+
+  const getBatchRuleForLine = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    if (!item) return null
+
+    const itemUsesBatch = Boolean(
+      item.manage_batch_numbers ||
+      (item.batch_management_method && item.batch_management_method !== 'NONE')
+    )
+    if (!itemUsesBatch) return null
+
+    const itemGroupId = getItemGroupId(item)
+    const matchedRules = batchRules.filter(rule => {
+      if (rule.item_id && rule.item_id !== item.id) return false
+      if (rule.warehouse_id && rule.warehouse_id !== line.warehouseId) return false
+      if (rule.branch_id && rule.branch_id !== receipt.farmId) return false
+      if (rule.item_group_id && rule.item_group_id !== itemGroupId) return false
+      return true
+    })
+
+    return matchedRules.sort((left, right) => {
+      const leftScore = Number(Boolean(left.item_id)) + Number(Boolean(left.warehouse_id)) + Number(Boolean(left.branch_id)) + Number(Boolean(left.item_group_id))
+      const rightScore = Number(Boolean(right.item_id)) + Number(Boolean(right.warehouse_id)) + Number(Boolean(right.branch_id)) + Number(Boolean(right.item_group_id))
+      return rightScore - leftScore
+    })[0] ?? null
+  }
+
+  const getBatchRequirement = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    if (!item) return null
+
+    const itemUsesBatch = Boolean(
+      item.manage_batch_numbers ||
+      (item.batch_management_method && item.batch_management_method !== 'NONE')
+    )
+    if (!itemUsesBatch) return null
+
+    const rule = getBatchRuleForLine(line)
+
+    return {
+      rule,
+      needsBatchNumber: true,
+      needsSupplierBatch: Boolean(rule?.require_supplier_batch),
+      needsManufacturingDate: true,
+      needsExpiryDate: getBatchSeriesForRule(rule)?.include_expiry_date !== false,
     }
   }
 
-  useEffect(() => {
-    route.prefetch("/inv/new")
+  const handleGoodsReceiptLinesImport = async (file: File) => {
+    setGoodsReceiptLinesImportIssues([])
 
-    setValue("loading_g", loading)
-
-    const getData = async () => {
-      const c = getValue("itemmaster") || []
-      const w = getValue("warehouses") || []
-      setitems(c)
-      setwhs(w.data)
+    if (!receipt.farmId) {
+      setGoodsReceiptLinesImportIssues(['Select a Farm before importing Goods Receipt item lines.'])
+      if (goodsReceiptLinesImportInputRef.current) goodsReceiptLinesImportInputRef.current.value = ''
+      return
     }
 
-    getData()
-  }, [])
+    setImportingGoodsReceiptLines(true)
+    try {
+      const sheets = await readXlsxFile(file)
+      const itemLinesSheet = sheets.find(sheet => sheet.sheet.trim().toLowerCase() === 'item lines')
+      if (!itemLinesSheet) {
+        setGoodsReceiptLinesImportIssues(['The workbook must contain a worksheet named Item Lines.'])
+        return
+      }
+
+      const parsed = parseGoodsReceiptLinesImport(itemLinesSheet.data)
+      const resolvedLines = parsed.rows.map((row, index) => {
+        const rowNumber = index + 2
+        const normalizedItemCode = row.itemCode.toUpperCase()
+        const item = availableItems.find(candidate =>
+          String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
+        )
+        if (!item) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
+          return null
+        }
+        if (item.id == null) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
+          return null
+        }
+
+        const inventoryUom = item.inventory_uom || ''
+        const unitMeasure = item.unit_measure || ''
+        const selectedGroup = uomGroups.find(group =>
+          group.code.toUpperCase() === inventoryUom.toUpperCase(),
+        )
+        const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
+          option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+        )?.groupCode ?? ''
+        const requestedAltUom = row.altUom.toUpperCase()
+        const selectedConversion = conversions.find(option =>
+          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
+          option.uomCode.toUpperCase() === requestedAltUom,
+        )
+        const altUom = row.altUom
+          ? selectedConversion?.uomCode ?? ''
+          : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+
+        if (!selectedGroupCode) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
+        } else if (row.altUom && !selectedConversion) {
+          parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
+        } else if (!altUom) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
+        }
+
+        const warehouseKey = row.warehouse.trim().toLowerCase()
+        const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
+        const warehouse = warehouseKey
+          ? farmWarehouses.find(candidate => [
+              candidate.whse_code,
+              candidate.whse_name,
+              `${candidate.whse_code} - ${candidate.whse_name}`,
+            ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
+          : defaultWarehouse
+
+        if (row.warehouse && !warehouse) {
+          parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
+        }
+
+        const altQty = Number(row.altQty)
+        const expiryDate = row.expiryDate || (
+          row.manufacturingDate && typeof item.default_expiration_months === 'number'
+            ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
+            : ''
+        )
+        const line: GoodsReceiptLine = {
+          ...newLine(),
+          itemId: item.id,
+          itemCode: item.item_code || '',
+          description: getItemDescription(item),
+          batchNumber: row.batchNumber,
+          supplierBatchNumber: row.supplierBatchNumber,
+          manufacturingDate: row.manufacturingDate,
+          expiryDate,
+          altQty,
+          altUom,
+          baseUom: selectedGroupCode,
+          baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
+          warehouseId: warehouse?.id ?? null,
+          warehouseCode: warehouse?.whse_code ?? '',
+          warehouseName: warehouse?.whse_name ?? '',
+        }
+        const batchRequirement = getBatchRequirement(line)
+        line.batchRuleId = batchRequirement?.rule?.id ?? null
+
+        if (line.baseQty <= 0) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
+        }
+        if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
+          parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
+        }
+        if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
+          parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
+        }
+        if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
+          parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
+        }
+        if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
+          parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
+        }
+
+        return line
+      })
+
+      if (parsed.issues.length > 0) {
+        setGoodsReceiptLinesImportIssues(parsed.issues)
+        return
+      }
+
+      const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
+      setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
+      toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+    } catch (error) {
+      console.error(error)
+      setGoodsReceiptLinesImportIssues(['The Excel file could not be read. Use the exported Goods Receipt item-lines template.'])
+    } finally {
+      setImportingGoodsReceiptLines(false)
+      if (goodsReceiptLinesImportInputRef.current) goodsReceiptLinesImportInputRef.current.value = ''
+    }
+  }
+
+  const getBatchSeriesForRule = (rule?: GoodsReceiptBatchRule | null) =>
+    rule?.series_id ? batchSeries.find(series => series.id === rule.series_id) ?? null : null
+
+  const getBatchKey = (line: GoodsReceiptLine) =>
+    line.itemCode && line.manufacturingDate
+      ? `${line.itemCode.trim().toUpperCase()}|${line.manufacturingDate}|${line.expiryDate || 'NO_EXP'}`
+      : ''
+
+  const getExistingLineBatch = (line: GoodsReceiptLine) => {
+    const batchKey = getBatchKey(line)
+    if (!batchKey) return null
+
+    return receipt.lines.find(candidate =>
+      candidate.id !== line.id &&
+      getBatchKey(candidate) === batchKey &&
+      candidate.batchNumber.trim()
+    ) ?? null
+  }
+
+  const getBatchNumberParts = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    const series = getBatchSeriesForRule(requirement?.rule)
+    const item = getSelectedItem(line)
+    const existingLineBatch = getExistingLineBatch(line)
+
+    const lineIndex = receipt.lines.findIndex(candidate => candidate.id === line.id)
+    const usedBatchKeys = new Set<string>()
+    receipt.lines
+      .slice(0, Math.max(0, lineIndex))
+      .forEach(candidate => {
+        const candidateBatchKey = getBatchKey(candidate)
+        if (!candidateBatchKey || usedBatchKeys.has(candidateBatchKey)) return
+
+        const candidateRule = getBatchRuleForLine(candidate)
+        const candidateSeries = getBatchSeriesForRule(candidateRule)
+
+        if (series) {
+          if (candidateSeries?.id === series.id) usedBatchKeys.add(candidateBatchKey)
+          return
+        }
+
+        if (!candidateSeries && Boolean(getBatchRequirement(candidate))) {
+          usedBatchKeys.add(candidateBatchKey)
+        }
+      })
+
+    const seriesOffset = usedBatchKeys.size
+
+    const numberedSeries = series
+      ? { ...series, next_number: Number(series.next_number) + seriesOffset }
+      : {
+          id: 0,
+          code: 'GR',
+          name: 'Item Stock In',
+          prefix: 'FD',
+          suffix: null,
+          separator: '-',
+          next_number: seriesOffset + 1,
+          number_length: 5,
+          date_format: 'YYMMDD' as GoodsReceiptBatchSeries['date_format'],
+          include_expiry_date: true,
+          active: true,
+        }
+
+    const dateFormat = numberedSeries.date_format
+    const sequence = String(Math.max(0, Number(numberedSeries.next_number) || 0)).padStart(
+      Math.max(1, Number(numberedSeries.number_length) || 1),
+      '0',
+    )
+    const mfgPart = formatBatchDatePart(dateFormat, line.manufacturingDate)
+    const includesExpiryDate = numberedSeries.include_expiry_date !== false
+    const expPart = includesExpiryDate ? formatBatchDatePart(dateFormat, line.expiryDate) : ''
+
+    return {
+      templateSource: series ? `${series.code} - ${series.name}` : 'GR fallback template',
+      prefix: numberedSeries.prefix ?? '',
+      mfgPart,
+      expPart,
+      sequence,
+      suffix: numberedSeries.suffix ?? '',
+      separator: numberedSeries.separator,
+      dateFormat,
+      includesExpiryDate,
+      defaultExpirationMonths: item?.default_expiration_months ?? null,
+      batchNumber: line.manufacturingDate && (!includesExpiryDate || line.expiryDate)
+        ? existingLineBatch?.batchNumber || buildBatchNumber(numberedSeries, line.manufacturingDate, line.expiryDate)
+        : '',
+      reusedFromLine: existingLineBatch,
+    }
+  }
+
+  const getGeneratedBatchNumber = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    if (!requirement || !line.manufacturingDate || (requirement.needsExpiryDate && !line.expiryDate)) return ''
+
+    return getBatchNumberParts(line).batchNumber
+  }
+
+  const openBatchDialog = (line: GoodsReceiptLine) => {
+    const requirement = getBatchRequirement(line)
+    if (!requirement) return
+
+    updateLine(line.id, {
+      batchRuleId: requirement.rule?.id ?? null,
+    })
+
+    setActiveBatchLineId(line.id)
+  }
+
+  const updateBatchLine = (line: GoodsReceiptLine, changes: Partial<GoodsReceiptLine>) => {
+    const item = getSelectedItem(line)
+    const requirement = getBatchRequirement(line)
+    const defaultExpirationMonths = item?.default_expiration_months
+    const shouldDefaultExpiry = Object.prototype.hasOwnProperty.call(changes, 'manufacturingDate') &&
+      !Object.prototype.hasOwnProperty.call(changes, 'expiryDate') &&
+      requirement?.needsExpiryDate !== false &&
+      typeof defaultExpirationMonths === 'number'
+    const defaultExpiryDate = shouldDefaultExpiry
+      ? addMonthsToDate(changes.manufacturingDate ?? '', defaultExpirationMonths)
+      : ''
+    const nextChanges = {
+      ...changes,
+      ...(defaultExpiryDate ? { expiryDate: defaultExpiryDate } : {}),
+    }
+    const nextLine = { ...line, ...nextChanges }
+    const generatedBatchNumber = getGeneratedBatchNumber(nextLine)
+
+    updateLine(line.id, {
+      ...nextChanges,
+      ...(generatedBatchNumber ? { batchNumber: generatedBatchNumber } : {}),
+    })
+  }
+
+  const refreshGeneratedBatchNumber = (line: GoodsReceiptLine) => {
+    const existingBatch = batchMatches[String(line.id)]
+    if (existingBatch?.batch_number) {
+      updateLine(line.id, { batchNumber: existingBatch.batch_number })
+      return
+    }
+
+    const generatedBatchNumber = getGeneratedBatchNumber(line)
+    if (!generatedBatchNumber) {
+      toast(line.expiryDate ? 'Enter manufacturing date first.' : 'Enter required batch dates first.')
+      return
+    }
+
+    updateLine(line.id, { batchNumber: generatedBatchNumber })
+  }
+
+  const selectItem = (line: GoodsReceiptLine, itemCode: string) => {
+    const item = availableItems.find(candidate => candidate.item_code === itemCode)
+    if (!item) {
+      updateLine(line.id, {
+        itemId: null,
+        itemCode: '',
+        description: '',
+        batchRuleId: null,
+        batchNumber: '',
+        supplierBatchNumber: '',
+        manufacturingDate: '',
+        expiryDate: '',
+        altUom: '',
+        baseUom: '',
+      })
+      return
+    }
+
+    const inventoryUom = item.inventory_uom || ''
+    const unitMeasure = item.unit_measure || ''
+    const selectedGroup = uomGroups.find(group => group.code.toUpperCase() === inventoryUom.toUpperCase())
+    const selectedGroupCode = selectedGroup?.code ?? conversions.find(
+      option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+    )?.groupCode ?? ''
+    const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+    const nextLineChanges: Partial<GoodsReceiptLine> = {
+      itemId: item.id,
+      itemCode: item.item_code || '',
+      description: getItemDescription(item),
+      batchRuleId: null,
+      batchNumber: '',
+      supplierBatchNumber: '',
+      manufacturingDate: '',
+      expiryDate: '',
+      altUom: uom,
+      baseUom: selectedGroupCode,
+      baseQty: calculateBaseQty(line.altQty, uom, selectedGroupCode),
+    }
+    const nextLine = { ...line, ...nextLineChanges }
+    const batchRequirement = getBatchRequirement(nextLine)
+
+    if (!batchRequirement) {
+      updateLine(line.id, nextLineChanges)
+      return
+    }
+
+    flushSync(() => {
+      updateLine(line.id, {
+        ...nextLineChanges,
+        batchRuleId: batchRequirement.rule?.id ?? null,
+      })
+      setActiveBatchLineId(line.id)
+    })
+
+    const dateInput = manufacturingDateInputRef.current
+    if (!dateInput) return
+
+    dateInput.focus()
+    try {
+      dateInput.showPicker()
+    } catch {
+      dateInput.focus()
+    }
+  }
+
+  const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
+    const warehouse = farmWarehouses.find(candidate => candidate.whse_code === warehouseCode)
+    updateLine(lineId, {
+      warehouseId: warehouse?.id ?? null,
+      warehouseCode: warehouse?.whse_code ?? '',
+      warehouseName: warehouse?.whse_name ?? '',
+      batchRuleId: null,
+    })
+  }
+
+  const applyDefaultWarehouse = (warehouseId: string) => {
+    const id = warehouseId ? Number(warehouseId) : null
+    const warehouse = farmWarehouses.find(candidate => candidate.id === id)
+
+    setReceipt(current => current ? {
+      ...current,
+      defaultWarehouseId: id,
+      lines: current.lines.map(line => line.warehouseId ? line : {
+        ...line,
+        warehouseId: warehouse?.id ?? null,
+        warehouseCode: warehouse?.whse_code ?? '',
+        warehouseName: warehouse?.whse_name ?? '',
+      }),
+    } : current)
+  }
+
+  const selectFarm = (farmId: string) => {
+    const farm = farms.find(candidate => String(candidate.id) === farmId)
+    const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
+    const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
+    const allowedCodes = new Set(
+      (farm?.associated_warehouses ?? [])
+        .map(getAssociatedWarehouseCode)
+        .filter(Boolean)
+    )
+
+    setReceipt(current => current ? {
+      ...current,
+      farmId: farm?.id ?? null,
+      farmCode: farm?.code ?? '',
+      farmName: farm?.name ?? '',
+      fmsType: getFarmFmsType(farm) || getWarehouseFmsType(defaultWarehouse),
+      defaultWarehouseId: defaultWarehouse?.id ?? null,
+      lines: current.lines.map(line =>
+        allowedCodes.has(line.warehouseCode)
+          ? line
+          : {
+            ...line,
+            warehouseId: defaultWarehouse?.id ?? null,
+            warehouseCode: defaultWarehouse?.whse_code ?? '',
+            warehouseName: defaultWarehouse?.whse_name ?? '',
+          }
+      ),
+    } : current)
+  }
+
+  const canEditDraft = receipt.status === 'Draft'
+  const canPostDocument = receipt.status === 'Draft'
+
+  const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
+    const completedLines = receipt.lines.filter(line => line.itemId)
+    const posting = targetStatus === 'Posted'
+    const completeLines = completedLines.filter(line =>
+      line.itemCode &&
+      line.baseUom &&
+      line.altUom &&
+      line.baseQty > 0 &&
+      (!posting || line.warehouseId)
+    )
+
+    if (!canEditDraft) {
+      toast('Only draft documents can be edited or posted.')
+      return
+    }
+
+    if (posting && !receipt.vendor.trim()) {
+      toast('Please enter a vendor.')
+      return
+    }
+    if (posting && !receipt.drReference.trim()) {
+      toast('Please enter a DR Reference.')
+      return
+    }
+    if (posting && !receipt.fmsType) {
+      toast('Please select an FMS type.')
+      return
+    }
+    if (posting && !receipt.farmId) {
+      toast('Please select a farm.')
+      return
+    }
+    if (posting && completedLines.length === 0) {
+      toast('Please select at least one item.')
+      return
+    }
+    if (posting && completedLines.some(line =>
+      !line.warehouseId ||
+      !line.baseUom ||
+      !line.altUom ||
+      line.baseQty <= 0
+    )) {
+      toast('Each item needs a warehouse, UoM group, Alt UoM, and a valid conversion.')
+      return
+    }
+    const missingBatchLine = completedLines.find(line => {
+      const requirement = getBatchRequirement(line)
+      if (!requirement) return false
+
+      return (requirement.needsSupplierBatch && !line.supplierBatchNumber.trim()) ||
+        (requirement.needsManufacturingDate && !line.manufacturingDate) ||
+        (requirement.needsExpiryDate && !line.expiryDate)
+    })
+
+    if (posting && missingBatchLine) {
+      toast(`Please enter batch details for ${missingBatchLine.itemCode}.`)
+      return
+    }
+    if (!posting && completedLines.length !== completeLines.length) {
+      toast('Incomplete item lines are ignored when saving draft.')
+    }
+
+    setSaving(true)
+    try {
+      const savedReceipt = await saveGoodsReceipt({
+        ...receipt,
+        status: targetStatus,
+        lines: (posting ? completedLines : completeLines).map(line => ({
+          ...line,
+          batchRuleId: getBatchRuleForLine(line)?.id ?? null,
+          batchNumber: line.batchNumber.trim() || getGeneratedBatchNumber(line),
+        })),
+      })
+      toast(posting ? 'Goods receipt posted successfully.' : 'Goods receipt draft saved.')
+
+      if (posting) {
+        router.push('/inv/gr')
+        return
+      }
+
+      if (!isPostMode && savedReceipt?.id) {
+        router.push(`/inv/gr/post?id=${savedReceipt.id}`)
+        return
+      }
+
+      if (savedReceipt) setReceipt(savedReceipt)
+    } catch (error) {
+      console.log({ error })
+      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save goods receipt'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const activeBatchLine = receipt.lines.find(line => line.id === activeBatchLineId) ?? null
+  const activeBatchRequirement = activeBatchLine ? getBatchRequirement(activeBatchLine) : null
+  const activeBatchSeries = getBatchSeriesForRule(activeBatchRequirement?.rule)
+  const activeBatchParts = activeBatchLine ? getBatchNumberParts(activeBatchLine) : null
+  const activeBatchMatch = activeBatchLine ? batchMatches[String(activeBatchLine.id)] ?? null : null
+  const activeLineBatchMatch = activeBatchParts?.reusedFromLine ?? null
+  const activeBatchDateText = activeBatchRequirement?.needsExpiryDate ? 'MFG and EXP dates' : 'MFG date'
+  const activeBatchStatus = activeBatchMatch
+    ? 'Existing database batch'
+    : activeLineBatchMatch
+      ? 'Reusing current GR batch'
+      : activeBatchLine?.batchNumber
+        ? 'New batch to create'
+        : activeBatchRequirement?.needsExpiryDate
+          ? 'Waiting for dates'
+          : 'Waiting for MFG date'
+
+  const closeBatchDialog = () => {
+    pendingQuantityFocusLineId.current = activeBatchLine?.batchNumber.trim()
+      ? String(activeBatchLine.id)
+      : null
+    setActiveBatchLineId(null)
+  }
+
+  const focusQuantityAfterBatchClose = () => {
+    const lineId = pendingQuantityFocusLineId.current
+    pendingQuantityFocusLineId.current = null
+    if (!lineId) return false
+
+    const quantityInput = quantityInputRefs.current.get(lineId)
+    if (!quantityInput) return false
+
+    quantityInput.focus()
+    quantityInput.select()
+    return true
+  }
 
   return (
-    <div>
-      <form onSubmit={handleSubmit}>
+    <main className="min-h-[calc(100vh-80rem)]">
+      <div className="mx-4 mt-4 flex items-center justify-between gap-3">
+        <Breadcrumb
+          SecondPreviewPageName="Inventory"
+          SecondPreviewPageLink="/inv"
+          FirstPreviewsPageName="Item Stock In"
+          FirstPreviewsPageLink="/inv/gr"
+          CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
+        />
+        <Button type="button" variant="outline" onClick={() => router.push('/inv/gr')}>
+          <List className="size-4" />
+          GR List
+        </Button>
+      </div>
 
-        {/* HEADER */}
-        <div className='px-4 mt-2 flex justify-between items-center'>
-          <Breadcrumb
-            SecondPreviewPageName='Inventory'
-            CurrentPageName='Goods Receipt'
-          />
+      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">GR No.</label>
+            <div className="flex items-center gap-1">
+              <Input value={receipt.grNo} readOnly className="bg-stone-50" />
+              <span className={getInventoryStatusBadgeClass(receipt.status)}>
+                {receipt.status}
+              </span>
+            </div>
+          </div>
 
-          <div className='flex gap-2'>
-            <Button type='button' variant={"destructive"} onClick={() => console.log({ whs })}>
-              Cancel
-            </Button>
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">Vendor</label>
+            <Input
+              value={receipt.vendor}
+              onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
+              placeholder="Enter vendor"
+            />
+          </div>
 
-            <Button type='submit' disabled={loading}>
-              <Plus /> {loading ? 'Saving...' : 'submit'}
-            </Button>
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">
+              DR Reference <span className="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <Input
+              value={receipt.drReference}
+              onChange={event => setReceipt(current => current ? { ...current, drReference: event.target.value } : current)}
+              placeholder="Enter DR reference"
+              required
+              aria-required="true"
+            />
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">FMS Type</label>
+            <select
+              value={receipt.fmsType}
+              disabled
+              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
+            >
+              <option value="">Select FMS type...</option>
+              {FMS_TYPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
+            <label className="text-sm font-semibold">Receive Date</label>
+            <label className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
+              <Input
+                type="date"
+                value={receipt.receiveDate}
+                onChange={event => setReceipt(current => current ? { ...current, receiveDate: event.target.value } : current)}
+                className="pl-9"
+              />
+            </label>
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-sm font-semibold">Farm</label>
+            <SearchableCombobox
+              items={farmOptions}
+              value={receipt.farmId == null ? '' : String(receipt.farmId)}
+              onValueChange={selectFarm}
+              showCode={false}
+              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
+              className="w-full"
+            />
+            {!loadingReferences && farms.length === 0 && (
+              <p className="text-xs text-stone-500">No assigned farms available.</p>
+            )}
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-sm font-semibold">Default WH</label>
+            <select
+              value={receipt.defaultWarehouseId ?? ''}
+              disabled={loadingReferences || !receipt.farmId}
+              onChange={event => applyDefaultWarehouse(event.target.value)}
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
+            >
+              <option value="">
+                {loadingReferences
+                  ? 'Loading warehouses...'
+                  : receipt.farmId
+                    ? 'Select default warehouse...'
+                    : 'Select farm first'}
+              </option>
+              {farmWarehouses.map(warehouse => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.whse_code} - {warehouse.whse_name}
+                </option>
+              ))}
+            </select>
+            {!loadingReferences && Boolean(receipt.farmId) && farmWarehouses.length === 0 && (
+              <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
+            )}
           </div>
         </div>
-        {/* status */}
 
-        <Badge className='mx-4 mt-4'>Status</Badge>
-
-        {/* HEADER FIELDS */}
-        <Card className='m-4 grid lg:grid-cols-2'>
-          {headerComponents.map((e, i) => (
-            <div className='mx-4' key={i}>
-              <Label className='mb-1'>{e.name}</Label>
-
-              {e.type === "search" ? (
-                <SearchableDropdown
-                  list={e.list ?? []}
-                  codeLabel="code"
-                  nameLabel="name"
-                  value={(header as any)[e.code] || ''}
-                  onChange={(val: any) => {
-                    setHeader((prev) => ({
-                      ...prev,
-                      [e.code]: val,
-                    }))
+        <div className="m-0 border-t p-0">
+          <FormTable
+            title="Receive Item Lines"
+            className="rounded-none border-0 shadow-none"
+            description={`${receipt.lines.length} ${receipt.lines.length === 1 ? 'line' : 'lines'}`}
+            actions={(
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!receipt.farmId}
+                  title={!receipt.farmId ? 'Select a Farm before exporting the validated template.' : undefined}
+                  onClick={() => {
+                    void exportGoodsReceiptLinesTemplate({
+                      itemCodes: availableItems.map(item => item.item_code || ''),
+                      uomCodes: conversions.map(conversion => conversion.uomCode),
+                      warehouses: farmWarehouses.map(warehouse =>
+                        warehouse.whse_name
+                          ? `${warehouse.whse_code} - ${warehouse.whse_name}`
+                          : String(warehouse.whse_code ?? ''),
+                      ),
+                    }).catch(error => {
+                      console.error(error)
+                      toast.error('Unable to export the Goods Receipt item-lines template.')
+                    })
+                  }}
+                >
+                  <FileSpreadsheet className="size-4" />
+                  Export Template
+                </Button>
+                <input
+                  ref={goodsReceiptLinesImportInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    if (file) void handleGoodsReceiptLinesImport(file)
                   }}
                 />
-              ) : (
-                <Input type='text' />
-              )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDraft || importingGoodsReceiptLines}
+                  onClick={() => goodsReceiptLinesImportInputRef.current?.click()}
+                >
+                  {importingGoodsReceiptLines ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
+                  {importingGoodsReceiptLines ? 'Importing...' : 'Import Excel'}
+                </Button>
+              </div>
+            )}
+            emptyState={receipt.lines.length === 0 && (
+              <div className="border-t px-4 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">No item lines added</p>
+                <p className="mt-1 text-sm text-muted-foreground">Use Add Lines to continue.</p>
+              </div>
+            )}
+            footer={(
+              <FormTableFooter>
+                <Input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={lineCount}
+                  onChange={event => setLineCount(Math.max(1, numberValue(event.target.value)))}
+                  className="w-20"
+                  aria-label="Number of lines to add"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setReceipt(current => current ? {
+                    ...current,
+                    lines: [...current.lines, ...Array.from({ length: lineCount }, newLine)],
+                  } : current)}
+                >
+                  <Plus className="size-4" />
+                  Add Lines
+                </Button>
+              </FormTableFooter>
+            )}
+          >
+              <table className="w-full min-w-[1480px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
+                <thead>
+                  <tr>
+                    <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
+                    <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
+                    <th className="w-52 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Batch</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Base UOM Group</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt Qty</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt UoM</th>
+                    <th className="w-40 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Conversion UoM</th>
+                    <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Warehouse</th>
+                    <th className="w-14 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipt.lines.map((line, index) => {
+                    const batchRequirement = getBatchRequirement(line)
+
+                    return (
+                      <tr key={line.id} className="even:bg-card odd:bg-muted/50">
+                        <td className="border border-border bg-muted p-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
+                          <SearchableDropdown
+                            list={itemDropdownOptions}
+                            codeLabel="item_code"
+                            nameLabel="itemDisplayDescription"
+                            value={line.itemCode}
+                            placeholder={receipt.fmsType ? 'Select item...' : 'Select FMS type first'}
+                            width={420}
+                            onChange={(value) => selectItem(line, value)}
+                          />
+                        </td>
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getItemGroupDisplay(line)}>
+                            {getItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getSubItemGroupDisplay(line)}>
+                            {getSubItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border p-1 align-top">
+                          {batchRequirement ? (
+                            <button
+                              type="button"
+                              onClick={() => openBatchDialog(line)}
+                              className="flex min-h-7 w-full items-center justify-between gap-1 rounded-none border-0 bg-background px-1.5 py-1 text-left text-xs shadow-none transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring/20"
+                            >
+                              <span className="min-w-0">
+                                <span className="flex items-center gap-2 font-medium text-foreground">
+                                  <PackageCheck className="size-4 shrink-0 text-muted-foreground" />
+                                  <span className="truncate">
+                                    {line.batchNumber || 'Batch details'}
+                                  </span>
+                                </span>
+                                <span className="flex flex-wrap gap-1 text-[10px] leading-tight text-muted-foreground">
+                                  {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
+                                  {line.expiryDate && <span>EXP {line.expiryDate}</span>}
+                                  {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
+                                    <span>{batchRequirement.needsExpiryDate ? 'MFG/EXP required' : 'MFG required'}</span>
+                                  )}
+                                </span>
+                              </span>
+                              <Hash className="size-4 shrink-0 text-muted-foreground" />
+                            </button>
+                          ) : (
+                            <span className="inline-flex h-7 items-center px-1 text-muted-foreground">Not required</span>
+                          )}
+                        </td>
+                      <td className="border border-border p-1 align-middle">
+                        <select
+                          value={line.baseUom}
+                          disabled
+                          onChange={event => {
+                            const groupCode = event.target.value
+                            const altUomIsAvailable = conversions.some(
+                              conversion =>
+                                conversion.groupCode === groupCode &&
+                                conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
+                            )
+                            const altUom = altUomIsAvailable ? line.altUom : ''
+
+                            updateLine(line.id, {
+                              baseUom: groupCode,
+                              altUom,
+                              baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
+                            })
+                          }}
+                          className="h-7 w-full rounded-none border-0 bg-muted px-1.5 text-xs text-muted-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
+                        >
+                          <option value="">Select UoM group</option>
+                          {uomGroups.map(group => (
+                            <option key={group.id} value={group.code}>
+                              {group.code} - {group.name} ({group.baseUomCode})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="border border-border p-1 align-middle">
+                        <Input
+                          ref={element => {
+                            const lineId = String(line.id)
+                            if (element) quantityInputRefs.current.set(lineId, element)
+                            else quantityInputRefs.current.delete(lineId)
+                          }}
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={line.altQty}
+                          onChange={event => updateLine(line.id, {
+                            altQty: numberValue(event.target.value),
+                            baseQty: calculateBaseQty(
+                              numberValue(event.target.value),
+                              line.altUom,
+                              line.baseUom,
+                            ),
+                          })}
+                          className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/20"
+                        />
+                      </td>
+                      <td className="border border-border p-1 align-middle">
+                        <select
+                          value={line.altUom}
+                          disabled={!line.baseUom}
+                          onChange={event => {
+                            const altUom = event.target.value
+                            updateLine(line.id, {
+                              altUom,
+                              baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
+                            })
+                          }}
+                          className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
+                        >
+                          <option value="">
+                            {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
+                          </option>
+                          {getGroupUoms(line.baseUom).map(conversion => (
+                            <option
+                              key={`${conversion.groupId}-${conversion.uomCode}`}
+                              value={conversion.uomCode}
+                            >
+                              {conversion.uomCode}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="border border-border px-1.5 py-1 align-middle text-foreground">
+                        {line.baseUom && line.altUom ? (
+                          <div className="whitespace-nowrap">
+                            <span className="font-medium tabular-nums">
+                              {line.baseQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                            </span>{' '}
+                            <span className="text-muted-foreground">
+                              {getSelectedGroup(line.baseUom)?.baseUomCode}
+                            </span>
+                            <div className="text-[10px] leading-tight text-muted-foreground">
+                              {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
+                              {line.altUom} ×{' '}
+                              {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
+                                'en-PH',
+                                { maximumFractionDigits: 6 },
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="border border-border p-1 align-middle">
+                        <SearchableDropdown
+                          list={farmWarehouses}
+                          codeLabel="whse_code"
+                          nameLabel="whse_name"
+                          value={line.warehouseCode}
+                          placeholder={receipt.farmId ? 'Select warehouse...' : 'Select farm first'}
+                          width={360}
+                          onChange={(value) => selectWarehouse(line.id, value)}
+                        />
+                      </td>
+                      <td className="border border-border p-1 text-center align-middle">
+                        <button
+                          type="button"
+                          onClick={() => setReceipt(current => current ? {
+                            ...current,
+                            lines: current.lines.filter(candidate => candidate.id !== line.id),
+                          } : current)}
+                          className="inline-flex size-7 items-center justify-center rounded-none text-destructive transition hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive/20"
+                          aria-label={`Delete line ${index + 1}`}
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </td>
+                    </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+          </FormTable>
+          {goodsReceiptLinesImportIssues.length > 0 && (
+            <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="font-semibold">Goods Receipt item-lines import was not applied.</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {goodsReceiptLinesImportIssues.map((issue, index) => <li key={`${index}-${issue}`}>{issue}</li>)}
+              </ul>
             </div>
-          ))}
-        </Card>
+          )}
 
-        {/* TABLE */}
-        <Card className='bg-white p-4 m-4 rounded-2xl'>
-          <DataTable
-            columns={components}
-            rows={pickedRows}
-            setRowsAction={setPickedRows}
-            allowAddRow
-          />
-        </Card>
+          <BatchDetailsDialog
+            open={Boolean(activeBatchLine)}
+            itemCode={activeBatchLine?.itemCode}
+            onClose={closeBatchDialog}
+            onCloseAutoFocus={focusQuantityAfterBatchClose}
+          >
 
-      </form>
-    </div>
+              {activeBatchLine && activeBatchRequirement && (
+                <Tabs defaultValue="details" className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="details">Batch Details</TabsTrigger>
+                    <TabsTrigger value="trail">Transaction Trail</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="details" className="space-y-4">
+                    <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {activeBatchRequirement.rule?.auto_generate || !activeBatchRequirement.rule ? 'Auto number' : 'Manual number'}
+                        </Badge>
+                        {activeBatchRequirement.rule?.manual_entry && (
+                          <Badge variant="outline">Manual edits allowed</Badge>
+                        )}
+                        {activeBatchSeries && (
+                          <Badge variant="secondary">{activeBatchSeries.code}</Badge>
+                        )}
+                        <Badge
+                          className={
+                            activeBatchMatch || activeLineBatchMatch
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                              : activeBatchLine?.batchNumber
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                                : 'bg-stone-100 text-stone-700 hover:bg-stone-100'
+                          }
+                        >
+                          {activeBatchStatus}
+                        </Badge>
+                        {(activeBatchMatch || activeLineBatchMatch) && (
+                          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                            Reusing batch
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeBatchMatch && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                        This item already has a batch for the selected {activeBatchDateText}. GR will use batch{' '}
+                        <span className="font-semibold">{activeBatchMatch.batch_number}</span>.
+                      </div>
+                    )}
+
+                    {!activeBatchMatch && activeLineBatchMatch && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                        Another line in this GR already uses the same item and {activeBatchDateText}. This line will use batch{' '}
+                        <span className="font-semibold">{activeLineBatchMatch.batchNumber}</span>.
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {activeBatchRequirement.needsManufacturingDate && (
+                        <div className="space-y-2">
+                          <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
+                          <Input
+                            ref={manufacturingDateInputRef}
+                            id="gr-manufacturing-date"
+                            type="date"
+                            value={activeBatchLine.manufacturingDate}
+                            onChange={event => updateBatchLine(activeBatchLine, { manufacturingDate: event.target.value })}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      {activeBatchRequirement.needsExpiryDate && (
+                        <div className="space-y-2">
+                          <Label htmlFor="gr-expiry-date" required>Expiry Date</Label>
+                          <Input
+                            id="gr-expiry-date"
+                            type="date"
+                            value={activeBatchLine.expiryDate}
+                            onChange={event => updateBatchLine(activeBatchLine, { expiryDate: event.target.value })}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      {activeBatchRequirement.needsSupplierBatch && (
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="gr-supplier-batch" required>Supplier Batch Number</Label>
+                          <Input
+                            id="gr-supplier-batch"
+                            value={activeBatchLine.supplierBatchNumber}
+                            onChange={event => updateLine(activeBatchLine.id, { supplierBatchNumber: event.target.value })}
+                            placeholder="Supplier batch no."
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="gr-batch-number">Generated Batch Number</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="gr-batch-number"
+                            value={activeBatchLine.batchNumber}
+                            readOnly={!activeBatchRequirement.rule?.manual_entry && Boolean(activeBatchRequirement.rule)}
+                            onChange={event => updateLine(activeBatchLine.id, { batchNumber: event.target.value })}
+                            placeholder={activeBatchRequirement.needsExpiryDate ? 'Enter MFG and EXP dates to generate' : 'Enter MFG date to generate'}
+                            className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => refreshGeneratedBatchNumber(activeBatchLine)}
+                          >
+                            <Hash className="size-4" />
+                            Generate
+                          </Button>
+                        </div>
+                      </div>
+
+                      {activeBatchParts && (
+                        <div className="space-y-3 rounded-md border border-stone-200 bg-stone-50 p-3 sm:col-span-2">
+                          <div className="grid gap-3 sm:grid-cols-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-source">Template Source</Label>
+                              <Input
+                                id="gr-batch-source"
+                                value={activeBatchParts.templateSource}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-date-format">Date Format</Label>
+                              <Input
+                                id="gr-batch-date-format"
+                                value={activeBatchParts.dateFormat}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-exp-months">Exp. Months</Label>
+                              <Input
+                                id="gr-batch-exp-months"
+                                value={activeBatchParts.defaultExpirationMonths == null ? '-' : String(activeBatchParts.defaultExpirationMonths)}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-separator">Separator</Label>
+                              <Input
+                                id="gr-batch-separator"
+                                value={activeBatchParts.separator}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-5">
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-prefix">Prefix</Label>
+                              <Input
+                                id="gr-batch-prefix"
+                                value={activeBatchParts.prefix || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-mfg-part">MFG Part</Label>
+                              <Input
+                                id="gr-batch-mfg-part"
+                                value={activeBatchParts.mfgPart || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-exp-part">EXP Part</Label>
+                              <Input
+                                id="gr-batch-exp-part"
+                                value={activeBatchParts.expPart || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-sequence">Sequence</Label>
+                              <Input
+                                id="gr-batch-sequence"
+                                value={activeBatchParts.sequence}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gr-batch-suffix">Suffix</Label>
+                              <Input
+                                id="gr-batch-suffix"
+                                value={activeBatchParts.suffix || '-'}
+                                disabled
+                                className="border-stone-300 bg-white text-stone-700 disabled:opacity-100"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="trail" className="space-y-4">
+                    <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Batch</div>
+                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.batchNumber || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Item</div>
+                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.itemCode || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Warehouse</div>
+                        <div className="font-semibold text-stone-950">{activeBatchLine.warehouseCode || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-amber-700">Line Quantity</div>
+                        <div className="font-semibold tabular-nums text-stone-950">{formatQuantity(activeBatchLine.baseQty)}</div>
+                      </div>
+                    </div>
+
+                    {loadingBatchTrail && (
+                      <div className="flex min-h-32 items-center justify-center gap-2 rounded-md border border-dashed border-stone-300 bg-white text-sm text-stone-600">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading transaction trail...
+                      </div>
+                    )}
+
+                    {!loadingBatchTrail && (!activeBatchLine.batchNumber || !activeBatchLine.itemCode) && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                        Enter an item and batch number to view the transaction trail.
+                      </div>
+                    )}
+
+                    {!loadingBatchTrail && activeBatchLine.batchNumber && activeBatchLine.itemCode && batchTrailRows.length === 0 && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                        No inventory postings were found for this batch.
+                      </div>
+                    )}
+
+                    {!loadingBatchTrail && batchTrailRows.length > 0 && (
+                      <div className="relative space-y-3 pl-5">
+                        <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
+                        {batchTrailRows.map(row => {
+                          const isOut = row.signedQty < 0
+                          const movementLabel = isOut ? 'OUT' : 'IN'
+
+                          return (
+                            <div key={row.id} className="relative rounded-md border border-stone-200 bg-white p-3 shadow-sm">
+                              <div className={`absolute -left-[17px] top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-white ${isOut ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-700'}`}>
+                                <ArrowRightCircle className={`h-4 w-4 ${isOut ? 'rotate-180' : ''}`} />
+                              </div>
+
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                      {movementLabel}
+                                    </span>
+                                    <span className="font-semibold text-stone-950">{row.documentLabel}</span>
+                                    <span className="text-xs text-stone-500">{row.sourceDocType || '-'}</span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-stone-500">
+                                    {formatDateTime(row.createdAt)}
+                                  </div>
+                                </div>
+
+                                <div className="text-right">
+                                  <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
+                                    {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
+                                  </div>
+                                  <div className="text-xs text-stone-500">
+                                    Balance {formatQuantity(row.runningQty)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Warehouse</span>
+                                  <span className="text-stone-900">{row.warehouseCode || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Bin</span>
+                                  <span className="text-stone-900">{row.binCode || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Reference</span>
+                                  <span className="text-stone-900">{row.ref || row.ref2 || '-'}</span>
+                                </div>
+                                <div className="rounded-md bg-stone-50 px-2 py-1">
+                                  <span className="block font-medium text-stone-500">Posting ID</span>
+                                  <span className="text-stone-900">#{row.id}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              )}
+
+          </BatchDetailsDialog>
+
+          <div className="mt-6 flex flex-col items-end gap-4">
+            <div className="w-full rounded-xl border p-4 sm:w-[34rem] mx-4">
+              <h3 className="text-sm font-semibold">Receiving Summary</h3>
+              <div className="mt-3 flex justify-between text-sm">
+                <span>Total Base Quantity</span>
+                <span className="font-medium tabular-nums">
+                  {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
+                </span>
+              </div>
+            </div>
+
+            {canEditDraft ? (
+              <div className="flex flex-wrap justify-end gap-2 mx-4 mb-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSave('Draft')}
+                  disabled={saving}
+                >
+                  <Save className="size-4" />
+                  {saving ? 'Saving...' : 'Save as Draft'}
+                </Button>
+                {canPostDocument && (
+                  <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
+                    <Save className="size-4" />
+                    {saving ? 'Posting...' : 'Post Document'}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <PostGoodsReceiptDialog
+        open={postConfirmOpen}
+        receiptNumber={receipt.grNo}
+        totalQuantity={totalQuantity}
+        saving={saving}
+        onOpenChange={open => !saving && setPostConfirmOpen(open)}
+        onConfirm={async () => {
+          await handleSave('Posted')
+          setPostConfirmOpen(false)
+        }}
+      />
+    </main>
   )
 }

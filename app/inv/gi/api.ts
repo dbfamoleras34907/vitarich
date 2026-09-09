@@ -1,0 +1,771 @@
+'use client'
+
+import { db } from '@/lib/Supabase/supabaseClient'
+import { getBrCleanupIdentityByDocumentNo } from '@/lib/data/repositories/brCleanup'
+
+export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
+
+export type GoodsIssueLine = {
+  id: number | string
+  allocationGroupKey?: string
+  tsDrNo?: string
+  haulerName?: string
+  plateNumber?: string
+  destination?: string
+  liveSalesCustomerName?: string
+  truckSeal?: number | null
+  itemId: number | null
+  itemCode: string
+  description: string
+  lineRemarks?: string
+  batchRuleId: number | null
+  batchNumber: string
+  manufacturingDate: string
+  expiryDate: string
+  altQty: number
+  altUom: string
+  baseQty: number
+  baseUom: string
+  fromWarehouseId: number | null
+  fromWarehouseCode: string
+  fromWarehouseName: string
+  onHandQty: number
+  requestedAltQty?: number
+  batchTotalQty?: number
+  varianceQty?: number
+}
+
+export type GoodsIssue = {
+  id: number | null
+  giNo: string
+  triggeredBy: string
+  issueDate: string
+  farmId: number | null
+  farmCode: string
+  farmName: string
+  fromWarehouseId: number | null
+  fromWarehouseCode: string
+  fromWarehouseName: string
+  remarks: string
+  haulerName: string
+  plateNumber: string | null
+  truckSeal: number | null
+  destination: string
+  liveSalesCustomerName: string
+  status: GoodsIssueStatus
+  lines: GoodsIssueLine[]
+  createdAt: string
+}
+
+type GoodsIssueRow = {
+  id: number
+  gi_no: string
+  issue_date: string
+  farm_id: number | null
+  farm_code: string | null
+  farm_name: string | null
+  from_warehouse_id: number | null
+  from_warehouse_code: string | null
+  from_warehouse_name: string | null
+  triggered_by: string | null
+  remarks: string | null
+  hauler_name?: string | null
+  plate_number?: string | null
+  truck_seal?: number | null
+  destination?: string | null
+  live_sales_customer_name?: string | null
+  status: GoodsIssueStatus
+  created_at: string
+}
+
+type GoodsIssueItemRow = {
+  id: number
+  goods_issue_id: number
+  br_delivery_id?: number
+  br_cleanup_id?: number
+  item_id: number | null
+  item_code: string
+  description: string | null
+  remarks?: string | null
+  batch_total_qty?: number | null
+  variance_qty?: number | null
+  batch_rule_id: number | null
+  batch_number: string | null
+  manufacturing_date: string | null
+  expiry_date: string | null
+  alt_qty: number
+  alt_uom: string
+  base_qty: number
+  base_uom: string
+  from_warehouse_id: number | null
+  from_warehouse_code: string | null
+  from_warehouse_name: string | null
+  void: string
+  allocation_group_key?: string | null
+  ts_dr_no?: string | null
+  hauler_name?: string | null
+  plate_number?: string | null
+  destination?: string | null
+  live_sales_customer_name?: string | null
+  truck_seal?: number | null
+}
+
+type GoodsIssueListItemRow = {
+  goods_issue_id?: number
+  br_delivery_id?: number
+  br_cleanup_id?: number
+  item_code: string
+  description: string | null
+  base_qty: number
+}
+
+export type GoodsIssueOnHandBatch = {
+  itemCode: string
+  warehouseCode: string
+  batchNumber: string
+  manufacturingDate: string
+  expiryDate: string
+  onHandQty: number
+}
+
+export type GoodsIssueOnHandShortage = {
+  itemCode: string
+  warehouseCode: string
+  batchNumber: string
+  requiredQty: number
+  onHandQty: number
+}
+
+type InventoryPostingRow = {
+  id: number
+  item_code: string | null
+  warehouse_code: string | null
+  qty: number | null
+  transfer_type: string | null
+  ref: string | null
+  ref2: string | null
+  batch_number?: string | null
+}
+
+export type CleanupVariancePosting = {
+  id: number
+  itemCode: string
+  warehouseCode: string
+  batchNumber: string
+  qty: number
+}
+
+const dedicatedIssueTables = {
+  'BR-DR': { header: 'br_delivery', lines: 'br_delivery_lines', lineForeignKey: 'br_delivery_id' },
+  'BR-CU': { header: 'br_cleanup', lines: 'br_cleanup_lines', lineForeignKey: 'br_cleanup_id' },
+} as const
+
+const getIssueTables = (triggeredBy: string) =>
+  dedicatedIssueTables[triggeredBy.trim().toUpperCase() as keyof typeof dedicatedIssueTables]
+  ?? { header: 'goods_issue', lines: 'goods_issue_items', lineForeignKey: 'goods_issue_id' }
+
+const usesDedicatedIssueTables = (triggeredBy: string) =>
+  triggeredBy.trim().toUpperCase() in dedicatedIssueTables
+
+const getListLineHeaderId = (row: GoodsIssueListItemRow) =>
+  Number(row.br_delivery_id ?? row.br_cleanup_id ?? row.goods_issue_id ?? 0)
+
+type ItemBatchRow = {
+  item_code: string
+  batch_number: string
+  manufacturing_date: string | null
+  expiry_date: string | null
+}
+
+function errorDetails(error: unknown) {
+  return typeof error === 'object' && error !== null
+    ? JSON.stringify(error)
+    : String(error)
+}
+
+const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): GoodsIssueLine => ({
+  id: row.id,
+  allocationGroupKey: row.allocation_group_key?.trim() || (
+    row.br_delivery_id
+      ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
+      : `line:${row.id}`
+  ),
+  tsDrNo: row.ts_dr_no ?? '',
+  haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
+  plateNumber: row.plate_number ?? legacyHeader?.plate_number ?? '',
+  destination: row.destination ?? legacyHeader?.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? legacyHeader?.live_sales_customer_name ?? '',
+  truckSeal: row.truck_seal ?? legacyHeader?.truck_seal ?? null,
+  itemId: row.item_id,
+  itemCode: row.item_code,
+  description: row.description ?? '',
+  lineRemarks: row.remarks ?? '',
+  batchRuleId: row.batch_rule_id ?? null,
+  batchNumber: row.batch_number ?? '',
+  manufacturingDate: row.manufacturing_date ?? '',
+  expiryDate: row.expiry_date ?? '',
+  altQty: Number(row.alt_qty),
+  altUom: row.alt_uom,
+  baseQty: Number(row.base_qty),
+  baseUom: row.base_uom,
+  fromWarehouseId: row.from_warehouse_id,
+  fromWarehouseCode: row.from_warehouse_code ?? '',
+  fromWarehouseName: row.from_warehouse_name ?? '',
+  onHandQty: 0,
+  batchTotalQty: Number(row.batch_total_qty ?? 0),
+  varianceQty: Number(row.variance_qty ?? 0),
+})
+
+const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
+  id: row.id,
+  giNo: row.gi_no,
+  triggeredBy: row.triggered_by ?? 'GI',
+  issueDate: row.issue_date,
+  farmId: row.farm_id,
+  farmCode: row.farm_code ?? '',
+  farmName: row.farm_name ?? '',
+  fromWarehouseId: row.from_warehouse_id,
+  fromWarehouseCode: row.from_warehouse_code ?? '',
+  fromWarehouseName: row.from_warehouse_name ?? '',
+  remarks: row.remarks ?? '',
+  haulerName: row.hauler_name ?? '',
+  plateNumber: row.plate_number == null ? null : String(row.plate_number),
+  truckSeal: row.truck_seal == null ? null : Number(row.truck_seal),
+  destination: row.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? '',
+  status: row.status,
+  lines: lines.map(line => toIssueLine(line, row)),
+  createdAt: row.created_at,
+})
+
+const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
+  id: `${getListLineHeaderId(row)}-${row.item_code}`,
+  allocationGroupKey: `list:${getListLineHeaderId(row)}:${row.item_code}`,
+  tsDrNo: '',
+  itemId: null,
+  itemCode: row.item_code,
+  description: row.description ?? '',
+  lineRemarks: '',
+  batchRuleId: null,
+  batchNumber: '',
+  manufacturingDate: '',
+  expiryDate: '',
+  altQty: 0,
+  altUom: '',
+  baseQty: Number(row.base_qty),
+  baseUom: '',
+  fromWarehouseId: null,
+  fromWarehouseCode: '',
+  fromWarehouseName: '',
+  onHandQty: 0,
+  batchTotalQty: 0,
+  varianceQty: 0,
+})
+
+const toIssueListItem = (
+  row: GoodsIssueRow,
+  lines: GoodsIssueListItemRow[],
+): GoodsIssue => ({
+  ...toIssue(row, []),
+  lines: lines.map(toIssueListLine),
+})
+
+async function getSessionUserId() {
+  const { data, error } = await db.auth.getSession()
+  if (error) throw error
+  return data.session?.user.id ?? null
+}
+
+function signedQty(row: InventoryPostingRow) {
+  const qty = Number(row.qty ?? 0)
+  return row.transfer_type === 'OUT' ? -qty : qty
+}
+
+const inventoryRequirementKey = (line: GoodsIssueLine) =>
+  [
+    line.itemCode,
+    line.fromWarehouseCode,
+    line.batchNumber || '',
+  ].map(value => value.trim().toUpperCase()).join('|')
+
+function getRequiredInventoryQuantities(lines: GoodsIssueLine[]) {
+  const requiredByKey = new Map<string, GoodsIssueOnHandShortage>()
+
+  for (const line of lines) {
+    const requiredQty = Number(line.baseQty || 0)
+    if (!line.itemCode || !line.fromWarehouseCode || requiredQty <= 0) continue
+
+    const key = inventoryRequirementKey(line)
+    const current = requiredByKey.get(key)
+
+    if (current) {
+      current.requiredQty += requiredQty
+      continue
+    }
+
+    requiredByKey.set(key, {
+      itemCode: line.itemCode.trim(),
+      warehouseCode: line.fromWarehouseCode.trim(),
+      batchNumber: line.batchNumber.trim(),
+      requiredQty,
+      onHandQty: 0,
+    })
+  }
+
+  return Array.from(requiredByKey.values())
+}
+
+export async function getItemWarehouseOnHand(
+  itemCode: string,
+  warehouseCode: string,
+  batchNumber?: string,
+) {
+  if (!itemCode || !warehouseCode) return 0
+
+  const postingSelect = 'id, item_code, warehouse_code, qty, transfer_type, batch_number, ref'
+  const buildQuery = () => db
+    .from('inventory_postings')
+    .select(postingSelect)
+    .eq('item_code', itemCode)
+    .eq('warehouse_code', warehouseCode)
+
+  const results = batchNumber
+    ? await Promise.all([
+        buildQuery().eq('batch_number', batchNumber),
+        buildQuery().eq('ref', batchNumber),
+      ])
+    : [await buildQuery()]
+
+  for (const result of results) {
+    if (result.error) throw result.error
+  }
+
+  const seenPostingIds = new Set<number>()
+  const rows = results.flatMap(result => (result.data ?? []) as InventoryPostingRow[])
+
+  return rows.reduce(
+    (total, row) => {
+      if (seenPostingIds.has(row.id)) return total
+      seenPostingIds.add(row.id)
+      return total + signedQty(row)
+    },
+    0,
+  )
+}
+
+export async function getOnHandBatches(
+  itemCode: string,
+  warehouseCode: string,
+): Promise<GoodsIssueOnHandBatch[]> {
+  if (!itemCode || !warehouseCode) return []
+
+  const { data: postingRows, error: postingError } = await db
+    .from('inventory_postings')
+    .select('item_code, warehouse_code, qty, transfer_type, batch_number, ref')
+    .eq('item_code', itemCode)
+    .eq('warehouse_code', warehouseCode)
+
+  if (postingError) throw postingError
+
+  const quantityByBatch = new Map<string, number>()
+  for (const row of (postingRows ?? []) as InventoryPostingRow[]) {
+    const batchNumber = String(row.batch_number ?? row.ref ?? '').trim()
+    if (!batchNumber) continue
+    quantityByBatch.set(batchNumber, (quantityByBatch.get(batchNumber) ?? 0) + signedQty(row))
+  }
+
+  const batchNumbers = Array.from(quantityByBatch.entries())
+    .filter(([, qty]) => qty > 0)
+    .map(([batchNumber]) => batchNumber)
+
+  if (batchNumbers.length === 0) return []
+
+  const { data: batchRows, error: batchError } = await db
+    .from('item_batches')
+    .select('item_code, batch_number, manufacturing_date, expiry_date')
+    .eq('item_code', itemCode)
+    .eq('void', '1')
+    .in('batch_number', batchNumbers)
+
+  if (batchError) throw batchError
+
+  const batchDateByNumber = new Map(
+    ((batchRows ?? []) as ItemBatchRow[]).map(row => [row.batch_number, row]),
+  )
+
+  return batchNumbers
+    .map(batchNumber => {
+      const batch = batchDateByNumber.get(batchNumber)
+      return {
+        itemCode,
+        warehouseCode,
+        batchNumber,
+        manufacturingDate: batch?.manufacturing_date ?? '',
+        expiryDate: batch?.expiry_date ?? '',
+        onHandQty: quantityByBatch.get(batchNumber) ?? 0,
+      }
+    })
+    .sort((left, right) => {
+      const leftDate = left.expiryDate || '9999-12-31'
+      const rightDate = right.expiryDate || '9999-12-31'
+      return leftDate.localeCompare(rightDate) || left.batchNumber.localeCompare(right.batchNumber)
+    })
+}
+
+export async function getGoodsIssueOnHandShortages(
+  lines: GoodsIssueLine[],
+): Promise<GoodsIssueOnHandShortage[]> {
+  const requirements = getRequiredInventoryQuantities(lines)
+
+  const checkedRequirements = await Promise.all(
+    requirements.map(async requirement => ({
+      ...requirement,
+      onHandQty: await getItemWarehouseOnHand(
+        requirement.itemCode,
+        requirement.warehouseCode,
+        requirement.batchNumber || undefined,
+      ),
+    })),
+  )
+
+  return checkedRequirements.filter(
+    requirement => requirement.requiredQty > requirement.onHandQty,
+  )
+}
+
+export async function getGoodsIssues(
+  limit = 50,
+  triggeredBy = 'GI',
+  farmIdentifier?: number | string | null,
+): Promise<GoodsIssue[]> {
+  const tables = getIssueTables(triggeredBy)
+  let query = db
+    .from(tables.header)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (!usesDedicatedIssueTables(triggeredBy)) query = query.eq('triggered_by', triggeredBy)
+
+  if (
+    farmIdentifier !== null &&
+    farmIdentifier !== undefined &&
+    String(farmIdentifier).trim() !== ''
+  ) {
+    const farmValue = String(farmIdentifier).trim()
+    query = /^\d+$/.test(farmValue)
+      ? query.eq('farm_id', farmValue)
+      : query.eq('farm_code', farmValue)
+  }
+
+  const { data: issueRows, error: issueError } = await query
+
+  if (issueError) throw issueError
+
+  const issues = (issueRows ?? []) as GoodsIssueRow[]
+  const issueIds = issues.map(issue => issue.id)
+  if (issueIds.length === 0) return []
+
+  const { data: itemRows, error: itemError } = await db
+    .from(tables.lines)
+    .select('*')
+    .in(tables.lineForeignKey, issueIds)
+    .eq('void', '1')
+    .order('line_no', { ascending: true })
+
+  if (itemError) throw itemError
+
+  const items = (itemRows ?? []) as GoodsIssueListItemRow[]
+  return issues.map(issue =>
+    toIssueListItem(issue, items.filter(item => getListLineHeaderId(item) === issue.id)),
+  )
+}
+
+export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise<GoodsIssue | null> {
+  const tables = getIssueTables(triggeredBy)
+  const { data: issueRow, error: issueError } = await db
+    .from(tables.header)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (issueError) throw issueError
+  if (!issueRow) return null
+
+  const { data: itemRows, error: itemError } = await db
+    .from(tables.lines)
+    .select('*')
+    .eq(tables.lineForeignKey, id)
+    .eq('void', '1')
+    .order('line_no', { ascending: true })
+
+  if (itemError) throw itemError
+
+  return toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+}
+
+async function validateOnHand(lines: GoodsIssueLine[]) {
+  const [shortage] = await getGoodsIssueOnHandShortages(lines)
+  if (!shortage) return
+
+  const batchText = shortage.batchNumber ? ` batch ${shortage.batchNumber}` : ''
+  throw new Error(
+    `${shortage.itemCode}${batchText} has only ${shortage.onHandQty} on hand in ${shortage.warehouseCode}.`,
+  )
+}
+
+type BrDeliveryTransactionResult = {
+  header: GoodsIssueRow
+  lines: GoodsIssueItemRow[]
+}
+
+async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
+  const { data, error } = await db.rpc('save_br_delivery_transaction', {
+    p_document: {
+      id: issue.id,
+      giNo: issue.giNo,
+      issueDate: issue.issueDate,
+      farmId: issue.farmId,
+      fromWarehouseId: issue.fromWarehouseId,
+      fromWarehouseCode: issue.fromWarehouseCode,
+      fromWarehouseName: issue.fromWarehouseName,
+      remarks: issue.remarks,
+      status: issue.status,
+      lines: issue.lines,
+    },
+  })
+
+  if (error) throw error
+  const result = data as BrDeliveryTransactionResult | null
+  if (!result?.header || !Array.isArray(result.lines)) {
+    throw new Error('Harvest & Delivery transaction did not return the saved document.')
+  }
+
+  return toIssue(result.header, result.lines)
+}
+
+export async function saveGoodsIssue(issue: GoodsIssue) {
+  if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
+    return saveBrDeliveryTransaction(issue)
+  }
+
+  const tables = getIssueTables(issue.triggeredBy)
+  const userId = await getSessionUserId()
+  let documentId = issue.id
+
+  if (!documentId && issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
+    const existingCleanup = await getBrCleanupIdentityByDocumentNo(issue.giNo)
+    if (existingCleanup) {
+      if (existingCleanup.status !== 'Draft') {
+        throw new Error(`Clean Up ${issue.giNo} already exists and is not an editable draft.`)
+      }
+      if (existingCleanup.createdBy && userId && existingCleanup.createdBy !== userId) {
+        throw new Error(`Clean Up ${issue.giNo} belongs to another user and cannot be overwritten.`)
+      }
+      documentId = Number(existingCleanup.id)
+    }
+  }
+
+  const previousStatus = documentId
+    ? await db
+        .from(tables.header)
+        .select('status')
+        .eq('id', documentId)
+        .maybeSingle()
+    : { data: null, error: null }
+
+  if (previousStatus.error) throw previousStatus.error
+
+  const wasPosted = previousStatus.data?.status === 'Posted'
+  const shouldPostAfterLines = issue.status === 'Posted' && !wasPosted
+  if (shouldPostAfterLines) await validateOnHand(issue.lines)
+
+  const saveStatus = shouldPostAfterLines
+    ? (previousStatus.data?.status as GoodsIssueStatus | undefined) ?? 'Draft'
+    : issue.status
+
+  const headerPayload = {
+    gi_no: issue.giNo,
+    issue_date: issue.issueDate,
+    farm_id: issue.farmId,
+    farm_code: issue.farmCode || null,
+    farm_name: issue.farmName || null,
+    from_warehouse_id: issue.fromWarehouseId,
+    from_warehouse_code: issue.fromWarehouseCode || null,
+    from_warehouse_name: issue.fromWarehouseName || null,
+    triggered_by: issue.triggeredBy || 'GI',
+    remarks: issue.remarks.trim() || null,
+    status: saveStatus,
+    ...(documentId ? { updated_by: userId } : { created_by: userId }),
+  }
+
+  const { data: savedHeader, error: headerError } = documentId
+    ? await db.from(tables.header).update(headerPayload).eq('id', documentId).select('*').single()
+    : await db.from(tables.header).insert(headerPayload).select('*').single()
+
+  if (headerError) throw headerError
+  const header = savedHeader as GoodsIssueRow
+
+  const { data: existingItems, error: existingItemsError } = await db
+    .from(tables.lines)
+    .select('id')
+    .eq(tables.lineForeignKey, header.id)
+    .eq('void', '1')
+
+  if (existingItemsError) throw existingItemsError
+
+  for (const item of existingItems ?? []) {
+    const itemId = Number(item.id)
+    const { error } = await db
+      .from(tables.lines)
+      .update({ line_no: -itemId, updated_by: userId })
+      .eq('id', itemId)
+
+    if (error) throw error
+  }
+
+  const retainedItemIds = new Set(
+    issue.lines
+      .map(line => line.id)
+      .filter((id): id is number => typeof id === 'number'),
+  )
+  const removedItemIds = (existingItems ?? [])
+    .map(item => Number(item.id))
+    .filter(id => !retainedItemIds.has(id))
+
+  if (removedItemIds.length > 0) {
+    const { error } = await db
+      .from(tables.lines)
+      .update({ void: '0', updated_by: userId })
+      .in('id', removedItemIds)
+
+    if (error) throw error
+  }
+
+  for (const [index, line] of issue.lines.entries()) {
+    const itemPayload = {
+      [tables.lineForeignKey]: header.id,
+      line_no: index + 1,
+      item_id: line.itemId,
+      item_code: line.itemCode,
+      description: line.description || null,
+      ...(issue.triggeredBy === 'BR-DR' ? {
+        allocation_group_key: line.allocationGroupKey || String(line.id),
+        ts_dr_no: line.tsDrNo?.trim() || null,
+        hauler_name: line.haulerName?.trim() || null,
+        plate_number: line.plateNumber?.trim() || null,
+        destination: line.destination?.trim() || null,
+        live_sales_customer_name: line.liveSalesCustomerName?.trim() || null,
+        truck_seal: line.truckSeal ?? null,
+      } : {}),
+      ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
+      ...(issue.triggeredBy === 'BR-CU' ? {
+        batch_total_qty: Number(line.batchTotalQty ?? 0),
+        variance_qty: Number(line.varianceQty ?? 0),
+      } : {}),
+      batch_rule_id: line.batchRuleId,
+      batch_number: line.batchNumber.trim() || null,
+      manufacturing_date: line.manufacturingDate || null,
+      expiry_date: line.expiryDate || null,
+      alt_qty: line.altQty,
+      alt_uom: line.altUom,
+      base_qty: line.baseQty,
+      base_uom: line.baseUom,
+      from_warehouse_id: line.fromWarehouseId,
+      from_warehouse_code: line.fromWarehouseCode || null,
+      from_warehouse_name: line.fromWarehouseName || null,
+      void: '1',
+      updated_by: userId,
+    }
+
+    if (typeof line.id === 'number') {
+      const { error } = await db
+        .from(tables.lines)
+        .update(itemPayload)
+        .eq('id', line.id)
+
+      if (error) throw error
+    } else {
+      const { error } = await db
+        .from(tables.lines)
+        .insert({ ...itemPayload, created_by: userId })
+
+      if (error) throw error
+    }
+  }
+
+  const staleLineVoid = db
+    .from(tables.lines)
+    .update({ void: '0', updated_by: userId })
+    .eq(tables.lineForeignKey, header.id)
+    .eq('void', '1')
+
+  const { error: deleteError } = issue.lines.length > 0
+    ? await staleLineVoid.gt('line_no', issue.lines.length)
+    : await staleLineVoid
+
+  if (deleteError) throw deleteError
+
+  if (shouldPostAfterLines) {
+    const { error: postError } = await db
+      .from(tables.header)
+      .update({ status: 'Posted', updated_by: userId })
+      .eq('id', header.id)
+
+    if (postError) throw postError
+  }
+
+  return getGoodsIssueById(header.id, issue.triggeredBy)
+}
+
+export async function getCleanupVariancePostings(documentId: number): Promise<CleanupVariancePosting[]> {
+  if (!Number.isFinite(documentId) || documentId <= 0) return []
+
+  const { data, error } = await db
+    .from('inventory_postings')
+    .select('id, item_code, warehouse_code, batch_number, ref, qty')
+    .eq('source_doc_type', 'BR_CLEANUP_VARIANCE')
+    .eq('source_docentry', documentId)
+    .eq('transfer_type', 'OUT')
+    .order('id', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map(row => ({
+    id: Number(row.id),
+    itemCode: String(row.item_code ?? ''),
+    warehouseCode: String(row.warehouse_code ?? ''),
+    batchNumber: String(row.batch_number ?? row.ref ?? ''),
+    qty: Number(row.qty ?? 0),
+  }))
+}
+
+export async function createGoodsIssueNumber(prefix = 'GI') {
+  const yearSuffix = String(new Date().getFullYear()).slice(-2)
+  const documentPrefix = prefix.trim() || 'GI'
+
+  const tables = getIssueTables(documentPrefix)
+  const { data, error } = await db
+    .from(tables.header)
+    .select('gi_no')
+    .ilike('gi_no', `${documentPrefix}-${yearSuffix}-%`)
+    .order('gi_no', { ascending: false })
+    .limit(1)
+
+  if (error) throw new Error(`Item stock out number could not be created. ${errorDetails(error)}`)
+
+  const latestNo = data?.[0]?.gi_no ?? ''
+  const latestSequence = Number(latestNo.match(/(\d+)$/)?.[1] ?? 0)
+  const sequence = Number.isFinite(latestSequence) ? latestSequence + 1 : 1
+
+  return `${documentPrefix}-${yearSuffix}-${String(sequence).padStart(6, '0')}`
+}
+
+export function getIssueItemSummary(issue: GoodsIssue) {
+  const descriptions = issue.lines
+    .filter(line => line.itemCode)
+    .map(line => line.description || line.itemCode)
+
+  if (descriptions.length === 0) return '-'
+  if (descriptions.length === 1) return descriptions[0]
+  return `${descriptions[0]} +${descriptions.length - 1} more`
+}

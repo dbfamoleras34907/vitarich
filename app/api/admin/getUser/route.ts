@@ -1,28 +1,23 @@
-// app/api/admin/createUser/route.ts
-export const runtime = "nodejs"; 
-import { admin_db } from "@/lib/Supabase/supabaseAdmin";
-import { NextResponse } from "next/server";
+export const runtime = "nodejs"
 
-export async function GET() {
+import { NextResponse } from "next/server"
+import { admin_db } from "@/lib/Supabase/supabaseAdmin"
+import { USER_TYPE, adminAccessError, requireAdminActor } from "@/lib/auth/adminAccess"
+
+export async function GET(request: Request) {
   try {
-    // const { email, password } = await req.json();
-    const { data, error } = await admin_db.auth.admin.listUsers()
+    const actor = await requireAdminActor(request)
+    let query = admin_db.from("users").select("*").order("email", { ascending: true })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (actor.user_type === USER_TYPE.ADMIN) {
+      query = query.eq("user_type", USER_TYPE.USER).eq("fms_type", actor.fms_type)
     }
-    return NextResponse.json({
-      user: data.users.map(u => ({
-        id: u.id,
-        email: u.email,
-      }))
-    }, { status: 200 });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    console.error("API Error:", err);
-    return NextResponse.json(
-      { error: "Internal Server Error", details: err.message },
-      { status: 500 }
-    );
+
+    const { data, error } = await query
+    if (error) throw error
+    return NextResponse.json({ user: data ?? [] })
+  } catch (error) {
+    const response = adminAccessError(error)
+    return NextResponse.json({ error: response.message }, { status: response.status })
   }
 }

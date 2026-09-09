@@ -1,10 +1,36 @@
 
 export const runtime = "nodejs";
 import { createBrowserClient } from '@supabase/ssr'
+import {
+  isInternetError,
+  notifyInternetError,
+  notifyInternetRestored,
+} from '@/lib/networkError'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-export const db = createBrowserClient(supabaseUrl, supabaseAnonKey)
+
+const fetchWithInternetErrorNotice: typeof fetch = async (...args) => {
+  try {
+    const response = await fetch(...args)
+    notifyInternetRestored()
+    return response
+  } catch (error) {
+    if (isInternetError(error)) {
+      notifyInternetError(error)
+      // Keep the original rejection so Supabase callers can handle the failed
+      // request without turning it into a new application error.
+      throw error
+    }
+    throw error
+  }
+}
+
+export const db = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    fetch: fetchWithInternetErrorNotice,
+  },
+})
 
 export async function logout() {
   const { error } = await db.auth.signOut()

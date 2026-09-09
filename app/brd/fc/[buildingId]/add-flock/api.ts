@@ -1,0 +1,680 @@
+import { db } from "@/lib/Supabase/supabaseClient";
+
+export const flockCardBreedComboOptions = [
+  "Arbor Acres Plus",
+  "Aviagen AP 95",
+  "COBB 400",
+  "COBB 500",
+  "COBB 700",
+  "COBB 800",
+  "COBB AVIAN 48",
+  "Cobb Sasso-150",
+  "Cobb Sasso-175",
+  "Hubbard Classic",
+  "Hubbard Efficiency Plus",
+  "Hubbard F15",
+  "Hubbard Flex",
+  "Hubbard H1",
+  "Hubbard JA 757",
+  "Hubbard JA 787",
+  "Hubbard JA 957",
+  "Hubbard JA 987",
+  "Hubbard JV",
+  "Hubbard Redbro",
+  "Indian River",
+  "Ross Ranger",
+  "Ross 308",
+  "Ross 708",
+  "Ross PM3",
+  "Rowan Rambler Ranger",
+  "Rowan Ranger",
+  "Rowan Ranger Classic",
+  "Rowan Ranger Gold",
+  "Vencobb 430 Y",
+  "Mixed",
+  "Other",
+  "Unknown",
+].map(breed => ({ code: breed, name: breed }));
+
+export type FlockCardOriginPayload = {
+  lineNo: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  batchNo: string;
+  warehouseId?: number | null;
+  warehouseCode?: string | null;
+  warehouseName?: string | null;
+  grOrigin?: string | null;
+  animalQty: number;
+  onHandSnapshot?: number | null;
+  breed?: string | null;
+  manufacturingDate?: string | null;
+  expiryDate?: string | null;
+  extra?: Record<string, unknown>;
+};
+
+export type FlockCardPlacementPayload = {
+  id?: number | null;
+  cardNo?: string | null;
+  farmId?: number | null;
+  farmCode?: string | null;
+  farmName?: string | null;
+  buildingId?: number | null;
+  buildingWarehouseId?: number | null;
+  buildingSource?: string | null;
+  buildingKey?: string | null;
+  buildingCode?: string | null;
+  buildingName?: string | null;
+  age: number;
+  startDate: string;
+  broilerType?: string | null;
+  breed?: string | null;
+  guideline?: string | null;
+  coccidiostatProgramId?: string | null;
+  otherProgramId?: string | null;
+  vaccinationProgramId?: string | null;
+  flockCode?: string | null;
+  trialCode?: string | null;
+  cycleNumber?: string | null;
+  farmCycleId?: number | null;
+  animalQty: number;
+  feedMill?: string | null;
+  stockingDensity?: number | null;
+  stockingDensityByWeight?: number | null;
+  sex?: string | null;
+  remarks?: string | null;
+  extra?: Record<string, unknown>;
+  origins?: FlockCardOriginPayload[];
+};
+
+export type SavedFlockCardPlacement = {
+  id: number;
+  cardNo: string;
+};
+
+export type FlockCardPlacementRecord = Omit<FlockCardPlacementPayload, "origins"> & {
+  id: number;
+  cardNo: string;
+  origins: FlockCardOriginPayload[];
+};
+
+export type UsedFlockOriginBatch = {
+  id: string;
+  itemCode: string;
+  batchNo: string;
+  warehouseCode: string;
+  cardId: number;
+  buildingId: number | null;
+  buildingWarehouseId: number | null;
+  buildingKey: string | null;
+  buildingCode: string | null;
+};
+
+type FlockCardHeaderRow = {
+  id: number;
+  card_no: string | null;
+  farm_id: number | null;
+  farm_code: string | null;
+  farm_name: string | null;
+  building_id: number | null;
+  building_whse_id: number | null;
+  building_src: string | null;
+  building_key: string | null;
+  building_code: string | null;
+  building_name: string | null;
+  age: number | null;
+  start_date: string | null;
+  broiler_type: string | null;
+  breed: string | null;
+  guideline: string | null;
+  cocci_prg_id: string | null;
+  other_prg_id: string | null;
+  vacc_prg_id: string | null;
+  flock_code: string | null;
+  trial_code: string | null;
+  cycle_no: string | null;
+  farm_cycle_id: number | null;
+  animal_qty: number | null;
+  feedmill: string | null;
+  stock_density: number | null;
+  stock_density_wt: number | null;
+  sex: string | null;
+  remarks: string | null;
+  extra: Record<string, unknown> | null;
+};
+
+type FlockCardOriginRow = {
+  line_no: number | null;
+  item_id: number | null;
+  item_code: string | null;
+  item_name: string | null;
+  batch_no: string | null;
+  whse_id: number | null;
+  whse_code: string | null;
+  whse_name: string | null;
+  gr_origin: string | null;
+  animal_qty: number | null;
+  onhand_snapshot: number | null;
+  breed: string | null;
+  mfg_date: string | null;
+  exp_date: string | null;
+  extra: Record<string, unknown> | null;
+};
+
+type FlockCardBatchUsageHeaderRow = {
+  id: number;
+  building_id: number | null;
+  building_whse_id: number | null;
+  building_key: string | null;
+  building_code: string | null;
+};
+
+type FlockCardBatchUsageOriginRow = {
+  fc_id: number | null;
+  item_code: string | null;
+  batch_no: string | null;
+  whse_code: string | null;
+};
+
+type SupabaseErrorLike = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
+function throwDbError(error: unknown, context: string): never {
+  if (error instanceof Error) {
+    throw new Error(`${context}: ${error.message}`);
+  }
+
+  if (error && typeof error === "object") {
+    const dbError = error as SupabaseErrorLike;
+    const details = [
+      dbError.message,
+      dbError.details,
+      dbError.hint,
+      dbError.code ? `code: ${dbError.code}` : "",
+    ].filter(Boolean).join(" ");
+
+    throw new Error(details ? `${context}: ${details}` : context);
+  }
+
+  throw new Error(`${context}: ${String(error ?? "Unknown error")}`);
+}
+
+function nextCardNo() {
+  const now = new Date();
+  const pad = (value: number, length = 2) => String(value).padStart(length, "0");
+
+  return [
+    "FLOCK",
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    "-",
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+    pad(now.getMilliseconds(), 3),
+  ].join("");
+}
+
+async function getNextCycleCount(payload: Pick<
+  FlockCardPlacementPayload,
+  "farmId" | "buildingId" | "buildingWarehouseId" | "buildingKey"
+>) {
+  const farmId = Number(payload.farmId ?? 0);
+  if (!Number.isFinite(farmId) || farmId <= 0) return "1";
+
+  let query = db
+    .from("flock_card")
+    .select("cycle_no")
+    .eq("farm_id", farmId)
+    .eq("void", "1");
+
+  if (payload.buildingId != null) {
+    query = query.eq("building_id", payload.buildingId);
+  } else if (payload.buildingWarehouseId != null) {
+    query = query.eq("building_whse_id", payload.buildingWarehouseId);
+  } else if (payload.buildingKey?.trim()) {
+    query = query.eq("building_key", payload.buildingKey.trim());
+  } else {
+    return "1";
+  }
+
+  const result = await query;
+  if (result.error) throwDbError(result.error, "Unable to calculate cycle count");
+
+  const highestCycleCount = (result.data ?? []).reduce((highest, row) => {
+    const count = Number(String(row.cycle_no ?? "").trim());
+    return Number.isInteger(count) && count > highest ? count : highest;
+  }, 0);
+
+  return String(highestCycleCount + 1);
+}
+
+export type ActiveDocFarmCycle = {
+  id: number;
+  cycleNumber: string;
+  status: string;
+};
+
+export async function ensureActiveDocFarmCycle(farmId: number): Promise<ActiveDocFarmCycle> {
+  const { data, error } = await db.rpc("ensure_active_doc_farm_cycle", { p_farm_id: farmId });
+  if (error) throwDbError(error, "Unable to create the farm cycle");
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.id) throw new Error("Unable to create the farm cycle: missing cycle id");
+  return { id: Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+}
+
+export async function previewDocFarmCycle(farmId: number): Promise<Omit<ActiveDocFarmCycle, "id"> & { id: number | null }> {
+  const { data, error } = await db.rpc("preview_doc_farm_cycle", { p_farm_id: farmId });
+  if (error) throwDbError(error, "Unable to calculate the farm Cycle Count");
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.cycle_no) throw new Error("Unable to calculate the farm Cycle Count");
+  return { id: row.id == null ? null : Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+}
+
+export async function isDocCycleBuildingExcluded(farmId: number, buildingWarehouseId: number) {
+  const { data, error } = await db
+    .from("doc_cycle_excluded_buildings")
+    .select("id")
+    .eq("farm_id", farmId)
+    .eq("building_whse_id", buildingWarehouseId)
+    .maybeSingle();
+  if (error) throwDbError(error, "Unable to check the building cycle setting");
+  return Boolean(data);
+}
+
+export async function getNextFlockCardCycleCount(payload: Pick<
+  FlockCardPlacementPayload,
+  "farmId" | "buildingId" | "buildingWarehouseId" | "buildingKey"
+>) {
+  return getNextCycleCount(payload);
+}
+
+async function getSessionUserId() {
+  const { data, error } = await db.auth.getSession();
+  if (error) throwDbError(error, "Unable to read current session");
+
+  return data.session?.user.id ?? null;
+}
+
+function toNumberOrNull(value: number | string | null | undefined) {
+  if (value == null) return null;
+
+  const numericValue = Number(String(value).replaceAll(",", "").trim());
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function toDateOrNull(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function placementPayloadToRow(
+  payload: FlockCardPlacementPayload,
+  userId: string | null,
+  cardNo: string,
+) {
+  return {
+    updated_by: userId,
+    card_no: cardNo,
+    farm_id: payload.farmId ?? null,
+    farm_code: payload.farmCode?.trim() || null,
+    farm_name: payload.farmName?.trim() || null,
+    building_id: payload.buildingId ?? null,
+    building_whse_id: payload.buildingWarehouseId ?? null,
+    building_src: payload.buildingSource?.trim() || null,
+    building_key: payload.buildingKey?.trim() || null,
+    building_code: payload.buildingCode?.trim() || null,
+    building_name: payload.buildingName?.trim() || null,
+    age: toNumberOrNull(payload.age) ?? 0,
+    start_date: payload.startDate,
+    broiler_type: payload.broilerType?.trim() || null,
+    breed: payload.breed?.trim() || null,
+    guideline: payload.guideline?.trim() || null,
+    cocci_prg_id: payload.coccidiostatProgramId?.trim() || null,
+    other_prg_id: payload.otherProgramId?.trim() || null,
+    vacc_prg_id: payload.vaccinationProgramId?.trim() || null,
+    flock_code: payload.flockCode?.trim() || null,
+    trial_code: payload.trialCode?.trim() || null,
+    cycle_no: payload.cycleNumber?.trim() || null,
+    farm_cycle_id: payload.farmCycleId ?? null,
+    animal_qty: toNumberOrNull(payload.animalQty) ?? 0,
+    feedmill: payload.feedMill?.trim() || null,
+    stock_density: toNumberOrNull(payload.stockingDensity),
+    stock_density_wt: toNumberOrNull(payload.stockingDensityByWeight),
+    sex: payload.sex?.trim() || null,
+    remarks: payload.remarks?.trim() || null,
+    extra: payload.extra ?? {},
+    void: "1",
+  };
+}
+
+function originPayloadToRow(
+  origin: FlockCardOriginPayload,
+  fcId: number,
+  userId: string | null,
+) {
+  return {
+    created_by: userId,
+    updated_by: userId,
+    fc_id: fcId,
+    line_no: origin.lineNo,
+    item_id: origin.itemId ?? null,
+    item_code: origin.itemCode?.trim() || null,
+    item_name: origin.itemName?.trim() || null,
+    batch_no: origin.batchNo.trim(),
+    whse_id: origin.warehouseId ?? null,
+    whse_code: origin.warehouseCode?.trim() || null,
+    whse_name: origin.warehouseName?.trim() || null,
+    gr_origin: origin.grOrigin?.trim() || null,
+    animal_qty: toNumberOrNull(origin.animalQty) ?? 0,
+    onhand_snapshot: toNumberOrNull(origin.onHandSnapshot ?? origin.animalQty) ?? 0,
+    breed: origin.breed?.trim() || null,
+    mfg_date: toDateOrNull(origin.manufacturingDate),
+    exp_date: toDateOrNull(origin.expiryDate),
+    extra: origin.extra ?? {},
+    void: "1",
+  };
+}
+
+function hasOriginData(origin: FlockCardOriginPayload) {
+  return origin.batchNo.trim() !== "" && (toNumberOrNull(origin.animalQty) ?? 0) > 0;
+}
+
+function makeBatchUsageId(itemCode: string, batchNo: string) {
+  return [
+    itemCode.trim().toUpperCase(),
+    batchNo.trim().toUpperCase(),
+  ].join("|");
+}
+
+function savedOriginSignature(origin: FlockCardOriginPayload) {
+  return [
+    origin.itemCode,
+    origin.itemName,
+    origin.batchNo,
+    origin.warehouseCode,
+    origin.warehouseName,
+    origin.grOrigin,
+    toNumberOrNull(origin.animalQty) ?? 0,
+    origin.breed,
+    origin.manufacturingDate,
+    origin.expiryDate,
+  ].map(value => String(value ?? "").trim().toUpperCase()).join("|");
+}
+
+function getAddedPlacementOrigins(
+  submittedOrigins: FlockCardOriginPayload[],
+  savedOrigins: FlockCardOriginPayload[],
+) {
+  const remainingSaved = new Map<string, number>();
+  for (const origin of savedOrigins.filter(hasOriginData)) {
+    const signature = savedOriginSignature(origin);
+    remainingSaved.set(signature, (remainingSaved.get(signature) ?? 0) + 1);
+  }
+
+  const addedOrigins: FlockCardOriginPayload[] = [];
+  for (const origin of submittedOrigins.filter(hasOriginData)) {
+    const signature = savedOriginSignature(origin);
+    const savedCount = remainingSaved.get(signature) ?? 0;
+    if (savedCount > 0) {
+      remainingSaved.set(signature, savedCount - 1);
+    } else {
+      addedOrigins.push(origin);
+    }
+  }
+
+  const changedOrRemovedCount = Array.from(remainingSaved.values()).reduce((sum, count) => sum + count, 0);
+  if (changedOrRemovedCount > 0) {
+    throw new Error("Saved placement lines cannot be changed or removed. You can only add another placement.");
+  }
+
+  return addedOrigins;
+}
+
+export async function getUsedFlockOriginBatches(
+  farmId: number,
+  currentCardId?: number | null,
+): Promise<UsedFlockOriginBatch[]> {
+  if (!Number.isFinite(farmId) || farmId <= 0) return [];
+
+  let cardQuery = db
+    .from("flock_card")
+    .select("id, building_id, building_whse_id, building_key, building_code")
+    .eq("farm_id", farmId)
+    .eq("void", "1")
+    .eq("status", "Saved");
+
+  const currentId = Number(currentCardId ?? 0);
+  if (Number.isFinite(currentId) && currentId > 0) {
+    cardQuery = cardQuery.neq("id", currentId);
+  }
+
+  const cardResult = await cardQuery;
+
+  if (cardResult.error) throwDbError(cardResult.error, "Unable to load used flock cards");
+
+  const cards = (cardResult.data ?? []) as FlockCardBatchUsageHeaderRow[];
+  const cardsById = new Map(
+    cards
+      .map(card => [Number(card.id), card] as const)
+      .filter(([id]) => Number.isFinite(id) && id > 0),
+  );
+  const cardIds = Array.from(cardsById.keys());
+
+  if (cardIds.length === 0) return [];
+
+  const originResult = await db
+    .from("flock_card_origin")
+    .select("fc_id, item_code, batch_no, whse_code")
+    .in("fc_id", cardIds)
+    .eq("void", "1");
+
+  if (originResult.error) throwDbError(originResult.error, "Unable to load used flock origins");
+
+  return ((originResult.data ?? []) as FlockCardBatchUsageOriginRow[]).flatMap(origin => {
+    const cardId = Number(origin.fc_id ?? 0);
+    const card = cardsById.get(cardId);
+    const itemCode = String(origin.item_code ?? "").trim();
+    const batchNo = String(origin.batch_no ?? "").trim();
+    const warehouseCode = String(origin.whse_code ?? "").trim();
+
+    if (!card || !itemCode || !batchNo || !warehouseCode) return [];
+
+    return [{
+      id: makeBatchUsageId(itemCode, batchNo),
+      itemCode,
+      batchNo,
+      warehouseCode,
+      cardId,
+      buildingId: card.building_id,
+      buildingWarehouseId: card.building_whse_id,
+      buildingKey: card.building_key,
+      buildingCode: card.building_code,
+    }];
+  });
+}
+
+export async function getFlockCardPlacement(
+  id: number,
+): Promise<FlockCardPlacementRecord | null> {
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const [headerResult, originResult] = await Promise.all([
+    db
+      .from("flock_card")
+      .select("id, card_no, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, age, start_date, broiler_type, breed, guideline, cocci_prg_id, other_prg_id, vacc_prg_id, flock_code, trial_code, cycle_no, farm_cycle_id, animal_qty, feedmill, stock_density, stock_density_wt, sex, remarks, extra")
+      .eq("id", id)
+      .eq("void", "1")
+      .single(),
+    db
+      .from("flock_card_origin")
+      .select("line_no, item_id, item_code, item_name, batch_no, whse_id, whse_code, whse_name, gr_origin, animal_qty, onhand_snapshot, breed, mfg_date, exp_date, extra")
+      .eq("fc_id", id)
+      .eq("void", "1")
+      .order("line_no", { ascending: true }),
+  ]);
+
+  if (headerResult.error) throwDbError(headerResult.error, "Unable to load flock card");
+  if (originResult.error) throwDbError(originResult.error, "Unable to load flock origins");
+  if (!headerResult.data) return null;
+
+  const header = headerResult.data as FlockCardHeaderRow;
+  const origins = ((originResult.data ?? []) as FlockCardOriginRow[]).map(origin => ({
+    lineNo: Number(origin.line_no ?? 0),
+    itemId: origin.item_id,
+    itemCode: origin.item_code,
+    itemName: origin.item_name,
+    batchNo: String(origin.batch_no ?? ""),
+    warehouseId: origin.whse_id,
+    warehouseCode: origin.whse_code,
+    warehouseName: origin.whse_name,
+    grOrigin: origin.gr_origin,
+    animalQty: Number(origin.animal_qty ?? 0),
+    onHandSnapshot: Number(origin.onhand_snapshot ?? 0),
+    breed: origin.breed,
+    manufacturingDate: origin.mfg_date,
+    expiryDate: origin.exp_date,
+    extra: origin.extra ?? {},
+  }));
+
+  return {
+    id: Number(header.id),
+    cardNo: String(header.card_no ?? ""),
+    farmId: header.farm_id,
+    farmCode: header.farm_code,
+    farmName: header.farm_name,
+    buildingId: header.building_id,
+    buildingWarehouseId: header.building_whse_id,
+    buildingSource: header.building_src,
+    buildingKey: header.building_key,
+    buildingCode: header.building_code,
+    buildingName: header.building_name,
+    age: Number(header.age ?? 0),
+    startDate: String(header.start_date ?? ""),
+    broilerType: header.broiler_type,
+    breed: header.breed,
+    guideline: header.guideline,
+    coccidiostatProgramId: header.cocci_prg_id,
+    otherProgramId: header.other_prg_id,
+    vaccinationProgramId: header.vacc_prg_id,
+    flockCode: header.flock_code,
+    trialCode: header.trial_code,
+    cycleNumber: header.cycle_no,
+    farmCycleId: header.farm_cycle_id,
+    animalQty: Number(header.animal_qty ?? 0),
+    feedMill: header.feedmill,
+    stockingDensity: header.stock_density,
+    stockingDensityByWeight: header.stock_density_wt,
+    sex: header.sex,
+    remarks: header.remarks,
+    extra: header.extra ?? {},
+    origins,
+  };
+}
+
+export async function saveFlockCardPlacement(
+  payload: FlockCardPlacementPayload,
+): Promise<SavedFlockCardPlacement> {
+  const userId = await getSessionUserId();
+  if (!payload.id && !payload.farmCycleId && payload.farmId && payload.buildingWarehouseId) {
+    const excluded = await isDocCycleBuildingExcluded(payload.farmId, payload.buildingWarehouseId);
+    if (excluded) {
+      const cycleNumber = String(payload.cycleNumber ?? "").trim();
+      if (!cycleNumber) {
+        throw new Error("Enter the Cycle Count for the exempted building.");
+      }
+      const duplicate = await db.from("flock_card").select("id").eq("farm_id", payload.farmId)
+        .eq("building_whse_id", payload.buildingWarehouseId).eq("cycle_no", cycleNumber).eq("void", "1").limit(1);
+      if (duplicate.error) throwDbError(duplicate.error, "Unable to validate Cycle Count");
+      if ((duplicate.data ?? []).length > 0) throw new Error("Cycle Count already exists for this building.");
+    }
+  }
+  const cardNo = payload.cardNo?.trim() || nextCardNo();
+  const cycleNumber = payload.id
+    ? payload.cycleNumber
+    : payload.cycleNumber?.trim() || await getNextCycleCount(payload);
+  const headerPayload = placementPayloadToRow({ ...payload, cycleNumber }, userId, cardNo);
+  const previousPlacement = payload.id ? await getFlockCardPlacement(Number(payload.id)) : null;
+  if (payload.id && !previousPlacement) {
+    throw new Error("Unable to save flock card: the saved placement no longer exists");
+  }
+  const originsToSave = payload.origins
+    ? getAddedPlacementOrigins(payload.origins, previousPlacement?.origins ?? [])
+    : [];
+
+  let fcId = Number(payload.id ?? 0);
+  let savedCardNo = cardNo;
+  let insertedNewHeader = false;
+
+  try {
+    if (payload.id) {
+      const updateHeaderResult = await db
+        .from("flock_card")
+        .update(headerPayload)
+        .eq("id", payload.id)
+        .select("id, card_no")
+        .maybeSingle();
+
+      if (updateHeaderResult.error) throwDbError(updateHeaderResult.error, "Unable to save flock card");
+
+      if (updateHeaderResult.data) {
+        fcId = Number(updateHeaderResult.data.id);
+        savedCardNo = String(updateHeaderResult.data.card_no ?? cardNo);
+      }
+    } else {
+      const savedHeader = await db
+        .from("flock_card")
+        .insert({ ...headerPayload, created_by: userId })
+        .select("id, card_no")
+        .single();
+
+      if (savedHeader.error) throwDbError(savedHeader.error, "Unable to save flock card");
+
+      fcId = Number(savedHeader.data.id);
+      savedCardNo = String(savedHeader.data.card_no ?? cardNo);
+      insertedNewHeader = true;
+    }
+
+    if (!Number.isFinite(fcId) || fcId <= 0) {
+      throw new Error("Unable to save flock card: missing flock card id");
+    }
+
+    if (originsToSave.length > 0) {
+      const savedOriginCount = previousPlacement?.origins.filter(hasOriginData).length ?? 0;
+      const originRows = originsToSave.map((origin, index) => originPayloadToRow(
+        { ...origin, lineNo: savedOriginCount + index + 1 },
+        fcId,
+        userId,
+      ));
+      const savedOriginsResult = await db
+        .from("flock_card_origin")
+        .insert(originRows);
+
+      if (savedOriginsResult.error) throwDbError(savedOriginsResult.error, "Unable to save flock origins");
+    }
+  } catch (error) {
+    if (insertedNewHeader && Number.isFinite(fcId) && fcId > 0) {
+      const rollbackResult = await db
+        .from("flock_card")
+        .update({ void: "0", updated_by: userId })
+        .eq("id", fcId);
+
+      if (rollbackResult.error) {
+        console.error("Unable to rollback failed flock card placement", rollbackResult.error);
+      }
+    }
+
+    throw error;
+  }
+
+  return {
+    id: fcId,
+    cardNo: savedCardNo,
+  };
+}

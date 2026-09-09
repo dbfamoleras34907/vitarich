@@ -3,7 +3,7 @@ import NewTask from './NewTask'
 export default function page() {
     return (
         <div>
-            <NavigationBar currentLabel='User' fatherLabel='Administrator' fatherLink='' >
+            <NavigationBar currentLabel='New Task' fatherLabel='Tasks' fatherLink='/wks/tasks' >
                 <div className='max-w-7xl mx-auto px-4 '>
                     <NewTask />
                 </div>

@@ -13,10 +13,12 @@ import {
   PenBoxIcon,
   ShoppingCartIcon,
   Wrench,
+  Drumstick,
+  HeartPulse,
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
-import { NavFolder } from "../types";
+import { NavChild, NavFolder } from "../types";
 
 // export const NavFolders = [
 //   {
@@ -148,7 +150,7 @@ import { NavFolder } from "../types";
 
 //   {
 //     id: 3,
-//     title: "Inventory Management",
+//     title: "Inventory",
 //     url: "/a_dean/inventory",
 //     icon: Boxes, // Example icon name
 //     items: [
@@ -329,7 +331,7 @@ import { NavFolder } from "../types";
 //   },
 //   {
 //     id: 3,
-//     title: "Inventory Management",
+//     title: "Inventory",
 //     url: "/a_dean/inventory",
 //     icon: Boxes,
 //     items: [
@@ -404,6 +406,7 @@ export const NavFolders: NavFolder[] = [
     title: "Home",
     url: "/home",
     icon: Home,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Reports",
@@ -427,22 +430,23 @@ export const NavFolders: NavFolder[] = [
     title: "Breeder",
     url: "/jmb/breeder",
     icon: BirdIcon,
+    fmsTypes: ["Breeder"],
     items: [
       {
         group: "Breeder Masters",
         children: [
           {
+            id: 199,
+            type: "Module",
+            title: "Breeder Dashboard",
+            url: "/jmb/brddash",
+          },
+
+          {
             id: 2,
             type: "Module",
             title: "Placement",
             url: "/jmb/placement",
-          },
-
-          {
-            id: 3,
-            type: "Module",
-            title: "Population Record",
-            url: "/jmb/growing",
           },
 
           {
@@ -456,35 +460,37 @@ export const NavFolders: NavFolder[] = [
             id: 5,
             type: "Module",
             title: "Breeder Dispatch",
-            url: "/home",
+            url: "/jmb/breederdispatch",
+            newDocumentUrl: "/jmb/breederdispatch/new",
           },
 
           {
             id: 6,
             type: "Module",
-            title: "Stock In/Out",
-            url: "/home",
+            title: "Clean-Up",
+            url: "/jmb/cleanup",
+            newDocumentUrl: "/jmb/cleanup/new",
           },
 
           {
             id: 7,
             type: "Module",
             title: "Vaccination",
-            url: "/home",
+            url: "/jmb/vaccination",
           },
 
           {
             id: 8,
             type: "Module",
             title: "Medication",
-            url: "/home",
+            url: "/jmb/medication",
           },
 
           {
             id: 9,
             type: "Module",
             title: "Reports",
-            url: "/home",
+            url: "/jmb/breederreports",
           },
         ],
       },
@@ -515,6 +521,7 @@ export const NavFolders: NavFolder[] = [
     title: "Hatchery",
     url: "/a_dean/hatchery",
     icon: EggIcon,
+    fmsTypes: ["Hatchery"],
     items: [
       {
         group: "Hatchery Masters",
@@ -524,12 +531,14 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Receiving",
             url: "/a_dean/receiving",
+            newDocumentUrl: "/a_dean/receiving/manual",
             inventoriable: true,
             section: "HA",
             view: true,
             void: true,
             insert: true,
             edit: false,
+            approval: true,
           },
 
           {
@@ -541,6 +550,7 @@ export const NavFolders: NavFolder[] = [
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
 
           {
@@ -548,12 +558,14 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Storage",
             url: "/jmb/eggstorage",
+            newDocumentUrl: "/jmb/eggstorage/new",
             inventoriable: true,
             section: "HA",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -561,10 +573,12 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Pre-Warming Process",
             url: "/jmb/prewarmingv2",
+            newDocumentUrl: "/jmb/prewarmingv2/new2",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -572,10 +586,12 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Setter",
             url: "/jmb/eggsetter",
+            newDocumentUrl: "/jmb/eggsetter/new",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -583,10 +599,12 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Transfer Process",
             url: "/jmb/eggtransferv2",
+            newDocumentUrl: "/jmb/eggtransferv2/newv2",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -594,10 +612,12 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Egg Hatcher Process",
             url: "/jmb/egghatcherv2",
+            newDocumentUrl: "/jmb/egghatcherv2/newv2",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -605,10 +625,12 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Chick Pullout Process",
             url: "/jmb/chickpulloutv2",
+            newDocumentUrl: "/jmb/chickpulloutv2/newv2",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
           },
 
           {
@@ -616,12 +638,14 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "DOC Classification",
             url: "/jmb/docclassification",
+            newDocumentUrl: "/jmb/docclassification/newv2",
             inventoriable: true,
             section: "HA",
             view: true,
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
 
           {
@@ -629,12 +653,26 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "DOC Dispatch",
             url: "/jmb/docdispatchv2",
+            newDocumentUrl: "/jmb/docdispatchv2/newv2",
             inventoriable: true,
             section: "HA",
             view: true,
             void: true,
             insert: true,
             edit: true,
+            approval: false,
+          },
+
+          {
+            id: 78,
+            type: "Module",
+            title: "Hatchery Process Wizard",
+            url: "/wiz/hatchery-process-wizard",
+            view: true,
+            void: false,
+            insert: false,
+            edit: false,
+            approval: false,
           },
 
           {
@@ -642,12 +680,14 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Disposal",
             url: "/a_dean/disposal",
+            newDocumentUrl: "/a_dean/disposal/new",
             inventoriable: true,
             section: "HA",
             view: true,
             void: true,
             insert: true,
             edit: false,
+            approval: false,
           },
         ],
       },
@@ -681,9 +721,10 @@ export const NavFolders: NavFolder[] = [
 
   {
     id: 3,
-    title: "Inventory Management",
+    title: "Inventory",
     url: "/a_dean/inventory",
     icon: Boxes,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Item Management",
@@ -693,10 +734,21 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Item Master Data",
             url: "/a_dean/items",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
           },
+
+          // {
+          //   id: 51,
+          //   type: "Module",
+          //   title: "Item Group Master Data",
+          //   url: "/a_dean/itemgroups",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },
 
           {
             id: 26,
@@ -706,16 +758,61 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
+          // {
+          //   id: 50,
+          //   type: "Module",
+          //   title: "Inventory Map",
+          //   url: "/inv",
+          //   view: false,
+          //   insert: false,
+          //   edit: false,
+          // },
           {
             id: 50,
             type: "Module",
-            title: "Inventory Map",
-            url: "/inv",
-            view: false,
-            insert: false,
-            edit: false,
+            title: "Item Group",
+            url: "/a_dean/itemgroups",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+            void: true,
+          },
+          {
+            id: 53,
+            type: "Module",
+            title: "UoM Master",
+            url: "/a_dean/uom-master",
+            // view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+            void: true,
+          },
+          {
+            id: 54,
+            type: "Module",
+            title: "UoM Conversions",
+            url: "/a_dean/uom-conversions",
+            // view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+            void: true,
+          },
+          {
+            id: 55,
+            type: "Module",
+            title: "Batch Manager",
+            url: "/inv/btch",
+            // view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+            void: false,
           },
         ],
       },
@@ -732,24 +829,40 @@ export const NavFolders: NavFolder[] = [
           {
             id: 51,
             type: "Module",
-            title: "Goods Reciept",
+            title: "Item Stock In",
             url: "/inv/gr",
             inventoriable: true,
             section: "IV",
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
           {
             id: 52,
             type: "Module",
-            title: "Goods Issue",
+            title: "Item Stock Out",
             url: "/inv/gi",
+            newDocumentUrl: "/inv/gi/new",
             inventoriable: true,
             section: "IV",
-            view: false,
-            insert: false,
-            edit: false,
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 56,
+            type: "Module",
+            title: "Inventory Transfer",
+            url: "/inv/it",
+            newDocumentUrl: "/inv/it/new",
+            inventoriable: true,
+            section: "IV",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
           },
         ],
       },
@@ -763,6 +876,15 @@ export const NavFolders: NavFolder[] = [
             title: "Inventory Posting Report",
             url: "/a_dean/invaudit",
             view: false,
+            insert: false,
+            edit: false,
+          },
+          {
+            id: 58,
+            type: "Report",
+            title: "Warehouse Report",
+            url: "/inv/whse-report",
+            view: true,
             insert: false,
             edit: false,
           },
@@ -781,7 +903,8 @@ export const NavFolders: NavFolder[] = [
             id: 32,
             type: "Report",
             title: "Warehouse Content List",
-            url: "#",
+            url: "/inv/whse-report",
+            hideFromNavigation: true,
             view: false,
             insert: false,
             edit: false,
@@ -792,10 +915,53 @@ export const NavFolders: NavFolder[] = [
   },
 
   {
+    id: 5,
+    title: "Wellbeing",
+    url: "/vnm",
+    icon: HeartPulse,
+    fmsTypes: ["Broiler", "Breeder"],
+    items: [
+      {
+        group: "Animal Health",
+        children: [
+          {
+            id: 80,
+            type: "Module",
+            title: "Medicine",
+            url: "/vnm",
+            newDocumentUrl: "/vnm/new",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
+            approval: false,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 81,
+            type: "Module",
+            title: "Medicine Settings",
+            url: "/vnm/settings",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+        ],
+      },
+    ],
+  },
+
+  {
     id: 4,
     title: "Workspace",
-    url: "#",
+    url: "/wks/dashboard",
     icon: FolderTree,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     view: false,
     insert: false,
     edit: false,
@@ -806,41 +972,252 @@ export const NavFolders: NavFolder[] = [
           {
             id: 33,
             type: "Module",
-            title: "Dashboard",
+            title: "My Work",
             url: "/wks/dashboard",
-            view: false,
+            view: true,
             insert: false,
             edit: false,
+            approval: false,
           },
-
           {
             id: 34,
             type: "Module",
             title: "Projects",
             url: "/wks/projects",
-            view: false,
-            insert: false,
-            edit: false,
+            newDocumentUrl: "/wks/projects/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
           },
-
           {
             id: 35,
             type: "Module",
             title: "Task",
             url: "/wks/tasks",
-            view: false,
-            insert: false,
-            edit: false,
+            newDocumentUrl: "/wks/tasks/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
           },
-
           {
             id: 36,
             type: "Module",
             title: "Timesheet",
             url: "/wks/timelines",
+            newDocumentUrl: "/wks/timelines/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: true,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 77,
+            type: "Module",
+            title: "Task Workflow Settings",
+            url: "/wks/settings/task-workflow",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 78,
+            type: "Module",
+            title: "Timesheet Settings",
+            url: "/wks/settings/timesheet",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 6,
+    title: "Broiler",
+    url: "#",
+    icon: Drumstick,
+    fmsTypes: ["Broiler"],
+    view: false,
+    insert: false,
+    edit: false,
+    items: [
+      {
+        group: "Menus",
+        children: [
+          {
+            id: 60,
+            type: "Module",
+            title: "Dashboard",
+            url: "/brd/dashboard",
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 73,
+            type: "Module",
+            title: "Cycle Master",
+            url: "/brd/cycle-master",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
+            id: 57,
+            type: "Module",
+            title: "DOC Placement",
+            url: "/inv/doc-receiving",
+            newDocumentUrl: "/inv/doc-receiving/new",
+            inventoriable: true,
+            section: "IV",
+            view: true,
+            insert: true,
+            edit: false,
+            approval: false,
+          },
+
+          {
+            id: 61,
+            type: "Module",
+            title: "Growing & Farm Condition",
+            url: "/brd/fc",
+            view: false,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          // {
+          //   id: 67,
+          //   type: "Report",
+          //   title: "Growing & Farm Condition Report",
+          //   url: "/brd/fc/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          // },
+
+          {
+            id: 62,
+            type: "Module",
+            title: "Harvest & Delivery",
+            url: "/brd/dr",
+            newDocumentUrl: "/brd/dr/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 63,
+            type: "Module",
+            title: "Clean up",
+            url: "/brd/cu",
+            newDocumentUrl: "/brd/cu/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          // {
+          //   id: 74,
+          //   type: "Report",
+          //   title: "Clean Up Report",
+          //   url: "/brd/cu/report",
+          //   view: true,
+          //   insert: false,
+          //   edit: false,
+          //   approval: false,
+          // },
+        ],
+      },
+      {
+        group: "Report",
+        children: [
+          {
+            id: 74,
+            type: "Report",
+            title: "Clean Up Report",
+            url: "/brd/cu/report",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 79,
+            type: "Module",
+            title: "Broiler Farm Setup",
+            url: "/brd/settings/farm-setup",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 65,
+            type: "Module",
+            title: "DOC Placement Settings",
+            url: "/a_dean/doc-receiving-settings",
+            view: false,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 66,
+            type: "Module",
+            title: "Growing & Farm Condition Settings",
+            url: "/brd/fc/settings",
+            view: false,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 71,
+            type: "Module",
+            title: "Harvest & Delivery Settings",
+            url: "/brd/dr/settings",
+            view: false,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 72,
+            type: "Module",
+            title: "Clean up Settings",
+            url: "/brd/cu/settings",
+            view: false,
+            insert: false,
+            edit: true,
+            approval: false,
           },
         ],
       },
@@ -852,6 +1229,7 @@ export const NavFolders: NavFolder[] = [
     title: "Settings",
     url: "/admin",
     icon: FileSliders,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     items: [
       {
         group: "Modules",
@@ -864,6 +1242,40 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 75,
+            type: "Module",
+            title: "User Permissions",
+            url: "/admin/user-permissions",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 70,
+            type: "Module",
+            title: "User Group",
+            url: "/admin/user-group",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 69,
+            type: "Module",
+            title: "User Activation",
+            url: "/admin/user-activation",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
           },
 
           {
@@ -871,19 +1283,67 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Approval",
             url: "/admin/approval",
-            view: false,
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 68,
+            type: "Module",
+            title: "Approval Management",
+            url: "/admin/approval/management",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
+            id: 75,
+            type: "Report",
+            title: "Cycle Report",
+            url: "/brd/cycle-master/report",
+            hideFromNavigation: true,
+            view: true,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 76,
+            type: "Module",
+            title: "Notification Setup",
+            url: "/admin/notifications",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
           },
 
           {
             id: 39,
             type: "Module",
-            title: "Farm Settings",
+            title: "Farm Management",
             url: "/a_dean/farm",
             view: false,
             insert: false,
             edit: false,
+            void: true,
+            approval: false,
+          },
+
+          {
+            id: 64,
+            type: "Module",
+            title: "Farm Setup Wizard",
+            url: "/a_dean/farm/setup",
+            view: false,
+            insert: true,
+            edit: false,
+            approval: true,
           },
 
           {
@@ -894,6 +1354,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           {
@@ -904,6 +1365,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
           },
 
           // {
@@ -916,16 +1378,8 @@ export const NavFolders: NavFolder[] = [
           //   edit: false,
           // },
 
-          {
-            id: 43,
-            type: "Module",
-            title: "Permission Template",
-            url: "/admin/permissions",
-            view: true,
-            void: false,
-            insert: false,
-            edit: false,
-          },
+          // Permission Template is intentionally hidden while permission
+          // assignment is managed from /admin/user-permissions.
         ],
       },
     ],
@@ -961,13 +1415,13 @@ export const ISSUE_STATUSES: {
   name: string;
   color: string;
 }[] = [
-    { code: "todo", name: "To Do", color: "gray" },
-    { code: "in_progress", name: "In Progress", color: "blue" },
-    { code: "in_review", name: "In Review", color: "purple" },
-    { code: "blocked", name: "Blocked", color: "red" },
-    { code: "done", name: "Done", color: "green" },
-    { code: "reopened", name: "Reopened", color: "orange" },
-  ];
+  { code: "todo", name: "To Do", color: "gray" },
+  { code: "in_progress", name: "In Progress", color: "blue" },
+  { code: "in_review", name: "In Review", color: "purple" },
+  { code: "blocked", name: "Blocked", color: "red" },
+  { code: "done", name: "Done", color: "green" },
+  { code: "reopened", name: "Reopened", color: "orange" },
+];
 
 export type IssuePriority = "high" | "medium" | "low";
 
@@ -976,12 +1430,12 @@ export const ISSUE_PRIORITIES: {
   name: string;
   color: string;
 }[] = [
-    // { code: "highest", name: "Highest", color: "red" },
-    { code: "high", name: "High", color: "orange" },
-    { code: "medium", name: "Medium", color: "yellow" },
-    { code: "low", name: "Low", color: "blue" },
-    // { code: "lowest", name: "Lowest", color: "gray" },
-  ];
+  // { code: "highest", name: "Highest", color: "red" },
+  { code: "high", name: "High", color: "orange" },
+  { code: "medium", name: "Medium", color: "yellow" },
+  { code: "low", name: "Low", color: "blue" },
+  // { code: "lowest", name: "Lowest", color: "gray" },
+];
 // export const ISSUE_PRIORITIES = [
 //   { code: "highest", name: "Highest", color: "red" },
 //   { code: "high", name: "High", color: "orange" },
@@ -991,20 +1445,28 @@ export const ISSUE_PRIORITIES: {
 // ]
 // type NavFolder = typeof NavFolders[number];
 
+type InventoriableModule = NavChild & {
+  code: number;
+  name: string;
+  parent: string;
+  group: string;
+  section: string;
+};
+
 export function getInventoriableModules(navFolders: NavFolder[]) {
-  const result: any[] = [];
+  const result: InventoriableModule[] = [];
 
   navFolders.forEach((folder) => {
     folder.items?.forEach((group) => {
       group.children?.forEach((child) => {
-        if ((child as any).inventoriable === true) {
+        if (child.inventoriable === true) {
           result.push({
             ...child,
             code: child.id,
             name: child.title,
             parent: folder.title,
             group: group.group,
-            section: (child as any)?.section || "",
+            section: child.section || "",
           });
         }
       });

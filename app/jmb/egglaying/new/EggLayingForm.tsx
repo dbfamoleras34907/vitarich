@@ -1,25 +1,85 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
-import RequiredLabel from "@/components/RequiredLabel";
+import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import {
   createEggLaying,
+  createEggLayingBatch,
   getEggLayingById,
   getLayingPlacementById,
   listEggLayingHistoryByFarm,
   updateEggLaying,
   type EggLaying,
+  type EggLayingHistory,
   type EggLayingInsert,
   type LayingPlacement,
 } from "./api";
+
+type ProductionRow = {
+  date_laying: string;
+  tep_collection: string;
+  hatching_egg: string;
+  table_egg: string;
+  classb: string;
+  crack: string;
+  junior: string;
+  jumbo: string;
+  condemn: string;
+};
+
+const IMPORT_HEADERS = [
+  "Date Laying",
+  "TEP Collection",
+  "Hatching Egg",
+  "Table Egg",
+  "Class B",
+  "Crack",
+  "Junior",
+  "Jumbo",
+  "Condemn",
+  "Total Egg Classification",
+] as const;
+
+const productionNumberFields: Array<Exclude<keyof ProductionRow, "date_laying">> = [
+  "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
+];
+
+const historyNumberFields = [
+  "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
+] as const satisfies ReadonlyArray<keyof EggLaying>;
+
+const productionGridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const HISTORY_PAGE_SIZE = 20;
+
+function createProductionRow(dateLaying = getToday()): ProductionRow {
+  return {
+    date_laying: dateLaying,
+    tep_collection: "",
+    hatching_egg: "",
+    table_egg: "",
+    classb: "",
+    crack: "",
+    junior: "",
+    jumbo: "",
+    condemn: "",
+  };
+}
+
+function getProductionTotal(row: ProductionRow) {
+  return productionNumberFields
+    .filter((field) => field !== "tep_collection")
+    .reduce((sum, field) => sum + asNumber(row[field]), 0);
+}
 
 type FormState = {
   placement_id: string;
@@ -31,21 +91,13 @@ type FormState = {
   age: string;
   tep_collection: string;
   hatching_egg: string;
+  classb: string;
   table_egg: string;
   crack: string;
   junior: string;
   jumbo: string;
   condemn: string;
 };
-
-const eggCountFields: Array<keyof FormState> = [
-  "hatching_egg",
-  "table_egg",
-  "crack",
-  "junior",
-  "jumbo",
-  "condemn",
-];
 
 function getToday() {
   const now = new Date();
@@ -88,30 +140,49 @@ function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
     start.getDate(),
   );
   const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
+  const elapsedDays = Math.floor((endUtc - startUtc) / 86_400_000);
+  return elapsedDays >= 0 ? elapsedDays + 1 : 0;
 }
 
-function formatAgeWeeks(days: number | null | undefined) {
+function parseClipboardGrid(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line, index, lines) => line !== "" || index < lines.length - 1)
+    .map((line) => line.split("\t").map((value) => value.trim()));
+}
+
+function formatAge(days: number | null | undefined) {
   const safeDays = Number(days ?? 0);
-  const weeks = Math.floor(safeDays / 7);
-  const weekDay = safeDays % 7;
-  return `${weeks}.7/${weekDay}`;
+  if (!Number.isFinite(safeDays)) return "0/0";
+  const wholeDays = Math.max(0, Math.floor(safeDays));
+  return `${Math.floor(wholeDays / 7)}/${wholeDays % 7}`;
 }
 
 function getEggTotal(
   row: Pick<
     EggLaying,
-    "hatching_egg" | "table_egg" | "crack" | "junior" | "jumbo" | "condemn"
+    "hatching_egg" | "classb" | "table_egg" | "crack" | "junior" | "jumbo" | "condemn"
   >,
 ) {
   return (
     Number(row.hatching_egg ?? 0) +
+    Number(row.classb ?? 0) +
     Number(row.table_egg ?? 0) +
     Number(row.crack ?? 0) +
     Number(row.junior ?? 0) +
     Number(row.jumbo ?? 0) +
     Number(row.condemn ?? 0)
   );
+}
+
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return getToday();
+  date.setDate(date.getDate() + days);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function getNetPlacement(placement: LayingPlacement | null) {
@@ -133,48 +204,13 @@ function createInitialForm(): FormState {
     age: "0",
     tep_collection: "",
     hatching_egg: "",
+    classb: "",
     table_egg: "",
     crack: "",
     junior: "",
     jumbo: "",
     condemn: "",
   };
-}
-
-type NumberInputProps = {
-  id: keyof FormState;
-  label: string;
-  value: string;
-  disabled?: boolean;
-  required?: boolean;
-  onChange: (field: keyof FormState, value: string) => void;
-};
-
-function NumberInput({
-  id,
-  label,
-  value,
-  disabled,
-  required,
-  onChange,
-}: NumberInputProps) {
-  return (
-    <div className="space-y-2">
-      {required ? (
-        <RequiredLabel>{label}</RequiredLabel>
-      ) : (
-        <Label>{label}</Label>
-      )}
-      <Input
-        type="text"
-        inputMode="numeric"
-        value={formatNumber(value)}
-        onChange={(event) => onChange(id, clampInteger(event.target.value))}
-        onFocus={(event) => event.target.select()}
-        disabled={disabled}
-      />
-    </div>
-  );
 }
 
 export default function EggLayingForm() {
@@ -188,12 +224,19 @@ export default function EggLayingForm() {
   const [form, setForm] = useState<FormState>(() => createInitialForm());
   const [selectedPlacement, setSelectedPlacement] =
     useState<LayingPlacement | null>(null);
-  const [history, setHistory] = useState<EggLaying[]>([]);
+  const [history, setHistory] = useState<EggLayingHistory[]>([]);
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyBuildingFilter, setHistoryBuildingFilter] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [productionRows, setProductionRows] = useState<ProductionRow[]>(() => [createProductionRow()]);
+  const [importError, setImportError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const productionGridRef = useRef<HTMLTableElement>(null);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const disabledAll = saving || loadingRecord;
-  const ageLabel = formatAgeWeeks(asNumber(form.age));
   const netPlacementFromTable =
     netPlacementParam != null && netPlacementParam !== ""
       ? Number(netPlacementParam)
@@ -201,10 +244,22 @@ export default function EggLayingForm() {
   const displayedNetPlacement = Number.isFinite(netPlacementFromTable)
     ? netPlacementFromTable
     : getNetPlacement(selectedPlacement);
-  const eggTotal = useMemo(
-    () => eggCountFields.reduce((sum, field) => sum + asNumber(form[field]), 0),
-    [form],
-  );
+  const productionTotals = useMemo(() => productionNumberFields.map((field) =>
+    productionRows.reduce((total, row) => total + asNumber(row[field]), 0),
+  ), [productionRows]);
+  const filteredHistory = useMemo(() => {
+    const buildingFilter = historyBuildingFilter.trim().toLowerCase();
+    return history.filter((row) =>
+      (!historyDateFrom || row.date_laying >= historyDateFrom) &&
+      (!historyDateTo || row.date_laying <= historyDateTo) &&
+      (!buildingFilter || (row.building ?? "").toLowerCase().includes(buildingFilter)),
+    );
+  }, [history, historyBuildingFilter, historyDateFrom, historyDateTo]);
+  const historyPageCount = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE));
+  const paginatedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return filteredHistory.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [filteredHistory, historyPage]);
 
   function applyPlacement(
     placement: LayingPlacement,
@@ -240,6 +295,7 @@ export default function EggLayingForm() {
       farmName: nextForm.farm_name || null,
     });
     setHistory(rows);
+    setHistoryPage(1);
   }
 
   useEffect(() => {
@@ -291,6 +347,7 @@ export default function EggLayingForm() {
             row.tep_collection != null ? String(row.tep_collection) : "",
           hatching_egg:
             row.hatching_egg != null ? String(row.hatching_egg) : "",
+          classb: row.classb != null ? String(row.classb) : "",
           table_egg: row.table_egg != null ? String(row.table_egg) : "",
           crack: row.crack != null ? String(row.crack) : "",
           junior: row.junior != null ? String(row.junior) : "",
@@ -299,6 +356,17 @@ export default function EggLayingForm() {
         };
 
         setForm(nextForm);
+        setProductionRows([{
+          date_laying: nextForm.date_laying,
+          tep_collection: nextForm.tep_collection,
+          hatching_egg: nextForm.hatching_egg,
+          table_egg: nextForm.table_egg,
+          classb: nextForm.classb,
+          crack: nextForm.crack,
+          junior: nextForm.junior,
+          jumbo: nextForm.jumbo,
+          condemn: nextForm.condemn,
+        }]);
         await refreshHistory(nextForm);
 
         if (row.placement_id) {
@@ -322,27 +390,262 @@ export default function EggLayingForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.farm_id, form.farm_name]);
 
-  function handleNumberChange(field: keyof FormState, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  function updateProductionRow(index: number, field: keyof ProductionRow, value: string) {
+    setProductionRows((current) => current.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, [field]: value } : row,
+    ));
   }
 
-  function handleDateChange(value: string) {
-    setForm((prev) => {
-      const ageDays = selectedPlacement
-        ? getAgeInDays(selectedPlacement.placement_date, value)
-        : asNumber(prev.age);
+  function addProductionRow() {
+    const lastDate = productionRows.at(-1)?.date_laying;
+    const nextDate = lastDate ? addDays(lastDate, 1) : getToday();
+    if (nextDate > getToday()) {
+      alert("Advance recording is not allowed. Date Laying cannot be later than today.");
+      return;
+    }
+    setProductionRows((current) => [...current, createProductionRow(nextDate)]);
+  }
 
-      return {
-        ...prev,
-        date_laying: value,
-        age: String(ageDays),
-      };
+  function focusProductionCell(rowIndex: number, columnIndex: number) {
+    const input = productionGridRef.current?.querySelector<HTMLInputElement>(
+      `[data-production-row="${rowIndex}"][data-production-column="${columnIndex}"]:not(:disabled)`,
+    );
+    if (!input) return false;
+    input.focus();
+    input.select();
+    return true;
+  }
+
+  function moveProductionFocus(rowIndex: number, columnIndex: number, rowStep: number, columnStep: number) {
+    let nextRow = rowIndex + rowStep;
+    let nextColumn = columnIndex + columnStep;
+    const lastColumn = productionNumberFields.length;
+
+    if (columnStep !== 0) {
+      if (nextColumn > lastColumn) { nextColumn = 0; nextRow += 1; }
+      if (nextColumn < 0) { nextColumn = lastColumn; nextRow -= 1; }
+    }
+
+    while (nextRow >= 0 && nextRow < productionRows.length) {
+      if (focusProductionCell(nextRow, nextColumn)) return;
+      if (columnStep !== 0) {
+        nextColumn += columnStep;
+        if (nextColumn > lastColumn) { nextColumn = 0; nextRow += 1; }
+        if (nextColumn < 0) { nextColumn = lastColumn; nextRow -= 1; }
+      } else {
+        nextRow += rowStep;
+      }
+    }
+  }
+
+  function handleProductionCellKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+    rowIndex: number,
+    columnIndex: number,
+  ) {
+    const movement: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      Enter: [event.shiftKey ? -1 : 1, 0],
+      Tab: [0, event.shiftKey ? -1 : 1],
+    };
+    const offset = movement[event.key];
+    if (!offset) return;
+    event.preventDefault();
+    moveProductionFocus(rowIndex, columnIndex, offset[0], offset[1]);
+  }
+
+  function handleProductionGridPaste(
+    event: ClipboardEvent<HTMLInputElement>,
+    startRowIndex: number,
+    startColumnIndex: number,
+  ) {
+    if (disabledAll) return;
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    event.preventDefault();
+    const pastedRows = parseClipboardGrid(text);
+    if (!pastedRows.length) return;
+
+    const nextRows = productionRows.map((row) => ({ ...row }));
+    const requiredRowCount = startRowIndex + pastedRows.length;
+    if (!isEdit) {
+      while (nextRows.length < requiredRowCount) {
+        const previousDate = nextRows.at(-1)?.date_laying;
+        nextRows.push(createProductionRow(previousDate ? addDays(previousDate, 1) : getToday()));
+      }
+    }
+
+    let changedCellCount = 0;
+    let invalidCellCount = 0;
+    let ignoredCellCount = 0;
+
+    pastedRows.forEach((pastedRow, pastedRowIndex) => {
+      const targetRow = nextRows[startRowIndex + pastedRowIndex];
+      if (!targetRow) {
+        ignoredCellCount += pastedRow.length;
+        return;
+      }
+
+      pastedRow.forEach((rawValue, pastedColumnIndex) => {
+        const targetColumnIndex = startColumnIndex + pastedColumnIndex;
+        if (targetColumnIndex === 0) {
+          const dateLaying = normalizeImportedDate(rawValue);
+          if (!dateLaying || dateLaying > getToday()) {
+            invalidCellCount += 1;
+            return;
+          }
+          targetRow.date_laying = dateLaying;
+          changedCellCount += 1;
+          return;
+        }
+
+        const field = productionNumberFields[targetColumnIndex - 1];
+        if (!field) {
+          ignoredCellCount += 1;
+          return;
+        }
+        const normalizedValue = rawValue.replace(/,/g, "").trim();
+        if (normalizedValue === "") {
+          targetRow[field] = "";
+          changedCellCount += 1;
+          return;
+        }
+        const parsedValue = Number(normalizedValue);
+        if (!Number.isSafeInteger(parsedValue) || parsedValue < 0) {
+          invalidCellCount += 1;
+          return;
+        }
+        targetRow[field] = String(parsedValue);
+        changedCellCount += 1;
+      });
     });
+
+    if (!changedCellCount) {
+      toast.error(invalidCellCount ? "No cells were pasted because the copied values are invalid." : "No editable cells found in pasted data.");
+      return;
+    }
+
+    setProductionRows(nextRows);
+    setImportError("");
+    const notes = [
+      invalidCellCount ? `${invalidCellCount} invalid skipped` : "",
+      ignoredCellCount ? `${ignoredCellCount} outside the editable grid ignored` : "",
+    ].filter(Boolean);
+    toast.success(`Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`);
+  }
+
+  async function exportTemplate() {
+    const { default: writeXlsxFile } = await import("write-excel-file/browser");
+    const header = IMPORT_HEADERS.map((value) => ({
+      value,
+      type: String,
+      fontWeight: "bold" as const,
+      color: "#FFFFFF",
+      backgroundColor: "#047857",
+      align: "center" as const,
+    }));
+    const blankRows = Array.from({ length: 30 }, (_, index) => [
+      { type: Date, format: "yyyy-mm-dd" },
+      ...Array.from({ length: 8 }, () => ({ type: Number, format: "#,##0" })),
+      { value: `SUM(C${index + 2}:I${index + 2})`, type: "Formula" as const, format: "#,##0" },
+    ]);
+    const templateFile = writeXlsxFile([header, ...blankRows], {
+      sheet: "Egg Laying Production",
+      stickyRowsCount: 1,
+      columns: [
+        { width: 15 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 12 },
+        { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 24 },
+      ],
+    });
+    await templateFile.toFile("egg-laying-production-template.xlsx");
+  }
+
+  function normalizeImportedDate(value: unknown) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+      return date.toISOString().slice(0, 10);
+    }
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+  }
+
+  async function importExcel(file: File) {
+    setImportError("");
+    try {
+      const { default: readXlsxFile } = await import("read-excel-file/browser");
+      const workbookSheets = await readXlsxFile(file);
+      const productionSheet = workbookSheets.find((sheet) => sheet.sheet === "Egg Laying Production");
+      if (!productionSheet) {
+        throw new Error("Required worksheet “Egg Laying Production” was not found. Download and use the current template.");
+      }
+      const excelRows = productionSheet.data;
+      const headers = IMPORT_HEADERS.map((_, index) => String(excelRows[0]?.[index] ?? "").trim());
+      const invalidHeader = IMPORT_HEADERS.findIndex((header, index) => headers[index] !== header);
+      if (invalidHeader >= 0) {
+        throw new Error(`Invalid template column ${invalidHeader + 1}. Expected “${IMPORT_HEADERS[invalidHeader]}”. Download and use the current template.`);
+      }
+
+      const importedRows: ProductionRow[] = [];
+      const errors: string[] = [];
+      const dates = new Set<string>();
+      const existingDates = new Set(
+        history
+          .filter((record) => record.building === form.building)
+          .map((record) => record.date_laying),
+      );
+      excelRows.slice(1).forEach((excelRow, index) => {
+        const rowNumber = index + 2;
+        const raw = Array.from({ length: 9 }, (_, columnIndex) => excelRow[columnIndex]);
+        if (raw.every((value) => value == null || String(value).trim() === "")) return;
+        const dateLaying = normalizeImportedDate(raw[0]);
+        if (!dateLaying) errors.push(`Row ${rowNumber}: Date Laying is invalid.`);
+        if (dateLaying && dateLaying > getToday()) errors.push(`Row ${rowNumber}: advance recording is not allowed. Date Laying cannot be later than today.`);
+        if (dateLaying && dates.has(dateLaying)) errors.push(`Row ${rowNumber}: duplicate Date Laying ${dateLaying}.`);
+        if (dateLaying && existingDates.has(dateLaying)) errors.push(`Row ${rowNumber}: Date Laying ${dateLaying} already has a saved record.`);
+        if (dateLaying) dates.add(dateLaying);
+
+        const numbers = raw.slice(1).map((value, index) => {
+          const parsed = Number(value ?? 0);
+          if (!Number.isInteger(parsed) || parsed < 0) {
+            errors.push(`Row ${rowNumber}: ${IMPORT_HEADERS[index + 1]} must be a whole number zero or greater.`);
+            return "0";
+          }
+          return String(parsed);
+        });
+        if (numbers[0] === "0") errors.push(`Row ${rowNumber}: TEP Collection is required and must be greater than zero.`);
+        const classificationTotal = numbers.slice(1).reduce((sum, value) => sum + Number(value), 0);
+        if (Number(numbers[0]) !== classificationTotal) {
+          errors.push(`Row ${rowNumber}: TEP Collection (${numbers[0]}) does not equal classification total (${classificationTotal}).`);
+        }
+        importedRows.push({
+          date_laying: dateLaying,
+          tep_collection: numbers[0], hatching_egg: numbers[1], table_egg: numbers[2],
+          classb: numbers[3], crack: numbers[4], junior: numbers[5], jumbo: numbers[6], condemn: numbers[7],
+        });
+      });
+      if (!importedRows.length) errors.push("No production rows were found in the template.");
+      if (errors.length) throw new Error(errors.slice(0, 12).join("\n"));
+      setProductionRows(importedRows);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to import the Excel file.";
+      setImportError(message);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   async function onSave() {
-    if (!form.date_laying) {
-      alert("Date laying is required.");
+    if (!productionRows.length) {
+      alert("Add at least one egg laying production row.");
       return;
     }
 
@@ -351,34 +654,76 @@ export default function EggLayingForm() {
       return;
     }
 
-    const payload: EggLayingInsert = {
+    const dates = new Set<string>();
+    const existingDates = new Set(
+      history
+        .filter((record) => record.building === form.building)
+        .filter((record) => !isEdit || record.id !== Number(idParam))
+        .map((record) => record.date_laying),
+    );
+    for (const [index, row] of productionRows.entries()) {
+      if (!row.date_laying) {
+        alert(`Row ${index + 1}: Date Laying is required.`);
+        return;
+      }
+      if (row.date_laying > getToday()) {
+        alert(`Row ${index + 1}: advance recording is not allowed. Date Laying cannot be later than today.`);
+        return;
+      }
+      if (dates.has(row.date_laying)) {
+        alert(`Row ${index + 1}: duplicate Date Laying ${row.date_laying}.`);
+        return;
+      }
+      dates.add(row.date_laying);
+      if (existingDates.has(row.date_laying)) {
+        alert(`Row ${index + 1}: Date Laying ${row.date_laying} already has a saved record.`);
+        return;
+      }
+      const tepCollection = asNumber(row.tep_collection);
+      const classificationTotal = getProductionTotal(row);
+      if (tepCollection <= 0) {
+        alert(`Row ${index + 1}: TEP Collection is required and must be greater than zero.`);
+        return;
+      }
+      if (classificationTotal !== tepCollection) {
+        alert(`Row ${index + 1}: TEP Collection (${tepCollection.toLocaleString("en-US")}) must equal Total Egg Classification (${classificationTotal.toLocaleString("en-US")}).`);
+        return;
+      }
+    }
+
+    const payloads: EggLayingInsert[] = productionRows.map((row) => ({
       placement_id: asNumber(form.placement_id),
-      date_laying: form.date_laying,
+      date_laying: row.date_laying,
       farm_id: form.farm_id ? asNumber(form.farm_id) : null,
       farm_name: form.farm_name || null,
       building: form.building || null,
-      age: asNumber(form.age),
-      tep_collection: form.tep_collection
-        ? asNumber(form.tep_collection)
+      age: selectedPlacement
+        ? getAgeInDays(selectedPlacement.placement_date, row.date_laying)
+        : Math.max(0, Math.floor(asNumber(form.age))),
+      tep_collection: row.tep_collection
+        ? asNumber(row.tep_collection)
         : null,
-      hatching_egg: form.hatching_egg ? asNumber(form.hatching_egg) : null,
-      table_egg: form.table_egg ? asNumber(form.table_egg) : null,
-      crack: form.crack ? asNumber(form.crack) : null,
-      junior: form.junior ? asNumber(form.junior) : null,
-      jumbo: form.jumbo ? asNumber(form.jumbo) : null,
-      condemn: form.condemn ? asNumber(form.condemn) : null,
+      hatching_egg: row.hatching_egg ? asNumber(row.hatching_egg) : null,
+      classb: row.classb ? asNumber(row.classb) : null,
+      table_egg: row.table_egg ? asNumber(row.table_egg) : null,
+      crack: row.crack ? asNumber(row.crack) : null,
+      junior: row.junior ? asNumber(row.junior) : null,
+      jumbo: row.jumbo ? asNumber(row.jumbo) : null,
+      condemn: row.condemn ? asNumber(row.condemn) : null,
       is_active: true,
       building_id: form.building_id ? asNumber(form.building_id) : null,
-    };
+    }));
 
     setSaving(true);
     try {
       if (isEdit) {
         const id = Number(idParam);
         if (!Number.isFinite(id)) throw new Error("Invalid egg laying id.");
-        await updateEggLaying(id, payload);
+        await updateEggLaying(id, payloads[0]);
+      } else if (payloads.length > 1) {
+        await createEggLayingBatch(payloads);
       } else {
-        await createEggLaying(payload);
+        await createEggLaying(payloads[0]);
       }
 
       router.push("/jmb/egglaying");
@@ -410,16 +755,6 @@ export default function EggLayingForm() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
-                <RequiredLabel>Date Laying</RequiredLabel>
-                <Input
-                  type="date"
-                  value={form.date_laying}
-                  onChange={(event) => handleDateChange(event.target.value)}
-                  disabled={disabledAll}
-                />
-              </div>
-
-              <div className="space-y-2">
                 <Label>Farm Name</Label>
                 <Input value={form.farm_name} readOnly disabled />
               </div>
@@ -430,11 +765,6 @@ export default function EggLayingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>Age</Label>
-                <Input value={ageLabel} readOnly disabled />
-              </div>
-
-              <div className="space-y-2">
                 <Label>Net of Placement</Label>
                 <Input
                   value={displayedNetPlacement.toLocaleString("en-US")}
@@ -442,85 +772,144 @@ export default function EggLayingForm() {
                   disabled
                 />
               </div>
+
             </div>
 
             <Separator />
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div className="space-y-2">
-                <NumberInput
-                  id="tep_collection"
-                  label="TEP Collection"
-                  value={form.tep_collection}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-medium">Egg Laying Production</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Record multiple dates manually or import the validated Excel template.
+                  </p>
+                </div>
+                {!isEdit ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void exportTemplate()}>
+                      <Download className="size-4" /> Export Template
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                      <Upload className="size-4" /> Import Excel
+                    </Button>
+                    <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void importExcel(file);
+                    }} />
+                    <Button type="button" size="sm" onClick={addProductionRow} disabled={(productionRows.at(-1)?.date_laying ?? getToday()) >= getToday()}>
+                      <Plus className="size-4" /> Add Date
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-
-              <div className="space-y-2">
-                <NumberInput
-                  id="hatching_egg"
-                  label="Hatching Egg"
-                  value={form.hatching_egg}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-              <div className="space-y-2">
-                <NumberInput
-                  id="table_egg"
-                  label="Table Egg"
-                  value={form.table_egg}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-              <div className="space-y-2">
-                <NumberInput
-                  id="crack"
-                  label="Crack"
-                  value={form.crack}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <NumberInput
-                  id="junior"
-                  label="Junior"
-                  value={form.junior}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-              <div className="space-y-2">
-                <NumberInput
-                  id="jumbo"
-                  label="Jumbo"
-                  value={form.jumbo}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-              <div className="space-y-2">
-                <NumberInput
-                  id="condemn"
-                  label="Condemn"
-                  value={form.condemn}
-                  onChange={handleNumberChange}
-                  disabled={disabledAll}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Total Egg Classification</Label>
-                <Input
-                  value={eggTotal.toLocaleString("en-US")}
-                  readOnly
-                  disabled
-                  className="font-medium"
-                />
+              {importError ? (
+                <div className="whitespace-pre-line rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <strong>Import rejected.</strong>{"\n"}{importError}
+                </div>
+              ) : null}
+              <div className="max-h-[520px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
+                <table
+                  ref={productionGridRef}
+                  className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm"
+                >
+                  <colgroup>
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "10%" }} />
+                    {Array.from({ length: 7 }, (_, index) => <col key={index} style={{ width: "8%" }} />)}
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "5%" }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ height: 36 }}>
+                      {[
+                        "Date Laying *",
+                        "Age",
+                        "TEP Collection *",
+                        "Hatching Egg",
+                        "Table Egg",
+                        "Class B",
+                        "Crack",
+                        "Junior",
+                        "Jumbo",
+                        "Condemn",
+                        "Total Egg Classification",
+                        "Action",
+                      ].map((label, index) => (
+                        <th
+                          key={label}
+                          style={index === 1 ? { left: "11%" } : undefined}
+                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-border-r" : index === 1 ? "z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productionRows.map((row, rowIndex) => (
+                    <tr key={`${row.date_laying}-${rowIndex}`} className="fc-grid-row border-0">
+                      <td className={`fc-grid-cell fc-grid-cell-editable sticky left-0 z-20 p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <Input type="date" value={row.date_laying} max={getToday()}
+                          data-production-row={rowIndex} data-production-column={0}
+                          onChange={(event) => updateProductionRow(rowIndex, "date_laying", event.target.value)}
+                          onPaste={(event) => handleProductionGridPaste(event, rowIndex, 0)}
+                          onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}
+                          className="h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-[10px] shadow-none focus-visible:ring-0" />
+                      </td>
+                      <td style={{ left: "11%" }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <div className="flex h-8 items-center justify-center">
+                          {formatAge(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
+                        </div>
+                      </td>
+                      {productionNumberFields.map((field, fieldIndex) => (
+                        <td key={field} className={`fc-grid-cell fc-grid-cell-editable p-0 fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={row[field]}
+                            onChange={(event) => updateProductionRow(rowIndex, field, clampInteger(event.target.value))}
+                            onPaste={(event) => handleProductionGridPaste(event, rowIndex, fieldIndex + 1)}
+                            onFocus={(event) => event.target.select()}
+                            onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, fieldIndex + 1)}
+                            data-production-row={rowIndex}
+                            data-production-column={fieldIndex + 1}
+                            disabled={disabledAll}
+                            className={`h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-xs shadow-none focus-visible:ring-0 ${productionGridInputClass}`}
+                          />
+                        </td>
+                      ))}
+                      <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-semibold tabular-nums fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        {getProductionTotal(row).toLocaleString("en-US")}
+                      </td>
+                      <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={disabledAll || isEdit || productionRows.length === 1}
+                          onClick={() => setProductionRows((rows) => rows.filter((_, index) => index !== rowIndex))}
+                          className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">Total</td>
+                      <td style={{ left: "11%" }} className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 z-40 text-center text-xs font-semibold">{productionRows.length} row{productionRows.length === 1 ? "" : "s"}</td>
+                      {productionTotals.map((value, index) => (
+                        <td key={productionNumberFields[index]} className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
+                          {value.toLocaleString("en-US")}
+                        </td>
+                      ))}
+                      <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
+                        {productionTotals.slice(1).reduce((total, value) => total + value, 0).toLocaleString("en-US")}
+                      </td>
+                      <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0" />
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </div>
 
@@ -548,96 +937,151 @@ export default function EggLayingForm() {
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full min-w-245 text-sm">
-                  <thead className="bg-green-50">
-                    <tr className="border-b">
-                      <th className="px-3 py-2 text-left font-medium">
-                        Date Laying
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Farm Name
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Building
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">Age</th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        TEP Collection
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Hatching Egg
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Table Egg
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Crack
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Junior
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Jumbo
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Condemn
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Total
-                      </th>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-from" className="text-xs">Date Laying From</Label>
+                  <Input
+                    id="history-date-from"
+                    type="date"
+                    max={historyDateTo || undefined}
+                    value={historyDateFrom}
+                    onChange={(event) => {
+                      setHistoryDateFrom(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-date-to" className="text-xs">Date Laying To</Label>
+                  <Input
+                    id="history-date-to"
+                    type="date"
+                    min={historyDateFrom || undefined}
+                    value={historyDateTo}
+                    onChange={(event) => {
+                      setHistoryDateTo(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-building-filter" className="text-xs">Building</Label>
+                  <Input
+                    id="history-building-filter"
+                    type="search"
+                    placeholder="Search building..."
+                    value={historyBuildingFilter}
+                    onChange={(event) => {
+                      setHistoryBuildingFilter(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[420px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
+                <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
+                  <colgroup>
+                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
+                      <col key={index} style={{ width: `${width}%` }} />
+                    ))}
+                  </colgroup>
+                  <thead>
+                    <tr style={{ height: 36 }}>
+                      {[
+                        "Row #", "Date Laying", "Building", "Cycle #", "Age", "TEP Collection",
+                        "Hatching Egg", "Table Egg", "Class B", "Crack", "Junior", "Jumbo",
+                        "Condemn", "Total Egg Classification",
+                      ].map((label, index) => (
+                        <th
+                          key={label}
+                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
+                        >
+                          {label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {history.length ? (
-                      history.map((row) => (
-                        <tr key={row.id} className="border-b last:border-0">
-                          <td className="px-3 py-2">
-                            {formatDate(row.date_laying)}
+                    {paginatedHistory.length ? (
+                      paginatedHistory.map((row, rowIndex) => {
+                        const rowDivider = rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
+                        return (
+                        <tr key={row.id} className="fc-grid-row border-0">
+                          <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider}`}>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">
+                              {(historyPage - 1) * HISTORY_PAGE_SIZE + rowIndex + 1}
+                            </div>
                           </td>
-                          <td className="px-3 py-2">{row.farm_name ?? ""}</td>
-                          <td className="px-3 py-2">{row.building ?? ""}</td>
-                          <td className="px-3 py-2">
-                            {formatAgeWeeks(row.age)}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
+                            <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">{formatDate(row.date_laying)}</div>
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.tep_collection)}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
+                            <div className="flex h-8 min-w-0 items-center truncate px-1 text-xs" title={row.building ?? ""}>{row.building ?? ""}</div>
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.hatching_egg)}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
+                            {row.cycle_no ?? "-"}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.table_egg)}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold ${rowDivider}`}>
+                            {formatAge(row.age)}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.crack)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.junior)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.jumbo)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatNumber(row.condemn)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium">
+                          {historyNumberFields.map((field) => (
+                            <td key={field} className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs tabular-nums ${rowDivider}`}>
+                              {formatNumber(row[field])}
+                            </td>
+                          ))}
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
                             {getEggTotal(row).toLocaleString("en-US")}
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     ) : (
                       <tr>
                         <td
-                          colSpan={12}
-                          className="px-3 py-6 text-center text-muted-foreground"
+                          colSpan={14}
+                          className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
-                          No farm history found.
+                          {history.length ? "No history matches the selected filters." : "No farm history found."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-muted-foreground">
+                  {filteredHistory.length
+                    ? `Showing ${(historyPage - 1) * HISTORY_PAGE_SIZE + 1}-${Math.min(historyPage * HISTORY_PAGE_SIZE, filteredHistory.length)} of ${filteredHistory.length}`
+                    : "Showing 0 of 0"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                    disabled={historyPage === 1}
+                  >
+                    <ChevronLeft className="size-4" /> Previous
+                  </Button>
+                  <span className="min-w-24 text-center text-xs font-medium">
+                    Page {historyPage} of {historyPageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((page) => Math.min(historyPageCount, page + 1))}
+                    disabled={historyPage === historyPageCount}
+                  >
+                    Next <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

@@ -7,7 +7,7 @@ import { getProfileByAuthId } from '../api'
 import { UserRow } from '@/lib/types'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { BracketCheckbox } from '@/components/BracketCheckbox '
-
+// 
 export default function SuperUser() {
     const [loggedInUser, setLoggedInUser] = useState<User | null>(null)
     const [usersInfo, setusersInfo] = useState<UserRow | null>(null)
@@ -18,7 +18,7 @@ export default function SuperUser() {
         const existingProfile = await getProfileByAuthId(authId)
         setusersInfo(existingProfile)
     }
-
+// 
 
     const handleCheckboxChange = (isChecked: boolean) => {
         // const isChecked = e.target.checked

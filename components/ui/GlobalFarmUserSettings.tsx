@@ -41,8 +41,8 @@ export default function GlobalFarmUserSettings() {
   useEffect(() => {
     const session = getValue("UserInfoAuthSession");
 
-    if (session?.length > 0) {
-      setUserFarms(session[0].users_farms || []);
+    if (Array.isArray(session) && session.length > 0) {
+      setUserFarms(session[0]?.users_farms || []);
     }
   }, [getValue]);
 
@@ -67,8 +67,7 @@ export default function GlobalFarmUserSettings() {
   useEffect(() => {
     const session = getValue("UserInfoAuthSession");
     const currentDefaultFarmId = getValue("DefaultFarmId");
-    console.log({ currentDefaultFarmId, session }, session[0]?.default_farm);
-    if (!session?.length) return;
+    if (!Array.isArray(session) || session.length === 0) return;
 
     const sessionDefaultFarmId = session[0]?.default_farm;
 
@@ -97,7 +96,7 @@ export default function GlobalFarmUserSettings() {
   };
 
   return (
-    <div className="rounded-xl border shadow-sm">
+    <div className="rounded-md border shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>

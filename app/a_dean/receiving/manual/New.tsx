@@ -10,11 +10,11 @@ import {
 } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { DataRecordApproval, DefaultFarm, DraftItem, Farms } from '@/lib/types'
+import { DataRecordApproval, DraftItem, Farms } from '@/lib/types'
 import { today } from '@/lib/Defaults/DefaultValues'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import { createReceiving, getUserInfo } from './api'
+import { createReceiving } from './api'
 import { Plus, Save, CalendarDays } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
@@ -83,8 +83,6 @@ export default function ApprovalDecisionForm() {
     const [temperature, setTemperature] = useState('')
     const [humidity, sethumidity] = useState('')
     const [brdr_ref_no, setbrdr_ref_no] = useState('')
-    const [defaultFarm, setdefaultFarm] = useState<DefaultFarm>()
-
     const [activeWeeks, setActiveWeeks] = useState(26)
     const [activeDays, setActiveDays] = useState(0)
 
@@ -178,33 +176,6 @@ export default function ApprovalDecisionForm() {
     //   if (!header) return
     //   getDefaultFarm()
     // }, [header, getValue])
-    const getDefaultFarm = async () => {
-        const defaultFarmId = getValue("DefaultFarmId")
-
-        if (defaultFarmId) {
-            setHeader(h =>
-                h && h.delivered_to == null
-                    ? { ...h, delivered_to: defaultFarmId }
-                    : h
-            )
-            return
-        }
-
-        const data = await getUserInfo()
-
-        if (data?.length) {
-            setdefaultFarm(data[0])
-
-            setHeader(h =>
-                h && h.delivered_to == null
-                    ? { ...h, delivered_to: data[0].id }
-                    : h
-            )
-        }
-    }
-    useEffect(() => {
-        getDefaultFarm()
-    }, [])
     useEffect(() => {
         refreshSessionx(router)
     }, [])
@@ -367,7 +338,12 @@ export default function ApprovalDecisionForm() {
         setloading(false)
 
         if (res.success) {
-            alert(`Saved! DocEntry: ${res.docentry}`)
+            const approvalRequired = Boolean(res.approval?.required)
+            alert(
+                approvalRequired
+                    ? `Submitted for approval! DocEntry: ${res.docentry}`
+                    : `Saved! DocEntry: ${res.docentry}`
+            )
             router.push("/a_dean/receiving/")
         } else {
             alert(res.error)
@@ -524,42 +500,39 @@ export default function ApprovalDecisionForm() {
                     </div>
                 </CardHeader>
 
-                <CardContent className='bg-white rounded-2xl p-4 space-y-6'>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-2 sm:grid-cols-1 gap-4">
-                        <div className="flex items-center gap-4 w-full md:w-100 `">
+                <CardContent className='rounded-md border border-border bg-white p-4 md:p-5 space-y-5'>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="space-y-2">
                             <Label
-                                className="text-sm font-medium w-27 shrink-0 text-right"
+                                className="text-sm font-medium text-foreground"
                                 required
                             >
                                 Delivered From
                             </Label>
-                            <div className='w-full'>
+                            <SearchableCombobox
+                                multiple={false}
+                                required
+                                showCode
+                                autoHighlight
+                                className="w-full"
+                                items={farms}
+                                value={header?.soldTo || ''}
+                                onValueChange={(val) => {
+                                    const selectedFarm = farms.find((f: any) => f.code === val)
 
-                                <SearchableCombobox
-                                    multiple={false}
-                                    required
-                                    showCode
-                                    autoHighlight
-                                    className="w-full"
-                                    items={farms}
-                                    value={header?.soldTo || ''}
-                                    onValueChange={(val) => {
-                                        const selectedFarm = farms.find((f: any) => f.code === val)
+                                    setHeader(h => ({
+                                        ...(h ?? emptyApprovalRecord),
+                                        soldTo: val,
+                                        tin: selectedFarm?.tin || '',
+                                        address: selectedFarm?.address || '',
+                                    }))
+                                }}
 
-                                        setHeader(h => ({
-                                            ...(h ?? emptyApprovalRecord),
-                                            soldTo: val,
-                                            tin: selectedFarm?.tin || '',
-                                            address: selectedFarm?.address || '',
-                                        }))
-                                    }}
-
-                                />
-                            </div>
+                            />
                         </div>
                         {headerFieldsLeft.map((field, i) => (
-                            <div key={i} className="flex items-center gap-4 w-full md:max-w-[400px]">
-                                <Label className="text-sm font-medium w-27 shrink-0 text-right">
+                            <div key={i} className="space-y-2">
+                                <Label required={field.required} className="text-sm font-medium text-foreground">
                                     {field.label}
                                 </Label>
 
@@ -569,7 +542,7 @@ export default function ApprovalDecisionForm() {
                                     type={field.type || 'text'}
                                     value={field.value}
                                     onChange={e => field.onChange?.(e.target.value)}
-                                    className="h-9 text-sm w-full md:max-w-[300px]"
+                                    className="w-full"
                                 />
                             </div>
                         ))}
@@ -577,28 +550,35 @@ export default function ApprovalDecisionForm() {
 
                     <Separator className='my-2' />
 
-                    <div className="sm:grid md:grid-cols-2 lg:grid-cols-3 sm:grid-cols-1 gap-6">
-                        <div className='mt-1'>
-                            <Label className="text-sm font-medium w-27 shrink-0 text-right">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div className='space-y-2'>
+                            <Label className="text-sm font-medium text-foreground">
                                 Shipped To
                             </Label>
                             <DefaultFarmComboBox
                                 value={header?.delivered_to ?? undefined}
+                                valueKey="id"
+                                farmType="HA"
                                 setValue={(val) => {
                                     const deliveredTo = val === '' ? null : Number(val)
 
-                                    setHeader(h => ({
-                                        ...(h ?? emptyApprovalRecord),
-                                        delivered_to: deliveredTo
-                                    }))
+                                    setHeader(h => {
+                                        const currentHeader = h ?? emptyApprovalRecord
+                                        if (currentHeader.delivered_to === deliveredTo) return h
+
+                                        return {
+                                            ...currentHeader,
+                                            delivered_to: deliveredTo
+                                        }
+                                    })
                                 }
                                 }
                             />
                         </div>
 
                         {headerFieldsRight.map((field, i) => (
-                            <div key={i} className='mt-1'>
-                                <Label required={field.required} className='pb-2 mt-1'>{field.label}</Label>
+                            <div key={i} className='space-y-2'>
+                                <Label required={field.required} className='text-sm font-medium text-foreground'>{field.label}</Label>
                                 <Input
                                     required={field.required}
                                     disabled={field.disabled}
@@ -609,8 +589,8 @@ export default function ApprovalDecisionForm() {
                             </div>
                         ))}
 
-                        <div className='mt-1'>
-                            <Label className='pb-2' required>Breed</Label>
+                        <div className='space-y-2'>
+                            <Label className='text-sm font-medium text-foreground' required>Breed</Label>
                             <Input
                                 required
                                 value={headerBreed}

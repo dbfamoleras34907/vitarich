@@ -12,14 +12,15 @@ export function shortenText(text: string, maxLength: number = 20): string {
 interface UserProfileCardProps {
   email: string;
   description: string;
+  collapsed?: boolean;
 }
 
-export function UserProfileCard({ email, description }: UserProfileCardProps) {
+export function UserProfileCard({ email, description, collapsed = false }: UserProfileCardProps) {
 
   return (
-    <div className="group flex items-center gap-3 p-2 rounded-lg transition-colors bg-background w-full border border-transparent hover:border-border cursor-pointer">
+    <div className={`group flex h-9 w-full cursor-pointer items-center gap-2 rounded-md px-2 transition-colors hover:bg-secondary ${collapsed ? "justify-center px-0" : ""}`}>
 
-      <Avatar className="h-9 w-9 shrink-0 transition-transform active:scale-95">
+      <Avatar className="h-7 w-7 shrink-0">
         <AvatarImage
           src={`https://github.com/identicons/${email.charAt(3)}.png`}
           alt="Profile"
@@ -29,7 +30,7 @@ export function UserProfileCard({ email, description }: UserProfileCardProps) {
         </AvatarFallback>
       </Avatar>
 
-      <div className="flex flex-1 flex-col text-left min-w-0">
+      <div className={`min-w-0 flex-1 flex-col text-left ${collapsed ? "hidden" : "flex"}`}>
         <span
           title={email}
           className="text-sm font-medium leading-none text-foreground"
@@ -38,7 +39,7 @@ export function UserProfileCard({ email, description }: UserProfileCardProps) {
         </span>
         <span
           title={description}
-          className="text-xs mt-1.5 leading-none text-muted-foreground"
+          className="mt-1 hidden text-xs leading-none text-muted-foreground"
         >
           {shortenText(description, 24)}
         </span>

@@ -1,23 +1,58 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import React, { Children, useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, RefreshCw, ChevronDown } from "lucide-react"
+import { Boxes, ExternalLink, Menu } from "lucide-react"
 import { useSidebar } from "./SidebarProvider"
-import { VersionSwitcher } from "@/components/ui/sidebar/version-switcher"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
 import { useGlobalContext } from "../context/GlobalContext"
 import { NavFolders } from "../Defaults/DefaultValues"
 import GlobalSearch from "@/components/ui/GlobalSearch"
-import ThemeSwitch from "../ThemeSwitch"
 import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
-import GlobalFarmUserSettings from "@/components/ui/GlobalFarmUserSettings"
+import { getModuleIcon } from "./moduleIcons"
+import type { NavFolder, NavGroup } from "../types"
+import { getProfileByAuthId } from "@/app/admin/user/api"
+import { getNavigationPermissionTitle } from "./navigationPermissions"
+import NotificationCenter from "@/components/notifications/NotificationCenter"
 
-const versions = ["1.0.1", "1.1.0-alpha", "2.0.0-beta1"]
+export { getNavigationPermissionTitle } from "./navigationPermissions"
+
+type FilteredNavFolder = NavFolder & { items: NavGroup[] }
+
+type SidebarAccessProfile = {
+  user_type?: number | null
+  fms_type?: string | null
+  default_farm?: string | number | null
+}
+
+type SidebarFarm = {
+  id?: string | number | null
+  code?: string | null
+  name?: string | null
+}
+
+const FMS_FOLDER_TITLES = new Set(["broiler", "hatchery", "breeder"])
+
+const ACTIVE_NAV_ITEM_CLASS =
+  "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
+const SIDEBAR_SCROLL_CLASS =
+  "[scrollbar-color:#d6d3d1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300/80 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400/90"
+
+function routeIsActive(pathname: string, url: string) {
+  return url !== "#" && (pathname === url || pathname.startsWith(`${url}/`))
+}
+
+function folderContainsRoute(folder: NavFolder, pathname: string) {
+  return Boolean(
+    folder.items?.some(group =>
+      group.children.some(child => routeIsActive(pathname, child.url)),
+    ),
+  )
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -28,31 +63,56 @@ export function AppSidebar() {
   const { collapsed, toggle } = useSidebar()
 
   const { getValue, setValue } = useGlobalContext()
+  const userPermissions = getValue("UserPermission")
 
   const [session, setSession] = useState<Session | null>()
   const [isMobile, setIsMobile] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
+  const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
+  const [accessProfile, setAccessProfile] = useState<SidebarAccessProfile | null>(null)
 
-  // ⭐ ENTERPRISE: persistent open folders
-  const [openFolders, setOpenFolders] = useState<number[]>([])
-
-  const filteredNavFolders = filterNavFolders(
-    NavFolders,
-    getValue("UserPermission") || []
+  const userInfo = getValue("UserInfoAuthSession")?.[0] as SidebarAccessProfile | undefined
+  const farmList = (getValue("getFarmDB") ?? []) as SidebarFarm[]
+  const rawFmsType = String(accessProfile?.fms_type ?? userInfo?.fms_type ?? "").trim().toLowerCase()
+  const fmsTypeLabel = rawFmsType === "broiler"
+    ? "Broiler"
+    : rawFmsType === "breeder"
+      ? "Breeder"
+      : rawFmsType === "hatchery" || rawFmsType === "hatcher"
+        ? "Hatchery"
+        : null
+  const sidebarTitle = fmsTypeLabel ? `Vita ${fmsTypeLabel}` : "Vita FMS"
+  const defaultFarmReference = getValue("DefaultFarmId") ?? accessProfile?.default_farm ?? userInfo?.default_farm
+  const defaultFarm = farmList.find(farm =>
+    String(farm.id ?? "") === String(defaultFarmReference ?? "") ||
+    String(farm.code ?? "").trim().toLowerCase() === String(defaultFarmReference ?? "").trim().toLowerCase(),
   )
+  const defaultFarmName = String(defaultFarm?.name ?? "").trim() || "Default Farm"
+
+  const filteredNavFolders = useMemo(
+    () => filterNavFolders(NavFolders, userPermissions || [], accessProfile),
+    [accessProfile, userPermissions],
+  )
+
+  const activeFolder = filteredNavFolders.find(folder => folder.id === activeFolderId)
+
+  useEffect(() => {
+    const routeFolder = filteredNavFolders.find(folder => folderContainsRoute(folder, pathname))
+    const fmsFolder = pathname === "/home"
+      ? filteredNavFolders.find(folder => folder.title.toLowerCase() === preferredFmsFolder)
+      : undefined
+
+    // Keep the visible group aligned when navigation or permissions change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveFolderId(currentId =>
+      fmsFolder?.id ?? routeFolder?.id ?? (filteredNavFolders.some(folder => folder.id === currentId) ? currentId : null),
+    )
+  }, [filteredNavFolders, pathname, preferredFmsFolder])
 
   // ===============================
   // INIT
   // ===============================
-
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar_open_folders")
-    if (saved) setOpenFolders(JSON.parse(saved))
-  }, [])
-
-  useEffect(() => {
-    localStorage.setItem("sidebar_open_folders", JSON.stringify(openFolders))
-  }, [openFolders])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768)
@@ -65,44 +125,140 @@ export function AppSidebar() {
     const getUser = async () => {
       const { data: { session } } = await db.auth.getSession()
       setSession(session)
+
+      if (!session?.user.id) return
+
+      try {
+        const profile = await getProfileByAuthId(session.user.id)
+        setAccessProfile(profile)
+        const fmsType = String(profile?.fms_type ?? "").trim().toLowerCase()
+        setPreferredFmsFolder(FMS_FOLDER_TITLES.has(fmsType) ? fmsType : null)
+      } catch (error) {
+        console.error("Unable to load the user's FMS type:", error)
+      }
     }
     getUser()
   }, [])
 
   // ===============================
-  // AUTO-OPEN FOLDER BASED ON ROUTE
-  // ===============================
-
-  useEffect(() => {
-    filteredNavFolders.forEach(folder => {
-      folder.items?.forEach((group: any) => {
-        group.children?.forEach((child: any) => {
-          if (child.url && child.url !== "#" && pathname.startsWith(child.url)) {
-            setOpenFolders(prev =>
-              prev.includes(folder.id) ? prev : [...prev, folder.id]
-            )
-          }
-        })
-      })
-    })
-  }, [pathname])
-
-  // ===============================
   // ACTIONS
   // ===============================
-
-  const toggleFolder = (id: number) => {
-    setOpenFolders(prev =>
-      prev.includes(id)
-        ? prev.filter(x => x !== id)
-        : [...prev, id]
-    )
-  }
 
   const goTo = (url: string) => {
     setValue("loading_s", true)
     router.push(url)
   }
+
+  const openInNewWindow = (url: string) => {
+    const newWindow = window.open(url, "_blank", "noopener,noreferrer")
+    if (newWindow) newWindow.opener = null
+  }
+
+
+  const renderExpandedNavigation = () => (
+    <>
+      <div className="px-2 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/45">
+        Module groups
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {filteredNavFolders.map(folder => {
+          const Icon = folder.icon
+          const isSelected = activeFolderId === folder.id
+          const hasActiveRoute = folderContainsRoute(folder, pathname)
+
+          return (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => setActiveFolderId(current => current === folder.id ? null : folder.id)}
+              className={`group flex w-full min-w-0 items-center justify-start gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${isSelected
+                ? "border-primary bg-primary text-primary-foreground"
+                : hasActiveRoute
+                  ? "border-primary/40 bg-primary/5 text-sidebar-foreground"
+                  : "border-sidebar-border bg-card text-sidebar-foreground hover:border-primary/40 hover:bg-sidebar-accent"
+                }`}
+              aria-expanded={isSelected}
+            >
+              <Icon className="size-4 shrink-0" />
+              <span className="min-w-0 whitespace-normal">{folder.title}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {
+        activeFolder ? (
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+                {activeFolder.title}
+              </div>
+              <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] text-sidebar-foreground/60">
+                {activeFolder.items?.reduce((count, group) => count + group.children.filter(child => child.url !== "#" && !child.hideFromNavigation).length, 0) ?? 0} modules
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {activeFolder.items?.map(group => {
+                const visibleChildren = group.children.filter(child => child.url && child.url !== "#" && !child.hideFromNavigation)
+                if (!visibleChildren.length) return null
+
+                return (
+                  <div key={`${activeFolder.id}-${group.group}`}>
+                    {(activeFolder.items?.length ?? 0) > 1 && (
+                      <div className="mb-1 px-3 text-[11px] font-medium text-sidebar-foreground/45">
+                        {group.group}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      {visibleChildren.map(child => {
+                        const Icon = getModuleIcon(child.title, child.type)
+                        const isCurrentRoute = routeIsActive(pathname, child.url)
+
+                        return (
+                          <div
+                            key={`${activeFolder.id}-${group.group}-${child.title}`}
+                            className="group/route relative"
+                          >
+                            <Button
+                              variant="ghost"
+                              className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
+                              onClick={() => goTo(child.url)}
+                            >
+                              <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
+                              <span className="truncate">{child.title}</span>
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => openInNewWindow(child.url)}
+                              className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
+                              aria-label={`Open ${child.title} in a new window`}
+                              title="Open in new window"
+                            >
+                              <ExternalLink className="size-3.5" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl border border-dashed border-sidebar-border p-5 text-center">
+            <Boxes className="mx-auto mb-2 size-6 text-sidebar-foreground/45" />
+            <p className="text-sm font-medium">Choose a group</p>
+            <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">
+              The modules in the selected group will appear here.
+            </p>
+          </div>
+        )
+      }
+    </>
+  )
   // exclude appSideBar from this pages
   if (pathname === "/signup_update" || pathname === "/init" || pathname === "/logout") return null;
   // ===============================
@@ -116,7 +272,7 @@ export function AppSidebar() {
           <Button
             variant="ghost"
             onClick={() => setMobileOpen(true)}
-            className="fixed z-50 left-3 top-3 p-2"
+            className="fixed z-50 left-3 top-3 bg-card/95 p-2 shadow-[var(--starbucks-nav-shadow)]"
           >
             <Menu className="size-5" />
           </Button>
@@ -129,68 +285,32 @@ export function AppSidebar() {
               onClick={() => setMobileOpen(false)}
             />
 
-            <aside className="relative h-full w-72 bg-sidebar  shadow-lg p-3 ">
+            <aside className="relative h-full w-72 bg-sidebar p-3 text-sidebar-foreground shadow-lg">
 
               {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
+              <div className="mb-3 flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)]">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                  V
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-foreground">{sidebarTitle}</div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="truncate text-xs text-muted-foreground">{defaultFarmName}</div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Default Farm</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
               <GlobalSearch collapsed={false} />
 
-              <div className="space-y-2 mt-4">
-
-                {filteredNavFolders.map(folder => (
-                  <div key={folder.id}>
-
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-between"
-                      onClick={() => toggleFolder(folder.id)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <folder.icon className="size-5" />
-                        {folder.title}
-                      </div>
-
-                      <ChevronDown
-                        className={`size-4 transition ${openFolders.includes(folder.id) ? "rotate-180" : ""
-                          }`}
-                      />
-                    </Button>
-
-                    {openFolders.includes(folder.id) && (
-                      <div className="ml-6 mt-2 space-y-3">
-
-                        {folder.items?.map((group: any, gi: number) => (
-                          <div key={gi}>
-
-                            <div className="text-xs text-muted-foreground  px-2">
-                              {group.group}
-                            </div>
-
-                            {group.children
-                              .filter((c: any) => c.url && c.url !== "#")
-                              .map((child: any, ci: number) => (
-                                <Button
-                                  key={ci}
-                                  variant="ghost"
-                                  className={`w-full justify-start pl-4 ${pathname.startsWith(child.url)
-                                    ? "bg-accent"
-                                    : ""
-                                    }`}
-                                  onClick={() => goTo(child.url)}
-                                >
-                                  {child.title}
-                                </Button>
-                              ))}
-                          </div>
-                        ))}
-
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* <ThemeSwitch collapsed={false} />
-                <UserAccountMenu session={session} collapsed={false} /> */}
-
+              <div className={`mt-4 max-h-[calc(100vh-15rem)] overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
+                {renderExpandedNavigation()}
+              </div>
+              <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+                <NotificationCenter />
+                <div className="my-2 border-t border-sidebar-border" />
+                <UserAccountMenu session={session} collapsed={false} />
               </div>
             </aside>
           </div>
@@ -205,105 +325,89 @@ export function AppSidebar() {
 
   return (
     <aside
-      className={`flex flex-col h-screen    bg-background transition-all ${collapsed ? "w-16" : "w-72"
+      className={`flex h-screen flex-col text-sidebar-foreground shadow-[var(--starbucks-nav-shadow)] transition-all ${collapsed ? "w-16 bg-card" : "w-72 bg-sidebar"
         } duration-300`}
     >
-      <div className="px-3   h-13.5  mt-1  z-50">
-        <div className="flex items-center justify-between ">
+      <div className="z-50 px-3 pt-3">
+        <div className={`flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)] ${collapsed ? "justify-center" : "justify-between"}`}>
           {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
-          <Button className="m-3 text-foreground" variant="ghost" size="icon" onClick={toggle} >
-            <Menu className="size-5" />
-          </Button>
-          <div className="flex  gap-4">
-            {!collapsed &&
-              <GlobalSearch collapsed={collapsed} />
-            }
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto   mt-9 space-y-2  ">
-
-        <div className="bg-white shadow rounded-r-2xl min-h-[calc(100vh-7rem)] ">
-          <div className="text-sm px-3 text-muted-foreground py-4">{!collapsed && "Main"} </div>
-          {filteredNavFolders.map(folder => (
-            <div key={folder.id} className="text-foreground/60">
-
-              {/* HEADER */}
-              {collapsed ? (
+          {!collapsed && (
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                V
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">{sidebarTitle}</div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      onClick={() => toggle()} // ⭐ expand sidebar
-                      className="w-full justify-center "
-                    >
-                      <folder.icon className="size-5" />
-                    </Button>
+                    <div className="truncate text-xs text-muted-foreground">{defaultFarmName}</div>
                   </TooltipTrigger>
-                  <TooltipContent>{folder.title}</TooltipContent>
+                  <TooltipContent side="right">Default Farm</TooltipContent>
                 </Tooltip>
-              ) : (
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between h-6"
-                  onClick={() => toggleFolder(folder.id)}
-                >
-                  <div className="flex items-center gap-2 hover:bg-primary/5 hover:text-primary p-1 w-full">
-                    <folder.icon className="size-5" />
-                    {folder.title}
-                  </div>
-
-                  <ChevronDown
-                    className={`size-4 transition ${openFolders.includes(folder.id) ? "rotate-180" : ""
-                      }`}
-                  />
-                </Button>
-              )}
-
-              {/* CONTENT */}
-              {!collapsed && openFolders.includes(folder.id) && (
-                <div className="ml-6 mt- space-y-3">
-
-                  {folder.items?.map((group: any, gi: number) => (
-                    <div key={gi}>
-
-                      <div className="text-xs text-muted-foreground  ">
-                        {group.group}
-                      </div>
-
-                      {group.children
-                        .filter((c: any) => c.url && c.url !== "#")
-                        .map((child: any, ci: number) => (
-                          <Button
-                            key={ci}
-                            variant="ghost"
-                            className={`h-7 w-full rounded-none justify-start hover:bg-primary/5 hover:text-primary   pl-4 ${pathname.startsWith(child.url)
-                              ? "bg-accent"
-                              : ""
-                              }`}
-                            onClick={() => goTo(child.url)}
-                          >
-                            {child.title}
-                          </Button>
-                        ))}
-                    </div>
-                  ))}
-
-                </div>
-              )}
+              </div>
             </div>
-          ))}
+          )}
+          <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
+            <Menu className="size-5" />
+          </Button>
+        </div>
+        {!collapsed && (
+          <div className="mt-3">
+            <GlobalSearch collapsed={collapsed} />
+          </div>
+        )}
+      </div>
+
+      <nav className={`mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-8 ${collapsed ? "space-y-1" : "space-y-5"} ${SIDEBAR_SCROLL_CLASS}`}>
+
+        <div className={`mb-2 ${collapsed ? "space-y-1" : "rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]"}`}>
+          {collapsed && (
+            <div className="text-sidebar-foreground/80">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <GlobalSearch collapsed={collapsed} />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">Search</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
+          {collapsed ? filteredNavFolders.map(folder => (
+            <div key={folder.id} className={`text-sidebar-foreground/80 ${collapsed ? "" : "space-y-1 pb-3 last:pb-0"}`}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setActiveFolderId(folder.id)
+                      toggle()
+                    }}
+                    className={`h-10 w-full justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${folderContainsRoute(folder, pathname) ? ACTIVE_NAV_ITEM_CLASS : ""}`}
+                    aria-label={folder.title}
+                  >
+                    <folder.icon className="size-5 text-sidebar-foreground/70" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{folder.title}</TooltipContent>
+              </Tooltip>
+            </div>
+          )) : renderExpandedNavigation()}
         </div>
 
         {/* {getValue("loading_s") && (
           <RefreshCw className="animate-spin size-4 fixed bottom-3 right-3" />
         )} */}
 
-        {/* <ThemeSwitch collapsed={collapsed} />
-        <UserAccountMenu session={session} collapsed={false} /> */}
-
       </nav>
+      <div className="shrink-0 px-3 pb-3 pt-3">
+        <div className="rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+          <NotificationCenter collapsed={collapsed} />
+          <div className="my-2 border-t border-sidebar-border" />
+          <UserAccountMenu session={session} collapsed={collapsed} />
+        </div>
+      </div>
     </aside>
   )
 }
@@ -318,8 +422,24 @@ interface Permission {
   is_visible: boolean
 }
 
-export function filterNavFolders(navFolders: any[], permissions: Permission[]) {
+export function filterNavFolders(
+  navFolders: NavFolder[],
+  permissions: Permission[],
+  profile?: { user_type?: number | null; fms_type?: string | null } | null,
+): FilteredNavFolder[] {
+  const userType = Number(profile?.user_type ?? 3)
+  if (userType === 1) {
+    return navFolders
+      .map(folder => ({ ...folder, items: folder.items ?? [] }))
+      .filter((folder): folder is FilteredNavFolder => Boolean(folder.items.length))
+  }
+
+  if (!profile?.fms_type) return []
+
+  const fmsType = profile.fms_type as "Broiler" | "Breeder" | "Hatchery"
+
   return navFolders
+    .filter(folder => Boolean(folder.fmsTypes?.includes(fmsType)))
     .map(folder => ({
       ...folder,
       items: folder.items
@@ -329,7 +449,7 @@ export function filterNavFolders(navFolders: any[], permissions: Permission[]) {
               p =>
                 p.is_visible &&
                 p.group_name === group.group &&
-                p.title === child.title
+                p.title === getNavigationPermissionTitle(child)
             )
           )
 
@@ -339,5 +459,5 @@ export function filterNavFolders(navFolders: any[], permissions: Permission[]) {
         })
         .filter(Boolean),
     }))
-    .filter(folder => folder.items?.length)
+    .filter((folder): folder is FilteredNavFolder => Boolean(folder.items?.length))
 }

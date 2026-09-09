@@ -95,9 +95,13 @@ export interface UserInsert {
   location?: string | null;
   remarks?: string | null;
   supervisor?: string | null;
+  issuper?: string | null;
   default_farm?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  fms_type?: string | null;
+  users_group_id?: string | number | null;
+  user_type?: number | null;
 }
 
 
@@ -128,6 +132,9 @@ export interface UserRow {
   isactive?: string | null;
   region?: string | null;
   archipelago?: string | null;
+  fms_type?: string | null;
+  users_group_id?: string | number | null;
+  user_type?: number | null;
 
 }
 export type DraftStatus = 'pending' | 'approved' | 'rejected';
@@ -172,6 +179,7 @@ export interface Warehouse {
   whse_code: string | null
   whse_name: string | null
   full_location_code: string | null
+  fms_type: string | null
   warehouse_type: string | null
   subinventory_code: string | null
   subinventory_desc: string | null
@@ -188,7 +196,16 @@ export interface WarehouseData {
   created_by?: string | null;
   whse_code?: string | null;
   whse_name?: string | null;
+  farm_id?: number | null;
+  farm_code?: string | null;
+  farm_name?: string | null;
+  father_id?: number | null;
+  capacity?: number | null;
+  is_default_feed_warehouse?: boolean | null;
+  is_default_receiving_warehouse?: boolean | null;
+  is_default_disposal_warehouse?: boolean | null;
   full_location_code?: string | null;
+  fms_type?: string | null;
   warehouse_type?: string | null;
   subinventory_code?: string | null;
   subinventory_desc?: string | null;
@@ -536,13 +553,27 @@ export interface Items {
   is_inventory_item: boolean | null
   is_sales_item: boolean | null
   is_purchase_item: boolean | null
+  is_delivery_item: boolean | null
   on_hand: number | null
   is_committed: number | null
   on_order: number | null
   inventory_uom: string | null
   item_group: string | null
+  sub_item_group_id?: number | null
+  sub_item_group_level_1_id?: number | null
+  sub_item_group_level_2_id?: number | null
+  sub_item_group_level_3_id?: number | null
+  fms_group: string | null
   manage_batch_numbers: boolean | null
   manage_serial_numbers: boolean | null
+  batch_management_method: string | null
+  default_shelf_life_days: number | null
+  default_expiration_months: number | null
+  default_expiry_required: boolean | null
+  allow_negative_batch_stock: boolean | null
+  batch_number_series: string | null
+  min_on_hand: number | null
+  max_on_hand: number | null
   updated_at: string | null
   group: string | null
 }
@@ -558,6 +589,7 @@ export interface NavPermission {
   insert?: boolean;
   edit?: boolean;
   void?: boolean;
+  approval?: boolean;
 }
 
 export interface NavChild extends NavPermission {
@@ -565,6 +597,8 @@ export interface NavChild extends NavPermission {
   type: NavItemType;
   title: string;
   url: string;
+  newDocumentUrl?: string;
+  hideFromNavigation?: boolean;
 
   inventoriable?: boolean;
   section?: string;
@@ -580,6 +614,7 @@ export interface NavFolder extends NavPermission {
   title: string;
   url: string;
   icon: LucideIcon;
+  fmsTypes?: Array<'Broiler' | 'Breeder' | 'Hatchery'>;
   items?: NavGroup[];
 }
 

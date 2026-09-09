@@ -1,0 +1,185 @@
+export const rows = Array.from({ length: 46 }, (_, i) => ({ age: i }));
+
+export const dataColumnCount = 29;
+export const ageColumnWidth = 50;
+export const dataColumnWidth = 80;
+export const feedBatchMinColumnWidth = 140;
+export const feedBatchMaxColumnWidth = 260;
+export const feedTypeColumnWidth = 150;
+export const mortalityBatchMinColumnWidth = 140;
+export const mortalityBatchMaxColumnWidth = 260;
+export const headerRowHeight = 28;
+const stripedRow = 5;
+const middleHeaderTop = headerRowHeight;
+const bottomHeaderTop = headerRowHeight * 2;
+export const trackingLabelLeft = ageColumnWidth + 16;
+export const mortalityBatchColumnIndex = 6;
+export const cumulativeTotalColumnIndex = 7;
+export const feedDailyKgColumnIndex = 8;
+export const feedDailyPerBirdColumnIndex = 9;
+export const feedGuidelineColumnIndex = 10;
+export const feedBatchColumnIndex = 11;
+export const waterGuidelineColumnIndex = 28;
+export const actualAdgColumnIndex = 24;
+export const standardAdgColumnIndex = 25;
+export const feedTypeColumnIndex = 26;
+export const feedIntakeColumnIndexes = new Set([
+  feedDailyKgColumnIndex,
+  feedDailyPerBirdColumnIndex,
+  feedGuidelineColumnIndex,
+  feedBatchColumnIndex,
+  feedTypeColumnIndex,
+]);
+
+export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i);
+const hiddenColumnIndexes = new Set([1, 2, 3, 4, 5, 9, 16, 17, 18, 19, 20, 21, 22, 23]);
+export const visibleColumnIndexes = columnIndexes
+  .filter((colIndex) => !hiddenColumnIndexes.has(colIndex) && colIndex !== waterGuidelineColumnIndex)
+  .filter((colIndex) => colIndex !== feedTypeColumnIndex)
+  .flatMap((colIndex) => {
+    if (colIndex === feedDailyKgColumnIndex) return [colIndex, feedTypeColumnIndex];
+    if (colIndex === 14) return [waterGuidelineColumnIndex, colIndex];
+    return [colIndex];
+  });
+
+export const initialGridValues = rows.map(() =>
+  Array.from({ length: dataColumnCount }, () => "")
+);
+
+export const editableColumnIndexes = new Set([
+  0,
+  1,
+  3,
+  4,
+  feedDailyKgColumnIndex,
+  feedTypeColumnIndex,
+  feedBatchColumnIndex,
+  mortalityBatchColumnIndex,
+  12,
+  14,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  actualAdgColumnIndex,
+]);
+
+export const editableColumns = [...editableColumnIndexes]
+  .filter((colIndex) => !hiddenColumnIndexes.has(colIndex))
+  .sort((a, b) => a - b);
+
+export const columnDisabledFlags = columnIndexes.map(
+  (colIndex) => !editableColumnIndexes.has(colIndex)
+);
+
+const groupEndColumnIndexes = new Set([2, 4, 7, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, 27]);
+const emphasizedColumnIndexes = new Set([2, 5, cumulativeTotalColumnIndex]);
+
+const stickyHeaderClass = "fc-grid-header sticky z-30";
+const groupHeaderClass =
+  `${stickyHeaderClass} fc-grid-header-group px-1 py-0 text-left font-semibold leading-none`;
+const subHeaderClass =
+  `${stickyHeaderClass} px-1 py-0 text-center leading-none`;
+const leafHeaderClass =
+  `${stickyHeaderClass} px-1 py-0 text-center leading-none`;
+
+export const trackingLabelClass = "sticky z-40 inline-block";
+
+export type HeaderCellConfig = {
+  label?: string;
+  ariaLabel?: string;
+  className: string;
+  colSpan?: number;
+  rowSpan?: number;
+  groupEnd?: boolean;
+  top?: number;
+};
+
+export function getZeroInputRow() {
+  return Array.from({ length: dataColumnCount }, (_, colIndex) =>
+    editableColumnIndexes.has(colIndex) &&
+      colIndex !== feedBatchColumnIndex &&
+      colIndex !== feedTypeColumnIndex &&
+      colIndex !== mortalityBatchColumnIndex
+      ? "0"
+      : ""
+  );
+}
+
+function getRightBorderClass(isGroupEnd: boolean) {
+  return isGroupEnd
+    ? "fc-grid-group-divider"
+    : "fc-grid-border-r";
+}
+
+export function getHeaderBorderClass(isGroupEnd = false) {
+  return `fc-grid-header-border ${getRightBorderClass(isGroupEnd)}`;
+}
+
+function getBodyBorderClass(colIndex: number, striped: boolean) {
+  const bottomBorderClass = striped
+    ? "fc-grid-row-divider-strong"
+    : "fc-grid-row-divider";
+
+  return `${bottomBorderClass} ${getRightBorderClass(
+    groupEndColumnIndexes.has(colIndex)
+  )}`;
+}
+
+function getFooterBorderClass(colIndex: number) {
+  return `fc-grid-footer-border ${getRightBorderClass(
+    groupEndColumnIndexes.has(colIndex)
+  )}`;
+}
+
+export function isStripedRow(rowIndex: number) {
+  return stripedRow > 0 && (rowIndex + 1) % stripedRow === 0;
+}
+
+export const footerBorderClasses = columnIndexes.map((colIndex) => getFooterBorderClass(colIndex));
+export const bodyBorderClassesStriped = columnIndexes.map((colIndex) => getBodyBorderClass(colIndex, true));
+export const bodyBorderClassesPlain = columnIndexes.map((colIndex) => getBodyBorderClass(colIndex, false));
+export const bodyEmphasisClasses = columnIndexes.map((colIndex) =>
+  emphasizedColumnIndexes.has(colIndex) ? "fc-grid-cell-emphasis" : ""
+);
+
+export const topHeaderCells: HeaderCellConfig[] = [
+  { label: "Mortality", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
+  { label: "Batch", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Feeds Consumption", colSpan: 4, groupEnd: true, className: groupHeaderClass },
+  { label: "Water Intake", colSpan: 3, groupEnd: true, className: groupHeaderClass },
+  { label: "Average Live Weight", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Average Daily Gain", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { ariaLabel: "Spacer", colSpan: 1, groupEnd: true, className: groupHeaderClass },
+];
+
+export const middleHeaderCells: HeaderCellConfig[] = [
+  { label: "DOC Batch", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Cumulative", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
+  { label: "Actual FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Feed Type", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Standard FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Feeds Batch", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Daily L/Flock", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Daily per Bird ml/b/d", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Guideline ml/b/d", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Actual ALW", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Standard ALW", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Actual ADG", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Standard ADG", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { ariaLabel: "Spacer", colSpan: 1, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+];
+
+export const bottomHeaderCells: HeaderCellConfig[] = [
+  {
+    ariaLabel: "Spacer",
+    colSpan: 1,
+    groupEnd: true,
+    top: bottomHeaderTop,
+    className: leafHeaderClass,
+  },
+];

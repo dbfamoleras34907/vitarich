@@ -133,9 +133,23 @@ export async function createReceiving(payload: any) {
 
     if (error) throw error
 
+    const { data: approvalData, error: approvalError } = await db.rpc('submit_for_approval', {
+      p_document_type: 'receiving',
+      p_document_id: data,
+      p_document_no: dr_num,
+      p_payload: {
+        ...payload,
+        docentry: data,
+      },
+      p_remarks: 'Receiving document submitted for approval.',
+    })
+
+    if (approvalError) throw approvalError
+
     return {
       success: true,
       docentry: data,
+      approval: approvalData,
     }
   } catch (error: any) {
     return {

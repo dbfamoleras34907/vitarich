@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, ClipboardList, Mars, Venus } from "lucide-react";
+import { CalendarDays, ClipboardList } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -201,6 +200,30 @@ function createPenRowFromGrowing(row: Growing): GrowingPenRow {
       row.male_body_weight != null ? String(row.male_body_weight) : "",
   };
 }
+
+const TableWidths = {
+  tableMin: "min-w-[1220px]",
+  pen: "w-[72px] min-w-[72px]",
+  count: "w-[128px] min-w-[128px]",
+  feed: "w-[220px] min-w-[220px]",
+  bodyWeight: "w-[144px] min-w-[144px]",
+} as const;
+
+const SheetClasses = {
+  cell: "border border-slate-200 p-0 align-middle",
+  header:
+    "border border-slate-300 bg-slate-50 px-2 py-2 text-center text-sm font-medium text-slate-700",
+  group:
+    "border border-slate-300 bg-slate-100 px-2 py-2 text-left text-sm font-medium text-slate-700",
+  input:
+    "h-10 rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-1 focus-visible:ring-emerald-700 focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-100",
+  inputWithUnit:
+    "h-10 rounded-none border-0 bg-transparent pr-9 text-center shadow-none focus-visible:ring-1 focus-visible:ring-emerald-700 focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-100",
+  readOnlyInput:
+    "h-10 rounded-none border-0 bg-slate-50 text-center text-slate-600 shadow-none disabled:cursor-default disabled:opacity-100",
+  dropdown:
+    "h-10 rounded-none border-0 bg-transparent text-center text-sm !font-normal shadow-none hover:bg-transparent focus:ring-1 focus:ring-emerald-700 focus:ring-offset-0",
+} as const;
 
 export default function GrowingForm() {
   const router = useRouter();
@@ -450,6 +473,36 @@ export default function GrowingForm() {
     );
   }
 
+  function handleGrowingGridKeyDown(event: React.KeyboardEvent<HTMLTableElement>) {
+    const movement: Record<string, [number, number]> = {
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+    };
+    const offset = movement[event.key];
+    if (!offset) return;
+
+    const target = event.target as HTMLElement;
+    const currentCell = target.closest("td");
+    const currentRow = currentCell?.parentElement;
+    const tableBody = currentRow?.parentElement;
+    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+
+    const rows = Array.from(tableBody.querySelectorAll("tr"));
+    const cells = Array.from(currentRow.querySelectorAll("td"));
+    const rowIndex = rows.indexOf(currentRow as HTMLTableRowElement);
+    const columnIndex = cells.indexOf(currentCell as HTMLTableCellElement);
+    const nextRow = rows[rowIndex + offset[0]];
+    const nextCell = nextRow?.querySelectorAll("td")[columnIndex + offset[1]];
+    const nextControl = nextCell?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])");
+    if (!nextControl) return;
+
+    event.preventDefault();
+    nextControl.focus();
+    if (nextControl instanceof HTMLInputElement) nextControl.select();
+  }
+
   function buildPayload(row: GrowingPenRow): GrowingInsert {
     return {
       placement_id: asNumber(row.placement_id),
@@ -623,6 +676,7 @@ export default function GrowingForm() {
                     ["Farm", selectedPlacement?.farm_name ?? ""],
                     ["Building", selectedPlacement?.building_no ?? ""],
                     ["Week #", String(weekNumber)],
+                    ["Placement Date", formatDate(selectedPlacement?.placement_date)],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -648,96 +702,93 @@ export default function GrowingForm() {
             <section className="overflow-hidden rounded-md border border-emerald-100 bg-white">
               <div className="p-5">
                 {growingRows.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1330px] border-separate border-spacing-x-3 border-spacing-y-2 text-sm">
+                  <div className="overflow-x-auto border border-slate-300 bg-white">
+                    <table
+                      className={`w-full ${TableWidths.tableMin} border-collapse table-fixed text-sm`}
+                      onKeyDownCapture={handleGrowingGridKeyDown}
+                    >
                       <thead>
                         <tr>
                           <th
-                            colSpan={5}
-                            className="border-b border-slate-200 px-0 pb-3 text-left"
+                            rowSpan={2}
+                            className={`${SheetClasses.header} ${TableWidths.pen}`}
                           >
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-pink-50 text-pink-600">
-                                <Venus className="h-4 w-4" />
-                              </span>
-                              <span className="inline-flex items-center rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600">
-                                Female Information
-                              </span>
-                            </div>
+                            Pen #
                           </th>
                           <th
                             colSpan={4}
-                            className="border-b border-slate-200 px-0 pb-3 text-left"
+                            className={`${SheetClasses.group} !bg-pink-100 text-pink-800`}
                           >
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-50 text-sky-600">
-                                <Mars className="h-4 w-4" />
-                              </span>
-                              <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-600">
-                                Male Information
-                              </span>
-                            </div>
+                            Female
+                          </th>
+                          <th
+                            colSpan={4}
+                            className={`${SheetClasses.group} !bg-sky-100 text-sky-800`}
+                          >
+                            Male
                           </th>
                         </tr>
                         <tr>
-                          <th className="w-24 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Pen #
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                          >
+                            Mortality
                           </th>
-                          <th className="w-32 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Female Mortality
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                          >
+                            Feed Consumption
                           </th>
-                          <th className="w-44 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Female Feed Consumption
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-pink-50`}
+                          >
+                            Feed Type (Optional)
                           </th>
-                          <th className="w-56 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Female Feed Type
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-pink-50`}
+                          >
+                            Body Weight
                           </th>
-                          <th className="w-44 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Female Body Weight
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                          >
+                            Mortality
                           </th>
-                          <th className="w-32 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Mortality
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                          >
+                            Feed Consumption
                           </th>
-                          <th className="w-44 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Feed Consumption
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-sky-50`}
+                          >
+                            Feed Type (Optional)
                           </th>
-                          <th className="w-56 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Feed Type
-                            </Label>
-                          </th>
-                          <th className="w-44 pt-5 text-left align-bottom">
-                            <Label className="text-[11px] font-semibold text-slate-600">
-                              Male Body Weight
-                            </Label>
+                          <th
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-sky-50`}
+                          >
+                            Body Weight
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {growingRows.map((row) => (
-                          <tr key={row.placement_id}>
-                            <td className="align-top">
+                          <tr
+                            key={row.placement_id}
+                            className="even:bg-white odd:bg-emerald-50/40"
+                          >
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.pen} bg-slate-50`}
+                            >
                               <Input
                                 value={row.pen_no || "-"}
-                                disabled
-                                className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none"
+                                readOnly
+                                className={SheetClasses.readOnlyInput}
                               />
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -750,10 +801,12 @@ export default function GrowingForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none focus-visible:ring-emerald-500"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -768,19 +821,22 @@ export default function GrowingForm() {
                                     )
                                   }
                                   disabled={disabledAll}
-                                  className="h-10 rounded-md border-emerald-100 bg-slate-50 pr-10 text-sm shadow-none focus-visible:ring-emerald-500"
+                                  className={SheetClasses.inputWithUnit}
                                 />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
                                   kg
                                 </span>
                               </div>
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.feed}`}
+                            >
                               <SearchableDropdown1
                                 list={feedTypeOptions}
                                 codeLabel="id"
                                 nameLabel="description"
                                 showNameOnly
+                                clearable
                                 value={
                                   row.female_feedtype_id
                                     ? [row.female_feedtype_id]
@@ -801,9 +857,12 @@ export default function GrowingForm() {
                                       : "No feed type descriptions found"
                                 }
                                 disabled={disabledAll || loadingFeedTypes}
+                                triggerClassName={SheetClasses.dropdown}
                               />
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
+                            >
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -818,14 +877,16 @@ export default function GrowingForm() {
                                     )
                                   }
                                   disabled={disabledAll}
-                                  className="h-10 rounded-md border-emerald-100 bg-slate-50 pr-10 text-sm shadow-none focus-visible:ring-emerald-500"
+                                  className={SheetClasses.inputWithUnit}
                                 />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
                                   kg
                                 </span>
                               </div>
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -838,10 +899,12 @@ export default function GrowingForm() {
                                   )
                                 }
                                 disabled={disabledAll}
-                                className="h-10 rounded-md border-emerald-100 bg-slate-50 text-sm shadow-none focus-visible:ring-emerald-500"
+                                className={SheetClasses.input}
                               />
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.count}`}
+                            >
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -856,19 +919,22 @@ export default function GrowingForm() {
                                     )
                                   }
                                   disabled={disabledAll}
-                                  className="h-10 rounded-md border-emerald-100 bg-slate-50 pr-10 text-sm shadow-none focus-visible:ring-emerald-500"
+                                  className={SheetClasses.inputWithUnit}
                                 />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
                                   kg
                                 </span>
                               </div>
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.feed}`}
+                            >
                               <SearchableDropdown1
                                 list={feedTypeOptions}
                                 codeLabel="id"
                                 nameLabel="description"
                                 showNameOnly
+                                clearable
                                 value={
                                   row.male_feedtype_id
                                     ? [row.male_feedtype_id]
@@ -889,9 +955,12 @@ export default function GrowingForm() {
                                       : "No feed type descriptions found"
                                 }
                                 disabled={disabledAll || loadingFeedTypes}
+                                triggerClassName={SheetClasses.dropdown}
                               />
                             </td>
-                            <td className="align-top">
+                            <td
+                              className={`${SheetClasses.cell} ${TableWidths.bodyWeight}`}
+                            >
                               <div className="relative">
                                 <Input
                                   type="text"
@@ -906,9 +975,9 @@ export default function GrowingForm() {
                                     )
                                   }
                                   disabled={disabledAll}
-                                  className="h-10 rounded-md border-emerald-100 bg-slate-50 pr-10 text-sm shadow-none focus-visible:ring-emerald-500"
+                                  className={SheetClasses.inputWithUnit}
                                 />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">
                                   kg
                                 </span>
                               </div>

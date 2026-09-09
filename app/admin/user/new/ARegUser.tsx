@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import React, { useState } from 'react'
 import { Label } from '@/components/ui/label'
+import { db } from '@/lib/Supabase/supabaseClient'
 
 export default function ARegUser() {
 
@@ -28,9 +29,12 @@ export default function ARegUser() {
     // setStatus('Saving')
 
     try {
+      const { data: sessionData } = await db.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) throw new Error('Authentication required.')
       const res = await fetch('/api/admin/createUser', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ email, password }),
       })
 

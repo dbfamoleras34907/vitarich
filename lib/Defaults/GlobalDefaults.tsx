@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 "use client";
 
 import React, { useState } from "react";
@@ -15,15 +13,14 @@ import {
 import { getUserInfoAuthSession } from "@/app/admin/user/api";
 
 import { Button } from "@/components/ui/button";
-import { CloudDownload, RefreshCcw, Tractor } from "lucide-react";
+import { RefreshCcw, Tractor } from "lucide-react";
 import { getWarehouses } from "@/app/a_dean/warehouse/api";
-import { Modal } from "../Moda";
-import GlobalFarmUserSettings from "@/components/ui/GlobalFarmUserSettings";
+import { getGoodsReceiptPrefetchReferences } from "@/app/inv/gr/new/api";
 
 /* =======================================================
    HOOK
 ======================================================= */
-export const getSessionUser = async () => {
+export const getSessionUser = async () => { 
   const {
     data: { session },
   } = await db.auth.getSession();
@@ -94,6 +91,16 @@ export function useGlobalDefaults() {
     }
   };
 
+  const setGoodsReceiptReferences = async () => {
+    try {
+      const data = await getGoodsReceiptPrefetchReferences();
+      setValue("goodsReceiptReferences", data);
+      return data;
+    } catch (error) {
+      console.error("goodsReceiptReferences error:", error);
+    }
+  };
+
   const getUserInfoWithFarm = async () => {
     try {
       const data = await getUserInfoAuthSession();
@@ -122,7 +129,9 @@ export function useGlobalDefaults() {
      batch loader
   ------------------------------------------------------- */
 
-  const setGlobals = async () => {
+  const setGlobals = async ({
+    autoSelectSingleFarm = false,
+  }: { autoSelectSingleFarm?: boolean } = {}) => {
     setLoading(true);
     setValue("loading_g", true);
 
@@ -133,7 +142,7 @@ export function useGlobalDefaults() {
         return;
       }
 
-      await Promise.all([
+      const [, , , , farms, , userInfo] = await Promise.all([
         setUserPermissions(),
         setWhse(),
         setItems(),
@@ -141,7 +150,23 @@ export function useGlobalDefaults() {
         setFarms(),
         setFarms_breeder(),
         getUserInfoWithFarm(),
+        setGoodsReceiptReferences(),
       ]);
+
+      if (autoSelectSingleFarm) {
+        const assignedFarmCodes = new Set(
+          (userInfo?.[0]?.users_farms ?? [])
+            .map((farmCode: unknown) => String(farmCode ?? "").trim())
+            .filter(Boolean),
+        );
+        const assignedFarms = (farms ?? []).filter((farm) =>
+          assignedFarmCodes.has(String(farm.code ?? "").trim()),
+        );
+
+        if (assignedFarms.length === 1) {
+          setValue("DefaultFarmId", assignedFarms[0].id);
+        }
+      }
     } catch (error) {
       console.error("setGlobals error:", error);
     }
@@ -160,6 +185,7 @@ export function useGlobalDefaults() {
     setFarms,
     setFarms_breeder,
     getUserInfoWithFarm,
+    setGoodsReceiptReferences,
   };
 }
 
@@ -201,7 +227,7 @@ export default function GlobalDefaults({ collapsed }: CollapsedProps) {
       <Button
         variant="ghost"
         type="button"
-        onClick={setGlobals}
+        onClick={() => setGlobals()}
         disabled={loading}
         className={`w-full  gap-2 py-2 justify-start ${collapsed ? "justify-center" : ""
           }`}
@@ -219,12 +245,9 @@ export default function GlobalDefaults({ collapsed }: CollapsedProps) {
 }
 
 export async function getActiveUsers() {
-  const { data: { session },
-  } = await db.auth.getSession();
   const { data, error } = await db
     .from('vwdmf_get_activeusers')
     .select(`*`)
-  // .eq('auth_id', session?.user.id);
   if (error) {
     console.error('Supabase Select Error:', error);
     throw new Error(error.message);

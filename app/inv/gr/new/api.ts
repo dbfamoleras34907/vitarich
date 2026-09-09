@@ -1,18 +1,18 @@
-import { db } from '@/lib/Supabase/supabaseClient'
+export {
+  getAssignedFarmCodesByAuthId,
+  getGoodsReceiptReferences,
+  getGoodsReceiptPrefetchReferences,
+  findExistingItemBatch,
+} from '@/lib/data/repositories/goodsReceiptReferences'
 
-export async function upsertInventoryMapping(payload: any) {
-
-  const { data, error } = await db.rpc(
-    'upsert_inventory_mapping',
-    {
-      payload
-    }
-  )
-
-  if (error) {
-    console.error('upsert_inventory_mapping error:', error)
-    throw new Error(error.message)
-  }
-
-  return data
-}
+export type {
+  AssociatedWarehouse,
+  GoodsReceiptBatchRule,
+  GoodsReceiptBatchSeries,
+  GoodsReceiptExistingBatch,
+  GoodsReceiptFarm,
+  GoodsReceiptItemGroup,
+  GoodsReceiptPrefetchReferences,
+  UomConversionOption,
+  UomGroupOption,
+} from '@/lib/data/repositories/goodsReceiptReferences'

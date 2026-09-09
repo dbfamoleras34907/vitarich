@@ -93,6 +93,8 @@ export default function CheckPulloutForm() {
     const sp = useSearchParams();
   
     const idParam = sp.get("id");
+    const wizardRef = sp.get("ref")?.trim() ?? "";
+    const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
   
     const editId = idParam ? Number(idParam) : null;
   
@@ -127,8 +129,8 @@ export default function CheckPulloutForm() {
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
 
   const [form, setForm] = useState<Partial<ChickPulloutProcess>>({
-    egg_ref_no: "",
-    chick_hatch_ref_no: "",
+    egg_ref_no: isWizard && !isEdit ? wizardRef : "",
+    chick_hatch_ref_no: isWizard && !isEdit ? wizardRef : "",
     farm_source: "",
     machine_no: "",
     hatch_date: "",
@@ -162,7 +164,9 @@ export default function CheckPulloutForm() {
       try {
         const refs = await listEggReferences();
         if (!alive) return;
-        setEggRefs(refs);
+        setEggRefs(
+          isWizard && !refs.includes(wizardRef) ? [wizardRef, ...refs] : refs,
+        );
       } catch (e) {
         console.error(e);
         if (!alive) return;
@@ -174,7 +178,7 @@ export default function CheckPulloutForm() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isWizard, wizardRef]);
 
   // ✅ load edit record
   useEffect(() => {
@@ -277,7 +281,11 @@ export default function CheckPulloutForm() {
         alert("Saved successfully.");
       }
 
-      router.push("/jmb/chickpulloutv2");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=pullout`
+          : "/jmb/chickpulloutv2",
+      );
       router.refresh();
     } catch (e: any) {
       console.error(e);
@@ -307,7 +315,7 @@ export default function CheckPulloutForm() {
                 <Select
                   value={form.egg_ref_no ?? ""}
                   onValueChange={(v) => setField("egg_ref_no", v as any)}
-                  disabled={eggRefsLoading || saving}
+                  disabled={eggRefsLoading || saving || isWizard}
                 >
                   <SelectTrigger>
                     <SelectValue
@@ -423,8 +431,16 @@ export default function CheckPulloutForm() {
               <FormActionButtons
                 saving={saving}
                 isEdit={isEdit}
-                cancelPath="/jmb/chickpulloutv2"
-                onSave={onSave}
+                disabled={saving}
+                cancelPath={
+                  isWizard
+                    ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=pullout`
+                    : "/jmb/chickpulloutv2"
+                }
+                onSave={() => void onSave()}
+                onSaveAndContinue={
+                  isWizard ? () => void onSave() : undefined
+                }
               />
             </div>
           )}

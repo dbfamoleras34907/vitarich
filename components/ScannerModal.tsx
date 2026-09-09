@@ -51,14 +51,14 @@ export default function ScannerModal({ onResult, onClose }: Props) {
         
         <button 
           onClick={() => fileInputRef.current?.click()}
-          className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold shadow-md"
+          className="rounded-md bg-blue-600 px-5 py-2 font-bold text-white shadow-md"
         >
           Upload QR
         </button>
 
         <button 
           onClick={onClose}
-          className="bg-white text-black px-5 py-2 rounded-full font-bold shadow-md"
+          className="rounded-md bg-white px-5 py-2 font-bold text-black shadow-md"
         >
           Close
         </button>

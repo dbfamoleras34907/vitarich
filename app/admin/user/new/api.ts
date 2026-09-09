@@ -1,9 +1,10 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { createClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
 
-
+// 
 export async function toggleUserPermission(
   userId: string,
   groupName: string,
@@ -94,12 +95,30 @@ export async function get_vwdmf_super_users() {
 
 export async function getUserFarms(users_id: number) {
   console.log({ users_id })
-  const { data, error } = await db.rpc("get_user_farms", {
-    p_users_id: users_id,
-  });
+
+  const { data: userFarms, error: userFarmsError } = await db
+    .from("users_farms")
+    .select("farm_code")
+    .eq("users_id", users_id)
+    .eq("void", 1)
+
+  if (userFarmsError) {
+    console.error("User farms select error:", userFarmsError);
+    return null;
+  }
+
+  const farmCodes = (userFarms ?? [])
+    .map((row) => String(row.farm_code ?? "").trim())
+    .filter(Boolean)
+
+  if (farmCodes.length === 0) return []
+
+  const { data, error } = await activeApprovedFarmsQuery(db.from("farms").select("*"))
+    .in("code", farmCodes)
+
   console.log({ data, error })
   if (error) {
-    console.error("RPC error:", error);
+    console.error("Farms select error:", error);
     return null;
   }
 
@@ -131,7 +150,7 @@ export async function getPermissionTemplates() {
 
 export async function createPermissionTemplate(
   template_name: string,
-  permissions: Record<string, any>[]
+  permissions: Record<string, unknown>[]
 ) {
 
   const { data, error } = await db.rpc(

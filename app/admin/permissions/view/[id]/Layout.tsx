@@ -162,6 +162,7 @@ export default function Layout() {
                             insert: child.insert,
                             edit: child.edit,
                             view: child.view,
+                            approval: child.approval,
                         })
                     })
                 })
@@ -297,6 +298,10 @@ export default function Layout() {
                                                     Edit
                                                 </th>
 
+                                                <th className="text-center px-4 py-2 font-medium">
+                                                    Approval
+                                                </th>
+
                                             </tr>
 
                                         </thead>
@@ -418,6 +423,29 @@ export default function Layout() {
                                                                 checked={
                                                                     permissions[
                                                                     `${row.group}|${row.title}/edit`
+                                                                    ] ?? false
+                                                                }
+                                                            />
+
+                                                        </td>
+
+                                                        {/* APPROVAL */}
+                                                        <td className="text-center">
+
+                                                            <Checkbox
+                                                                disabled={
+                                                                    !row.approval
+                                                                }
+                                                                className="
+                                                                    border-2
+                                                                    border-black/50
+                                                                    data-[state=checked]:bg-primary
+                                                                    data-[state=checked]:text-white
+                                                                    disabled:opacity-100
+                                                                "
+                                                                checked={
+                                                                    permissions[
+                                                                    `${row.group}|${row.title}/approval`
                                                                     ] ?? false
                                                                 }
                                                             />
