@@ -94,19 +94,25 @@ begin
     warehouse_id := nullif(warehouse_item->>'id', '')::bigint;
 
     if warehouse_id is null then
-      insert into public.i_warehouse (
-        whse_name, fms_type, warehouse_type, capacity, full_location_code,
-        addr1, addr2, city, province, address, phone, mobile, remarks, is_active,
-        farm_id, farm_code, farm_name
-      ) values (
-        warehouse_item->>'whse_name', warehouse_item->>'fms_type',
-        warehouse_item->>'warehouse_type', nullif(warehouse_item->>'capacity', '')::numeric,
-        warehouse_item->>'full_location_code', warehouse_item->>'addr1',
-        warehouse_item->>'addr2', warehouse_item->>'city', warehouse_item->>'province',
-        warehouse_item->>'address', warehouse_item->>'phone', warehouse_item->>'mobile',
-        warehouse_item->>'remarks', coalesce((warehouse_item->>'is_active')::boolean, true),
-        p_farm_id, payload->'farm'->>'code', payload->'farm'->>'name'
-      ) returning id into warehouse_id;
+      -- A stale ID sequence may hit imported rows. Retry with the next generated ID.
+      loop
+        insert into public.i_warehouse (
+          whse_name, fms_type, warehouse_type, capacity, full_location_code,
+          addr1, addr2, city, province, address, phone, mobile, remarks, is_active,
+          farm_id, farm_code, farm_name
+        ) values (
+          warehouse_item->>'whse_name', warehouse_item->>'fms_type',
+          warehouse_item->>'warehouse_type', nullif(warehouse_item->>'capacity', '')::numeric,
+          warehouse_item->>'full_location_code', warehouse_item->>'addr1',
+          warehouse_item->>'addr2', warehouse_item->>'city', warehouse_item->>'province',
+          warehouse_item->>'address', warehouse_item->>'phone', warehouse_item->>'mobile',
+          warehouse_item->>'remarks', coalesce((warehouse_item->>'is_active')::boolean, true),
+          p_farm_id, payload->'farm'->>'code', payload->'farm'->>'name'
+        )
+        on conflict on constraint i_warehouse_pkey do nothing
+        returning id into warehouse_id;
+        exit when found;
+      end loop;
     else
       existing_warehouse_farm_id := null;
       existing_warehouse_code := null;
@@ -183,15 +189,21 @@ begin
     end if;
 
     if warehouse_id is null then
-      insert into public.i_warehouse (
-        whse_name, fms_type, warehouse_type, capacity, father_id, is_active,
-        farm_id, farm_code, farm_name
-      ) values (
-        warehouse_item->>'whse_name', warehouse_item->>'fms_type', 'Pen',
-        nullif(warehouse_item->>'capacity', '')::numeric, father_warehouse_id,
-        coalesce((warehouse_item->>'is_active')::boolean, true),
-        p_farm_id, payload->'farm'->>'code', payload->'farm'->>'name'
-      ) returning id into warehouse_id;
+      -- A stale ID sequence may hit imported rows. Retry with the next generated ID.
+      loop
+        insert into public.i_warehouse (
+          whse_name, fms_type, warehouse_type, capacity, father_id, is_active,
+          farm_id, farm_code, farm_name
+        ) values (
+          warehouse_item->>'whse_name', warehouse_item->>'fms_type', 'Pen',
+          nullif(warehouse_item->>'capacity', '')::numeric, father_warehouse_id,
+          coalesce((warehouse_item->>'is_active')::boolean, true),
+          p_farm_id, payload->'farm'->>'code', payload->'farm'->>'name'
+        )
+        on conflict on constraint i_warehouse_pkey do nothing
+        returning id into warehouse_id;
+        exit when found;
+      end loop;
     else
       existing_warehouse_farm_id := null;
       existing_warehouse_code := null;

@@ -3,6 +3,8 @@ begin;
 -- Git-derived Task and Timeline entries for 2026-08-31 through 2026-09-04.
 -- Work schedule: 08:00-12:00 (4 hours), 13:00-18:00 (5 hours).
 -- Total: 9 hours per day, 45 hours for five workdays.
+-- Hours and work dates are estimated allocations, not time measured by Git.
+-- Evidence and review: docs/tickets-timesheets-2026-08-31-to-2026-09-04.md
 --
 -- Git author: dbfamoleras34907 <famolerasd@gmail.com>
 -- Git evidence exists on September 1, 3, and 4. August 31 and September 2
@@ -211,61 +213,61 @@ values
     date '2026-08-31', 1,
     'Goods Receipt Excel import and export',
     time '08:00:00', 4.00,
-    '[Git 2026-08-31..09-04] Built the Stock In Excel template, dropdown validations, import parser, and automatic expiry-date handling.'
+    'Built the Stock In Excel template, dropdown validations, import parser, and automatic expiry-date handling.'
   ),
   (
     date '2026-08-31', 2,
     'Excel-style table editing and navigation',
     time '13:00:00', 5.00,
-    '[Git 2026-08-31..09-04] Developed the reusable compact Excel grid, editing, selection, keyboard navigation, copy and paste, resizing, and scrolling.'
+    'Developed the reusable compact Excel grid, editing, selection, keyboard navigation, copy and paste, resizing, and scrolling.'
   ),
   (
     date '2026-09-01', 1,
     'Goods Receipt Excel import and export',
     time '08:00:00', 4.00,
-    '[Git 2026-08-31..09-04] Integrated and refined validated Excel import and export for Goods Receipt item lines and Stock In behavior.'
+    'Integrated and refined validated Excel import and export for Goods Receipt item lines and Stock In behavior.'
   ),
   (
     date '2026-09-01', 2,
     'Five-level Item Group hierarchy',
     time '13:00:00', 5.00,
-    '[Git 2026-08-31..09-04] Added five-level subgroup selection, hierarchy maintenance, leaf rules, Item Master persistence, and corrected BR Clean Up posting repair SQL.'
+    'Added five-level subgroup selection, hierarchy maintenance, leaf rules, and Item Master persistence.'
   ),
   (
     date '2026-09-02', 1,
     'Five-level Item Group hierarchy',
     time '08:00:00', 4.00,
-    '[Git 2026-08-31..09-04] Refined hierarchy validation, full-path selectors, server-authorized mutations, and dependency-safe void behavior.'
+    'Refined hierarchy validation, full-path selectors, server-authorized mutations, and dependency-safe void behavior.'
   ),
   (
     date '2026-09-02', 2,
     'Atomic Item Master spreadsheet import',
     time '13:00:00', 5.00,
-    '[Git 2026-08-31..09-04] Developed the transactional import design, row-level validation, duplicate-skip behavior, locking, and rollback safeguards.'
+    'Developed the transactional import design, row-level validation, duplicate-skip behavior, locking, and rollback safeguards.'
   ),
   (
     date '2026-09-03', 1,
     'Atomic Item Master spreadsheet import',
     time '08:00:00', 4.00,
-    '[Git 2026-08-31..09-04] Completed the atomic Item Master import RPC, authorized API, code allocation, subgroup persistence, and error reporting.'
+    'Completed the atomic Item Master import RPC, authorized API, code allocation, subgroup persistence, and error reporting.'
   ),
   (
     date '2026-09-03', 2,
     'Compact Item Master grid and Stock In integration',
     time '13:00:00', 5.00,
-    '[Git 2026-08-31..09-04] Refined the compact Item Master grid, import workbook, subgroup cascade, repositories, and Stock In group display.'
+    'Refined the compact Item Master grid, import workbook, subgroup cascade, repositories, and Stock In group display.'
   ),
   (
     date '2026-09-04', 1,
     'Vaccination and Meds inventory module',
     time '08:00:00', 4.00,
-    '[Git 2026-08-31..09-04] Implemented the VNM schema, repositories, farm and warehouse rules, FIFO allocation, posting, and void reversal.'
+    'Implemented the VNM schema, repositories, farm and warehouse rules, FIFO allocation, posting, and void reversal.'
   ),
   (
     date '2026-09-04', 2,
     'Vaccination and Meds inventory module',
     time '13:00:00', 5.00,
-    '[Git 2026-08-31..09-04] Built VNM list, create, edit, view, settings, navigation, permissions, and centralized notification event registration.'
+    'Built VNM list, create, edit, view, settings, navigation, permissions, and centralized notification event registration.'
   );
 
 insert into public.timesheets (
@@ -405,7 +407,17 @@ cross join task_timeline_config config
 where header.assigned_to = config.owner_id
   and header.void = 1
   and line.void = 1
-  and line.remarks like '[Git 2026-08-31..09-04]%'
+  and exists (
+    select 1
+    from git_timeline_seed seed
+    join public.tasks task on task.id = line.task_id
+    where seed.work_date = header.doc_date
+      and seed.task_subject = task.subject
+      and line.project_id = config.project_id
+      and task.project_id = config.project_id
+      and seed.from_time = line.from_time
+      and seed.hrs = line.hrs
+  )
 group by header.doc_date
 order by header.doc_date;
 
@@ -417,6 +429,16 @@ cross join task_timeline_config config
 where header.assigned_to = config.owner_id
   and header.void = 1
   and line.void = 1
-  and line.remarks like '[Git 2026-08-31..09-04]%';
+  and exists (
+    select 1
+    from git_timeline_seed seed
+    join public.tasks task on task.id = line.task_id
+    where seed.work_date = header.doc_date
+      and seed.task_subject = task.subject
+      and line.project_id = config.project_id
+      and task.project_id = config.project_id
+      and seed.from_time = line.from_time
+      and seed.hrs = line.hrs
+  );
 
 commit;

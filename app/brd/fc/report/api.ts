@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { getBroilerDepletionSummary } from "@/lib/broiler/performance";
 
 export type FlockCardReportLine = {
   id: number;
@@ -405,7 +406,7 @@ export async function getFlockCardReport(params: ReportParams): Promise<FlockCar
     : null;
   const originCount = placement ? await getPlacementOriginCount(Number(placement.id)) : 0;
   const startingPopulation = originCount || toNumber(dailyHeader?.animal_qty) || toNumber(placement?.animal_qty);
-  const totalDepletion = lines.reduce((sum, line) => sum + line.depletionTotal, 0);
+  const { currentLiveBirds } = getBroilerDepletionSummary(startingPopulation, lines);
   const latestAge = Math.min(latestSavedAge ?? calculateAge(String(placement?.start_date ?? "")), 45);
   const reportFromAge = lines[0]?.age ?? 0;
   const reportToAge = lines[lines.length - 1]?.age ?? latestAge;
@@ -423,7 +424,7 @@ export async function getFlockCardReport(params: ReportParams): Promise<FlockCar
     placementDate,
     startingPopulation,
     currentAge: latestAge,
-    currentLiveBirds: Math.max(0, startingPopulation - totalDepletion),
+    currentLiveBirds,
     reportFrom: addDays(placementDate, reportFromAge),
     reportTo: addDays(placementDate, reportToAge),
     status: String(dailyHeader?.status ?? placement?.status ?? ""),

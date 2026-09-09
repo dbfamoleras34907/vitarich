@@ -1058,9 +1058,9 @@ export const NavFolders: NavFolder[] = [
           {
             id: 60,
             type: "Module",
-            title: "Dashboard",
+            title: "Cycle Dashboard",
             url: "/brd/dashboard",
-            view: false,
+            view: true,
             insert: false,
             edit: false,
             approval: false,
