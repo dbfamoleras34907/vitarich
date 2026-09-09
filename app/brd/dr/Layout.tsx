@@ -15,8 +15,10 @@ export default function Layout() {
         emptyMessage: 'No delivery transactions found',
         noResultsMessage: 'No matching delivery transactions found',
         useDefaultFarm: true,
+        showFarmFilter: true,
         showDeliveryReceipt: true,
         showDuplicateAction: true,
+        showWarehouseName: true,
       }}
     />
   )

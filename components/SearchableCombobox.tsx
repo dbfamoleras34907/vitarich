@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, X } from "lucide-react"
+import { Plus, Search, X } from "lucide-react"
 import {
   Combobox,
   ComboboxChips,
@@ -31,7 +31,7 @@ export type ComboboxItemType = {
 
 const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
 
-type MultiProps = {
+  type MultiProps = {
   multiple: true
   label?: string
   required?: boolean
@@ -45,6 +45,12 @@ type MultiProps = {
   showCode?: boolean
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
+  contentClassName?: string
+  wrapItemLabels?: boolean
+  actionLabel?: string
+  onAction?: () => void
+  actionDisabled?: boolean
+  disabled?: boolean
 }
 
 type SingleProps = {
@@ -61,6 +67,22 @@ type SingleProps = {
   showCode?: boolean
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
+  contentClassName?: string
+  wrapItemLabels?: boolean
+  actionLabel?: string
+  onAction?: () => void
+  actionDisabled?: boolean
+  gridRow?: number
+  gridColumn?: number
+  onGridKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
+  inputRef?: (element: HTMLInputElement | null) => void
+  inputId?: string
+  inputAriaLabel?: string
+  inputClassName?: string
+  onInputFocus?: React.FocusEventHandler<HTMLInputElement>
+  dataGridCell?: boolean
+  disabled?: boolean
+  openOnFocus?: boolean
 }
 
 type Props =
@@ -81,6 +103,8 @@ export default function SearchableCombobox(props: Props) {
   const [highlightedIndex, setHighlightedIndex] = React.useState(0)
   const anchor = useComboboxAnchor()
   const searchRef = React.useRef<HTMLInputElement>(null)
+  const singleInputRef = React.useRef<HTMLInputElement>(null)
+  const suppressOpenOnFocusRef = React.useRef(false)
 
   const {
     items,
@@ -91,6 +115,12 @@ export default function SearchableCombobox(props: Props) {
     showCode = false,
     contentPositionerClassName,
     contentPositionerZIndex,
+    contentClassName,
+    wrapItemLabels = false,
+    actionLabel,
+    onAction,
+    actionDisabled = false,
+    disabled = false,
   } = props
 
   const open = props.open !== undefined ? props.open : internalOpen
@@ -176,6 +206,17 @@ export default function SearchableCombobox(props: Props) {
 
     props.onValueChange(code)
     setOpen(false)
+    setSearch("")
+  }
+
+  const focusSingleInput = () => {
+    suppressOpenOnFocusRef.current = true
+    window.setTimeout(() => {
+      singleInputRef.current?.focus()
+      window.setTimeout(() => {
+        suppressOpenOnFocusRef.current = false
+      }, 0)
+    }, 0)
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -208,6 +249,7 @@ export default function SearchableCombobox(props: Props) {
       )}
 
       <Combobox
+        disabled={disabled}
         open={open}
         onOpenChange={handleOpenChange}
         multiple={props.multiple}
@@ -226,7 +268,7 @@ export default function SearchableCombobox(props: Props) {
         <ComboboxChips
           ref={anchor}
           className={cn(
-            "min-h-10 border-[#b8b2aa] bg-[#fffdfb] px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
+            "min-h-10 border-[#b8b2aa] bg-white px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
             props.multiple && "items-start",
             className
           )}
@@ -293,10 +335,31 @@ export default function SearchableCombobox(props: Props) {
 
               return (
                 <ComboboxChipsInput
+                  ref={(element) => {
+                    singleInputRef.current = element
+                    props.inputRef?.(element)
+                  }}
+                  id={props.inputId}
+                  aria-label={props.inputAriaLabel}
+                  data-fc-cell={props.dataGridCell ? "true" : undefined}
                   value={formatLabel(item)}
                   placeholder={placeholder}
-                  className="text-sm placeholder:text-muted-foreground"
+                  className={cn("text-sm placeholder:text-muted-foreground", props.inputClassName)}
                   readOnly
+                  data-grid-row={props.gridRow}
+                  data-grid-column={props.gridColumn}
+                  onKeyDown={props.onGridKeyDown}
+                  onFocus={(event) => {
+                    props.onInputFocus?.(event)
+                    if (
+                      props.openOnFocus &&
+                      !disabled &&
+                      !open &&
+                      !suppressOpenOnFocusRef.current
+                    ) {
+                      handleOpenChange(true)
+                    }
+                  }}
                 />
               )
             }}
@@ -309,7 +372,7 @@ export default function SearchableCombobox(props: Props) {
           anchor={anchor}
           positionerClassName={contentPositionerClassName}
           positionerZIndex={contentPositionerZIndex}
-          className="rounded-lg border border-stone-200 p-0 shadow-lg"
+          className={cn("rounded-lg border border-stone-200 p-0 shadow-lg", contentClassName)}
         >
           <div className="border-b border-stone-200 p-2">
             <div className="relative">
@@ -338,7 +401,28 @@ export default function SearchableCombobox(props: Props) {
                     return
                   }
 
-                  if ((event.key === "Enter" || event.key === "Tab") && filteredItems.length > 0) {
+                  if (event.key === "Tab" && !props.multiple) {
+                    event.preventDefault()
+                    const hasValue = typeof normalizedValue === "string" && Boolean(normalizedValue)
+
+                    if (hasValue) {
+                      setOpen(false)
+                      setSearch("")
+                      props.onGridKeyDown?.(event)
+                      return
+                    }
+
+                    if (filteredItems.length > 0) {
+                      selectItem(filteredItems[safeHighlightedIndex]?.code ?? filteredItems[0].code)
+                    } else {
+                      setOpen(false)
+                      setSearch("")
+                    }
+                    focusSingleInput()
+                    return
+                  }
+
+                  if (event.key === "Enter" && filteredItems.length > 0) {
                     event.preventDefault()
                     selectItem(filteredItems[safeHighlightedIndex]?.code ?? filteredItems[0].code)
                   }
@@ -400,11 +484,34 @@ export default function SearchableCombobox(props: Props) {
                       {item.code}
                     </span>
                   )}
-                  <span className="truncate text-sm">{item.name}</span>
+                  <span
+                    className={cn("text-sm", wrapItemLabels ? "whitespace-normal break-words" : "truncate")}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </span>
                 </span>
               </ComboboxItem>
             )}
           </ComboboxList>
+
+          {actionLabel && onAction && (
+            <div className="border-t border-stone-200 p-1.5">
+              <button
+                type="button"
+                disabled={actionDisabled}
+                className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-primary hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setOpen(false)
+                  onAction()
+                }}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                {actionLabel}
+              </button>
+            </div>
+          )}
         </ComboboxContent>
 
         <Dialog

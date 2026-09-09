@@ -1,0 +1,44 @@
+{
+  "workspace": "C:\\Dev\\repo\\fms\\vitarich\\docs\\project-update-2026-08-25\\presentation",
+  "pptx": "C:\\Dev\\repo\\fms\\vitarich\\docs\\project-update-2026-08-25\\presentation\\output\\Vita-FMS-CEO-Project-Update-May-August-2026.pptx",
+  "checks": {
+    "pptx_package": {
+      "slide_count": 12,
+      "media_count": 15,
+      "chart_count": 0,
+      "zero_byte_media": [
+        "ppt/media/image.png",
+        "ppt/media/image2.png",
+        "ppt/media/image3.png",
+        "ppt/media/image4.png",
+        "ppt/media/image5.png",
+        "ppt/media/image6.png",
+        "ppt/media/image7.png",
+        "ppt/media/image8.png",
+        "ppt/media/image9.png",
+        "ppt/media/image10.png",
+        "ppt/media/image11.png",
+        "ppt/media/image12.png",
+        "ppt/media/image13.png",
+        "ppt/media/image14.png",
+        "ppt/media/image15.png"
+      ],
+      "invalid_png_media": [],
+      "placeholder_text": [],
+      "debug_line_colors": [],
+      "slide_numbers": [],
+      "warnings": [],
+      "failures": [
+        "PPTX contains zero-byte media parts: ppt/media/image.png, ppt/media/image2.png, ppt/media/image3.png, ppt/media/image4.png, ppt/media/image5.png, ppt/media/image6.png, ppt/media/image7.png, ppt/media/image8.png, ppt/media/image9.png, ppt/media/image10.png, ppt/media/image11.png, ppt/media/image12.png"
+      ]
+    },
+    "output_hygiene": {
+      "output_dir": "C:\\Dev\\repo\\fms\\vitarich\\docs\\project-update-2026-08-25\\presentation\\output",
+      "unexpected_files": []
+    }
+  },
+  "failures": [
+    "PPTX contains zero-byte media parts: ppt/media/image.png, ppt/media/image2.png, ppt/media/image3.png, ppt/media/image4.png, ppt/media/image5.png, ppt/media/image6.png, ppt/media/image7.png, ppt/media/image8.png, ppt/media/image9.png, ppt/media/image10.png, ppt/media/image11.png, ppt/media/image12.png"
+  ],
+  "warnings": []
+}

@@ -71,7 +71,7 @@ export async function GET(request: Request) {
       if (error) throw error
 
       return NextResponse.json({
-        actor: { user_type: actor.user_type, fms_type: actor.fms_type },
+        actor: { auth_id: actor.auth_id, user_type: actor.user_type, fms_type: actor.fms_type },
         users: (data ?? []).map(user => ({ ...user, user_type: Number(user.user_type ?? USER_TYPE.USER) })),
       })
     }

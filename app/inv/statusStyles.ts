@@ -6,7 +6,7 @@ export const getInventoryStatusBadgeClass = (status: string) => {
     return `${INVENTORY_STATUS_BADGE_BASE} bg-emerald-100 text-emerald-800`
   }
 
-  if (status === 'Cancelled') {
+  if (status === 'Cancelled' || status === 'Void') {
     return `${INVENTORY_STATUS_BADGE_BASE} bg-red-100 text-red-700`
   }
 

@@ -155,6 +155,8 @@ export default function Prewarmingform() {
   const sp = useSearchParams();
 
   const idParam = sp.get("id");
+  const wizardRef = sp.get("ref")?.trim() ?? "";
+  const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
 
   const editId = idParam ? Number(idParam) : null;
 
@@ -192,7 +194,7 @@ export default function Prewarmingform() {
     useState<TemperatureFieldKey | null>(null);
 
   const [form, setForm] = useState<FormState>({
-    egg_ref_no: [],
+    egg_ref_no: isWizard && !isEdit ? [wizardRef] : [],
     pre_temp: "",
     egg_temp: "",
     egg_temp_time_start: "",
@@ -211,7 +213,11 @@ export default function Prewarmingform() {
       try {
         const refs = await listHatchClassiRefs();
         if (!mounted) return;
-        setEggRefs(refs);
+        setEggRefs(
+          isWizard && !refs.some((row) => row.egg_ref_no === wizardRef)
+            ? [{ egg_ref_no: wizardRef }, ...refs]
+            : refs,
+        );
       } catch (error) {
         console.error(error);
       } finally {
@@ -221,7 +227,7 @@ export default function Prewarmingform() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isWizard, wizardRef]);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -272,7 +278,7 @@ export default function Prewarmingform() {
         : "Temperature";
   const converterInputValue = converterField ? Number(form[converterField]) : 0;
 
-  async function onSave() {
+  async function onSave(continueToNext = false) {
     if (!form.egg_ref_no.length) {
       alert("Egg Reference No. is required.");
       return;
@@ -313,7 +319,11 @@ export default function Prewarmingform() {
         await createEggPreWarming(payloads);
       }
 
-      router.push("/jmb/prewarmingv2");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=${continueToNext ? "setter" : "pre_warming"}`
+          : "/jmb/prewarmingv2",
+      );
       router.refresh();
     } catch (e: any) {
       alert(e?.message ?? "Failed to save.");
@@ -351,7 +361,7 @@ export default function Prewarmingform() {
                     value={form.egg_ref_no}
                     onChange={(v) => setForm((p) => ({ ...p, egg_ref_no: v }))}
                     multiple
-                    disabled={saving || refLoading}
+                    disabled={saving || refLoading || isWizard}
                   />
                 </div>
               </div>
@@ -434,8 +444,16 @@ export default function Prewarmingform() {
               <FormActionButtons
                 saving={saving}
                 isEdit={isEdit}
-                cancelPath="/jmb/prewarmingv2"
-                onSave={onSave}
+                disabled={saving}
+                cancelPath={
+                  isWizard
+                    ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=pre_warming`
+                    : "/jmb/prewarmingv2"
+                }
+                onSave={() => void onSave(false)}
+                onSaveAndContinue={
+                  isWizard ? () => void onSave(true) : undefined
+                }
               />
             </CardContent>
           </div>

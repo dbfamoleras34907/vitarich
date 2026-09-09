@@ -1,6 +1,6 @@
 'use client'
 import { Button } from "@/components/ui/button"
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CommandDialog,
@@ -25,11 +25,13 @@ interface collapsed {
 }
 
 type NavCommandChild = {
+  id?: number | string
   title: string
   url: string
   type?: string
   insert?: boolean
   newDocumentUrl?: string
+  hideFromNavigation?: boolean
 }
 
 type NavCommandGroup = {
@@ -163,6 +165,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFilter, setSelectedFilter] = useState("All")
+  const resultsListRef = useRef<HTMLDivElement>(null)
   const navtype = ["All", "Settings", "Navigation"]
   const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
@@ -189,12 +192,18 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     NavFolders,
     userPermissions,
     accessProfile,
-  ) as NavCommandFolder[]
+  ).map(folder => ({
+    ...folder,
+    items: folder.items?.map(group => ({
+      ...group,
+      children: group.children.filter(child => !child.hideFromNavigation),
+    })).filter(group => group.children.length > 0),
+  })).filter(folder => Boolean(folder.items?.length)) as NavCommandFolder[]
 
   const canInsertDocument = (child: NavCommandChild) =>
     child.insert === true &&
     Boolean(child.newDocumentUrl) &&
-    (userType < 3 || userPermissions.some(
+    (userType === 1 || userPermissions.some(
       (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
     ))
 
@@ -247,7 +256,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             group.children.flatMap((child, childIndex) => {
               const navigationItem: RankedSearchItem = {
                 kind: "navigation",
-                key: `${child.url}-${child.title}`,
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-navigation`,
                 title: child.title,
                 description: `${folder.title} > ${group.group}`,
                 type: child.type,
@@ -261,7 +270,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
               const newDocumentTitle = `${child.title} New Document`
               const newDocumentItem: RankedSearchItem = {
                 kind: "navigation",
-                key: `${child.newDocumentUrl}-${newDocumentTitle}`,
+                key: `${folder.id}-${groupIndex}-${child.id ?? childIndex}-new-document`,
                 title: newDocumentTitle,
                 description: `${folder.title} > ${group.group} > New Document`,
                 type: child.type,
@@ -301,6 +310,10 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
   }, [])
+
+  useEffect(() => {
+    resultsListRef.current?.scrollTo({ top: 0 })
+  }, [searchQuery])
 
   const runCommand = (command: () => void) => {
     setOpen(false)
@@ -375,7 +388,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             </Button>
           ))}
         </div>
-        <CommandList className="max-h-100">
+        <CommandList ref={resultsListRef} className="max-h-100">
           {rankedResults.length === 0 && (
             <div className="py-6 text-center text-sm">No results found.</div>
           )}

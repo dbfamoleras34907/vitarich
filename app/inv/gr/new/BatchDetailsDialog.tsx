@@ -16,6 +16,7 @@ type BatchDetailsDialogProps = {
   itemCode?: string
   children: ReactNode
   onClose: () => void
+  onCloseAutoFocus?: () => boolean
 }
 
 export default function BatchDetailsDialog({
@@ -23,6 +24,7 @@ export default function BatchDetailsDialog({
   itemCode,
   children,
   onClose,
+  onCloseAutoFocus,
 }: BatchDetailsDialogProps) {
   const handleKeyDown: KeyboardEventHandler<HTMLDivElement> = event => {
     if (event.key !== 'Enter' || event.shiftKey) return
@@ -36,6 +38,9 @@ export default function BatchDetailsDialog({
       <DialogContent
         className="max-h-[85vh] overflow-y-auto sm:max-w-4xl"
         onKeyDown={handleKeyDown}
+        onCloseAutoFocus={event => {
+          if (onCloseAutoFocus?.()) event.preventDefault()
+        }}
       >
         <DialogHeader>
           <DialogTitle>Batch Details</DialogTitle>

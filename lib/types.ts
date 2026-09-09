@@ -559,6 +559,10 @@ export interface Items {
   on_order: number | null
   inventory_uom: string | null
   item_group: string | null
+  sub_item_group_id?: number | null
+  sub_item_group_level_1_id?: number | null
+  sub_item_group_level_2_id?: number | null
+  sub_item_group_level_3_id?: number | null
   fms_group: string | null
   manage_batch_numbers: boolean | null
   manage_serial_numbers: boolean | null
@@ -594,6 +598,7 @@ export interface NavChild extends NavPermission {
   title: string;
   url: string;
   newDocumentUrl?: string;
+  hideFromNavigation?: boolean;
 
   inventoriable?: boolean;
   section?: string;

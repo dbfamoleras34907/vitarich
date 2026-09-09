@@ -1,11 +1,19 @@
 'use client'
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getBrCleanupIdentityByDocumentNo } from '@/lib/data/repositories/brCleanup'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
 export type GoodsIssueLine = {
   id: number | string
+  allocationGroupKey?: string
+  tsDrNo?: string
+  haulerName?: string
+  plateNumber?: string
+  destination?: string
+  liveSalesCustomerName?: string
+  truckSeal?: number | null
   itemId: number | null
   itemCode: string
   description: string
@@ -43,6 +51,7 @@ export type GoodsIssue = {
   plateNumber: string | null
   truckSeal: number | null
   destination: string
+  liveSalesCustomerName: string
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
   createdAt: string
@@ -64,6 +73,7 @@ type GoodsIssueRow = {
   plate_number?: string | null
   truck_seal?: number | null
   destination?: string | null
+  live_sales_customer_name?: string | null
   status: GoodsIssueStatus
   created_at: string
 }
@@ -91,6 +101,13 @@ type GoodsIssueItemRow = {
   from_warehouse_code: string | null
   from_warehouse_name: string | null
   void: string
+  allocation_group_key?: string | null
+  ts_dr_no?: string | null
+  hauler_name?: string | null
+  plate_number?: string | null
+  destination?: string | null
+  live_sales_customer_name?: string | null
+  truck_seal?: number | null
 }
 
 type GoodsIssueListItemRow = {
@@ -166,8 +183,19 @@ function errorDetails(error: unknown) {
     : String(error)
 }
 
-const toIssueLine = (row: GoodsIssueItemRow): GoodsIssueLine => ({
+const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): GoodsIssueLine => ({
   id: row.id,
+  allocationGroupKey: row.allocation_group_key?.trim() || (
+    row.br_delivery_id
+      ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
+      : `line:${row.id}`
+  ),
+  tsDrNo: row.ts_dr_no ?? '',
+  haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
+  plateNumber: row.plate_number ?? legacyHeader?.plate_number ?? '',
+  destination: row.destination ?? legacyHeader?.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? legacyHeader?.live_sales_customer_name ?? '',
+  truckSeal: row.truck_seal ?? legacyHeader?.truck_seal ?? null,
   itemId: row.item_id,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -204,13 +232,16 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   plateNumber: row.plate_number == null ? null : String(row.plate_number),
   truckSeal: row.truck_seal == null ? null : Number(row.truck_seal),
   destination: row.destination ?? '',
+  liveSalesCustomerName: row.live_sales_customer_name ?? '',
   status: row.status,
-  lines: lines.map(toIssueLine),
+  lines: lines.map(line => toIssueLine(line, row)),
   createdAt: row.created_at,
 })
 
 const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({
   id: `${getListLineHeaderId(row)}-${row.item_code}`,
+  allocationGroupKey: `list:${getListLineHeaderId(row)}:${row.item_code}`,
+  tsDrNo: '',
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -483,14 +514,63 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
   )
 }
 
+type BrDeliveryTransactionResult = {
+  header: GoodsIssueRow
+  lines: GoodsIssueItemRow[]
+}
+
+async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
+  const { data, error } = await db.rpc('save_br_delivery_transaction', {
+    p_document: {
+      id: issue.id,
+      giNo: issue.giNo,
+      issueDate: issue.issueDate,
+      farmId: issue.farmId,
+      fromWarehouseId: issue.fromWarehouseId,
+      fromWarehouseCode: issue.fromWarehouseCode,
+      fromWarehouseName: issue.fromWarehouseName,
+      remarks: issue.remarks,
+      status: issue.status,
+      lines: issue.lines,
+    },
+  })
+
+  if (error) throw error
+  const result = data as BrDeliveryTransactionResult | null
+  if (!result?.header || !Array.isArray(result.lines)) {
+    throw new Error('Harvest & Delivery transaction did not return the saved document.')
+  }
+
+  return toIssue(result.header, result.lines)
+}
+
 export async function saveGoodsIssue(issue: GoodsIssue) {
+  if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
+    return saveBrDeliveryTransaction(issue)
+  }
+
   const tables = getIssueTables(issue.triggeredBy)
   const userId = await getSessionUserId()
-  const previousStatus = issue.id
+  let documentId = issue.id
+
+  if (!documentId && issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
+    const existingCleanup = await getBrCleanupIdentityByDocumentNo(issue.giNo)
+    if (existingCleanup) {
+      if (existingCleanup.status !== 'Draft') {
+        throw new Error(`Clean Up ${issue.giNo} already exists and is not an editable draft.`)
+      }
+      if (existingCleanup.createdBy && userId && existingCleanup.createdBy !== userId) {
+        throw new Error(`Clean Up ${issue.giNo} belongs to another user and cannot be overwritten.`)
+      }
+      documentId = Number(existingCleanup.id)
+    }
+  }
+
+  const previousStatus = documentId
     ? await db
         .from(tables.header)
         .select('status')
-        .eq('id', issue.id)
+        .eq('id', documentId)
         .maybeSingle()
     : { data: null, error: null }
 
@@ -515,18 +595,12 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     from_warehouse_name: issue.fromWarehouseName || null,
     triggered_by: issue.triggeredBy || 'GI',
     remarks: issue.remarks.trim() || null,
-    ...(issue.triggeredBy === 'BR-DR' ? {
-      hauler_name: issue.haulerName.trim() || null,
-      plate_number: issue.plateNumber,
-      truck_seal: issue.truckSeal,
-      destination: issue.destination.trim() || null,
-    } : {}),
     status: saveStatus,
-    ...(issue.id ? { updated_by: userId } : { created_by: userId }),
+    ...(documentId ? { updated_by: userId } : { created_by: userId }),
   }
 
-  const { data: savedHeader, error: headerError } = issue.id
-    ? await db.from(tables.header).update(headerPayload).eq('id', issue.id).select('*').single()
+  const { data: savedHeader, error: headerError } = documentId
+    ? await db.from(tables.header).update(headerPayload).eq('id', documentId).select('*').single()
     : await db.from(tables.header).insert(headerPayload).select('*').single()
 
   if (headerError) throw headerError
@@ -575,6 +649,15 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
       item_id: line.itemId,
       item_code: line.itemCode,
       description: line.description || null,
+      ...(issue.triggeredBy === 'BR-DR' ? {
+        allocation_group_key: line.allocationGroupKey || String(line.id),
+        ts_dr_no: line.tsDrNo?.trim() || null,
+        hauler_name: line.haulerName?.trim() || null,
+        plate_number: line.plateNumber?.trim() || null,
+        destination: line.destination?.trim() || null,
+        live_sales_customer_name: line.liveSalesCustomerName?.trim() || null,
+        truck_seal: line.truckSeal ?? null,
+      } : {}),
       ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
       ...(issue.triggeredBy === 'BR-CU' ? {
         batch_total_qty: Number(line.batchTotalQty ?? 0),

@@ -12,6 +12,8 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       mode={mode}
       triggeredBy="BR-DR"
       documentPrefix="BR-DR"
+      documentNumberLabel="TS No."
+      issueDateLabel="Delivery Date"
       basePath="/brd/dr"
       permissionPath="/brd/dr"
       parentLabel="Broiler"
@@ -25,6 +27,9 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       warehouseScope="line"
       allowImmediatePost
       lineQuantityLabel="Harvest Quantity"
+      bodyWeightLabel="ALW g"
+      showLineTsDrNumber
+      excelIssueLines
       showLineQuantityAllocationWarnings={false}
       showRemarksInActionRow
     />

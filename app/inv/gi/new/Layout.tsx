@@ -79,28 +79,38 @@ const today = () => {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
 }
 
-const newLine = (): GoodsIssueLine => ({
-  id: crypto.randomUUID(),
-  itemId: null,
-  itemCode: '',
-  description: '',
-  lineRemarks: '',
-  batchRuleId: null,
-  batchNumber: '',
-  manufacturingDate: '',
-  expiryDate: '',
-  altQty: 1,
-  altUom: '',
-  baseQty: 1,
-  baseUom: '',
-  fromWarehouseId: null,
-  fromWarehouseCode: '',
-  fromWarehouseName: '',
-  onHandQty: 0,
-  requestedAltQty: 1,
-  batchTotalQty: 0,
-  varianceQty: 0,
-})
+const newLine = (): GoodsIssueLine => {
+  const id = crypto.randomUUID()
+  return {
+    id,
+    allocationGroupKey: id,
+    tsDrNo: '',
+    haulerName: '',
+    plateNumber: '',
+    destination: '',
+    liveSalesCustomerName: '',
+    truckSeal: null,
+    itemId: null,
+    itemCode: '',
+    description: '',
+    lineRemarks: '',
+    batchRuleId: null,
+    batchNumber: '',
+    manufacturingDate: '',
+    expiryDate: '',
+    altQty: 1,
+    altUom: '',
+    baseQty: 1,
+    baseUom: '',
+    fromWarehouseId: null,
+    fromWarehouseCode: '',
+    fromWarehouseName: '',
+    onHandQty: 0,
+    requestedAltQty: 1,
+    batchTotalQty: 0,
+    varianceQty: 0,
+  }
+}
 
 const emptyIssue = (giNo: string): GoodsIssue => ({
   id: null,
@@ -118,6 +128,7 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   plateNumber: null,
   truckSeal: null,
   destination: '',
+  liveSalesCustomerName: '',
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
   createdAt: new Date().toISOString(),
@@ -253,6 +264,8 @@ type NewGoodsIssueProps = {
   mode?: GoodsIssueFormMode
   triggeredBy?: string
   documentPrefix?: string
+  documentNumberLabel?: string
+  issueDateLabel?: string
   basePath?: string
   permissionPath?: string
   parentLabel?: string
@@ -265,8 +278,12 @@ type NewGoodsIssueProps = {
   showFlockCardInformation?: boolean
   warehouseScope?: 'header' | 'line'
   allowImmediatePost?: boolean
+  allowLockedRowDelete?: boolean
   showLineRemarks?: boolean
   lineQuantityLabel?: string
+  bodyWeightLabel?: string
+  showLineTsDrNumber?: boolean
+  excelIssueLines?: boolean
   showLineQuantityAllocationWarnings?: boolean
   showLineOnHandQuantity?: boolean
   showLineVariance?: boolean
@@ -299,6 +316,8 @@ export default function NewGoodsIssue({
   mode = 'draft',
   triggeredBy = 'GI',
   documentPrefix = 'GI',
+  documentNumberLabel,
+  issueDateLabel = 'Issue Date',
   basePath = '/inv/gi',
   permissionPath = '/inv/gi',
   parentLabel = 'Inventory',
@@ -311,8 +330,12 @@ export default function NewGoodsIssue({
   showFlockCardInformation = false,
   warehouseScope = 'header',
   allowImmediatePost = false,
+  allowLockedRowDelete = false,
   showLineRemarks = false,
   lineQuantityLabel = 'To Transfer',
+  bodyWeightLabel = 'Weight g',
+  showLineTsDrNumber = false,
+  excelIssueLines = false,
   showLineQuantityAllocationWarnings = true,
   showLineOnHandQuantity = true,
   showLineVariance = false,
@@ -375,6 +398,12 @@ export default function NewGoodsIssue({
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
+  const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
+  const getAllocationGroupKey = (line: GoodsIssueLine) => triggeredBy === 'BR-DR'
+    ? line.allocationGroupKey || String(line.id)
+    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+  const isSameAllocationGroup = (left: GoodsIssueLine, right: GoodsIssueLine) =>
+    getAllocationGroupKey(left) === getAllocationGroupKey(right)
   const isCleanup = triggeredBy === 'BR-CU'
 
   useEffect(() => {
@@ -871,7 +900,10 @@ export default function NewGoodsIssue({
             const placementBatches = result.info?.cardNo
               ? await getDeliveryFlockCardPlacementBatches({
                   flockCardId: result.info.id,
+                  farmId: result.info.farmId,
+                  buildingWarehouseId: result.info.buildingWarehouseId,
                   buildingCode: result.info.buildingCode,
+                  cycleNumber: result.info.cycleNumber,
                 })
               : []
             return { lookupKey: result.lookupKey, placementBatches }
@@ -1202,6 +1234,23 @@ export default function NewGoodsIssue({
   const getTotalBatchOnHandForLine = (line: GoodsIssueLine) =>
     getRawBatchOptionsForLine(line).reduce((total, batch) => total + Number(batch.onHandQty || 0), 0)
 
+  const getCurrentDocumentRemainingOnHandForLine = (line: GoodsIssueLine) => {
+    const totalOnHandQty = getTotalBatchOnHandForLine(line)
+    if (!issue || !line.fromWarehouseCode.trim() || !line.itemCode.trim()) return totalOnHandQty
+
+    const warehouseCode = line.fromWarehouseCode.trim().toUpperCase()
+    const itemCode = line.itemCode.trim().toUpperCase()
+    const currentDocumentQty = issue.lines.reduce((total, candidate) => {
+      const matchesWarehouse = candidate.fromWarehouseCode.trim().toUpperCase() === warehouseCode
+      const matchesItem = candidate.itemCode.trim().toUpperCase() === itemCode
+      return matchesWarehouse && matchesItem
+        ? total + Number(candidate.baseQty || 0)
+        : total
+    }, 0)
+
+    return Math.max(totalOnHandQty - currentDocumentQty, 0)
+  }
+
   const getBatchOptionsForLine = (line: GoodsIssueLine) =>
     getRawBatchOptionsForLine(line)
       .map(batch => {
@@ -1252,9 +1301,7 @@ export default function NewGoodsIssue({
     const availableAltUoms = getGroupUoms(baseUom)
     const lineAltUomIsAvailable = availableAltUoms.some(option => option.uomCode === line.altUom)
     const altUom = lineAltUomIsAvailable ? line.altUom : getDefaultAltUom(baseUom)
-    const allocationGroup = issue.lines.filter(candidate =>
-      candidate.fromWarehouseCode === line.fromWarehouseCode && candidate.itemCode === line.itemCode,
-    )
+    const allocationGroup = issue.lines.filter(candidate => isSameAllocationGroup(candidate, line))
     const requiredAltQty = line.requestedAltQty ?? allocationGroup.reduce(
       (total, candidate) => total + Number(candidate.altQty || 0),
       0,
@@ -1288,14 +1335,14 @@ export default function NewGoodsIssue({
     }
     const batchRule = selectedItem ? getBatchRuleForLine(updatedLine) : null
 
-    const duplicateBatchLine = usesLineWarehouse && issue.lines.some(candidate =>
+    const duplicateBatchLine = usesLineWarehouse && triggeredBy !== 'BR-DR' && issue.lines.some(candidate =>
       candidate.id !== line.id &&
       candidate.fromWarehouseCode === updatedLine.fromWarehouseCode &&
       candidate.itemCode === updatedLine.itemCode &&
       candidate.batchNumber === updatedLine.batchNumber,
     )
     if (duplicateBatchLine) {
-      toast(`Batch ${updatedLine.batchNumber} is already selected for this building.`)
+      toast(`Batch ${updatedLine.batchNumber} is already selected for this ${warehouseLabel.toLowerCase()}.`)
       return
     }
 
@@ -1326,10 +1373,7 @@ export default function NewGoodsIssue({
   const autoSelectDeliveryBatches = (line: GoodsIssueLine) => {
     if (!issue || issue.status !== 'Draft') return
 
-    const groupLines = issue.lines.filter(candidate =>
-      candidate.fromWarehouseCode === line.fromWarehouseCode &&
-      candidate.itemCode === line.itemCode,
-    )
+    const groupLines = issue.lines.filter(candidate => isSameAllocationGroup(candidate, line))
     const requestedAltQty = line.requestedAltQty ?? groupLines.reduce(
       (total, candidate) => total + Number(candidate.altQty || 0),
       0,
@@ -1568,6 +1612,36 @@ export default function NewGoodsIssue({
       toast('Please select at least one item.')
       return
     }
+    const lineNumberByAllocationGroup = new Map<string, number>()
+    linesToSave.forEach(line => {
+      const key = getAllocationGroupKey(line)
+      if (!lineNumberByAllocationGroup.has(key)) {
+        lineNumberByAllocationGroup.set(key, lineNumberByAllocationGroup.size + 1)
+      }
+    })
+    const getDocumentLineNumber = (line: GoodsIssueLine) =>
+      lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
+
+    if (triggeredBy === 'BR-DR') {
+      const missingTransportField = linesToSave
+        .map(line => {
+          if (!line.haulerName?.trim()) return { line, field: 'Hauler Name' }
+          if (!line.plateNumber?.trim()) return { line, field: 'Plate Number' }
+          if (!line.destination?.trim()) return { line, field: 'Destination' }
+          if (!line.liveSalesCustomerName?.trim()) return { line, field: 'Destination Details' }
+          if (line.truckSeal == null || !Number.isFinite(Number(line.truckSeal))) {
+            return { line, field: 'Truck Seal' }
+          }
+          return null
+        })
+        .find((result): result is { line: GoodsIssueLine; field: string } => result !== null)
+
+      if (missingTransportField) {
+        toast(`Line ${getDocumentLineNumber(missingTransportField.line)}: ${missingTransportField.field} is required.`)
+        return
+      }
+    }
+
     if (usesLineWarehouse) {
       const invalidLine = linesToSave.find(line =>
         !line.itemCode ||
@@ -1592,9 +1666,11 @@ export default function NewGoodsIssue({
           lines: linesToSave,
         })
         if (ageShortage) {
-          const currentAgeText = ageShortage.currentAge === null
+          const currentAgeText = !ageShortage.hasFlockCard
             ? 'has no saved flock card'
-            : `is only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'} old`
+            : ageShortage.currentAge === null
+              ? 'has no mortality input to determine its actual age'
+              : `has a last mortality age of only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'}`
           toast(
             `${ageShortage.buildingName} ${currentAgeText}. DOC must be at least ${ageShortage.targetAge} days old for ${isCleanup ? 'clean up' : 'delivery'}.`,
           )
@@ -1612,7 +1688,7 @@ export default function NewGoodsIssue({
     }
     const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
     if (overOnHandLine) {
-      toast(`${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the selected batch remaining on-hand quantity.`)
+      toast(`Line ${getDocumentLineNumber(overOnHandLine)}, batch ${overOnHandLine.batchNumber}: ${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the remaining on-hand quantity.`)
       return
     }
     const missingWarehouseLine = usesLineWarehouse
@@ -1624,33 +1700,44 @@ export default function NewGoodsIssue({
     }
 
     const missingBatchLine = linesToSave.find(line =>
-      (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || usesLineWarehouse) &&
+      (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue) &&
       !line.batchNumber.trim(),
     )
     if (missingBatchLine) {
-      toast(`Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
+      toast(`Line ${getDocumentLineNumber(missingBatchLine)}: Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
       return
     }
 
     if (usesLineWarehouse) {
       const allocationGroups = new Map<string, GoodsIssueLine[]>()
-      linesToSave.forEach(line => {
-        const key = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
-        allocationGroups.set(key, [...(allocationGroups.get(key) ?? []), line])
-      })
-      const incompleteAllocation = Array.from(allocationGroups.values()).find(group => {
+      linesToSave
+        .filter(line => itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue)
+        .forEach(line => {
+          const key = getAllocationGroupKey(line)
+          allocationGroups.set(key, [...(allocationGroups.get(key) ?? []), line])
+        })
+      const incompleteAllocation = Array.from(allocationGroups.values())
+        .map(group => ({ group, lineNumber: getDocumentLineNumber(group[0]) }))
+        .find(({ group }) => {
+          const requestedQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
+            ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
+          const selectedQty = group
+            .filter(line => line.batchNumber)
+            .reduce((total, line) => total + Number(line.altQty || 0), 0)
+          return Math.abs(requestedQty - selectedQty) > 0.000001
+        })
+      if (incompleteAllocation) {
+        const { group, lineNumber } = incompleteAllocation
         const requestedQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
           ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
         const selectedQty = group
           .filter(line => line.batchNumber)
           .reduce((total, line) => total + Number(line.altQty || 0), 0)
-        return Math.abs(requestedQty - selectedQty) > 0.000001
-      })
-      if (incompleteAllocation) {
-        const requestedQty = incompleteAllocation.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
-          ?? incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
-        const selectedQty = incompleteAllocation.reduce((total, line) => total + Number(line.altQty || 0), 0)
-        toast(`Batch selection for ${incompleteAllocation[0].itemCode} must equal ${lineQuantityLabel} (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
+        const batches = Array.from(new Set(group.map(line => line.batchNumber.trim()).filter(Boolean)))
+        const batchText = batches.length > 0
+          ? `, ${batches.length === 1 ? 'batch' : 'batches'} ${batches.join(', ')}`
+          : ''
+        toast(`Batch selection for line ${lineNumber}${batchText} (${group[0].itemCode}) must equal ${lineQuantityLabel} (${formatQuantity(requestedQty)} required, ${formatQuantity(selectedQty)} selected).`)
         return
       }
     }
@@ -1660,7 +1747,13 @@ export default function NewGoodsIssue({
       if (linesToSave.length > 0) {
         const [shortage] = await getGoodsIssueOnHandShortages(linesToSave)
         if (shortage) {
-          toast(formatShortageMessage(shortage))
+          const shortageLine = linesToSave.find(line =>
+            line.itemCode.trim().toUpperCase() === shortage.itemCode.trim().toUpperCase() &&
+            line.fromWarehouseCode.trim().toUpperCase() === shortage.warehouseCode.trim().toUpperCase() &&
+            line.batchNumber.trim().toUpperCase() === shortage.batchNumber.trim().toUpperCase(),
+          )
+          const lineText = shortageLine ? `Line ${getDocumentLineNumber(shortageLine)}, ` : ''
+          toast(`${lineText}${formatShortageMessage(shortage)}`)
           return
         }
       }
@@ -1705,11 +1798,7 @@ export default function NewGoodsIssue({
 
   const activeBatchLine = issue.lines.find(line => line.id === activeBatchLineId) ?? null
   const activeBatchAllocationLines = activeBatchLine
-    ? issue.lines.filter(line =>
-        line.fromWarehouseCode === activeBatchLine.fromWarehouseCode &&
-        line.itemCode === activeBatchLine.itemCode &&
-        Boolean(line.batchNumber),
-      )
+    ? issue.lines.filter(line => isSameAllocationGroup(line, activeBatchLine) && Boolean(line.batchNumber))
     : []
   const activeBatchKey = activeBatchLine ? batchOptionKey(activeBatchLine) : ''
   const activeBatchOptions = activeBatchLine ? getBatchOptionsForLine(activeBatchLine) : []
@@ -1756,7 +1845,7 @@ export default function NewGoodsIssue({
           <div>
             <div className="text-xs font-medium text-stone-500">Breed / Age</div>
             <div className="font-semibold text-stone-950">
-              {info.breed || '-'} / {info.age}
+              {info.breed || '-'} / {info.age ?? '-'}
             </div>
           </div>
           <div>
@@ -1795,7 +1884,7 @@ export default function NewGoodsIssue({
   const headerComponentList: GoodsIssueHeaderField[] = [
     {
       key: 'gi-no',
-      label: `${documentPrefix} No.`,
+      label: documentNumberLabel ?? `${documentPrefix} No.`,
       content:
         (
           <div className='flex items-center gap-1'>
@@ -1809,7 +1898,7 @@ export default function NewGoodsIssue({
     },
     {
       key: 'issue-date',
-      label: 'Issue Date',
+      label: issueDateLabel,
       content: (
         <label className="relative">
           <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
@@ -1871,58 +1960,6 @@ export default function NewGoodsIssue({
           content: flockCardInformationContent,
         }]
       : []),
-    ...(triggeredBy === 'BR-DR'
-      ? [
-          {
-            key: 'hauler-name',
-            label: 'Hauler Name',
-            content: (
-              <Input
-                type="text"
-                value={issue.haulerName}
-                onChange={event => setIssue(current => current ? { ...current, haulerName: event.target.value } : current)}
-                placeholder="Enter hauler name"
-              />
-            ),
-          },
-          {
-            key: 'plate-number',
-            label: 'Plate Number',
-            content: (
-              <Input
-                type="text"
-                value={issue.plateNumber ?? ''}
-                onChange={event => setIssue(current => current ? { ...current, plateNumber: event.target.value || null } : current)}
-                placeholder="Enter plate number"
-              />
-            ),
-          },
-          {
-            key: 'truck-seal',
-            label: 'Truck Seal',
-            content: (
-              <Input
-                type="number"
-                value={issue.truckSeal ?? ''}
-                onChange={event => setIssue(current => current ? { ...current, truckSeal: event.target.value === '' ? null : Number(event.target.value) } : current)}
-                placeholder="Enter truck seal"
-              />
-            ),
-          },
-          {
-            key: 'destination',
-            label: 'Destination',
-            content: (
-              <Input
-                type="text"
-                value={issue.destination}
-                onChange={event => setIssue(current => current ? { ...current, destination: event.target.value } : current)}
-                placeholder="Enter destination"
-              />
-            ),
-          },
-        ]
-      : []),
     ...(!showRemarksInActionRow
       ? [{
           key: 'remarks',
@@ -1983,7 +2020,7 @@ export default function NewGoodsIssue({
               </div>
             </div>
 
-            {usesLineWarehouse ? (
+            {usesBroilerLineLayout ? (
               <DeliveryIssueLinesTable
                 issue={issue}
                 warehouseLabel={warehouseLabel}
@@ -1994,18 +2031,27 @@ export default function NewGoodsIssue({
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
                 lockCycleCloseout={isCleanup}
+                allowLockedRowDelete={allowLockedRowDelete}
                 showLineRemarks={showLineRemarks}
                 quantityLabel={lineQuantityLabel}
+                bodyWeightLabel={bodyWeightLabel}
+                showTsDrNumber={showLineTsDrNumber}
+                excelAppearance={excelIssueLines}
                 showQuantityAllocationWarnings={showLineQuantityAllocationWarnings}
                 showOnHandQuantity={showLineOnHandQuantity}
+                showRemainingOnHand={triggeredBy === 'BR-DR'}
                 showVariance={showLineVariance}
                 lockedQuantityEditable={lockedLineQuantityEditable}
+                allowDuplicateBuildings={triggeredBy === 'BR-DR'}
+                showTransportFields={triggeredBy === 'BR-DR'}
+                getAllocationGroupKey={getAllocationGroupKey}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}
                 lineHasPlacementBatchOptions={lineHasPlacementBatchOptions}
                 batchOptionKey={batchOptionKey}
                 getBatchOptionsForLine={getBatchOptionsForLine}
                 getTotalBatchOnHandForLine={getTotalBatchOnHandForLine}
+                getRemainingOnHandForLine={getCurrentDocumentRemainingOnHandForLine}
                 canOpenBatchSelector={canOpenBatchSelector}
                 selectLineWarehouse={selectLineWarehouse}
                 selectItem={selectItem}
@@ -2022,21 +2068,21 @@ export default function NewGoodsIssue({
               />
             ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1500px] w-full border-collapse text-sm">
-                <thead className="bg-stone-100 text-left text-xs uppercase tracking-wide text-stone-600">
+              <table className={`${usesLineWarehouse ? 'min-w-[1350px]' : 'min-w-[1090px]'} w-full table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs`}>
+                <thead className="bg-muted text-left text-[11px] text-muted-foreground">
                   <tr>
-                    <th className="w-12 px-3 py-3 text-center">#</th>
-                    <th className="w-[280px] px-3 py-3">Item</th>
+                    <th className="w-9 border border-border px-1 py-1 text-center">#</th>
+                    <th className="w-[240px] border border-border px-1.5 py-1">Item</th>
                     {usesLineWarehouse && (
-                      <th className="w-[340px] px-3 py-3">{warehouseLabel}</th>
+                      <th className="w-[260px] border border-border px-1.5 py-1">{warehouseLabel}</th>
                     )}
-                    <th className="w-[240px] px-3 py-3">Batch</th>
-                    <th className="w-[160px] px-3 py-3">UoM Group</th>
-                    <th className="w-[120px] px-3 py-3">Qty</th>
-                    <th className="w-[140px] px-3 py-3">Alt UoM</th>
-                    <th className="w-[180px] px-3 py-3">Base Qty</th>
-                    <th className="w-[130px] px-3 py-3">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand'}</th>
-                    <th className="w-14 px-3 py-3" />
+                    <th className="w-[140px] border border-border px-1.5 py-1">UoM Group</th>
+                    <th className="w-[90px] border border-border px-1.5 py-1">Qty</th>
+                    <th className="w-[100px] border border-border px-1.5 py-1">Alt UoM</th>
+                    <th className="w-[140px] border border-border px-1.5 py-1">Base Qty</th>
+                    <th className="w-[190px] border border-border px-1.5 py-1">Batch</th>
+                    <th className="w-[110px] border border-border px-1.5 py-1">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand'}</th>
+                    <th className="w-11 border border-border px-1 py-1" />
                   </tr>
                 </thead>
                 <tbody>
@@ -2050,9 +2096,9 @@ export default function NewGoodsIssue({
                     const isOver = canPostDocument && line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
 
                     return (
-                      <tr key={line.id} className="odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
-                        <td className="px-3 py-3 text-center align-middle text-stone-500">{index + 1}</td>
-                        <td className="px-3 py-2 align-middle">
+                      <tr key={line.id} className="odd:bg-background even:bg-muted/40 hover:bg-accent/40">
+                        <td className="border border-border bg-muted px-1 py-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={items}
                             codeLabel="item_code"
@@ -2064,7 +2110,7 @@ export default function NewGoodsIssue({
                           />
                         </td>
                         {usesLineWarehouse && (
-                          <td className="px-3 py-2 align-top">
+                          <td className="border border-border p-1 align-top">
                             <div className="space-y-2">
                               <SearchableDropdown
                                 list={farmWarehouses}
@@ -2089,7 +2135,77 @@ export default function NewGoodsIssue({
                             </div>
                           </td>
                         )}
-                        <td className="px-3 py-2 align-middle">
+                        <td className="border border-border p-1 align-middle">
+                          <select
+                            value={line.baseUom}
+                            disabled
+                            className="h-7 w-full rounded-none border-0 bg-muted px-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-100"
+                          >
+                            <option value="">Select item</option>
+                            {uomGroups.map(group => (
+                              <option key={group.id} value={group.code}>
+                                {group.code} - {group.name} ({group.baseUomCode})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={line.altQty}
+                            onChange={event => {
+                              const altQty = numberValue(event.target.value)
+                              updateLine(line.id, {
+                                altQty,
+                                baseQty: calculateBaseQty(altQty, line.altUom, line.baseUom),
+                              })
+                            }}
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                          />
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <select
+                            value={line.altUom}
+                            disabled={!line.baseUom}
+                            onChange={event => {
+                              const altUom = event.target.value
+                              updateLine(line.id, {
+                                altUom,
+                                baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
+                              })
+                            }}
+                            className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
+                          >
+                            <option value="">{line.baseUom ? 'Select Alt UoM' : 'Select item first'}</option>
+                            {getGroupUoms(line.baseUom).map(conversion => (
+                              <option key={`${conversion.groupId}-${conversion.uomCode}`} value={conversion.uomCode}>
+                                {conversion.uomCode}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border border-border px-1.5 py-1 align-middle text-foreground">
+                          {line.baseUom && line.altUom ? (
+                            <div className="whitespace-nowrap">
+                              <span className="font-medium tabular-nums">
+                                {formatQuantity(line.baseQty)}
+                              </span>{' '}
+                              <span className="text-stone-600">
+                                {getSelectedGroup(line.baseUom)?.baseUomCode}
+                              </span>
+                              <div className="text-[10px] leading-tight text-muted-foreground">
+                                {formatQuantity(line.altQty)}{' '}
+                                {line.altUom} x{' '}
+                                {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(QUANTITY_LOCALE, QUANTITY_FORMAT_OPTIONS)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-stone-400">-</span>
+                          )}
+                        </td>
+                        <td className="border border-border p-1 align-middle">
                           {needsBatch ? (
                             <div className="space-y-1.5">
                               <Button
@@ -2097,37 +2213,24 @@ export default function NewGoodsIssue({
                                 variant="outline"
                                 disabled={!canSearchBatches}
                                 onClick={() => openBatchSelector(line)}
-                                className={`h-auto min-h-9 w-full justify-between border-stone-300 px-2 py-2 text-left font-normal hover:bg-stone-50 ${
+                                className={`h-7 w-full justify-start rounded-none border-0 px-1.5 text-left text-xs font-normal hover:bg-accent ${
                                   line.batchNumber
                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                                     : 'bg-white text-stone-800'
                                 }`}
                               >
-                                <span className="min-w-0 flex-1">
-                                  {line.batchNumber ? (
-                                    <span className="block text-xs">
-                                      <span className="flex items-center gap-2 font-semibold">
-                                        <PackageCheck className="size-3.5" />
-                                        <span className="truncate">{line.batchNumber}</span>
-                                      </span>
-                                      <span className="mt-1 grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
-                                        <span className={isOver ? 'font-semibold text-red-700' : ''}>
-                                          {activeDocumentIsPosted ? 'Issued' : 'On hand'}:{' '}
-                                          {formatQuantity(activeDocumentIsPosted ? line.baseQty : line.onHandQty)}
-                                        </span>
-                                        <span>{warehouseLabel}: {line.fromWarehouseCode || '-'}</span>
-                                        <span>MFG: {formatDateValue(line.manufacturingDate)}</span>
-                                        <span>EXP: {formatDateValue(line.expiryDate)}</span>
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <span className="truncate">
-                                      {canSearchBatches ? 'Select on-hand batch' : `Select item and ${warehouseLabel.toLowerCase()} first`}
-                                    </span>
-                                  )}
-                                </span>
+                                {line.batchNumber ? (
+                                  <span className="flex min-w-0 items-center gap-2 font-semibold">
+                                    <PackageCheck className="size-3.5 shrink-0" />
+                                    <span className="truncate">{line.batchNumber}</span>
+                                  </span>
+                                ) : (
+                                  <span className="truncate">
+                                    {canSearchBatches ? 'Select on-hand batch' : `Select item and ${warehouseLabel.toLowerCase()} first`}
+                                  </span>
+                                )}
                                 {isLoadingBatches && (
-                                  <Loader2 className="ml-2 size-4 shrink-0 animate-spin text-stone-500" />
+                                  <Loader2 className="ml-auto size-4 shrink-0 animate-spin text-stone-500" />
                                 )}
                               </Button>
 
@@ -2145,80 +2248,10 @@ export default function NewGoodsIssue({
                               )}
                             </div>
                           ) : (
-                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
+                            <span className="inline-flex h-7 items-center px-1 text-muted-foreground">Not required</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 align-middle">
-                          <select
-                            value={line.baseUom}
-                            disabled
-                            className="h-9 w-full rounded-md border border-stone-300 bg-stone-100 px-2 text-sm text-stone-600 outline-none disabled:cursor-not-allowed disabled:opacity-100"
-                          >
-                            <option value="">Select item</option>
-                            {uomGroups.map(group => (
-                              <option key={group.id} value={group.code}>
-                                {group.code} - {group.name} ({group.baseUomCode})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2 align-middle">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={line.altQty}
-                            onChange={event => {
-                              const altQty = numberValue(event.target.value)
-                              updateLine(line.id, {
-                                altQty,
-                                baseQty: calculateBaseQty(altQty, line.altUom, line.baseUom),
-                              })
-                            }}
-                            className="border-stone-300 bg-white"
-                          />
-                        </td>
-                        <td className="px-3 py-2 align-middle">
-                          <select
-                            value={line.altUom}
-                            disabled={!line.baseUom}
-                            onChange={event => {
-                              const altUom = event.target.value
-                              updateLine(line.id, {
-                                altUom,
-                                baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
-                              })
-                            }}
-                            className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
-                          >
-                            <option value="">{line.baseUom ? 'Select Alt UoM' : 'Select item first'}</option>
-                            {getGroupUoms(line.baseUom).map(conversion => (
-                              <option key={`${conversion.groupId}-${conversion.uomCode}`} value={conversion.uomCode}>
-                                {conversion.uomCode}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-3 align-middle text-stone-800">
-                          {line.baseUom && line.altUom ? (
-                            <div className="whitespace-nowrap">
-                              <span className="font-medium tabular-nums">
-                                {formatQuantity(line.baseQty)}
-                              </span>{' '}
-                              <span className="text-stone-600">
-                                {getSelectedGroup(line.baseUom)?.baseUomCode}
-                              </span>
-                              <div className="text-xs text-stone-500">
-                                {formatQuantity(line.altQty)}{' '}
-                                {line.altUom} x{' '}
-                                {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(QUANTITY_LOCALE, QUANTITY_FORMAT_OPTIONS)}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-stone-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 align-middle">
+                        <td className="border border-border px-1.5 py-1 align-middle">
                           <div>
                             <div className="whitespace-nowrap">
                               <span className={`font-medium tabular-nums ${isOver ? 'text-red-600' : 'text-stone-800'}`}>
@@ -2237,14 +2270,14 @@ export default function NewGoodsIssue({
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center align-middle">
+                        <td className="border border-border p-1 text-center align-middle">
                           <button
                             type="button"
                             onClick={() => setIssue(current => current ? {
                               ...current,
                               lines: current.lines.filter(candidate => candidate.id !== line.id),
                             } : current)}
-                            className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                            className="inline-flex size-7 items-center justify-center rounded-none text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
                             aria-label={`Delete line ${index + 1}`}
                           >
                             <Trash2 className="size-4" />
@@ -2329,7 +2362,7 @@ export default function NewGoodsIssue({
                               <td className="border-r px-3 py-3 font-medium">{row.buildingName || row.buildingCode}</td>
                               <td className="border-r px-3 py-3">{row.flockCard || '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleCount || '-'}</td>
-                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.age}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.age ?? '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalPlacement)}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalMortality)}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalDelivered)}</td>
@@ -2392,7 +2425,7 @@ export default function NewGoodsIssue({
                       {activeDocumentIsPosted
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
                         : usesLineWarehouse
-                          ? 'Choose one or more available batches. Additional selections are added to this building automatically.'
+                          ? `Choose one or more available batches. Additional selections are added to this ${warehouseLabel.toLowerCase()} automatically.`
                           : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
                     </p>
                     {!activeDocumentIsPosted && (

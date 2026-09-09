@@ -64,6 +64,7 @@ export type GoodsReceiptItemGroup = {
   id: number
   code: string
   name: string
+  father: number | null
 }
 
 export type GoodsReceiptExistingBatch = {
@@ -271,7 +272,7 @@ export async function getGoodsReceiptReferences() {
   const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
     db
       .from('items')
-      .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
+      .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, sub_item_group_id, sub_item_group_level_1_id, sub_item_group_level_2_id, sub_item_group_level_3_id, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
       .eq('void', 1)
       .order('item_code'),
     db
@@ -298,7 +299,7 @@ export async function getGoodsReceiptReferences() {
       .order('code'),
     db
       .from('item_groups')
-      .select('id, code, name')
+      .select('id, code, name, father')
       .eq('void', '1')
       .order('code'),
     db
@@ -370,7 +371,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .order('code'),
     db
       .from('item_groups')
-      .select('id, code, name')
+      .select('id, code, name, father')
       .eq('void', '1')
       .order('code'),
     db

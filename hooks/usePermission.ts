@@ -18,11 +18,12 @@ export const usePermission = (link: string): boolean => {
             const profile = Array.isArray(session) ? session[0] : null
             const userType = Number(profile?.user_type ?? 3)
             if (userType === 1) return true
-            if (userType === 2) {
-                const folder = NavFolders.find(item => item.items?.some(group =>
-                    group.children.some(child => link === child.url || link.startsWith(`${child.url}/`))))
-                return Boolean(profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type))
-            }
+            if (!profile?.fms_type) return false
+
+            const folder = NavFolders.find(item => item.items?.some(group =>
+                group.children.some(child => link === child.url || link.startsWith(`${child.url}/`))))
+            if (folder && !folder.fmsTypes?.includes(profile.fms_type)) return false
+
             const rawPermissions = getValue('UserPermission')
             const permissions: Permission[] =
                 typeof rawPermissions === 'string'

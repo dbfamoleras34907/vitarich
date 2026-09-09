@@ -59,7 +59,9 @@ function parseRefNumbers(value: string | null | undefined) {
     .filter(Boolean);
 }
 
-export async function listSetterInventoryRefs(): Promise<
+export async function listSetterInventoryRefs(
+  includeRefs: string[] = [],
+): Promise<
   TransferClassiRefOption[]
 > {
   const { data: refRows, error: refError } = await db
@@ -70,9 +72,14 @@ export async function listSetterInventoryRefs(): Promise<
 
   if (refError) throw refError;
 
-  const refs = ((refRows ?? []) as EggTransferRefNoViewRow[])
-    .map((row) => String(row.ref_no ?? "").trim())
-    .filter(Boolean);
+  const refs = Array.from(
+    new Set([
+      ...((refRows ?? []) as EggTransferRefNoViewRow[])
+        .map((row) => String(row.ref_no ?? "").trim())
+        .filter(Boolean),
+      ...includeRefs.map((ref) => ref.trim()).filter(Boolean),
+    ]),
+  );
 
   if (!refs.length) return [];
 

@@ -128,6 +128,8 @@ export default function Eggstorageform() {
   const router = useRouter();
   const sp = useSearchParams();
   const idParam = sp.get("id");
+  const wizardRef = sp.get("ref")?.trim() ?? "";
+  const isWizard = sp.get("wizard") === "1" && Boolean(wizardRef);
   const editId = idParam ? Number(idParam) : null;
   const isEdit = Number.isFinite(editId) && (editId as number) > 0;
 
@@ -141,7 +143,9 @@ export default function Eggstorageform() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [classiRefNos, setClassiRefNos] = useState<string[]>([]);
+  const [classiRefNos, setClassiRefNos] = useState<string[]>(
+    isWizard && !isEdit ? [wizardRef] : [],
+  );
   const [classiRefs, setClassiRefs] = useState<HatchClassiRefOption[]>([]);
   const [classiRefLoading, setClassiRefLoading] = useState(false);
 
@@ -165,7 +169,12 @@ export default function Eggstorageform() {
           .order("classi_ref_no", { ascending: false });
 
         if (error) throw error;
-        setClassiRefs((data ?? []) as HatchClassiRefOption[]);
+        const rows = (data ?? []) as HatchClassiRefOption[];
+        setClassiRefs(
+          isWizard && !rows.some((row) => row.classi_ref_no === wizardRef)
+            ? [{ classi_ref_no: wizardRef, date_classify: null }, ...rows]
+            : rows,
+        );
       } catch (error) {
         console.error(error);
         setClassiRefs([]);
@@ -175,7 +184,7 @@ export default function Eggstorageform() {
     };
 
     loadClassiRefs();
-  }, []);
+  }, [isWizard, wizardRef]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -237,7 +246,7 @@ export default function Eggstorageform() {
         ? Number(room_temp)
         : 0;
 
-  async function onSave() {
+  async function onSave(continueToNext = false) {
     try {
       setSaving(true);
 
@@ -270,7 +279,11 @@ export default function Eggstorageform() {
         await createEggStorage(payloads);
       }
 
-      router.push("/jmb/eggstorage");
+      router.push(
+        isWizard
+          ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=${continueToNext ? "pre_warming" : "storage"}`
+          : "/jmb/eggstorage",
+      );
       router.refresh();
     } catch (err: any) {
       alert(err?.message ?? "Failed to save.");
@@ -304,7 +317,7 @@ export default function Eggstorageform() {
                       value={classiRefNos}
                       onChange={(val) => setClassiRefNos(val)}
                       multiple
-                      disabled={saving || classiRefLoading}
+                      disabled={saving || classiRefLoading || isWizard}
                     />
                   </div>
 
@@ -393,8 +406,16 @@ export default function Eggstorageform() {
                   <FormActionButtons
                     saving={saving}
                     isEdit={isEdit}
-                    cancelPath="/jmb/eggstorage"
-                    onSave={onSave}
+                    disabled={saving}
+                    cancelPath={
+                      isWizard
+                        ? `/wiz/hatchery-process-wizard?ref=${encodeURIComponent(wizardRef)}&step=storage`
+                        : "/jmb/eggstorage"
+                    }
+                    onSave={() => void onSave(false)}
+                    onSaveAndContinue={
+                      isWizard ? () => void onSave(true) : undefined
+                    }
                   />
                 </>
               )}

@@ -1,5 +1,7 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import type { WarehouseData } from '@/lib/types'
+import { getWarehouses } from '../../warehouse/api'
+import { resolveFarmWarehouseAssociations } from '@/lib/data/repositories/farmWarehouseAssociations'
 
 export type FarmSetupFormData = Record<string, string>
 
@@ -33,6 +35,7 @@ export type FarmSetupRecord = {
   farm: FarmSetupFormData
   address: FarmSetupFormData
   warehouses: FarmSetupWarehouseDraft[]
+  assignableWarehouses: FarmSetupWarehouseDraft[]
 }
 
 export type FarmSetupPayload = {
@@ -143,18 +146,48 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
   }
 }
 
+const toFarmSetupWarehouseDraft = (warehouse: WarehouseData): FarmSetupWarehouseDraft => ({
+  id: warehouse.id,
+  client_key: `warehouse-${warehouse.id}`,
+  father_client_key: warehouse.father_id ? `warehouse-${warehouse.father_id}` : null,
+  whse_name: warehouse.whse_name,
+  whse_code: warehouse.whse_code,
+  fms_type: warehouse.fms_type,
+  warehouse_type: warehouse.warehouse_type,
+  capacity: warehouse.capacity,
+  full_location_code: warehouse.full_location_code,
+  addr1: warehouse.addr1,
+  addr2: warehouse.addr2,
+  city: warehouse.city,
+  province: warehouse.province,
+  address: warehouse.address,
+  phone: warehouse.phone,
+  mobile: warehouse.mobile,
+  remarks: warehouse.remarks,
+  is_active: warehouse.is_active,
+  is_default_feed: warehouse.is_default_feed_warehouse ?? false,
+  is_default_receiving: warehouse.is_default_receiving_warehouse ?? false,
+  is_default_disposal: warehouse.is_default_disposal_warehouse ?? false,
+})
+
 export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
-  const [{ data: farmData, error: farmError }, { data: warehouses, error: warehouseError }] =
-    await Promise.all([
-      db.rpc('get_farm_full', { p_farm_id: farmId }),
-      db.from('i_warehouse').select('*').eq('farm_id', farmId).order('id'),
-    ])
+  const [{ data: farmData, error: farmError }, warehouseResult] = await Promise.all([
+    db.rpc('get_farm_full', { p_farm_id: farmId }),
+    getWarehouses(),
+  ])
 
   if (farmError) throw new Error(farmError.message)
-  if (warehouseError) throw new Error(warehouseError.message)
+  if (!warehouseResult.success || !Array.isArray(warehouseResult.data)) {
+    throw new Error(warehouseResult.error ?? 'Unable to load warehouses.')
+  }
   if (!farmData?.farm) throw new Error('Farm not found.')
 
-  const warehouseRows = warehouses ?? []
+  const { assigned: assignedWarehouseRows, assignable: assignableWarehouseRows } =
+    resolveFarmWarehouseAssociations(
+      farmId,
+      warehouseResult.data,
+      farmData.associated_warehouses ?? farmData.farm.associated_warehouses,
+    )
 
   return {
     farm: farmData.farm,
@@ -164,29 +197,8 @@ export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
       city: farmData.farm.city ?? farmData.address?.city ?? '',
       province: farmData.farm.region ?? farmData.address?.province ?? '',
     },
-    warehouses: warehouseRows.map((warehouse) => ({
-      id: warehouse.id,
-      client_key: `warehouse-${warehouse.id}`,
-      father_client_key: warehouse.father_id ? `warehouse-${warehouse.father_id}` : null,
-      whse_name: warehouse.whse_name,
-      whse_code: warehouse.whse_code,
-      fms_type: warehouse.fms_type,
-      warehouse_type: warehouse.warehouse_type,
-      capacity: warehouse.capacity,
-      full_location_code: warehouse.full_location_code,
-      addr1: warehouse.addr1,
-      addr2: warehouse.addr2,
-      city: warehouse.city,
-      province: warehouse.province,
-      address: warehouse.address,
-      phone: warehouse.phone,
-      mobile: warehouse.mobile,
-      remarks: warehouse.remarks,
-      is_active: warehouse.is_active,
-      is_default_feed: warehouse.is_default_feed_warehouse,
-      is_default_receiving: warehouse.is_default_receiving_warehouse,
-      is_default_disposal: warehouse.is_default_disposal_warehouse,
-    })),
+    warehouses: assignedWarehouseRows.map(toFarmSetupWarehouseDraft),
+    assignableWarehouses: assignableWarehouseRows.map(toFarmSetupWarehouseDraft),
   }
 }
 

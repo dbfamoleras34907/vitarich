@@ -4,25 +4,56 @@ import SearchableCombobox, {
   ComboboxItemType
 } from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import React, { useEffect, useState } from 'react'
-import { savetask, SavetaskPayload } from '../../tasks/new/api'
+import { getTaskinNewTaskAPi, savetask, SavetaskPayload } from '../../tasks/new/api'
 import { getTaskType } from '../../tasks/api'
 import { toast } from 'sonner'
 
 interface Props {
   projectId: string
   onClose?: () => void
+  onCreated?: (taskId: number, taskSubject: string) => void
+  defaultPriority?: 'low' | 'mid' | 'high'
+  defaultTaskTypeId?: number | null
+}
+
+const TASK_COLOR_PALETTE = [
+  '#2563eb',
+  '#7c3aed',
+  '#db2777',
+  '#dc2626',
+  '#ea580c',
+  '#ca8a04',
+  '#16a34a',
+  '#0d9488',
+  '#0891b2',
+]
+
+function getRandomTaskColor() {
+  return TASK_COLOR_PALETTE[Math.floor(Math.random() * TASK_COLOR_PALETTE.length)]
+}
+
+type TaskFormValues = {
+  subject: string
+  issue: string
+  assigned_to: string
+  priority: string
+  task_type: string
+  parent_task: string
+  color: string
 }
 
 export default function NewProjectTask({
   projectId,
-  onClose
+  onClose,
+  onCreated,
+  defaultPriority,
+  defaultTaskTypeId,
 }: Props) {
-  const { setValue } = useGlobalContext()
+  const { setValue, getValue } = useGlobalContext()
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -32,19 +63,23 @@ export default function NewProjectTask({
   const [tasksList, setTasksList] =
     useState<ComboboxItemType[]>([])
 
+  const [activeUsers, setActiveUsers] =
+    useState<ComboboxItemType[]>([])
+
   const [formValues, setFormValues] =
-    useState({
+    useState<TaskFormValues>({
       subject: '',
       issue: '',
-      priority: null as ComboboxItemType | null,
-      task_type: null as ComboboxItemType | null,
-      parent_task: null as ComboboxItemType | null,
+      assigned_to: '',
+      priority: defaultPriority ?? '',
+      task_type: defaultTaskTypeId ? String(defaultTaskTypeId) : '',
+      parent_task: '',
       color: '#000000'
     })
 
-  const handleChange = (
-    name: string,
-    value: any
+  const handleChange = <K extends keyof TaskFormValues>(
+    name: K,
+    value: TaskFormValues[K]
   ) => {
     setFormValues(prev => ({
       ...prev,
@@ -59,6 +94,7 @@ export default function NewProjectTask({
 
     if (
       !formValues.subject ||
+      !formValues.assigned_to ||
       !formValues.priority ||
       !formValues.task_type
     ) {
@@ -75,24 +111,19 @@ export default function NewProjectTask({
       project_id: Number(projectId),
       subject: formValues.subject,
       issue: formValues.issue || undefined,
-      priority:
-        formValues.priority.code as "low" | "mid" | "high",
-      task_type:
-        Number(formValues.task_type.code),
-      parent_task:
-        formValues.parent_task?.code
-          ? Number(formValues.parent_task.code)
-          : null,
+      priority: formValues.priority as "low" | "mid" | "high",
+      task_type: Number(formValues.task_type),
+      parent_task: formValues.parent_task ? Number(formValues.parent_task) : null,
       color: formValues.color,
-      assigned_to: 0
-// 
+      assigned_to: Number(formValues.assigned_to),
     }
 
     try {
-      await savetask(payload)
+      const taskId = await savetask(payload)
 
       toast.success('Task created')
 
+      onCreated?.(taskId, formValues.subject)
       onClose?.()
     } catch (err) {
       console.error(err)
@@ -102,24 +133,55 @@ export default function NewProjectTask({
     setIsLoading(false)
   }
 
-  const loadTaskTypes = async () => {
-    const data = await getTaskType()
-    console.log({ data })
-    setTaskTypes(
-      (data || []).map((t: any) => ({
-        code: t.id,
-        name: t.name
-      }))
-    )
-  }
-
   useEffect(() => {
-    loadTaskTypes()
-  }, [])
+    let cancelled = false
+
+    const loadFormOptions = async () => {
+      const [types, projectTasks] = await Promise.all([
+        getTaskType(),
+        getTaskinNewTaskAPi(Number(projectId)),
+      ])
+      if (cancelled) return
+
+      const users = getValue('activeUsers')
+      const session = getValue('UserInfoAuthSession')
+      const currentUserId = Array.isArray(session) ? session[0]?.id : null
+
+      setTaskTypes(types.map((type) => ({
+        code: String(type.id),
+        name: type.name,
+      })))
+      setTasksList(projectTasks.map((task) => ({
+        code: String(task.id),
+        name: task.subject,
+      })))
+      setActiveUsers((Array.isArray(users) ? users : []).map((user) => ({
+        code: String(user.code),
+        name: String(user.name),
+      })))
+      const availableDefaultTaskTypeId = types.some(
+        type => Number(type.id) === Number(defaultTaskTypeId)
+      )
+        ? defaultTaskTypeId
+        : types[0]?.id
+      setFormValues(current => ({
+        ...current,
+        priority: current.priority || defaultPriority || '',
+        task_type: current.task_type || String(availableDefaultTaskTypeId ?? ''),
+        assigned_to: current.assigned_to || String(currentUserId ?? ''),
+        color: current.color === '#000000' ? getRandomTaskColor() : current.color,
+      }))
+    }
+
+    void loadFormOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [defaultPriority, defaultTaskTypeId, getValue, projectId])
 
   useEffect(() => {
     setValue('loading_g', isLoading)
-  }, [isLoading])
+  }, [isLoading, setValue])
 
   return (
     <form
@@ -128,9 +190,19 @@ export default function NewProjectTask({
     >
         <div className="grid grid-cols-2 gap-4 px-4">
 
+          <div>
+            <SearchableCombobox
+              label="Assigned To"
+              required
+              items={activeUsers}
+              value={formValues.assigned_to}
+              onValueChange={val => handleChange('assigned_to', val)}
+            />
+          </div>
+
           {/* SUBJECT */}
           <div>
-            <Label required>
+            <Label required className='mb-2'>
               Subject
             </Label>
             <Input
@@ -163,7 +235,7 @@ export default function NewProjectTask({
                   name: 'High'
                 }
               ]}
-              value={formValues.priority?.code || ''}
+              value={formValues.priority}
               onValueChange={val =>
                 handleChange(
                   'priority',
@@ -179,7 +251,7 @@ export default function NewProjectTask({
               label="Task Type"
               required
               items={taskTypes}
-              value={formValues.task_type?.code || ''}
+              value={formValues.task_type}
               onValueChange={val =>
                 handleChange(
                   'task_type',
@@ -194,7 +266,7 @@ export default function NewProjectTask({
             <SearchableCombobox
               label="Parent Task"
               items={tasksList}
-              value={formValues.parent_task?.code || ''}
+              value={formValues.parent_task}
               onValueChange={val =>
                 handleChange(
                   'parent_task',
@@ -203,10 +275,10 @@ export default function NewProjectTask({
               }
             />
           </div>
-
+{/*  */}
           {/* COLOR */}
           <div>
-            <Label>Color</Label>
+            <Label className='mb-2'>Color</Label>
             <Input
               type="color"
               value={formValues.color}

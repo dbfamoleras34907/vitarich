@@ -4,14 +4,11 @@ export type DocItemOption = {
   id: number
   item_code: string
   item_name: string | null
-  description?: string | null
-  item_group?: string | null
-  fms_group?: string | null
-  group?: string | null
 }
 
 export type DocReceivingSettings = {
   id?: number
+  farm_id: number
   good_doc: number | null
   bad_doc: number | null
   reject_doc: number | null
@@ -27,45 +24,67 @@ export type DocCycleExcludedBuilding = {
 export async function getDocItemOptions() {
   const { data, error } = await db
     .from('items')
-    .select('*')
+    .select('id, item_code, item_name')
     .eq('void', 1)
+    .eq('fms_group', 'broiler')
+    .eq('item_group', 'DOC')
     .order('item_code', { ascending: true })
 
   if (error) throw error
-  return ((data || []) as DocItemOption[]).filter(isDocItem)
+  return (data || []) as DocItemOption[]
 }
 
-function isDocItem(item: DocItemOption) {
-  const tokens = [
-    item.item_code,
-    item.item_name,
-    item.description,
-    item.item_group,
-    item.fms_group,
-    item.group,
-  ].map(value => String(value ?? '').trim().toUpperCase())
+export async function getDocReceivingSettings(
+  farmId: number,
+  options: { usePreviousFarmDefaults?: boolean } = {},
+) {
+  if (!Number.isFinite(farmId) || farmId <= 0) return null
 
-  return tokens.some(token => token === 'DOC' || token.startsWith('DOC'))
-}
-
-export async function getDocReceivingSettings() {
   const { data, error } = await db
     .from('doc_rec_settings')
     .select('*')
     .eq('void', '1')
+    .eq('farm_id', farmId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (error) throw error
-  return data as DocReceivingSettings | null
+  if (data || !options.usePreviousFarmDefaults) {
+    return data as DocReceivingSettings | null
+  }
+
+  const { data: previous, error: previousError } = await db
+    .from('doc_rec_settings')
+    .select('*')
+    .eq('void', '1')
+    .lt('farm_id', farmId)
+    .order('farm_id', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (previousError) throw previousError
+  if (!previous) return null
+
+  return {
+    ...(previous as DocReceivingSettings),
+    id: undefined,
+    farm_id: farmId,
+    created_at: undefined,
+    updated_at: undefined,
+  }
 }
 
 export async function addDocReceivingSettings(payload: DocReceivingSettings) {
+  const farmId = Number(payload.farm_id)
+  if (!Number.isFinite(farmId) || farmId <= 0) throw new Error('Please select a farm.')
+
   const { data: authData } = await db.auth.getUser()
   const { data, error } = await db
     .from('doc_rec_settings')
     .insert({
+      farm_id: farmId,
       good_doc: payload.good_doc,
       bad_doc: payload.bad_doc,
       reject_doc: payload.reject_doc,
@@ -80,10 +99,14 @@ export async function addDocReceivingSettings(payload: DocReceivingSettings) {
 }
 
 export async function updateDocReceivingSettings(id: number, payload: DocReceivingSettings) {
+  const farmId = Number(payload.farm_id)
+  if (!Number.isFinite(farmId) || farmId <= 0) throw new Error('Please select a farm.')
+
   const { data: authData } = await db.auth.getUser()
   const { data, error } = await db
     .from('doc_rec_settings')
     .update({
+      farm_id: farmId,
       good_doc: payload.good_doc,
       bad_doc: payload.bad_doc,
       reject_doc: payload.reject_doc,
@@ -91,6 +114,7 @@ export async function updateDocReceivingSettings(id: number, payload: DocReceivi
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('farm_id', farmId)
     .select()
     .single()
 

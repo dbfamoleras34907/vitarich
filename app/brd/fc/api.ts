@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from "@/lib/data/repositories/broilerGrowing";
 import { calculateFlockAgeFromStartDate } from "./age";
 
 export type FarmBuildingListRow = {
@@ -45,6 +46,7 @@ export type FlockCardListInfo = {
   id: number;
   cardNo: string;
   age: number;
+  actualAge?: number | null;
   startDate: string;
   flockCode: string;
   breed: string;
@@ -356,12 +358,14 @@ export async function getFarmBuildingsForFlockCard(
       .from("i_warehouse")
       .select("id, whse_code, whse_name, warehouse_type, is_active, farm_id, farm_code")
       .eq("warehouse_type", "Building")
+      .eq("is_active", true)
       .eq("farm_id", String(farmId)),
     farmCode
       ? db
         .from("i_warehouse")
         .select("id, whse_code, whse_name, warehouse_type, is_active, farm_id, farm_code")
         .eq("warehouse_type", "Building")
+        .eq("is_active", true)
         .eq("farm_code", farmCode)
       : Promise.resolve({ data: [], error: null }),
     associatedWarehouseCodes.length > 0
@@ -369,6 +373,7 @@ export async function getFarmBuildingsForFlockCard(
         .from("i_warehouse")
         .select("id, whse_code, whse_name, warehouse_type, is_active, farm_id, farm_code")
         .eq("warehouse_type", "Building")
+        .eq("is_active", true)
         .in("whse_code", associatedWarehouseCodes)
       : Promise.resolve({ data: [], error: null }),
     db
@@ -404,31 +409,44 @@ export async function getFarmBuildingsForFlockCard(
     if (!Number.isFinite(id) || id <= 0 || !code) continue;
     warehouseById.set(id, warehouse);
   }
+  const activeWarehouseCodes = new Set(
+    Array.from(warehouseById.values())
+      .map(warehouse => String(warehouse.whse_code ?? "").trim().toUpperCase())
+      .filter(Boolean),
+  );
 
   const cards = (flockCardResult.data ?? []) as FlockCardListRow[];
   const cardIds = cards
     .map(card => Number(card.id))
     .filter(id => Number.isFinite(id) && id > 0);
+  const cardNumbers = Array.from(new Set(
+    cards
+      .map(card => String(card.card_no ?? "").trim())
+      .filter(Boolean),
+  ));
   const originCountByCardId = new Map<number, number>();
 
-  if (cardIds.length > 0) {
-    const originCountResult = await db
-      .from("flock_card_origin")
-      .select("fc_id, animal_qty")
-      .in("fc_id", cardIds)
-      .eq("void", "1");
+  const [originCountResult, growingHeaders] = await Promise.all([
+    cardIds.length > 0
+      ? db
+        .from("flock_card_origin")
+        .select("fc_id, animal_qty")
+        .in("fc_id", cardIds)
+        .eq("void", "1")
+      : Promise.resolve({ data: [], error: null }),
+    getLatestBroilerGrowingHeaders(cardNumbers),
+  ]);
 
-    if (originCountResult.error) throwDbError(originCountResult.error, "Unable to load flock origin counts");
+  if (originCountResult.error) throwDbError(originCountResult.error, "Unable to load flock origin counts");
 
-    for (const origin of (originCountResult.data ?? []) as FlockCardOriginCountRow[]) {
-      const fcId = Number(origin.fc_id ?? 0);
-      if (!Number.isFinite(fcId) || fcId <= 0) continue;
+  for (const origin of (originCountResult.data ?? []) as FlockCardOriginCountRow[]) {
+    const fcId = Number(origin.fc_id ?? 0);
+    if (!Number.isFinite(fcId) || fcId <= 0) continue;
 
-      originCountByCardId.set(
-        fcId,
-        (originCountByCardId.get(fcId) ?? 0) + Number(origin.animal_qty ?? 0),
-      );
-    }
+    originCountByCardId.set(
+      fcId,
+      (originCountByCardId.get(fcId) ?? 0) + Number(origin.animal_qty ?? 0),
+    );
   }
 
   const flockCardByWarehouseId = new Map<number, FlockCardListInfo>();
@@ -473,6 +491,7 @@ export async function getFarmBuildingsForFlockCard(
       id: cardId,
       cardNo: String(card.card_no ?? "").trim(),
       age: startDate ? calculateFlockAgeFromStartDate(startDate) : Number(card.age ?? 0),
+      actualAge: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.actualAge ?? null,
       startDate,
       flockCode: String(card.flock_code ?? "").trim(),
       breed: String(card.breed ?? "").trim(),
@@ -548,8 +567,11 @@ export async function getFarmBuildingsForFlockCard(
     const buildingWarehouseId = Number(card.building_whse_id ?? 0);
     const code = String(card.building_code ?? "").trim();
     const key = card.building_key?.trim() || (buildingWarehouseId > 0 ? `warehouse:${buildingWarehouseId}` : `flock-card:${card.id}`);
+    const matchesActiveWarehouse = buildingWarehouseId > 0
+      ? warehouseById.has(buildingWarehouseId)
+      : activeWarehouseCodes.has(code.toUpperCase());
 
-    if (!code && !buildingWarehouseId) return [];
+    if ((!code && !buildingWarehouseId) || !matchesActiveWarehouse) return [];
     const placementAnimalQty = await getPlacementInventoryAnimalQty(code || null);
     const displayedInfo = placementAnimalQty > 0
       ? { ...info, animalQty: placementAnimalQty }

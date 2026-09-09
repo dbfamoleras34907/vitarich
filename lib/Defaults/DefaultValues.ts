@@ -14,6 +14,7 @@ import {
   ShoppingCartIcon,
   Wrench,
   Drumstick,
+  HeartPulse,
 } from "lucide-react";
 import { CodeNameBase } from "./DefaultTypes";
 import EggHatchTable from "@/app/jmb/egghatcherv2/egghatch-table";
@@ -663,6 +664,18 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 78,
+            type: "Module",
+            title: "Hatchery Process Wizard",
+            url: "/wiz/hatchery-process-wizard",
+            view: true,
+            void: false,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
             id: 22,
             type: "Module",
             title: "Disposal",
@@ -721,7 +734,7 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Item Master Data",
             url: "/a_dean/items",
-            view: false,
+            view: true,
             insert: true,
             edit: true,
             approval: false,
@@ -891,6 +904,7 @@ export const NavFolders: NavFolder[] = [
             type: "Report",
             title: "Warehouse Content List",
             url: "/inv/whse-report",
+            hideFromNavigation: true,
             view: false,
             insert: false,
             edit: false,
@@ -900,61 +914,133 @@ export const NavFolders: NavFolder[] = [
     ],
   },
 
-  // {
-  //   id: 4,
-  //   title: "Workspace",
-  //   url: "#",
-  //   icon: FolderTree,
-  //   view: false,
-  //   insert: false,
-  //   edit: false,
-  //   items: [
-  //     {
-  //       group: "Projects",
-  //       children: [
-  //         {
-  //           id: 33,
-  //           type: "Module",
-  //           title: "Dashboard",
-  //           url: "/wks/dashboard",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
+  {
+    id: 5,
+    title: "Wellbeing",
+    url: "/vnm",
+    icon: HeartPulse,
+    fmsTypes: ["Broiler", "Breeder"],
+    items: [
+      {
+        group: "Animal Health",
+        children: [
+          {
+            id: 80,
+            type: "Module",
+            title: "Medicine",
+            url: "/vnm",
+            newDocumentUrl: "/vnm/new",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
+            approval: false,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 81,
+            type: "Module",
+            title: "Medicine Settings",
+            url: "/vnm/settings",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+        ],
+      },
+    ],
+  },
 
-  //         {
-  //           id: 34,
-  //           type: "Module",
-  //           title: "Projects",
-  //           url: "/wks/projects",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-
-  //         {
-  //           id: 35,
-  //           type: "Module",
-  //           title: "Task",
-  //           url: "/wks/tasks",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-
-  //         {
-  //           id: 36,
-  //           type: "Module",
-  //           title: "Timesheet",
-  //           url: "/wks/timelines",
-  //           view: false,
-  //           insert: false,
-  //           edit: false,
-  //         },
-  //       ],
-  //     },
-  //   ],
-  // },
+  {
+    id: 4,
+    title: "Workspace",
+    url: "/wks/dashboard",
+    icon: FolderTree,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    view: false,
+    insert: false,
+    edit: false,
+    items: [
+      {
+        group: "Projects",
+        children: [
+          {
+            id: 33,
+            type: "Module",
+            title: "My Work",
+            url: "/wks/dashboard",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+          {
+            id: 34,
+            type: "Module",
+            title: "Projects",
+            url: "/wks/projects",
+            newDocumentUrl: "/wks/projects/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 35,
+            type: "Module",
+            title: "Task",
+            url: "/wks/tasks",
+            newDocumentUrl: "/wks/tasks/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 36,
+            type: "Module",
+            title: "Timesheet",
+            url: "/wks/timelines",
+            newDocumentUrl: "/wks/timelines/new",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: true,
+          },
+        ],
+      },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 77,
+            type: "Module",
+            title: "Task Workflow Settings",
+            url: "/wks/settings/task-workflow",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+          {
+            id: 78,
+            type: "Module",
+            title: "Timesheet Settings",
+            url: "/wks/settings/timesheet",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+        ],
+      },
+    ],
+  },
 
   {
     id: 6,
@@ -1081,6 +1167,17 @@ export const NavFolders: NavFolder[] = [
         group: "Settings",
         children: [
           {
+            id: 79,
+            type: "Module",
+            title: "Broiler Farm Setup",
+            url: "/brd/settings/farm-setup",
+            view: true,
+            insert: true,
+            edit: true,
+            approval: false,
+          },
+
+          {
             id: 65,
             type: "Module",
             title: "DOC Placement Settings",
@@ -1204,6 +1301,29 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 75,
+            type: "Report",
+            title: "Cycle Report",
+            url: "/brd/cycle-master/report",
+            hideFromNavigation: true,
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
+          {
+            id: 76,
+            type: "Module",
+            title: "Notification Setup",
+            url: "/admin/notifications",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
             id: 39,
             type: "Module",
             title: "Farm Management",
@@ -1211,6 +1331,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            void: true,
             approval: false,
           },
 

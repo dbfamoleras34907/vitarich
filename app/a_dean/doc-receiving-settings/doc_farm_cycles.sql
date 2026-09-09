@@ -223,8 +223,8 @@ begin
     if new.farm_cycle_id is not null then
       raise exception 'Excluded Cycle Buildings cannot be assigned to the farm cycle.';
     end if;
-    if trim(coalesce(new.cycle_no, '')) !~ '^[1-9][0-9]*$' then
-      raise exception 'Enter a positive whole-number Cycle Count for the excluded building.';
+    if trim(coalesce(new.cycle_no, '')) = '' then
+      raise exception 'Enter the Cycle Count for the exempted building.';
     end if;
     if exists (
       select 1 from public.flock_card card
@@ -244,6 +244,15 @@ begin
     where cycle.id = new.farm_cycle_id and cycle.farm_id = new.farm_id and cycle.status = 'Saved';
     if v_farm_cycle_no is null or new.cycle_no <> v_farm_cycle_no::text then
       raise exception 'The building Cycle Count must match the active farm cycle.';
+    end if;
+    if exists (
+      select 1 from public.flock_card card
+      where card.farm_cycle_id = new.farm_cycle_id
+        and card.building_whse_id = new.building_whse_id
+        and card.void = '1'
+        and card.id is distinct from new.id
+    ) then
+      raise exception 'This building already participated in the active Farm Cycle and cannot receive another DOC placement.';
     end if;
   end if;
   return new;

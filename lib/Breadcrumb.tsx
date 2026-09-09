@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect } from "react";
 
 interface BreadcrumbProps {
   CurrentPageName: string;
@@ -8,6 +11,22 @@ interface BreadcrumbProps {
   SecondPreviewPageLink?: string;
 }
 
+const getBrowserTitle = (
+  currentPageName: string,
+  parentPageName?: string,
+) => {
+  const actionMatch = currentPageName.trim().match(/^(new|create|edit|view|post|print)\b/i);
+
+  if (actionMatch && parentPageName) {
+    const action = /^create new\b/i.test(currentPageName.trim())
+      ? "new"
+      : actionMatch[1].toLowerCase();
+    return `${parentPageName} / ${action.charAt(0).toUpperCase()}${action.slice(1)}`;
+  }
+
+  return currentPageName;
+};
+
 const Breadcrumb = ({
   CurrentPageName,
   FirstPreviewsPageName,
@@ -15,6 +34,10 @@ const Breadcrumb = ({
   SecondPreviewPageName,
   SecondPreviewPageLink,
 }: BreadcrumbProps) => {
+  useEffect(() => {
+    document.title = getBrowserTitle(CurrentPageName, FirstPreviewsPageName);
+  }, [CurrentPageName, FirstPreviewsPageName]);
+
   return (
     <nav aria-label="Breadcrumb" className="flex flex-col">
       

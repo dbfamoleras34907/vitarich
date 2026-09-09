@@ -23,5 +23,5 @@ export function calculateFlockAgeFromStartDate(startDate: string, today = new Da
     (startOfLocalDay(today).getTime() - flockStartDate.getTime()) / MS_PER_DAY,
   );
 
-  return Math.max(days, 0);
+  return Math.min(Math.max(days, 0), 45);
 }

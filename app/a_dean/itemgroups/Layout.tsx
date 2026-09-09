@@ -66,6 +66,7 @@ export default function ItemGroupsLayout() {
 
     try {
       await voidItemGroup(row.id)
+      setRows(current => current.filter(item => Number(item.id) !== Number(row.id)))
       toast('Item group voided successfully')
       await fetchData()
     } catch (error) {
@@ -109,9 +110,11 @@ export default function ItemGroupsLayout() {
             render: (row: RowDataKey) => {
               if (col.key === 'action') {
                 return (
-                  <div className="flex gap-2">
+                  <div className="flex gap-1">
                     <Button
                       variant="outline"
+                      size="xs"
+                      className="h-6 rounded-sm px-1.5 text-[11px]"
                       disabled={canView}
                       onClick={() => router.push(`/a_dean/itemgroups/view/${row.id}`)}
                     >
@@ -120,6 +123,8 @@ export default function ItemGroupsLayout() {
                     </Button>
                     <Button
                       variant="outline"
+                      size="xs"
+                      className="h-6 rounded-sm px-1.5 text-[11px]"
                       disabled={canEdit}
                       onClick={() => router.push(`/a_dean/itemgroups/edit/${row.id}`)}
                     >
@@ -128,6 +133,8 @@ export default function ItemGroupsLayout() {
                     </Button>
                     <Button
                       variant="destructive"
+                      size="xs"
+                      className="h-6 rounded-sm px-1.5 text-[11px]"
                       disabled={canVoid || voidingId === row.id}
                       onClick={() => handleVoid(row)}
                     >

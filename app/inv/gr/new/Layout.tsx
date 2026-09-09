@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
   CalendarDays,
+  FileSpreadsheet,
+  FileUp,
   Hash,
   List,
   Loader2,
@@ -14,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import readXlsxFile from 'read-excel-file/browser'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -54,6 +58,8 @@ import {
 import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
 import BatchDetailsDialog from './BatchDetailsDialog'
 import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
+import { parseGoodsReceiptLinesImport } from './goodsReceiptLinesImport'
+import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
 import {
   FMS_TYPE_OPTIONS,
   addMonthsToDate,
@@ -100,6 +106,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [batchRules, setBatchRules] = useState<GoodsReceiptBatchRule[]>([])
   const [batchSeries, setBatchSeries] = useState<GoodsReceiptBatchSeries[]>([])
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsReceiptLine['id'] | null>(null)
+  const manufacturingDateInputRef = useRef<HTMLInputElement>(null)
+  const quantityInputRefs = useRef(new Map<string, HTMLInputElement>())
+  const pendingQuantityFocusLineId = useRef<string | null>(null)
+  const goodsReceiptLinesImportInputRef = useRef<HTMLInputElement>(null)
   const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
@@ -107,6 +117,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [importingGoodsReceiptLines, setImportingGoodsReceiptLines] = useState(false)
+  const [goodsReceiptLinesImportIssues, setGoodsReceiptLinesImportIssues] = useState<string[]>([])
 
   useEffect(() => {
     setCollapsed(true)
@@ -248,8 +260,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const currentDefaultWarehouse = receipt.defaultWarehouseId == null
       ? null
       : farmWarehouses.find(warehouse => warehouse.id === receipt.defaultWarehouseId) ?? null
+    // The farm receiving warehouse is an initial fallback only. Once a user
+    // selects a valid warehouse for this receipt, preserve that choice.
     const defaultWarehouse = getDefaultReceivingWarehouse(selectedFarm, farmWarehouses)
-    const nextDefaultWarehouse = defaultWarehouse ?? currentDefaultWarehouse
+    const nextDefaultWarehouse = currentDefaultWarehouse ?? defaultWarehouse
     const nextDefaultWarehouseId = nextDefaultWarehouse?.id ?? null
     const nextFmsType = getFarmFmsType(selectedFarm) || getWarehouseFmsType(nextDefaultWarehouse)
 
@@ -510,6 +524,38 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return itemGroupIdByCode.get(rawGroup.toUpperCase()) ?? null
   }
 
+  const getItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    const rawGroup = String(item?.item_group ?? '').trim()
+    if (!item || !rawGroup) return '-'
+
+    const groupId = getItemGroupId(item)
+    const group = groupId == null
+      ? itemGroups.find(candidate => candidate.code.trim().toUpperCase() === rawGroup.toUpperCase())
+      : itemGroups.find(candidate => candidate.id === groupId)
+
+    return group ? `${group.code} - ${group.name}` : rawGroup
+  }
+
+  const getSubItemGroupDisplay = (line: GoodsReceiptLine) => {
+    const item = getSelectedItem(line)
+    const subItemGroupId = Number(item?.sub_item_group_id ?? 0)
+    if (!item || !subItemGroupId) return 'No sub group'
+
+    const pathIds = [
+      item.sub_item_group_level_1_id,
+      item.sub_item_group_level_2_id,
+      item.sub_item_group_level_3_id,
+    ].filter((value): value is number => value != null)
+    const path = pathIds.flatMap(pathId => {
+      const group = itemGroups.find(candidate => Number(candidate.id) === Number(pathId))
+      return group ? [group] : []
+    })
+    return path.length > 0
+      ? path.map(group => `${group.code} - ${group.name}`).join(' / ')
+      : 'Sub group unavailable'
+  }
+
   const getBatchRuleForLine = (line: GoodsReceiptLine) => {
     const item = getSelectedItem(line)
     if (!item) return null
@@ -554,6 +600,141 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       needsSupplierBatch: Boolean(rule?.require_supplier_batch),
       needsManufacturingDate: true,
       needsExpiryDate: getBatchSeriesForRule(rule)?.include_expiry_date !== false,
+    }
+  }
+
+  const handleGoodsReceiptLinesImport = async (file: File) => {
+    setGoodsReceiptLinesImportIssues([])
+
+    if (!receipt.farmId) {
+      setGoodsReceiptLinesImportIssues(['Select a Farm before importing Goods Receipt item lines.'])
+      if (goodsReceiptLinesImportInputRef.current) goodsReceiptLinesImportInputRef.current.value = ''
+      return
+    }
+
+    setImportingGoodsReceiptLines(true)
+    try {
+      const sheets = await readXlsxFile(file)
+      const itemLinesSheet = sheets.find(sheet => sheet.sheet.trim().toLowerCase() === 'item lines')
+      if (!itemLinesSheet) {
+        setGoodsReceiptLinesImportIssues(['The workbook must contain a worksheet named Item Lines.'])
+        return
+      }
+
+      const parsed = parseGoodsReceiptLinesImport(itemLinesSheet.data)
+      const resolvedLines = parsed.rows.map((row, index) => {
+        const rowNumber = index + 2
+        const normalizedItemCode = row.itemCode.toUpperCase()
+        const item = availableItems.find(candidate =>
+          String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
+        )
+        if (!item) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
+          return null
+        }
+        if (item.id == null) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
+          return null
+        }
+
+        const inventoryUom = item.inventory_uom || ''
+        const unitMeasure = item.unit_measure || ''
+        const selectedGroup = uomGroups.find(group =>
+          group.code.toUpperCase() === inventoryUom.toUpperCase(),
+        )
+        const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
+          option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+        )?.groupCode ?? ''
+        const requestedAltUom = row.altUom.toUpperCase()
+        const selectedConversion = conversions.find(option =>
+          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
+          option.uomCode.toUpperCase() === requestedAltUom,
+        )
+        const altUom = row.altUom
+          ? selectedConversion?.uomCode ?? ''
+          : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+
+        if (!selectedGroupCode) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
+        } else if (row.altUom && !selectedConversion) {
+          parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
+        } else if (!altUom) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
+        }
+
+        const warehouseKey = row.warehouse.trim().toLowerCase()
+        const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
+        const warehouse = warehouseKey
+          ? farmWarehouses.find(candidate => [
+              candidate.whse_code,
+              candidate.whse_name,
+              `${candidate.whse_code} - ${candidate.whse_name}`,
+            ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
+          : defaultWarehouse
+
+        if (row.warehouse && !warehouse) {
+          parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
+        }
+
+        const altQty = Number(row.altQty)
+        const expiryDate = row.expiryDate || (
+          row.manufacturingDate && typeof item.default_expiration_months === 'number'
+            ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
+            : ''
+        )
+        const line: GoodsReceiptLine = {
+          ...newLine(),
+          itemId: item.id,
+          itemCode: item.item_code || '',
+          description: getItemDescription(item),
+          batchNumber: row.batchNumber,
+          supplierBatchNumber: row.supplierBatchNumber,
+          manufacturingDate: row.manufacturingDate,
+          expiryDate,
+          altQty,
+          altUom,
+          baseUom: selectedGroupCode,
+          baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
+          warehouseId: warehouse?.id ?? null,
+          warehouseCode: warehouse?.whse_code ?? '',
+          warehouseName: warehouse?.whse_name ?? '',
+        }
+        const batchRequirement = getBatchRequirement(line)
+        line.batchRuleId = batchRequirement?.rule?.id ?? null
+
+        if (line.baseQty <= 0) {
+          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
+        }
+        if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
+          parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
+        }
+        if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
+          parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
+        }
+        if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
+          parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
+        }
+        if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
+          parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
+        }
+
+        return line
+      })
+
+      if (parsed.issues.length > 0) {
+        setGoodsReceiptLinesImportIssues(parsed.issues)
+        return
+      }
+
+      const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
+      setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
+      toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+    } catch (error) {
+      console.error(error)
+      setGoodsReceiptLinesImportIssues(['The Excel file could not be read. Use the exported Goods Receipt item-lines template.'])
+    } finally {
+      setImportingGoodsReceiptLines(false)
+      if (goodsReceiptLinesImportInputRef.current) goodsReceiptLinesImportInputRef.current.value = ''
     }
   }
 
@@ -731,7 +912,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
     const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
-    updateLine(line.id, {
+    const nextLineChanges: Partial<GoodsReceiptLine> = {
       itemId: item.id,
       itemCode: item.item_code || '',
       description: getItemDescription(item),
@@ -743,7 +924,32 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       altUom: uom,
       baseUom: selectedGroupCode,
       baseQty: calculateBaseQty(line.altQty, uom, selectedGroupCode),
+    }
+    const nextLine = { ...line, ...nextLineChanges }
+    const batchRequirement = getBatchRequirement(nextLine)
+
+    if (!batchRequirement) {
+      updateLine(line.id, nextLineChanges)
+      return
+    }
+
+    flushSync(() => {
+      updateLine(line.id, {
+        ...nextLineChanges,
+        batchRuleId: batchRequirement.rule?.id ?? null,
+      })
+      setActiveBatchLineId(line.id)
     })
+
+    const dateInput = manufacturingDateInputRef.current
+    if (!dateInput) return
+
+    dateInput.focus()
+    try {
+      dateInput.showPicker()
+    } catch {
+      dateInput.focus()
+    }
   }
 
   const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
@@ -803,7 +1009,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   const canEditDraft = receipt.status === 'Draft'
-  const canPostDocument = isPostMode && receipt.status === 'Draft'
+  const canPostDocument = receipt.status === 'Draft'
 
   const handleSave = async (targetStatus: 'Draft' | 'Posted') => {
     const completedLines = receipt.lines.filter(line => line.itemId)
@@ -821,19 +1027,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    if (!receipt.vendor.trim()) {
+    if (posting && !receipt.vendor.trim()) {
       toast('Please enter a vendor.')
       return
     }
-    if (!receipt.drReference.trim()) {
+    if (posting && !receipt.drReference.trim()) {
       toast('Please enter a DR Reference.')
       return
     }
-    if (!receipt.fmsType) {
+    if (posting && !receipt.fmsType) {
       toast('Please select an FMS type.')
       return
     }
-    if (!receipt.farmId) {
+    if (posting && !receipt.farmId) {
       toast('Please select a farm.')
       return
     }
@@ -859,7 +1065,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         (requirement.needsExpiryDate && !line.expiryDate)
     })
 
-    if (missingBatchLine) {
+    if (posting && missingBatchLine) {
       toast(`Please enter batch details for ${missingBatchLine.itemCode}.`)
       return
     }
@@ -916,6 +1122,26 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           ? 'Waiting for dates'
           : 'Waiting for MFG date'
 
+  const closeBatchDialog = () => {
+    pendingQuantityFocusLineId.current = activeBatchLine?.batchNumber.trim()
+      ? String(activeBatchLine.id)
+      : null
+    setActiveBatchLineId(null)
+  }
+
+  const focusQuantityAfterBatchClose = () => {
+    const lineId = pendingQuantityFocusLineId.current
+    pendingQuantityFocusLineId.current = null
+    if (!lineId) return false
+
+    const quantityInput = quantityInputRefs.current.get(lineId)
+    if (!quantityInput) return false
+
+    quantityInput.focus()
+    quantityInput.select()
+    return true
+  }
+
   return (
     <main className="min-h-[calc(100vh-80rem)]">
       <div className="mx-4 mt-4 flex items-center justify-between gap-3">
@@ -932,7 +1158,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         </Button>
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">GR No.</label>
@@ -967,18 +1193,19 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Farm</label>
-            <SearchableCombobox
-              items={farmOptions}
-              value={receipt.farmId == null ? '' : String(receipt.farmId)}
-              onValueChange={selectFarm}
-              showCode={false}
-              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
-              className="w-full"
-            />
-            {!loadingReferences && farms.length === 0 && (
-              <p className="text-xs text-stone-500">No assigned farms available.</p>
-            )}
+            <label className="text-sm font-semibold">FMS Type</label>
+            <select
+              value={receipt.fmsType}
+              disabled
+              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
+            >
+              <option value="">Select FMS type...</option>
+              {FMS_TYPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
@@ -992,6 +1219,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 className="pl-9"
               />
             </label>
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-sm font-semibold">Farm</label>
+            <SearchableCombobox
+              items={farmOptions}
+              value={receipt.farmId == null ? '' : String(receipt.farmId)}
+              onValueChange={selectFarm}
+              showCode={false}
+              placeholder={loadingReferences ? 'Loading farms...' : 'Select farm...'}
+              className="w-full"
+            />
+            {!loadingReferences && farms.length === 0 && (
+              <p className="text-xs text-stone-500">No assigned farms available.</p>
+            )}
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
@@ -1019,22 +1261,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
             )}
           </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
-            <label className="text-sm font-semibold">FMS Type</label>
-            <select
-              value={receipt.fmsType}
-              disabled
-              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
-            >
-              <option value="">Select FMS type...</option>
-              {FMS_TYPE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="m-0 border-t p-0">
@@ -1042,6 +1268,52 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             title="Receive Item Lines"
             className="rounded-none border-0 shadow-none"
             description={`${receipt.lines.length} ${receipt.lines.length === 1 ? 'line' : 'lines'}`}
+            actions={(
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!receipt.farmId}
+                  title={!receipt.farmId ? 'Select a Farm before exporting the validated template.' : undefined}
+                  onClick={() => {
+                    void exportGoodsReceiptLinesTemplate({
+                      itemCodes: availableItems.map(item => item.item_code || ''),
+                      uomCodes: conversions.map(conversion => conversion.uomCode),
+                      warehouses: farmWarehouses.map(warehouse =>
+                        warehouse.whse_name
+                          ? `${warehouse.whse_code} - ${warehouse.whse_name}`
+                          : String(warehouse.whse_code ?? ''),
+                      ),
+                    }).catch(error => {
+                      console.error(error)
+                      toast.error('Unable to export the Goods Receipt item-lines template.')
+                    })
+                  }}
+                >
+                  <FileSpreadsheet className="size-4" />
+                  Export Template
+                </Button>
+                <input
+                  ref={goodsReceiptLinesImportInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    if (file) void handleGoodsReceiptLinesImport(file)
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDraft || importingGoodsReceiptLines}
+                  onClick={() => goodsReceiptLinesImportInputRef.current?.click()}
+                >
+                  {importingGoodsReceiptLines ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
+                  {importingGoodsReceiptLines ? 'Importing...' : 'Import Excel'}
+                </Button>
+              </div>
+            )}
             emptyState={receipt.lines.length === 0 && (
               <div className="border-t px-4 py-10 text-center">
                 <p className="text-sm font-medium text-foreground">No item lines added</p>
@@ -1073,18 +1345,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
+              <table className="w-full min-w-[1480px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
                 <thead>
                   <tr>
-                    <th className="w-12 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">#</th>
-                    <th className="w-80 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Item Code &amp; Description</th>
-                    <th className="w-72 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Batch</th>
-                    <th className="w-44 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Base UOM Group</th>
-                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt Qty</th>
-                    <th className="w-28 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Alt UoM</th>
-                    <th className="w-52 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Conversion UoM</th>
-                    <th className="w-48 border border-slate-300 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">Warehouse</th>
-                    <th className="w-20 border border-slate-300 bg-slate-50 px-2 py-2 text-center font-medium text-slate-700">Action</th>
+                    <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
+                    <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
+                    <th className="w-52 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Batch</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Base UOM Group</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt Qty</th>
+                    <th className="w-24 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Alt UoM</th>
+                    <th className="w-40 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Conversion UoM</th>
+                    <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Warehouse</th>
+                    <th className="w-14 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1092,9 +1366,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     const batchRequirement = getBatchRequirement(line)
 
                     return (
-                      <tr key={line.id} className="even:bg-white odd:bg-emerald-50/40">
-                        <td className="border border-slate-200 bg-slate-50 p-1 text-center align-middle text-slate-600">{index + 1}</td>
-                        <td className="border border-slate-200 p-1 align-middle">
+                      <tr key={line.id} className="even:bg-card odd:bg-muted/50">
+                        <td className="border border-border bg-muted p-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={itemDropdownOptions}
                             codeLabel="item_code"
@@ -1105,21 +1379,31 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             onChange={(value) => selectItem(line, value)}
                           />
                         </td>
-                        <td className="border border-slate-200 p-1 align-top">
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getItemGroupDisplay(line)}>
+                            {getItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border px-1.5 py-1 align-middle text-muted-foreground">
+                          <span className="block truncate" title={getSubItemGroupDisplay(line)}>
+                            {getSubItemGroupDisplay(line)}
+                          </span>
+                        </td>
+                        <td className="border border-border p-1 align-top">
                           {batchRequirement ? (
                             <button
                               type="button"
                               onClick={() => openBatchDialog(line)}
-                              className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-white px-3 py-2 text-left text-sm shadow-none transition hover:border-stone-500 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-200"
+                              className="flex min-h-7 w-full items-center justify-between gap-1 rounded-none border-0 bg-background px-1.5 py-1 text-left text-xs shadow-none transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring/20"
                             >
                               <span className="min-w-0">
-                                <span className="flex items-center gap-2 font-medium text-stone-900">
-                                  <PackageCheck className="size-4 shrink-0 text-stone-500" />
+                                <span className="flex items-center gap-2 font-medium text-foreground">
+                                  <PackageCheck className="size-4 shrink-0 text-muted-foreground" />
                                   <span className="truncate">
                                     {line.batchNumber || 'Batch details'}
                                   </span>
                                 </span>
-                                <span className="mt-1 flex flex-wrap gap-1 text-xs text-stone-500">
+                                <span className="flex flex-wrap gap-1 text-[10px] leading-tight text-muted-foreground">
                                   {line.manufacturingDate && <span>MFG {line.manufacturingDate}</span>}
                                   {line.expiryDate && <span>EXP {line.expiryDate}</span>}
                                   {(!line.manufacturingDate || (batchRequirement.needsExpiryDate && !line.expiryDate)) && (
@@ -1127,13 +1411,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                   )}
                                 </span>
                               </span>
-                              <Hash className="size-4 shrink-0 text-stone-400" />
+                              <Hash className="size-4 shrink-0 text-muted-foreground" />
                             </button>
                           ) : (
-                            <span className="inline-flex h-9 items-center text-stone-400">Not required</span>
+                            <span className="inline-flex h-7 items-center px-1 text-muted-foreground">Not required</span>
                           )}
                         </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <select
                           value={line.baseUom}
                           disabled
@@ -1152,7 +1436,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, groupCode),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-stone-300 bg-stone-100 px-2 text-sm text-stone-600 outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
+                          className="h-7 w-full rounded-none border-0 bg-muted px-1.5 text-xs text-muted-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-100"
                         >
                           <option value="">Select UoM group</option>
                           {uomGroups.map(group => (
@@ -1162,8 +1446,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <Input
+                          ref={element => {
+                            const lineId = String(line.id)
+                            if (element) quantityInputRefs.current.set(lineId, element)
+                            else quantityInputRefs.current.delete(lineId)
+                          }}
                           type="number"
                           min="0"
                           step="any"
@@ -1176,10 +1465,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               line.baseUom,
                             ),
                           })}
-                          className="border-stone-300 bg-white shadow-none focus-visible:ring-stone-200"
+                          className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/20"
                         />
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <select
                           value={line.altUom}
                           disabled={!line.baseUom}
@@ -1190,7 +1479,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
                             })
                           }}
-                          className="h-9 w-full rounded-md border border-stone-300 bg-white px-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60"
+                          className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
                         >
                           <option value="">
                             {line.baseUom ? 'Select Alt UoM' : 'Select group first'}
@@ -1205,16 +1494,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           ))}
                         </select>
                       </td>
-                      <td className="border border-slate-200 p-2 align-middle text-stone-800">
+                      <td className="border border-border px-1.5 py-1 align-middle text-foreground">
                         {line.baseUom && line.altUom ? (
                           <div className="whitespace-nowrap">
                             <span className="font-medium tabular-nums">
                               {line.baseQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
                             </span>{' '}
-                            <span className="text-stone-600">
+                            <span className="text-muted-foreground">
                               {getSelectedGroup(line.baseUom)?.baseUomCode}
                             </span>
-                            <div className="text-xs text-stone-500">
+                            <div className="text-[10px] leading-tight text-muted-foreground">
                               {line.altQty.toLocaleString('en-PH', { maximumFractionDigits: 6 })}{' '}
                               {line.altUom} ×{' '}
                               {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(
@@ -1224,10 +1513,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             </div>
                           </div>
                         ) : (
-                          <span className="text-stone-400">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="border border-slate-200 p-1 align-middle">
+                      <td className="border border-border p-1 align-middle">
                         <SearchableDropdown
                           list={farmWarehouses}
                           codeLabel="whse_code"
@@ -1238,14 +1527,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           onChange={(value) => selectWarehouse(line.id, value)}
                         />
                       </td>
-                      <td className="border border-slate-200 p-1 text-center align-middle">
+                      <td className="border border-border p-1 text-center align-middle">
                         <button
                           type="button"
                           onClick={() => setReceipt(current => current ? {
                             ...current,
                             lines: current.lines.filter(candidate => candidate.id !== line.id),
                           } : current)}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                          className="inline-flex size-7 items-center justify-center rounded-none text-destructive transition hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive/20"
                           aria-label={`Delete line ${index + 1}`}
                         >
                           <Trash2 className="size-4" />
@@ -1257,11 +1546,20 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </tbody>
               </table>
           </FormTable>
+          {goodsReceiptLinesImportIssues.length > 0 && (
+            <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="font-semibold">Goods Receipt item-lines import was not applied.</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {goodsReceiptLinesImportIssues.map((issue, index) => <li key={`${index}-${issue}`}>{issue}</li>)}
+              </ul>
+            </div>
+          )}
 
           <BatchDetailsDialog
             open={Boolean(activeBatchLine)}
             itemCode={activeBatchLine?.itemCode}
-            onClose={() => setActiveBatchLineId(null)}
+            onClose={closeBatchDialog}
+            onCloseAutoFocus={focusQuantityAfterBatchClose}
           >
 
               {activeBatchLine && activeBatchRequirement && (
@@ -1321,6 +1619,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         <div className="space-y-2">
                           <Label htmlFor="gr-manufacturing-date" required>Manufacturing Date</Label>
                           <Input
+                            ref={manufacturingDateInputRef}
                             id="gr-manufacturing-date"
                             type="date"
                             value={activeBatchLine.manufacturingDate}

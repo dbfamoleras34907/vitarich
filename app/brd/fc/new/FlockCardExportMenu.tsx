@@ -40,14 +40,15 @@ const exportHeaders = [
   "Total",
   "DOC Batch",
   "Cumulative",
-  "Feed Intake Daily kg/Flock",
+  "Feeds Consumption Actual FC",
+  "Feeds Consumption Feed Type",
   "Feed Intake Daily per Bird g/b",
-  "Feed Intake Guideline g/b/d",
+  "Feeds Consumption Standard FC",
   "Feed Intake Feeds Batch",
   "Water Intake Daily L/Flock",
   "Water Intake Daily per Bird",
-  "Body Weight g",
-  "Body Weight Guideline g",
+  "Average Live Weight Actual ALW",
+  "Average Live Weight Standard ALW",
   "Temp AM C",
   "Temp PM C",
   "Humidity Min %",
@@ -56,12 +57,20 @@ const exportHeaders = [
   "Skin Color B (yellow)",
   "Skin Color A (red)",
   "Skin Color L (luminosity)",
-  "Spacer 1",
-  "Spacer 2",
-  "Spacer 3",
+  "Average Daily Gain Actual ADG",
+  "Average Daily Gain Standard ADG",
   "Spacer 4",
   "Water Intake Guideline ml/b/d",
 ];
+
+const exportColumnIndexes = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 26, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+  19, 20, 21, 22, 23, 24, 25, 27, 28,
+];
+
+function getExportValues(row: ExportRow) {
+  return [row.age, ...exportColumnIndexes.map(columnIndex => row.values[columnIndex] ?? "")];
+}
 
 function escapeTabDelimitedValue(value: unknown) {
   return String(value ?? "").replace(/\r?\n/g, " ").replace(/\t/g, " ");
@@ -83,7 +92,7 @@ function getFileSafeName(value: string) {
 function buildTabDelimitedText(rows: ExportRow[]) {
   return [
     exportHeaders.map(escapeTabDelimitedValue).join("\t"),
-    ...rows.map(row => [row.age, ...row.values].map(escapeTabDelimitedValue).join("\t")),
+    ...rows.map(row => getExportValues(row).map(escapeTabDelimitedValue).join("\t")),
   ].join("\n");
 }
 
@@ -133,7 +142,7 @@ function buildHtmlTable({
       <tr>${exportHeaders.map(header => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
     </thead>
     <tbody>
-      ${rows.map(row => `<tr>${[row.age, ...row.values].map(value => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}
+      ${rows.map(row => `<tr>${getExportValues(row).map(value => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}
     </tbody>
   </table>
 </body>

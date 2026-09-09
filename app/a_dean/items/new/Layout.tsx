@@ -29,7 +29,8 @@ import { Textarea } from '@/components/ui/textarea'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { usePermission } from '@/hooks/usePermission'
 import { addItem, getItemUomGroups, getNextItemCode, ItemInsert, ItemUomGroup } from '../api'
-import { getItemGroups, ItemGroup } from '../../itemgroups/api'
+import { getItemGroups, getSubItemGroups, ItemGroup } from '../../itemgroups/api'
+import SubItemGroupCascade from '../SubItemGroupCascade'
 
 type ItemForm = {
   item_name: string
@@ -37,6 +38,7 @@ type ItemForm = {
   barcode: string
   uom_group_code: string
   item_group: string
+  sub_item_group_id: string
   fms_group: string
   is_inventory_item: boolean
   is_sales_item: boolean
@@ -62,6 +64,7 @@ const emptyForm: ItemForm = {
   barcode: '',
   uom_group_code: '',
   item_group: '',
+  sub_item_group_id: '',
   fms_group: '',
   is_inventory_item: true,
   is_sales_item: true,
@@ -100,13 +103,21 @@ const optionalQuantityValue = (value: string) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
-const toPayload = (form: ItemForm, selectedUomGroup?: ItemUomGroup): ItemInsert => ({
+const toPayload = (
+  form: ItemForm,
+  selectedSubItemGroupIds: string[],
+  selectedUomGroup?: ItemUomGroup,
+): ItemInsert => ({
   item_name: form.item_name,
   description: form.description,
   barcode: form.barcode,
   unit_measure: selectedUomGroup?.baseUomCode || form.uom_group_code,
   inventory_uom: form.uom_group_code,
   item_group: form.item_group,
+  sub_item_group_id: form.sub_item_group_id ? Number(form.sub_item_group_id) : null,
+  sub_item_group_level_1_id: selectedSubItemGroupIds[0] ? Number(selectedSubItemGroupIds[0]) : null,
+  sub_item_group_level_2_id: selectedSubItemGroupIds[1] ? Number(selectedSubItemGroupIds[1]) : null,
+  sub_item_group_level_3_id: selectedSubItemGroupIds[2] ? Number(selectedSubItemGroupIds[2]) : null,
   fms_group: form.fms_group,
   group: form.item_group,
   is_inventory_item: form.is_inventory_item,
@@ -131,8 +142,10 @@ export default function AddItemPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([])
+  const [subItemGroups, setSubItemGroups] = useState<ItemGroup[]>([])
   const [uomGroups, setUomGroups] = useState<ItemUomGroup[]>([])
   const [form, setForm] = useState<ItemForm>(emptyForm)
+  const [selectedSubItemGroupIds, setSelectedSubItemGroupIds] = useState<string[]>([])
   const [nextItemCode, setNextItemCode] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingPayload, setPendingPayload] = useState<ItemInsert | null>(null)
@@ -159,15 +172,18 @@ export default function AddItemPage() {
 
     const loadItemGroups = async () => {
       try {
-        const [groups, uomGroupData] = await Promise.all([
+        const [groups, subGroups, uomGroupData] = await Promise.all([
           getItemGroups(),
+          getSubItemGroups(),
           getItemUomGroups(),
         ])
         setItemGroups((groups || []) as ItemGroup[])
+        setSubItemGroups((subGroups || []) as ItemGroup[])
         setUomGroups(uomGroupData)
       } catch (error) {
         console.error('Error loading item references:', error)
         setItemGroups([])
+        setSubItemGroups([])
         setUomGroups([])
       }
     }
@@ -248,7 +264,7 @@ export default function AddItemPage() {
   function prepareSave(mode: SaveMode = 'createAnother') {
     if (!validateForm()) return
 
-    setPendingPayload(toPayload(form, selectedUomGroup))
+    setPendingPayload(toPayload(form, selectedSubItemGroupIds, selectedUomGroup))
     setPendingSaveMode(mode)
     setConfirmOpen(true)
   }
@@ -367,10 +383,10 @@ export default function AddItemPage() {
               </div>
             </Field>
             <Field label="Item Name" required>
-              <Input name="item_name" value={form.item_name} onChange={handleChange} placeholder="Feeds" />
+              <Input name="item_name" value={form.item_name} onChange={handleChange} />
             </Field>
             <Field label="Barcode">
-              <Input name="barcode" value={form.barcode} onChange={handleChange} placeholder="Optional" />
+              <Input name="barcode" value={form.barcode} onChange={handleChange} />
             </Field>
             <Field label="Item Group" required hint={selectedGroup?.name}>
               <SearchableDropdown
@@ -378,9 +394,25 @@ export default function AddItemPage() {
                 nameLabel="name"
                 list={itemGroups}
                 value={form.item_group}
-                onChange={value => updateForm('item_group', value)}
+                onChange={value => {
+                  setForm(current => ({
+                    ...current,
+                    item_group: value,
+                    sub_item_group_id: '',
+                  }))
+                  setSelectedSubItemGroupIds([])
+                }}
               />
             </Field>
+            <SubItemGroupCascade
+              groups={subItemGroups}
+              rootGroupId={selectedGroup?.id}
+              selectedIds={selectedSubItemGroupIds}
+              onChange={selectedIds => {
+                setSelectedSubItemGroupIds(selectedIds)
+                updateForm('sub_item_group_id', selectedIds.at(-1) ?? '')
+              }}
+            />
             <Field label="FMS Group" required>
               <SelectNative value={form.fms_group} onChange={value => updateForm('fms_group', value)}>
                 <option value="">Select FMS group</option>
@@ -403,7 +435,7 @@ export default function AddItemPage() {
 
           <div className="mt-4">
             <Field label="Description">
-              <Textarea name="description" value={form.description} onChange={handleChange} placeholder="Optional item description" />
+              <Textarea name="description" value={form.description} onChange={handleChange} />
             </Field>
           </div>
         </section>
@@ -447,7 +479,6 @@ export default function AddItemPage() {
                     step="any"
                     value={form.min_on_hand}
                     onChange={event => updateForm('min_on_hand', event.target.value)}
-                    placeholder="0"
                   />
                 </Field>
                 <Field label="Max On Hand">
@@ -457,7 +488,6 @@ export default function AddItemPage() {
                     step="any"
                     value={form.max_on_hand}
                     onChange={event => updateForm('max_on_hand', event.target.value)}
-                    placeholder="0"
                   />
                 </Field>
               </div>
@@ -469,7 +499,6 @@ export default function AddItemPage() {
                   step={1}
                   value={form.default_expiration_months}
                   onChange={event => updateForm('default_expiration_months', event.target.value)}
-                  placeholder="0"
                 />
               </Field>
             </div>

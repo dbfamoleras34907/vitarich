@@ -5,10 +5,12 @@ import { toast } from 'sonner'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
 import { GoodsIssueFlockCardInfo } from './api'
 import { UomConversionOption, UomGroupOption } from '@/app/inv/gr/new/api'
+import styles from './DeliveryIssueLinesTable.module.css'
 
 type LineFlockCardState = {
   loading: boolean
@@ -25,18 +27,27 @@ type DeliveryIssueLinesTableProps = {
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
   lockCycleCloseout?: boolean
+  allowLockedRowDelete?: boolean
   showLineRemarks?: boolean
   quantityLabel?: string
+  bodyWeightLabel?: string
+  showTsDrNumber?: boolean
+  excelAppearance?: boolean
   showQuantityAllocationWarnings?: boolean
   showOnHandQuantity?: boolean
+  showRemainingOnHand?: boolean
   showVariance?: boolean
   lockedQuantityEditable?: boolean
+  allowDuplicateBuildings?: boolean
+  showTransportFields?: boolean
+  getAllocationGroupKey: (line: GoodsIssueLine) => string
   getItemsForLine: (line: GoodsIssueLine) => Items[]
   itemNeedsBatch: (line: GoodsIssueLine) => boolean
   lineHasPlacementBatchOptions: (line: GoodsIssueLine) => boolean
   batchOptionKey: (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWarehouseCode'>) => string
   getBatchOptionsForLine: (line: GoodsIssueLine) => GoodsIssueOnHandBatch[]
   getTotalBatchOnHandForLine: (line: GoodsIssueLine) => number
+  getRemainingOnHandForLine: (line: GoodsIssueLine) => number
   canOpenBatchSelector: (line: Pick<GoodsIssueLine, 'id' | 'itemCode' | 'fromWarehouseCode'>) => boolean
   selectLineWarehouse: (line: GoodsIssueLine, value: string) => Promise<void>
   selectItem: (line: GoodsIssueLine, value: string) => Promise<void>
@@ -62,18 +73,27 @@ export default function DeliveryIssueLinesTable({
   loadingLinePlacementBatches,
   activeDocumentIsPosted,
   lockCycleCloseout = false,
+  allowLockedRowDelete = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
+  bodyWeightLabel = 'Weight g',
+  showTsDrNumber = false,
+  excelAppearance = false,
   showQuantityAllocationWarnings = true,
   showOnHandQuantity = true,
+  showRemainingOnHand = false,
   showVariance = false,
   lockedQuantityEditable = false,
+  allowDuplicateBuildings = false,
+  showTransportFields = false,
+  getAllocationGroupKey,
   getItemsForLine,
   itemNeedsBatch,
   lineHasPlacementBatchOptions,
   batchOptionKey,
   getBatchOptionsForLine,
   getTotalBatchOnHandForLine,
+  getRemainingOnHandForLine,
   canOpenBatchSelector,
   selectLineWarehouse,
   selectItem,
@@ -89,48 +109,86 @@ export default function DeliveryIssueLinesTable({
   formatQuantity,
 }: DeliveryIssueLinesTableProps) {
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+  const requiredMark = showTransportFields ? <span className="text-red-600">*</span> : null
+  const excelColumnWidths = [
+    38, 180, 140, 84, 60, 80, 220, 110,
+    ...(showVariance ? [110] : []),
+    220, 80,
+    ...(showTsDrNumber ? [120] : []),
+    ...(showOnHandQuantity ? [120] : []),
+    ...(showTransportFields ? [180, 130, 320, 100] : []),
+    ...(showLineRemarks ? [180] : []),
+    38,
+  ]
+
+  const updateAllocationGroup = (allocationGroupKey: string, changes: Partial<GoodsIssueLine>) => {
+    setIssue(current => current ? {
+      ...current,
+      lines: current.lines.map(candidate =>
+        getAllocationGroupKey(candidate) === allocationGroupKey
+          ? { ...candidate, ...changes }
+          : candidate,
+      ),
+    } : current)
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className={`${showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
+    <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'}>
+      <table
+        aria-label="Issue Lines"
+        className={`${showTransportFields ? (showTsDrNumber ? 'min-w-[2660px]' : 'min-w-[2500px]') : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}
+        style={excelAppearance ? { minWidth: excelColumnWidths.reduce((sum, width) => sum + width, 0) } : undefined}
+      >
+        {excelAppearance && <colgroup>
+          {excelColumnWidths.map((width, index) => <col key={index} style={{ width }} />)}
+        </colgroup>}
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
-            <th className="w-[20%] border-r px-3 py-2">{warehouseLabel}</th>
+            <th className="w-[240px] border-r px-3 py-2">{warehouseLabel} {requiredMark}</th>
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
             <th className="w-[10%] border-r px-3 py-2">Cycle Count</th>
             <th className="w-[7%] border-r px-3 py-2">Age</th>
-            <th className="w-[8%] border-r px-3 py-2">Weight g</th>
-            <th className="w-[16%] border-r px-3 py-2">Item</th>
-            <th className="w-[11%] border-r px-3 py-2">{quantityLabel}</th>
+            <th className="w-[8%] border-r px-3 py-2">{bodyWeightLabel}</th>
+            <th className="w-[16%] border-r px-3 py-2">Item {requiredMark}</th>
+            <th className="w-[11%] border-r px-3 py-2">{quantityLabel} {requiredMark}</th>
             {showVariance && <th className="w-[11%] border-r px-3 py-2">Variance</th>}
-            <th className="w-[16%] border-r px-3 py-2">Batch</th>
-            <th className="w-[10%] border-r px-3 py-2">UOM</th>
-            {showOnHandQuantity && <th className="w-[11%] border-r px-3 py-2">{activeDocumentIsPosted ? 'Used Qty' : 'On Hand Qty'}</th>}
+            <th className="w-[16%] border-r px-3 py-2">Batch {requiredMark}</th>
+            <th className="w-[10%] border-r px-3 py-2">UOM {requiredMark}</th>
+            {showTsDrNumber && <th className="w-[160px] border-r px-3 py-2">TS/DR #</th>}
+            {showOnHandQuantity && (
+              <th className="w-[11%] border-r px-3 py-2">
+                {activeDocumentIsPosted ? 'Used Qty' : showRemainingOnHand ? 'Remaining On Hand' : 'On Hand Qty'}
+              </th>
+            )}
+            {showTransportFields && <>
+              <th className="w-[190px] border-r px-3 py-2">Hauler Name {requiredMark}</th>
+              <th className="w-[150px] border-r px-3 py-2">Plate Number {requiredMark}</th>
+              <th className="w-[360px] border-r px-3 py-2">Destination {requiredMark}</th>
+              <th className="w-[140px] border-r px-3 py-2">Truck Seal {requiredMark}</th>
+            </>}
             {showLineRemarks && <th className="w-[16%] border-r px-3 py-2">Remarks</th>}
             <th className="w-[54px] px-2 py-2" />
           </tr>
         </thead>
         <tbody>
           {Array.from(issue.lines.reduce((groups, candidate) => {
-            const groupKey = candidate.fromWarehouseCode && candidate.itemCode
-              ? `${candidate.fromWarehouseCode.trim().toUpperCase()}::${candidate.itemCode.trim().toUpperCase()}`
-              : `line::${String(candidate.id)}`
+            const groupKey = getAllocationGroupKey(candidate)
             const group = groups.get(groupKey) ?? []
             group.push(candidate)
             groups.set(groupKey, group)
             return groups
           }, new Map<string, GoodsIssueLine[]>()).values()).map((allocationLines, index) => {
             const line = allocationLines[0]
-            const allocationLineIds = new Set(allocationLines.map(allocation => allocation.id))
+            const allocationGroupKey = getAllocationGroupKey(line)
             const selectedBuildingCodes = new Set(
               issue.lines
-                .filter(candidate => !allocationLineIds.has(candidate.id) && candidate.fromWarehouseCode)
+                .filter(candidate => getAllocationGroupKey(candidate) !== allocationGroupKey && candidate.fromWarehouseCode)
                 .map(candidate => candidate.fromWarehouseCode),
             )
             const availableBuildings = farmWarehouses.filter(warehouse => {
               const warehouseCode = warehouse.whse_code ?? ''
-              return warehouseCode === line.fromWarehouseCode || !selectedBuildingCodes.has(warehouseCode)
+              return allowDuplicateBuildings || warehouseCode === line.fromWarehouseCode || !selectedBuildingCodes.has(warehouseCode)
             })
             const needsBatch = itemNeedsBatch(line) || lineHasPlacementBatchOptions(line)
             const batchKey = batchOptionKey(line)
@@ -150,6 +208,7 @@ export default function DeliveryIssueLinesTable({
             const totalAvailableQty = activeDocumentIsPosted && Number(line.batchTotalQty ?? 0) > 0
               ? Number(line.batchTotalQty)
               : getTotalBatchOnHandForLine(line)
+            const remainingOnHandQty = getRemainingOnHandForLine(line)
             const baseQtyPerAltQty = calculateBaseQty(1, line.altUom, line.baseUom)
             const maxTransferQty = baseQtyPerAltQty > 0 ? totalAvailableQty / baseQtyPerAltQty : totalAvailableQty
             const cleanUpBaseQty = totalTransferQty * baseQtyPerAltQty
@@ -164,7 +223,6 @@ export default function DeliveryIssueLinesTable({
               .filter(allocation => allocation.batchNumber)
               .map(allocation => `${allocation.batchNumber} (${formatQuantity(allocation.altQty)})`)
               .join(', ')
-
             return (
               <tr key={line.id} className="border-t odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
                 <td className="border-r p-0 text-center align-middle text-stone-500">
@@ -208,7 +266,7 @@ export default function DeliveryIssueLinesTable({
                 </td>
                 <td className="border-r p-1 align-middle">
                   <Input
-                    value={flockState?.info ? String(flockState.info.age) : ''}
+                    value={flockState?.info?.age != null ? String(flockState.info.age) : ''}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />
@@ -366,13 +424,94 @@ export default function DeliveryIssueLinesTable({
                     ))}
                   </select>
                 </td>
+                {showTsDrNumber && (
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={line.tsDrNo ?? ''}
+                      placeholder="Enter TS/DR #"
+                      readOnly={activeDocumentIsPosted}
+                      onChange={event => updateAllocationGroup(allocationGroupKey, { tsDrNo: event.target.value })}
+                      className="h-8 rounded-sm shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                )}
                 {showOnHandQuantity && <td className="border-r p-1 align-middle">
                   <Input
-                    value={`${formatQuantity(activeDocumentIsPosted ? allocationLines.reduce((total, allocation) => total + allocation.baseQty, 0) : totalAvailableQty)} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}`.trim()}
+                    value={`${formatQuantity(
+                      activeDocumentIsPosted
+                        ? allocationLines.reduce((total, allocation) => total + allocation.baseQty, 0)
+                        : showRemainingOnHand
+                          ? remainingOnHandQty
+                          : totalAvailableQty,
+                    )} ${getSelectedGroup(line.baseUom)?.baseUomCode ?? ''}`.trim()}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right text-stone-800 shadow-none focus-visible:ring-1"
                   />
                 </td>}
+                {showTransportFields && <>
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={line.haulerName ?? ''}
+                      placeholder="Enter hauler name"
+                      required
+                      readOnly={activeDocumentIsPosted}
+                      onChange={event => updateAllocationGroup(allocationGroupKey, { haulerName: event.target.value })}
+                      className="h-8 rounded-sm shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      value={line.plateNumber ?? ''}
+                      placeholder="Enter plate number"
+                      required
+                      readOnly={activeDocumentIsPosted}
+                      onChange={event => updateAllocationGroup(allocationGroupKey, { plateNumber: event.target.value })}
+                      className="h-8 rounded-sm shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                  <td className="border-r p-1 align-middle">
+                    <div className="flex items-center gap-1">
+                      <Select
+                        value={line.destination ?? ''}
+                        disabled={activeDocumentIsPosted}
+                        onValueChange={destination => updateAllocationGroup(allocationGroupKey, { destination })}
+                      >
+                        <SelectTrigger className="h-8 w-[135px] shrink-0 rounded-sm" aria-required="true">
+                          <SelectValue placeholder="Select destination" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Dressing Plant">Dressing Plant</SelectItem>
+                          <SelectItem value="Live Sales">Live Sales</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        value={line.liveSalesCustomerName ?? ''}
+                        placeholder={line.destination === 'Live Sales'
+                          ? 'Live Sales Customer Name *'
+                          : line.destination === 'Dressing Plant'
+                            ? 'Dressing Plant Name *'
+                            : 'Destination Details *'}
+                        required
+                        readOnly={activeDocumentIsPosted}
+                        onChange={event => updateAllocationGroup(allocationGroupKey, { liveSalesCustomerName: event.target.value })}
+                        className="h-8 min-w-0 rounded-sm shadow-none focus-visible:ring-1"
+                      />
+                    </div>
+                  </td>
+                  <td className="border-r p-1 align-middle">
+                    <Input
+                      type="number"
+                      value={line.truckSeal ?? ''}
+                      placeholder="Enter truck seal"
+                      required
+                      readOnly={activeDocumentIsPosted}
+                      onChange={event => updateAllocationGroup(allocationGroupKey, {
+                        truckSeal: event.target.value === '' ? null : Number(event.target.value),
+                      })}
+                      className="h-8 rounded-sm text-right shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </>}
                 {showLineRemarks && (
                   <td className="border-r p-1 align-middle">
                     <Input
@@ -384,7 +523,9 @@ export default function DeliveryIssueLinesTable({
                         setIssue(current => current ? {
                           ...current,
                           lines: current.lines.map(candidate =>
-                            allocationLineIds.has(candidate.id) ? { ...candidate, lineRemarks } : candidate,
+                            getAllocationGroupKey(candidate) === allocationGroupKey
+                              ? { ...candidate, lineRemarks }
+                              : candidate,
                           ),
                         } : current)
                       }}
@@ -405,7 +546,7 @@ export default function DeliveryIssueLinesTable({
                       return { ...current, lines: nextLines.length > 0 ? nextLines : [newLine()] }
                     })}
                     aria-label={`Delete row ${index + 1}`}
-                    disabled={lockCycleCloseout}
+                    disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
                   >
                     <Trash2 className="size-4" />
                   </Button>

@@ -4,6 +4,7 @@ create table if not exists public.doc_rec_settings (
   created_by uuid null,
   updated_at timestamp with time zone null,
   updated_by uuid null,
+  farm_id integer not null references public.farms(id),
   good_doc integer null references public.items(id),
   bad_doc integer null references public.items(id),
   reject_doc integer null references public.items(id),
@@ -13,8 +14,48 @@ create table if not exists public.doc_rec_settings (
 alter table public.doc_rec_settings
   add column if not exists reject_doc integer null references public.items(id);
 
+alter table public.doc_rec_settings
+  add column if not exists farm_id integer;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'doc_rec_settings_farm_id_fkey'
+      and conrelid = 'public.doc_rec_settings'::regclass
+  ) then
+    alter table public.doc_rec_settings
+      add constraint doc_rec_settings_farm_id_fkey
+      foreign key (farm_id) references public.farms(id) not valid;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'doc_rec_settings_farm_required'
+      and conrelid = 'public.doc_rec_settings'::regclass
+  ) then
+    -- Existing global rows remain available for an explicit farm mapping.
+    -- New and updated rows must always carry the authoritative farm id.
+    alter table public.doc_rec_settings
+      add constraint doc_rec_settings_farm_required
+      check (farm_id is not null) not valid;
+  end if;
+end $$;
+
 create index if not exists doc_rec_settings_void_idx
   on public.doc_rec_settings (void);
+
+create index if not exists doc_rec_settings_farm_idx
+  on public.doc_rec_settings (farm_id);
+
+create unique index if not exists doc_rec_settings_active_farm_idx
+  on public.doc_rec_settings (farm_id)
+  where void = '1' and farm_id is not null;
 
 create index if not exists doc_rec_settings_good_doc_idx
   on public.doc_rec_settings (good_doc);

@@ -15,11 +15,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ArrowDown, CalendarIcon, ChevronDown } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { format } from 'date-fns'
-import { getProjects, getTaskList } from '../../projects/api'
+import { getProjectsForTaskSelection } from '../../projects/api'
 import { toast } from 'sonner'
 import { getTaskType } from '../api'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { usePermission } from '@/hooks/usePermission'
 
 
 
@@ -40,14 +41,17 @@ export default function NewTask() {
 
   const subjectRef = useRef<HTMLInputElement | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const [projectsList, setProjectsList] = useState<ComboboxItemType[]>([])
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false)
 
   const [taskTypes, setTaskTypes] = useState<ComboboxItemType[]>([])
 
   const [tasksList, setTasksList] = useState<ComboboxItemType[]>([])
   const [activeUsers, setActiveUsers] = useState<ComboboxItemType[]>([])
-  const [authUser, setauthUser] = useState<ComboboxItemType[]>([])
+  const [authUser, setauthUser] = useState<number | null>(null)
+  const insertDenied = usePermission('/wks/tasks/insert')
   const getRandomColor = () =>
     `#${Math.floor(Math.random() * 16777215)
       .toString(16)
@@ -132,13 +136,13 @@ export default function NewTask() {
         list: taskTypes
       },
 
-      // {
-      //   name: 'parent_task',
-      //   label: 'Parent Task',
-      //   type: 'search',
-      //   multiselect: false,
-      //   list: tasksList
-      // },
+      {
+        name: 'parent_task',
+        label: 'Parent Task',
+        type: 'search',
+        multiselect: false,
+        list: tasksList
+      },
 
       {
         name: 'color',
@@ -176,25 +180,24 @@ export default function NewTask() {
 
     const payload: SavetaskPayload = {
       id: null,
-      project_id: formValues.project_id,
+      project_id: Number(formValues.project_id),
       subject: formValues.subject,
       issue: formValues.issue,
       priority: formValues.priority as
         | "low"
         | "mid"
         | "high",
-      task_type: formValues.task_type,
-      parent_task:
-        formValues.parent_task,
+      task_type: Number(formValues.task_type),
+      parent_task: formValues.parent_task ? Number(formValues.parent_task) : null,
       color: formValues.color,
-      assigned_to: formValues.assigned_to
+      assigned_to: Number(formValues.assigned_to)
     }
 
     // console.log('Prepared payload for saving:', payload)
     // console.log(formValues)
     // return
     try {
-      const id = await savetask(payload)
+      await savetask(payload)
       toast.success('Task saved successfully')
 
       // clear fields depending on save mode
@@ -216,7 +219,7 @@ export default function NewTask() {
           subject: '',
           issue: '',
           priority: null,
-          task_type: null,
+          task_type: taskTypes[0]?.code || null,
           parent_task: null,
           color: '#000000'
         })
@@ -238,33 +241,40 @@ export default function NewTask() {
 
   const getTaskTypesList = async () => {
     const data = await getTaskType()
-    setTaskTypes((data || []).map((t: any) => ({
-      code: t.id,
+    setTaskTypes((data || []).map((t) => ({
+      code: String(t.id),
       name: t.name
     })))
+    if (data[0]?.id) {
+      setFormValues(current => ({
+        ...current,
+        task_type: current.task_type || String(data[0].id),
+      }))
+    }
   }
 
   const getActiveUsers = async () => {
     const data = await getValue("activeUsers")
-    console.log({ data })
     setActiveUsers((data || []).map((u: any) => ({
-      code: u.code,
-      name: u.name
+      code: String(u.code),
+      name: String(u.name)
     })))
   }
 
   const getAuthUser = async () => {
     const data = await getValue("UserInfoAuthSession")
-    console.log({ data })
     setauthUser(data[0].id)
   }
   const getProjectList = async () => {
-    const data = await getProjects()
-    // console.log({ data })
-    setProjectsList((data || []).map((p: any) => ({
-      code: p.id,
-      name: p.project_name
-    })))
+    try {
+      const data = await getProjectsForTaskSelection()
+      setProjectsList((data || []).map((p) => ({
+        code: String(p.id),
+        name: p.project_name
+      })))
+    } catch {
+      toast.error('Unable to refresh projects')
+    }
   }
 
 
@@ -273,8 +283,8 @@ export default function NewTask() {
     const data = await getTaskinNewTaskAPi(formValues.project_id)
 
     setTasksList(
-      (data || []).map((t: any) => ({
-        code: t.id,
+      (data || []).map((t) => ({
+        code: String(t.id),
         name: t.subject
       }))
     )
@@ -317,7 +327,7 @@ export default function NewTask() {
           <ButtonGroup className='border border-white shadow rounded-2xl'>
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || insertDenied}
             >
               {
                 isBatchSaved ? 'Save & Continue' : 'Save'
@@ -331,7 +341,7 @@ export default function NewTask() {
                 <Button
                   type="button"
                   className='w-6'
-                  disabled={isLoading}
+                  disabled={isLoading || insertDenied}
                 >
                   <ChevronDown />
                 </Button>
@@ -352,9 +362,20 @@ export default function NewTask() {
         </div>
 
         <Card className='shadow-none'>
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <div>
+              <h2 className="font-medium">Task Details</h2>
+              <p className="text-xs text-muted-foreground">Start with the essentials. Open more details only when needed.</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => setShowAdvanced(current => !current)}>
+              {showAdvanced ? 'Hide details' : 'More details'}
+            </Button>
+          </div>
           <div className="grid md:grid-cols-2 gap-4 px-4">
 
-            {components.map((e, i) => (
+            {components
+              .filter(e => showAdvanced || !['issue', 'task_type', 'parent_task', 'color'].includes(e.name))
+              .map((e, i) => (
               <div key={i}>
 
                 {e.type !== "search" && (
@@ -377,6 +398,13 @@ export default function NewTask() {
                     value={(formValues as any)[e.name] || ""}
                     onValueChange={(val: any) => handleChange(e.name, val)}
                     className="w-full"
+                    open={e.name === 'project_id' ? projectDropdownOpen : undefined}
+                    onOpenChange={e.name === 'project_id'
+                      ? (open) => {
+                        setProjectDropdownOpen(open)
+                        if (open) void getProjectList()
+                      }
+                      : undefined}
                   />
                 ) : e.type === "textarea" ? (
 

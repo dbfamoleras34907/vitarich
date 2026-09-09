@@ -7,6 +7,7 @@ create table if not exists public.brd_fc_settings (
   farm_id integer not null,
   farm_code text null,
   farm_name text null,
+  feed_group_id bigint not null references public.item_groups(id),
   allow_advance_posting boolean not null default false,
   auto_feed_batch_selection boolean not null default false,
   auto_feed_batch_selection_mode text not null default 'USER_SELECTED',
@@ -25,6 +26,58 @@ alter table public.brd_fc_settings
 
 alter table public.brd_fc_settings
   add column if not exists farm_name text null;
+
+alter table public.brd_fc_settings
+  add column if not exists feed_group_id bigint null;
+
+alter table public.brd_fc_settings
+  drop constraint if exists brd_fc_settings_feed_group_id_fkey;
+
+alter table public.brd_fc_settings
+  add constraint brd_fc_settings_feed_group_id_fkey
+  foreign key (feed_group_id)
+  references public.item_groups (id);
+
+create or replace function public.validate_brd_fc_settings_feed_group()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_father bigint;
+  v_void text;
+begin
+  if new.feed_group_id is null then
+    raise exception 'Feed Group is required.';
+  end if;
+
+  select item_group.father, item_group.void::text
+  into v_father, v_void
+  from public.item_groups item_group
+  where item_group.id = new.feed_group_id;
+
+  if not found then
+    raise exception 'Feed Group % does not exist.', new.feed_group_id;
+  end if;
+
+  if btrim(coalesce(v_void, '0')) <> '1' then
+    raise exception 'Feed Group must be active.';
+  end if;
+
+  if v_father is not null then
+    raise exception 'Feed Group must be an item group, not a sub item group.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists brd_fc_settings_validate_feed_group on public.brd_fc_settings;
+create trigger brd_fc_settings_validate_feed_group
+before insert or update
+on public.brd_fc_settings
+for each row
+execute function public.validate_brd_fc_settings_feed_group();
 
 alter table public.brd_fc_settings
   add column if not exists allow_advance_posting boolean not null default false;
@@ -51,6 +104,11 @@ create index if not exists brd_fc_settings_void_idx
 create index if not exists brd_fc_settings_farm_idx
   on public.brd_fc_settings (farm_id);
 
+create index if not exists brd_fc_settings_feed_group_idx
+  on public.brd_fc_settings (feed_group_id);
+
 create unique index if not exists brd_fc_settings_active_farm_uidx
   on public.brd_fc_settings (farm_id)
   where void = '1';
+
+notify pgrst, 'reload schema';

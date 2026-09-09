@@ -127,9 +127,10 @@ export default function SearchableDropdown<T extends Record<string, unknown>>({
         <PopoverTrigger asChild>
           <TooltipTrigger asChild>
             <Button
+              data-slot="searchable-dropdown-trigger"
               disabled={disabled}
               className={cn(
-                "bg-background text-foreground hover:bg-white/50 h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary disabled:opacity-50",
+                "h-8 w-full justify-start overflow-hidden whitespace-nowrap border border-primary bg-white text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-muted-foreground disabled:opacity-100 dark:bg-input/30 dark:disabled:bg-input/20",
                 triggerClassName,
               )}
             >
