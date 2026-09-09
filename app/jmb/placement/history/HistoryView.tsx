@@ -162,6 +162,11 @@ function buildGrowingRows(
           placement_id: placement.id,
           daterec,
           ...zeroDailyFields,
+          m_body_weight: null,
+          f_body_weight: null,
+          m_uniformity: null,
+          f_uniformity: null,
+          remarks: null,
           male_feedtype_id: null,
           female_feedtype_id: null,
           isactive: true,
@@ -785,7 +790,7 @@ function LayingGrid({
       EggLaying,
       | "tep_collection"
       | "hatching_egg"
-      | "table_egg"
+      | "table_egg_dirty" | "table_egg_misshapen" | "table_egg_off_size" | "table_egg_thin_shell"
       | "classb"
       | "crack"
       | "junior"
@@ -795,11 +800,14 @@ function LayingGrid({
   > = [
     "tep_collection",
     "hatching_egg",
-    "table_egg",
     "classb",
-    "crack",
     "junior",
+    "table_egg_dirty",
+    "table_egg_misshapen",
+    "table_egg_off_size",
+    "table_egg_thin_shell",
     "jumbo",
+    "crack",
     "condemn",
   ];
   const totals = numberFields.map((field) =>
@@ -813,11 +821,11 @@ function LayingGrid({
     "Age",
     "TEP Collection",
     "Hatching Egg",
-    "Table Egg",
     "Class B",
-    "Crack",
     "Junior",
+    "Dirty", "Misshapen", "Off-size", "Thin Shell",
     "Jumbo",
+    "Crack",
     "Condemn",
     "Total Egg Classification",
   ];
@@ -830,14 +838,14 @@ function LayingGrid({
           Saved egg production records for the selected building and cycle.
         </p>
       </div>
-      <div className="max-h-130 w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
-        <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
+      <div className="max-h-130 w-full overflow-auto bg-white dark:bg-card">
+        <table className="fc-grid-table min-w-[1500px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
           <colgroup>
             <col style={{ width: "12%" }} />
             <col style={{ width: "7%" }} />
             <col style={{ width: "11%" }} />
-            {Array.from({ length: 7 }, (_, index) => (
-              <col key={index} style={{ width: "8%" }} />
+            {Array.from({ length: 10 }, (_, index) => (
+              <col key={index} style={{ width: "5.6%" }} />
             ))}
             <col style={{ width: "14%" }} />
           </colgroup>
@@ -859,7 +867,7 @@ function LayingGrid({
               rows.map((row, rowIndex) => {
                 const classification =
                   number(row.hatching_egg) +
-                  number(row.table_egg) +
+                  number(row.table_egg_dirty) + number(row.table_egg_misshapen) + number(row.table_egg_off_size) + number(row.table_egg_thin_shell) +
                   number(row.classb) +
                   number(row.crack) +
                   number(row.junior) +

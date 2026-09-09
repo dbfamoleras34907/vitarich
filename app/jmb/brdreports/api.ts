@@ -70,6 +70,8 @@ export type VaccinationReportRow = {
   id: number;
   documentNo: string;
   recordDate: string;
+  scheduledDate: string | null;
+  dateVarianceDays: number | null;
   farmName: string;
   scope: string;
   buildingName: string;
@@ -77,14 +79,12 @@ export type VaccinationReportRow = {
   vaccine: string;
   diseaseTarget: string;
   dosage: number;
-  unit: string;
   route: string;
   birdsBefore: number;
   birdsVaccinated: number;
   birdsMissed: number;
   batchNumber: string;
   expiryDate: string;
-  nextDoseDate: string;
   cycleNumber: number | null;
 };
 
@@ -297,11 +297,12 @@ export async function listVaccinationReport(filters: MortalityReportFilters) {
   if (error) throw new Error(errorMessage(error));
   return (data ?? []).map((row): VaccinationReportRow => ({
     id: Number(row.id), documentNo: String(row.document_no ?? ""), recordDate: String(row.vaccination_date ?? ""),
+    scheduledDate: row.scheduled_vaccination_date ?? null, dateVarianceDays: row.date_variance_days == null ? null : number(row.date_variance_days),
     farmName: String(row.farm_name ?? ""), scope: String(row.scope ?? ""), buildingName: String(row.building_name ?? ""),
     targetNames: String(row.target_names ?? ""), vaccine: [row.vaccine_brand, row.vaccine_type].filter(Boolean).join(" - "),
-    diseaseTarget: String(row.disease_target ?? ""), dosage: number(row.dosage), unit: String(row.unit ?? ""), route: String(row.route ?? ""),
+    diseaseTarget: String(row.disease_target ?? ""), dosage: number(row.dosage), route: String(row.route ?? ""),
     birdsBefore: number(row.birds_before), birdsVaccinated: number(row.birds_vaccinated), birdsMissed: number(row.birds_missed),
-    batchNumber: String(row.batch_number ?? ""), expiryDate: String(row.expiry_date ?? ""), nextDoseDate: String(row.next_dose_date ?? ""),
+    batchNumber: String(row.batch_number ?? ""), expiryDate: String(row.expiry_date ?? ""),
     cycleNumber: filters.cycleNumber ?? null,
   }));
 }

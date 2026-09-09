@@ -19,7 +19,10 @@ export type EggLaying = {
   tep_collection: number | null;
   hatching_egg: number | null;
   classb: number | null;
-  table_egg: number | null;
+  table_egg_dirty: number | null;
+  table_egg_misshapen: number | null;
+  table_egg_off_size: number | null;
+  table_egg_thin_shell: number | null;
   crack: number | null;
   junior: number | null;
   jumbo: number | null;

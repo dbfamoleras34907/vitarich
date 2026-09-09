@@ -29,7 +29,10 @@ type ProductionRow = {
   date_laying: string;
   tep_collection: string;
   hatching_egg: string;
-  table_egg: string;
+  table_egg_dirty: string;
+  table_egg_misshapen: string;
+  table_egg_off_size: string;
+  table_egg_thin_shell: string;
   classb: string;
   crack: string;
   junior: string;
@@ -40,22 +43,25 @@ type ProductionRow = {
 const IMPORT_HEADERS = [
   "Date Laying",
   "TEP Collection",
-  "Hatching Egg",
-  "Table Egg",
-  "Class B",
-  "Crack",
-  "Junior",
+  "Hatching Egg (<54g)",
+  "Class B (<52g - 53g)",
+  "Junior (<49g - 51g)",
+  "Dirty",
+  "Misshapen",
+  "Off-size",
+  "Thin Shell",
   "Jumbo",
+  "Crack",
   "Condemn",
   "Total Egg Classification",
 ] as const;
 
 const productionNumberFields: Array<Exclude<keyof ProductionRow, "date_laying">> = [
-  "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
+  "tep_collection", "hatching_egg", "classb", "junior", "table_egg_dirty", "table_egg_misshapen", "table_egg_off_size", "table_egg_thin_shell", "jumbo", "crack", "condemn",
 ];
 
 const historyNumberFields = [
-  "tep_collection", "hatching_egg", "table_egg", "classb", "crack", "junior", "jumbo", "condemn",
+  "tep_collection", "hatching_egg", "classb", "junior", "table_egg_dirty", "table_egg_misshapen", "table_egg_off_size", "table_egg_thin_shell", "jumbo", "crack", "condemn",
 ] as const satisfies ReadonlyArray<keyof EggLaying>;
 
 const productionGridInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -66,7 +72,10 @@ function createProductionRow(dateLaying = getToday()): ProductionRow {
     date_laying: dateLaying,
     tep_collection: "",
     hatching_egg: "",
-    table_egg: "",
+    table_egg_dirty: "",
+    table_egg_misshapen: "",
+    table_egg_off_size: "",
+    table_egg_thin_shell: "",
     classb: "",
     crack: "",
     junior: "",
@@ -81,6 +90,12 @@ function getProductionTotal(row: ProductionRow) {
     .reduce((sum, field) => sum + asNumber(row[field]), 0);
 }
 
+function classificationStyle(total: number, collection: number) {
+  return total === collection
+    ? { color: "#15803d", backgroundColor: "#dcfce7", fontWeight: 700 }
+    : { color: "#b91c1c", backgroundColor: "#fee2e2", fontWeight: 700 };
+}
+
 type FormState = {
   placement_id: string;
   date_laying: string;
@@ -92,7 +107,10 @@ type FormState = {
   tep_collection: string;
   hatching_egg: string;
   classb: string;
-  table_egg: string;
+  table_egg_dirty: string;
+  table_egg_misshapen: string;
+  table_egg_off_size: string;
+  table_egg_thin_shell: string;
   crack: string;
   junior: string;
   jumbo: string;
@@ -163,13 +181,16 @@ function formatAge(days: number | null | undefined) {
 function getEggTotal(
   row: Pick<
     EggLaying,
-    "hatching_egg" | "classb" | "table_egg" | "crack" | "junior" | "jumbo" | "condemn"
+    "hatching_egg" | "classb" | "table_egg_dirty" | "table_egg_misshapen" | "table_egg_off_size" | "table_egg_thin_shell" | "crack" | "junior" | "jumbo" | "condemn"
   >,
 ) {
   return (
     Number(row.hatching_egg ?? 0) +
     Number(row.classb ?? 0) +
-    Number(row.table_egg ?? 0) +
+    Number(row.table_egg_dirty ?? 0) +
+    Number(row.table_egg_misshapen ?? 0) +
+    Number(row.table_egg_off_size ?? 0) +
+    Number(row.table_egg_thin_shell ?? 0) +
     Number(row.crack ?? 0) +
     Number(row.junior ?? 0) +
     Number(row.jumbo ?? 0) +
@@ -205,7 +226,10 @@ function createInitialForm(): FormState {
     tep_collection: "",
     hatching_egg: "",
     classb: "",
-    table_egg: "",
+    table_egg_dirty: "",
+    table_egg_misshapen: "",
+    table_egg_off_size: "",
+    table_egg_thin_shell: "",
     crack: "",
     junior: "",
     jumbo: "",
@@ -348,7 +372,10 @@ export default function EggLayingForm() {
           hatching_egg:
             row.hatching_egg != null ? String(row.hatching_egg) : "",
           classb: row.classb != null ? String(row.classb) : "",
-          table_egg: row.table_egg != null ? String(row.table_egg) : "",
+          table_egg_dirty: row.table_egg_dirty != null ? String(row.table_egg_dirty) : "",
+          table_egg_misshapen: row.table_egg_misshapen != null ? String(row.table_egg_misshapen) : "",
+          table_egg_off_size: row.table_egg_off_size != null ? String(row.table_egg_off_size) : "",
+          table_egg_thin_shell: row.table_egg_thin_shell != null ? String(row.table_egg_thin_shell) : "",
           crack: row.crack != null ? String(row.crack) : "",
           junior: row.junior != null ? String(row.junior) : "",
           jumbo: row.jumbo != null ? String(row.jumbo) : "",
@@ -360,7 +387,10 @@ export default function EggLayingForm() {
           date_laying: nextForm.date_laying,
           tep_collection: nextForm.tep_collection,
           hatching_egg: nextForm.hatching_egg,
-          table_egg: nextForm.table_egg,
+          table_egg_dirty: nextForm.table_egg_dirty,
+          table_egg_misshapen: nextForm.table_egg_misshapen,
+          table_egg_off_size: nextForm.table_egg_off_size,
+          table_egg_thin_shell: nextForm.table_egg_thin_shell,
           classb: nextForm.classb,
           crack: nextForm.crack,
           junior: nextForm.junior,
@@ -550,16 +580,13 @@ export default function EggLayingForm() {
     }));
     const blankRows = Array.from({ length: 30 }, (_, index) => [
       { type: Date, format: "yyyy-mm-dd" },
-      ...Array.from({ length: 8 }, () => ({ type: Number, format: "#,##0" })),
-      { value: `SUM(C${index + 2}:I${index + 2})`, type: "Formula" as const, format: "#,##0" },
+      ...Array.from({ length: productionNumberFields.length }, () => ({ type: Number, format: "#,##0" })),
+      { value: `SUM(C${index + 2}:L${index + 2})`, type: "Formula" as const, format: "#,##0" },
     ]);
     const templateFile = writeXlsxFile([header, ...blankRows], {
       sheet: "Egg Laying Production",
       stickyRowsCount: 1,
-      columns: [
-        { width: 15 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 12 },
-        { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 24 },
-      ],
+      columns: IMPORT_HEADERS.map((label) => ({ width: label === "Total Egg Classification" ? 24 : 16 })),
     });
     await templateFile.toFile("egg-laying-production-template.xlsx");
   }
@@ -604,7 +631,7 @@ export default function EggLayingForm() {
       );
       excelRows.slice(1).forEach((excelRow, index) => {
         const rowNumber = index + 2;
-        const raw = Array.from({ length: 9 }, (_, columnIndex) => excelRow[columnIndex]);
+        const raw = Array.from({ length: productionNumberFields.length + 1 }, (_, columnIndex) => excelRow[columnIndex]);
         if (raw.every((value) => value == null || String(value).trim() === "")) return;
         const dateLaying = normalizeImportedDate(raw[0]);
         if (!dateLaying) errors.push(`Row ${rowNumber}: Date Laying is invalid.`);
@@ -628,8 +655,7 @@ export default function EggLayingForm() {
         }
         importedRows.push({
           date_laying: dateLaying,
-          tep_collection: numbers[0], hatching_egg: numbers[1], table_egg: numbers[2],
-          classb: numbers[3], crack: numbers[4], junior: numbers[5], jumbo: numbers[6], condemn: numbers[7],
+          ...Object.fromEntries(productionNumberFields.map((field, index) => [field, numbers[index]])) as Pick<ProductionRow, typeof productionNumberFields[number]>,
         });
       });
       if (!importedRows.length) errors.push("No production rows were found in the template.");
@@ -705,7 +731,10 @@ export default function EggLayingForm() {
         : null,
       hatching_egg: row.hatching_egg ? asNumber(row.hatching_egg) : null,
       classb: row.classb ? asNumber(row.classb) : null,
-      table_egg: row.table_egg ? asNumber(row.table_egg) : null,
+      table_egg_dirty: row.table_egg_dirty ? asNumber(row.table_egg_dirty) : null,
+      table_egg_misshapen: row.table_egg_misshapen ? asNumber(row.table_egg_misshapen) : null,
+      table_egg_off_size: row.table_egg_off_size ? asNumber(row.table_egg_off_size) : null,
+      table_egg_thin_shell: row.table_egg_thin_shell ? asNumber(row.table_egg_thin_shell) : null,
       crack: row.crack ? asNumber(row.crack) : null,
       junior: row.junior ? asNumber(row.junior) : null,
       jumbo: row.jumbo ? asNumber(row.jumbo) : null,
@@ -808,42 +837,32 @@ export default function EggLayingForm() {
                   <strong>Import rejected.</strong>{"\n"}{importError}
                 </div>
               ) : null}
-              <div className="max-h-[520px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
+              <div className="max-h-[520px] w-full overflow-auto bg-white dark:bg-card">
                 <table
                   ref={productionGridRef}
-                  className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm"
+                  className="fc-grid-table min-w-[1595px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm"
                 >
                   <colgroup>
-                    <col style={{ width: "11%" }} />
-                    <col style={{ width: "6%" }} />
-                    <col style={{ width: "10%" }} />
-                    {Array.from({ length: 7 }, (_, index) => <col key={index} style={{ width: "8%" }} />)}
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "5%" }} />
+                    <col style={{ width: 140 }} />
+                    <col style={{ width: 70 }} />
+                    {productionNumberFields.map((field) => <col key={field} style={{ width: 105 }} />)}
+                    <col style={{ width: 160 }} />
+                    <col style={{ width: 70 }} />
                   </colgroup>
                   <thead>
-                    <tr style={{ height: 36 }}>
-                      {[
-                        "Date Laying *",
-                        "Age",
-                        "TEP Collection *",
-                        "Hatching Egg",
-                        "Table Egg",
-                        "Class B",
-                        "Crack",
-                        "Junior",
-                        "Jumbo",
-                        "Condemn",
-                        "Total Egg Classification",
-                        "Action",
-                      ].map((label, index) => (
-                        <th
-                          key={label}
-                          style={index === 1 ? { left: "11%" } : undefined}
-                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-border-r" : index === 1 ? "z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
-                        >
+                    <tr style={{ height: 28 }}>
+                      {["Date Laying *", "Age", "TEP Collection *", "Hatching Egg (<54g)", "Class B (<52g - 53g)", "Junior (<49g - 51g)", "Table Egg", "Jumbo", "Crack", "Condemn", "Total Egg Classification", "Action"].map((label) => (
+                        <th key={label} scope={label === "Table Egg" ? "colgroup" : "col"}
+                          colSpan={label === "Table Egg" ? 4 : 1} rowSpan={label === "Table Egg" ? 1 : 2}
+                          style={label === "Age" ? { left: 140 } : undefined}
+                          className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 text-center text-xs font-semibold leading-tight ${label === "Date Laying *" ? "left-0 z-40" : label === "Age" ? "z-40 fc-grid-age-header" : "z-30"} fc-grid-border-r`}>
                           {label}
                         </th>
+                      ))}
+                    </tr>
+                    <tr style={{ height: 36 }}>
+                      {["Dirty", "Misshapen", "Off-size", "Thin Shell"].map((label) => (
+                        <th key={label} scope="col" className="fc-grid-header fc-grid-header-border fc-grid-border-r sticky top-[28px] z-30 px-1 text-center text-xs font-semibold">{label}</th>
                       ))}
                     </tr>
                   </thead>
@@ -858,7 +877,7 @@ export default function EggLayingForm() {
                           onKeyDown={(event) => handleProductionCellKeyDown(event, rowIndex, 0)} disabled={disabledAll}
                           className="h-8 min-w-0 rounded-none border-0 bg-transparent px-0.5 text-center text-[10px] shadow-none focus-visible:ring-0" />
                       </td>
-                      <td style={{ left: "11%" }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                      <td style={{ left: 140 }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                         <div className="flex h-8 items-center justify-center">
                           {formatAge(selectedPlacement ? getAgeInDays(selectedPlacement.placement_date, row.date_laying) : asNumber(form.age))}
                         </div>
@@ -881,7 +900,7 @@ export default function EggLayingForm() {
                           />
                         </td>
                       ))}
-                      <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-semibold tabular-nums fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
+                      <td style={classificationStyle(getProductionTotal(row), asNumber(row.tep_collection))} className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center font-bold tabular-nums fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                         {getProductionTotal(row).toLocaleString("en-US")}
                       </td>
                       <td className={`fc-grid-cell fc-grid-cell-readonly p-0 text-center fc-grid-border-r ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
@@ -897,13 +916,13 @@ export default function EggLayingForm() {
                   <tfoot>
                     <tr>
                       <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">Total</td>
-                      <td style={{ left: "11%" }} className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 z-40 text-center text-xs font-semibold">{productionRows.length} row{productionRows.length === 1 ? "" : "s"}</td>
+                      <td style={{ left: 140 }} className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 z-40 text-center text-xs font-semibold">{productionRows.length} row{productionRows.length === 1 ? "" : "s"}</td>
                       {productionTotals.map((value, index) => (
                         <td key={productionNumberFields[index]} className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
                           {value.toLocaleString("en-US")}
                         </td>
                       ))}
-                      <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-semibold tabular-nums">
+                      <td style={classificationStyle(productionTotals.slice(1).reduce((total, value) => total + value, 0), productionTotals[0])} className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0 text-center font-bold tabular-nums">
                         {productionTotals.slice(1).reduce((total, value) => total + value, 0).toLocaleString("en-US")}
                       </td>
                       <td className="fc-grid-footer-cell fc-grid-border-r sticky bottom-0" />
@@ -982,24 +1001,34 @@ export default function EggLayingForm() {
                 </div>
               </div>
 
-              <div className="max-h-[420px] w-full overflow-x-hidden overflow-y-auto bg-white dark:bg-card">
-                <table className="fc-grid-table w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
+              <div className="max-h-[420px] w-full overflow-auto bg-white dark:bg-card">
+                <table className="fc-grid-table min-w-[1595px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
                   <colgroup>
-                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
-                      <col key={index} style={{ width: `${width}%` }} />
+                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 7, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
+                      <col key={index} style={{ width: `${width / 117 * 100}%` }} />
                     ))}
                   </colgroup>
                   <thead>
-                    <tr style={{ height: 36 }}>
+                    <tr style={{ height: 28 }}>
                       {[
                         "Row #", "Date Laying", "Building", "Cycle #", "Age", "TEP Collection",
-                        "Hatching Egg", "Table Egg", "Class B", "Crack", "Junior", "Jumbo",
+                        "Hatching Egg (<54g)", "Class B (<52g - 53g)", "Junior (<49g - 51g)", "Table Egg", "Jumbo", "Crack",
                         "Condemn", "Total Egg Classification",
                       ].map((label, index) => (
                         <th
                           key={label}
+                          scope={label === "Table Egg" ? "colgroup" : "col"}
+                          colSpan={label === "Table Egg" ? 4 : 1}
+                          rowSpan={label === "Table Egg" ? 1 : 2}
                           className={`fc-grid-header fc-grid-header-border sticky top-0 px-1 py-0 text-center text-[10px] font-semibold leading-tight ${index === 0 ? "left-0 z-40 fc-grid-age-header" : "z-30 fc-grid-border-r"}`}
                         >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                    <tr style={{ height: 36 }}>
+                      {["Dirty", "Misshapen", "Off-size", "Thin Shell"].map((label) => (
+                        <th key={label} scope="col" className="fc-grid-header fc-grid-header-border fc-grid-border-r sticky top-[28px] z-30 px-1 text-center text-[10px] font-semibold leading-tight">
                           {label}
                         </th>
                       ))}
@@ -1042,7 +1071,7 @@ export default function EggLayingForm() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={14}
+                          colSpan={17}
                           className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
                           {history.length ? "No history matches the selected filters." : "No farm history found."}

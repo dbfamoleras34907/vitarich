@@ -24,6 +24,7 @@ import {
   getDefaultFarm,
   getMedicationById,
   listMedicationLocations,
+  listMedicationTypes,
   MEDICATION_ROUTES,
   updateMedication,
   type FarmLocation,
@@ -73,6 +74,7 @@ export default function MedicationForm() {
   const medicationId = Number(searchParams.get("id"));
   const isEdit = Number.isInteger(medicationId) && medicationId > 0;
   const [locations, setLocations] = useState<FarmLocation[]>([]);
+  const [medicationTypes, setMedicationTypes] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [selectedPenIds, setSelectedPenIds] = useState<number[]>([]);
   const [addAnother, setAddAnother] = useState(false);
@@ -92,11 +94,14 @@ export default function MedicationForm() {
     let cancelled = false;
     Promise.all([
       listMedicationLocations(),
+      listMedicationTypes(),
       isEdit ? getMedicationById(medicationId) : getDefaultFarm().catch(() => null),
     ])
-      .then(([rows, recordOrDefaultFarm]) => {
+      .then(([rows, types, recordOrDefaultFarm]) => {
         if (cancelled) return;
         setLocations(rows);
+        setMedicationTypes(types);
+        if (!types.length) setError("No active medication types are configured. Please contact your administrator.");
         if (isEdit) {
           const record = recordOrDefaultFarm as Awaited<ReturnType<typeof getMedicationById>>;
           setDocumentNo(record.document_no);
@@ -131,7 +136,7 @@ export default function MedicationForm() {
       })
       .catch((loadError) => {
         console.error(loadError);
-        if (!cancelled) setError("Unable to load breeder farms, buildings, and pens.");
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Unable to load medication form.");
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -214,7 +219,7 @@ export default function MedicationForm() {
     if (form.scope === "Selected Pens" && selectedPenIds.length === 0) return "Select at least one pen.";
     if (form.scope === "All Pens" && pens.length === 0) return "The selected building has no pens.";
     if (!form.medication_brand.trim()) return "Medication brand is required.";
-    if (!form.medication_type.trim()) return "Medication type is required.";
+    if (!medicationTypes.includes(form.medication_type)) return "Select an active medication type from the list.";
     if (!(Number(form.dosage) > 0)) return "Dosage must be greater than zero.";
     if (!form.unit.trim()) return "Unit is required.";
     if (!form.indication.trim()) return "Indication is required.";
@@ -320,7 +325,7 @@ export default function MedicationForm() {
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {!isEdit ? <Label className="mr-2 flex cursor-pointer gap-2 font-normal"><Checkbox checked={addAnother} onCheckedChange={(checked) => setAddAnother(checked === true)} />Add another</Label> : null}
               <Button type="button" variant="outline" onClick={() => router.push("/jmb/medication")} disabled={saving}><X className="size-4" />{readOnly ? "Close" : "Cancel"}</Button>
-              {!readOnly ? <Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{saving ? "Saving..." : isEdit ? "Update" : "Save"}</Button> : null}
+              {!readOnly ? <Button type="submit" disabled={saving || loading || !medicationTypes.length}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{saving ? "Saving..." : isEdit ? "Update" : "Save"}</Button> : null}
             </div>
           </div>
         </header>
@@ -352,7 +357,15 @@ export default function MedicationForm() {
               <SectionHeading title="Medication Details" description="Record the product, dosage, treatment period, and administration route." />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Medication brand" required><Input maxLength={150} placeholder="Medication brand" value={form.medication_brand} onChange={(e) => update("medication_brand", e.target.value)} /></Field>
-                <Field label="Medication type" required><Input maxLength={100} placeholder="e.g. Antibiotic, vitamin, dewormer" value={form.medication_type} onChange={(e) => update("medication_type", e.target.value)} /></Field>
+                <Field label="Medication type" required>
+                  <Select value={form.medication_type} onValueChange={(value) => update("medication_type", value)} disabled={loading || saving || readOnly || !medicationTypes.length}>
+                    <SelectTrigger className="w-full" aria-label="Medication type"><SelectValue placeholder="Select medication type" /></SelectTrigger>
+                    <SelectContent>
+                      {form.medication_type && !medicationTypes.includes(form.medication_type) ? <SelectItem value={form.medication_type} disabled>{form.medication_type} (unavailable)</SelectItem> : null}
+                      {medicationTypes.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label="Route" required><Select value={form.route} onValueChange={(value) => update("route", value)}><SelectTrigger className="w-full"><SelectValue placeholder="Select route" /></SelectTrigger><SelectContent>{MEDICATION_ROUTES.map((route) => <SelectItem key={route} value={route}>{route}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="Dosage" required><Input type="number" min="0" step="any" placeholder="Dosage" value={form.dosage} onChange={(e) => update("dosage", e.target.value)} /></Field>
                 <Field label="Unit" required><Input maxLength={100} placeholder="e.g. mL/bird, g/L water" value={form.unit} onChange={(e) => update("unit", e.target.value)} /><p className="text-xs text-muted-foreground">{form.unit.length}/100 characters</p></Field>

@@ -9,8 +9,14 @@ const HATCHERY_FARM_VIEW = "view_brd_hatchery_farm_lookup";
 
 export type DispatchStatus = "Draft" | "Posted" | "Cancelled";
 export type DispatchSourceType = "Population Record" | "Egg Laying";
-export const POPULATION_CATEGORIES = [["mc", "MC"], ["culls", "Culls"], ["kitchen", "Kitchen"], ["condemn", "Condemn"]] as const;
-export const EGG_CATEGORIES = [["hatching_egg", "Hatching Egg (<54g)"], ["classb", "Class B (<52g - 53g)"], ["table_egg", "Table Egg"], ["crack", "Crack"], ["junior", "Junior (<49g - 51g)"], ["jumbo", "Jumbo"], ["condemn", "Condemn"]] as const;
+export const POPULATION_CATEGORIES = [["mc", "Mortality"], ["condemn", "Condemn"], ["kitchen", "Kitchen"], ["culls", "Culls"]] as const;
+export const EGG_CATEGORIES = [["hatching_egg", "Hatching Egg (<54g)"], ["classb", "Class B (<52g - 53g)"], ["junior", "Junior (<49g - 51g)"], ["table_egg", "Table Egg"], ["jumbo", "Jumbo"], ["crack", "Crack"], ["condemn", "Condemn"]] as const;
+
+export function dispatchCategoryOrder(source: DispatchSourceType, category: string) {
+  const categories = source === "Population Record" ? POPULATION_CATEGORIES : EGG_CATEGORIES;
+  const index = categories.findIndex(([value]) => value === category);
+  return index < 0 ? categories.length : index;
+}
 
 export type HatcheryFarmLookup = {
   farm_id: number;
@@ -132,7 +138,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
 
   const [{ data: population, error: populationError }, { data: eggs, error: eggError }, { data: posted, error: postedError }] = await Promise.all([
     db.from("tbl_breeder_daily_performance").select("id, placement_id, daterec, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female").in("placement_id", placementIds).eq("isactive", true).lte("daterec", dispatchDate),
-    db.from("tbl_egglaying").select("id, placement_id, date_laying, farm_id, farm_name, building_id, building, hatching_egg, classb, table_egg, crack, junior, jumbo, condemn").in("placement_id", placementIds).eq("is_active", true).lte("date_laying", dispatchDate),
+    db.from("tbl_egglaying").select("id, placement_id, date_laying, farm_id, farm_name, building_id, building, hatching_egg, classb, table_egg_dirty, table_egg_misshapen, table_egg_off_size, table_egg_thin_shell, crack, junior, jumbo, condemn").in("placement_id", placementIds).eq("is_active", true).lte("date_laying", dispatchDate),
     db.from(HEADER_TABLE).select("id").eq("status", "Posted"),
   ]);
   if (populationError) throw populationError;
@@ -167,7 +173,10 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
     if (!placement) continue;
     for (const [category, label] of EGG_CATEGORIES) {
       const key = dispatchItemKey("Egg Laying", Number(row.id), category);
-      const available = Math.max(0, count(row[category]) - (allocated.get(key) ?? 0));
+      const quantity = category === "table_egg"
+        ? count(row.table_egg_dirty) + count(row.table_egg_misshapen) + count(row.table_egg_off_size) + count(row.table_egg_thin_shell)
+        : count(row[category]);
+      const available = Math.max(0, quantity - (allocated.get(key) ?? 0));
       if (!available) continue;
       items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
     }

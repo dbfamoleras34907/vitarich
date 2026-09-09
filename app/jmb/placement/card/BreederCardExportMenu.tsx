@@ -17,7 +17,7 @@ import { ChevronDown, ClipboardCopy, Download, FileSpreadsheet, FileText, Upload
 import { toast } from "sonner";
 
 export type BreederExportRow = {
-  age: number;
+  age: string | number;
   date: string;
   values: Array<string | number>;
 };
@@ -36,6 +36,11 @@ type Props = {
 };
 
 export type BreederImportRow = {
+  m_body_weight: number | null;
+  f_body_weight: number | null;
+  m_uniformity: number | null;
+  f_uniformity: number | null;
+  remarks: string | null;
   daterec: string;
   inv_male: number;
   inv_female: number;
@@ -67,16 +72,39 @@ export const BREEDER_IMPORT_HEADERS = [
   "avg_body_weight_male", "avg_body_weight_female",
   "feed_consumption_male", "feed_consumption_female",
   "male_feedtype_id", "female_feedtype_id",
+  "m_body_weight", "f_body_weight", "m_uniformity", "f_uniformity", "remarks",
 ] as const;
 
 const headers = [
-  "Date", "Age",
-  "Beginning Inventory Male (pc)", "Beginning Inventory Female (pc)",
-  "Mortality Male (pc)", "Mortality Female (pc)", "Cumm Mortality Male (pc)", "Cumm Mortality Female (pc)",
-  "Culls Male (pc)", "Culls Female (pc)", "Transfer In Male (pc)", "Transfer In Female (pc)",
-  "Transfer Out Male (pc)", "Transfer Out Female (pc)", "Kitchen Male (pc)", "Kitchen Female (pc)",
-  "Condem Male (pc)", "Condem Female (pc)", "Grams/Birds Male (kg/pc)", "Grams/Birds Female (kg/pc)",
-  "Feeds Consumption Male (kg)", "Feeds Consumption Female (kg)",
+  "Date",
+  "Age",
+  "Beginning Inventory (pc) Male",
+  "Beginning Inventory (pc) Female",
+  "Mortality (pc) Male",
+  "Mortality (pc) Female",
+  "Condemn (pc) Male",
+  "Condemn (pc) Female",
+  "Kitchen (pc) Male",
+  "Kitchen (pc) Female",
+  "Culls (Sold) (pc) Male",
+  "Culls (Sold) (pc) Female",
+  "Transfer In (pc) Male",
+  "Transfer In (pc) Female",
+  "Transfer Out (pc) Male",
+  "Transfer Out (pc) Female",
+  "Total Daily Depletion (pc) Male",
+  "Total Daily Depletion (pc) Female",
+  "Cumulative Depletion (pc) Male",
+  "Cumulative Depletion (pc) Female",
+  "Remarks",
+  "Feeds (kg) Male",
+  "Feeds (kg) Female",
+  "Grams/Bird (kg/pc) Male",
+  "Grams/Bird (kg/pc) Female",
+  "Body Weight Male",
+  "Body Weight Female",
+  "Uniformity Male",
+  "Uniformity Female"
 ];
 
 function clean(value: unknown) {
@@ -170,6 +198,7 @@ export default function BreederCardExportMenu(props: Props) {
       if (field === "daterec") {
         return { value: new Date(`${row.daterec}T00:00:00`), type: Date, format: "yyyy-mm-dd" };
       }
+      if (field === "remarks") return { value: row.remarks ?? "", type: String };
       const value = row[field];
       return {
         value: value ?? undefined,
