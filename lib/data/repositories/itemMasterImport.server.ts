@@ -35,6 +35,7 @@ export async function importItemMasterRowsForAuthorizedUser(
   authId: string,
   rows: ItemMasterImportRow[],
   skipExisting: boolean,
+  skipDuplicateKeys: boolean,
 ) {
   await requireItemMasterInsertAccess(authId)
 
@@ -42,19 +43,30 @@ export async function importItemMasterRowsForAuthorizedUser(
     p_rows: rows,
     p_actor_auth_id: authId,
     p_skip_existing: skipExisting,
+    p_skip_duplicate_keys: skipDuplicateKeys,
   })
 
   if (error) throw error
-  const result = data as { importedCount?: unknown; skippedCount?: unknown } | null
+  const result = data as {
+    importedCount?: unknown
+    skippedCount?: unknown
+    existingSkippedCount?: unknown
+    duplicateKeySkippedCount?: unknown
+  } | null
   const importedCount = Number(result?.importedCount)
   const skippedCount = Number(result?.skippedCount)
+  const existingSkippedCount = Number(result?.existingSkippedCount)
+  const duplicateKeySkippedCount = Number(result?.duplicateKeySkippedCount)
   if (
     !Number.isInteger(importedCount) ||
     !Number.isInteger(skippedCount) ||
+    !Number.isInteger(existingSkippedCount) ||
+    !Number.isInteger(duplicateKeySkippedCount) ||
+    existingSkippedCount + duplicateKeySkippedCount !== skippedCount ||
     importedCount + skippedCount !== rows.length
   ) {
     throw new Error('The Item Master import did not save the complete batch.')
   }
 
-  return { importedCount, skippedCount }
+  return { importedCount, skippedCount, existingSkippedCount, duplicateKeySkippedCount }
 }

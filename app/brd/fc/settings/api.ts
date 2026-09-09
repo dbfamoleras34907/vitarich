@@ -3,6 +3,7 @@ import {
   getItemGroupById,
   type ItemGroup,
 } from "@/lib/data/repositories/itemGroups";
+import { GROWING_FARM_CONDITION_DEFAULTS } from "./defaults";
 
 export type AutoFeedBatchSelectionMode = "USER_SELECTED" | "FIFO";
 
@@ -24,7 +25,10 @@ export type FlockCardSettings = {
 
 export async function getFlockCardSettings(
   farmId: number,
-  options: { usePreviousFarmDefaults?: boolean } = {},
+  options: {
+    usePreviousFarmDefaults?: boolean;
+    useConfiguredDefaults?: boolean;
+  } = {},
 ) {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
@@ -40,6 +44,15 @@ export async function getFlockCardSettings(
   if (error) throw error;
 
   let resolvedData = data;
+  if (!resolvedData && options.useConfiguredDefaults) {
+    resolvedData = {
+      ...GROWING_FARM_CONDITION_DEFAULTS,
+      farm_id: farmId,
+      farm_code: null,
+      farm_name: null,
+    };
+  }
+
   if (!resolvedData && options.usePreviousFarmDefaults) {
     const { data: previous, error: previousError } = await db
       .from("brd_fc_settings")

@@ -283,6 +283,7 @@ type NewGoodsIssueProps = {
   lineQuantityLabel?: string
   bodyWeightLabel?: string
   showLineTsDrNumber?: boolean
+  excelIssueLines?: boolean
   showLineQuantityAllocationWarnings?: boolean
   showLineOnHandQuantity?: boolean
   showLineVariance?: boolean
@@ -334,6 +335,7 @@ export default function NewGoodsIssue({
   lineQuantityLabel = 'To Transfer',
   bodyWeightLabel = 'Weight g',
   showLineTsDrNumber = false,
+  excelIssueLines = false,
   showLineQuantityAllocationWarnings = true,
   showLineOnHandQuantity = true,
   showLineVariance = false,
@@ -2034,6 +2036,7 @@ export default function NewGoodsIssue({
                 quantityLabel={lineQuantityLabel}
                 bodyWeightLabel={bodyWeightLabel}
                 showTsDrNumber={showLineTsDrNumber}
+                excelAppearance={excelIssueLines}
                 showQuantityAllocationWarnings={showLineQuantityAllocationWarnings}
                 showOnHandQuantity={showLineOnHandQuantity}
                 showRemainingOnHand={triggeredBy === 'BR-DR'}

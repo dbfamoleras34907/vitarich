@@ -173,9 +173,27 @@ export default function BroilerFarmSetupLayout() {
           </aside>
 
           <section className="min-w-0 p-3 sm:p-4">
-            {step === 0 ? <DocReceivingSettingsLayout {...sharedProps} /> : null}
-            {step === 1 ? <FlockCardSettingsLayout {...sharedProps} /> : null}
-            {step === 2 ? <BrDeliverySettingsLayout {...sharedProps} /> : null}
+            {step === 0 ? (
+              <DocReceivingSettingsLayout
+                {...sharedProps}
+                usePreviousFarmDefaults={false}
+                useConfiguredDefaults
+              />
+            ) : null}
+            {step === 1 ? (
+              <FlockCardSettingsLayout
+                {...sharedProps}
+                usePreviousFarmDefaults={false}
+                useConfiguredDefaults
+              />
+            ) : null}
+            {step === 2 ? (
+              <BrDeliverySettingsLayout
+                {...sharedProps}
+                usePreviousFarmDefaults={false}
+                useConfiguredDefaults
+              />
+            ) : null}
             {step === 3 ? <BrCleanupSettingsLayout {...sharedProps} /> : null}
           </section>
         </div>

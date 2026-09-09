@@ -1,14 +1,20 @@
 
 export const runtime = "nodejs";
 import { createBrowserClient } from '@supabase/ssr'
-import { isInternetError, notifyInternetError } from '@/lib/networkError'
+import {
+  isInternetError,
+  notifyInternetError,
+  notifyInternetRestored,
+} from '@/lib/networkError'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 const fetchWithInternetErrorNotice: typeof fetch = async (...args) => {
   try {
-    return await fetch(...args)
+    const response = await fetch(...args)
+    notifyInternetRestored()
+    return response
   } catch (error) {
     if (isInternetError(error)) {
       notifyInternetError(error)

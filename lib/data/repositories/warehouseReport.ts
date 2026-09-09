@@ -15,6 +15,16 @@ export type WarehouseReportWarehouse = {
   farmCode: string
 }
 
+type AssignedWarehouseReportFarm = WarehouseReportFarm & {
+  associatedWarehouses: unknown
+}
+
+type AssociatedWarehouseReference = {
+  id: number | null
+  code: string
+  order: number
+}
+
 export type WarehouseReportRow = {
   id: number
   createdAt: string
@@ -153,7 +163,31 @@ async function getDocumentLabels(postings: PostingRow[]) {
   return labels
 }
 
-async function getAssignedWarehouseReportFarms(): Promise<WarehouseReportFarm[]> {
+function getAssociatedWarehouseReferences(value: unknown): AssociatedWarehouseReference[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((entry, order) => {
+    if (typeof entry === 'string') {
+      const code = entry.trim()
+      return code ? [{ id: null, code, order }] : []
+    }
+
+    if (!entry || typeof entry !== 'object') return []
+
+    const record = entry as Record<string, unknown>
+    const id = Number(record.id ?? 0)
+    const code = String(record.whse_code ?? '').trim()
+    if ((!Number.isInteger(id) || id <= 0) && !code) return []
+
+    return [{
+      id: Number.isInteger(id) && id > 0 ? id : null,
+      code,
+      order,
+    }]
+  })
+}
+
+async function getAssignedWarehouseReportFarms(): Promise<AssignedWarehouseReportFarm[]> {
   const { data: sessionData, error: sessionError } = await db.auth.getSession()
   if (sessionError) throw sessionError
 
@@ -192,10 +226,10 @@ async function getAssignedWarehouseReportFarms(): Promise<WarehouseReportFarm[]>
 
   const [assignedFarmsResult, legacyFarmsResult] = await Promise.all([
     assignedFarmIds.length
-      ? activeApprovedFarmsQuery(db.from('farms').select('id, code, name')).in('id', assignedFarmIds)
+      ? activeApprovedFarmsQuery(db.from('farms').select('id, code, name, associated_warehouses')).in('id', assignedFarmIds)
       : Promise.resolve({ data: [], error: null }),
     legacyFarmCodes.length
-      ? activeApprovedFarmsQuery(db.from('farms').select('id, code, name')).in('code', legacyFarmCodes)
+      ? activeApprovedFarmsQuery(db.from('farms').select('id, code, name, associated_warehouses')).in('code', legacyFarmCodes)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -212,12 +246,17 @@ async function getAssignedWarehouseReportFarms(): Promise<WarehouseReportFarm[]>
     const code = String(farm.code ?? '').trim()
     if (!Number.isInteger(id) || id <= 0 || !code) return []
 
-    return [{ id, code, name: String(farm.name ?? code) }]
+    return [{
+      id,
+      code,
+      name: String(farm.name ?? code),
+      associatedWarehouses: farm.associated_warehouses,
+    }]
   })
 }
 
 export async function getWarehouseReportFarms(): Promise<WarehouseReportFarm[]> {
-  return getAssignedWarehouseReportFarms()
+  return (await getAssignedWarehouseReportFarms()).map(({ id, code, name }) => ({ id, code, name }))
 }
 
 export async function getWarehouseReportWarehouses(farmId: number): Promise<WarehouseReportWarehouse[]> {
@@ -227,26 +266,63 @@ export async function getWarehouseReportWarehouses(farmId: number): Promise<Ware
   const farm = assignedFarms.find(row => row.id === farmId)
   if (!farm) return []
 
-  const { data, error } = await db
-    .from('i_warehouse')
-    .select('id, whse_code, whse_name, warehouse_type, farm_id, farm_code')
-    .eq('is_active', true)
-    .eq('farm_id', farm.id)
-    .order('whse_code')
+  const references = getAssociatedWarehouseReferences(farm.associatedWarehouses)
+  if (references.length === 0) return []
 
-  if (error) throw error
+  const warehouseIds = Array.from(new Set(
+    references.map(reference => reference.id).filter((id): id is number => id != null),
+  ))
+  const warehouseCodes = Array.from(new Set(
+    references.map(reference => reference.code).filter(Boolean),
+  ))
 
-  return (data ?? []).flatMap(row => {
+  const [byIdResult, byCodeResult] = await Promise.all([
+    warehouseIds.length
+      ? db
+          .from('i_warehouse')
+          .select('id, whse_code, whse_name, warehouse_type, farm_id, farm_code')
+          .eq('is_active', true)
+          .in('id', warehouseIds)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseCodes.length
+      ? db
+          .from('i_warehouse')
+          .select('id, whse_code, whse_name, warehouse_type, farm_id, farm_code')
+          .eq('is_active', true)
+          .in('whse_code', warehouseCodes)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (byIdResult.error) throw byIdResult.error
+  if (byCodeResult.error) throw byCodeResult.error
+
+  const warehouseRows = Array.from(new Map(
+    [...(byIdResult.data ?? []), ...(byCodeResult.data ?? [])]
+      .map(row => [Number(row.id), row]),
+  ).values())
+  const referenceOrder = new Map<string, number>()
+  for (const reference of references) {
+    if (reference.id != null) referenceOrder.set(`id:${reference.id}`, reference.order)
+    if (reference.code) referenceOrder.set(`code:${reference.code.toUpperCase()}`, reference.order)
+  }
+
+  return warehouseRows.flatMap(row => {
     const code = String(row.whse_code ?? '').trim()
-    if (!code || Number(row.farm_id) !== farm.id) return []
+    const id = Number(row.id)
+    const isAssociated = referenceOrder.has(`id:${id}`) || referenceOrder.has(`code:${code.toUpperCase()}`)
+    if (!code || !isAssociated) return []
 
     return [{
-      id: Number(row.id),
+      id,
       code,
       name: String(row.whse_name ?? ''),
       type: String(row.warehouse_type ?? ''),
       farmCode: farm.code,
     }]
+  }).sort((left, right) => {
+    const leftOrder = referenceOrder.get(`id:${left.id}`) ?? referenceOrder.get(`code:${left.code.toUpperCase()}`) ?? Number.MAX_SAFE_INTEGER
+    const rightOrder = referenceOrder.get(`id:${right.id}`) ?? referenceOrder.get(`code:${right.code.toUpperCase()}`) ?? Number.MAX_SAFE_INTEGER
+    return leftOrder - rightOrder
   })
 }
 

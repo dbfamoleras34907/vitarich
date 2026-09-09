@@ -21,6 +21,7 @@ import {
   saveDocCycleExcludedBuildingIds,
   updateDocReceivingSettings,
 } from './api'
+import { resolveDocPlacementDefaults } from './defaults'
 
 type FormState = {
   goodDoc: string
@@ -63,6 +64,7 @@ type DocReceivingSettingsLayoutProps = {
   embedded?: boolean
   permissionBasePath?: string
   usePreviousFarmDefaults?: boolean
+  useConfiguredDefaults?: boolean
   saveLabel?: string
   onSaved?: () => void
 }
@@ -72,6 +74,7 @@ export default function DocReceivingSettingsLayout({
   embedded = false,
   permissionBasePath = '/a_dean/doc-receiving-settings',
   usePreviousFarmDefaults = false,
+  useConfiguredDefaults = false,
   saveLabel,
   onSaved,
 }: DocReceivingSettingsLayoutProps = {}) {
@@ -114,10 +117,16 @@ export default function DocReceivingSettingsLayout({
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [nextSettings, nextItems] = await Promise.all([
+      const [storedSettings, nextItems] = await Promise.all([
         getDocReceivingSettings(Number(activeFarmId), { usePreviousFarmDefaults }),
         getDocItemOptions(),
       ])
+      const farmId = Number(activeFarmId)
+      const nextSettings = storedSettings ?? (
+        useConfiguredDefaults && Number.isFinite(farmId) && farmId > 0
+          ? resolveDocPlacementDefaults(farmId, nextItems)
+          : null
+      )
       setSettings(nextSettings)
       const nextForm = toForm(nextSettings)
       setForm(nextForm)
@@ -132,7 +141,7 @@ export default function DocReceivingSettingsLayout({
     } finally {
       setLoading(false)
     }
-  }, [activeFarmId, usePreviousFarmDefaults])
+  }, [activeFarmId, useConfiguredDefaults, usePreviousFarmDefaults])
 
   useEffect(() => {
     fetchData()

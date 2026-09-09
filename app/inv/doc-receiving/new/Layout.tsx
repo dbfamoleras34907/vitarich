@@ -155,6 +155,18 @@ const DOC_RECEIVING_DATE_DETAIL_CODES = new Set([
   'mnf_date',
 ])
 
+const getDocDetailInputMinWidth = (value: string) => `${Math.max(value.length + 3, 1)}ch`
+
+const getSaveErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String(error.message ?? '').trim()
+    if (message) return message
+  }
+
+  return 'Unable to save DOC receiving document'
+}
+
 const DOC_RECEIVING_DETAIL_UNITS: Record<string, string> = {
   average_doc_weight: 'in Grams',
   quantity_received: 'in PC',
@@ -1437,12 +1449,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const item = getSelectedItem(line)
     if (!item) return null
 
-    const itemUsesBatch = Boolean(
-      item.manage_batch_numbers ||
-      (item.batch_management_method && item.batch_management_method !== 'NONE')
-    )
-    if (!itemUsesBatch) return null
-
     const itemGroupId = getItemGroupId(item)
     const matchedRules = batchRules.filter(rule => {
       if (rule.item_id && rule.item_id !== item.id) return false
@@ -1463,12 +1469,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const item = getSelectedItem(line)
     if (!item) return null
 
-    const itemUsesBatch = Boolean(
-      item.manage_batch_numbers ||
-      (item.batch_management_method && item.batch_management_method !== 'NONE')
-    )
-    if (!itemUsesBatch) return null
-
+    // DOC placement inventory requires batch lineage for every generated item line,
+    // even when the Item Master does not require batches for ordinary transactions.
     const rule = getBatchRuleForLine(line)
 
     return {
@@ -1950,14 +1952,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
     const rowsWithReceivedChicks = docDetailRows.filter(row => numberValue(row.quantity_received) > 0)
-    const missingBuildingRow = rowsWithReceivedChicks.find(row =>
+    const missingBuildingRowIndex = docDetailRows.findIndex(row =>
+      numberValue(row.quantity_received) > 0 &&
       !farmOpenFlockBuildings.some(building =>
         building.warehouseId === row.building_warehouse_id &&
         building.flockCardId === row.flock_card_id
       )
     )
-    if (posting && missingBuildingRow) {
-      toast('Select a building with an active flock-card cycle for every DOC Details row.')
+    if (posting && missingBuildingRowIndex >= 0) {
+      toast.error(`DOC Details row ${missingBuildingRowIndex + 1}: select a building with an active flock-card cycle.`)
       return
     }
     const ageIssue = rowsWithReceivedChicks
@@ -2006,6 +2009,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast(`Please enter batch details for ${missingBatchLine.itemCode}.`)
       return
     }
+    const unresolvedBatchLineIndex = completedLines.findIndex(line =>
+      !(line.batchNumber.trim() || getGeneratedBatchNumber(line))
+    )
+    if (posting && unresolvedBatchLineIndex >= 0) {
+      const line = completedLines[unresolvedBatchLineIndex]
+      toast.error(`Item line ${unresolvedBatchLineIndex + 1} (${line.itemCode}): batch number is missing or could not be generated.`)
+      return
+    }
     if (!posting && completedLines.length !== completeLines.length) {
       toast('Incomplete item lines are ignored when saving draft.')
     }
@@ -2043,7 +2054,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       }
     } catch (error) {
       console.log({ error })
-      toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save DOC receiving document'))
+      toast.error(getSaveErrorMessage(error), {
+        duration: 10000,
+      })
     } finally {
       setSaving(false)
     }
@@ -2282,6 +2295,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                         firstPlacementDate,
                         rowReceiveDate,
                       )))
+                      const inputValue = getDocDetailValue(row, column.code)
 
                       return (
                       <td key={column.code} className="px-1 py-1 align-top">
@@ -2344,7 +2358,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                   ? 'number'
                                   : 'text'
                             }
-                            value={getDocDetailValue(row, column.code)}
+                            value={inputValue}
                             readOnly={column.code === 'actual_received'}
                             disabled={!canEditDocDetails}
                             onChange={event => updateDocDetailRow(row.id, column.code, event.target.value)}
@@ -2352,6 +2366,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             max={column.code === 'receive_date' ? today() : undefined}
                             step={DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) ? 'any' : undefined}
                             className={`h-8 border-stone-300 px-2 text-sm shadow-none focus-visible:ring-stone-200 ${column.code === 'actual_received' || !canEditDocDetails ? 'bg-stone-100' : 'bg-white'}`}
+                            style={{ minWidth: getDocDetailInputMinWidth(inputValue) }}
                             aria-label={column.name}
                           />
                         </div>

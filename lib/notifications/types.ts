@@ -22,6 +22,7 @@ export type NotificationEventDefinition = {
 }
 
 export type NotificationModuleDefinition = {
+  ruleActivationReady?: boolean
   key: string
   label: string
   description: string

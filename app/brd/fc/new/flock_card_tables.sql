@@ -801,6 +801,7 @@ declare
   v_ba_id bigint;
   v_expected_allocation_count integer;
   v_saved_allocation_count integer;
+  v_invalid_feed_items text;
 begin
   if jsonb_typeof(coalesce(p_allocations, '[]'::jsonb)) <> 'array' then
     raise exception 'Unable to save feed intake: allocations must be an array';
@@ -846,18 +847,21 @@ begin
     raise exception 'Unable to save feed intake: select a valid Feed Type for the farm Feed Group';
   end if;
 
-  if exists (
-    select 1
-    from jsonb_array_elements(p_allocations) allocation
-    where not exists (
-      select 1
-      from public.items item
-      where upper(btrim(item.item_code)) = upper(btrim(allocation ->> 'itemCode'))
-        and item.sub_item_group_id = p_feed_type_id
-        and btrim(coalesce(item.void::text, '0')) = '1'
-    )
-  ) then
-    raise exception 'Unable to save feed intake: every selected batch item must belong to the selected Feed Type';
+  select string_agg(format('item %s, batch %s (item Feed Type: %s)',
+    allocation->>'itemCode', allocation->>'batchNumber',
+    coalesce(coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id)::text, 'missing')),
+    '; ')
+  into v_invalid_feed_items
+  from jsonb_array_elements(p_allocations) allocation
+  left join public.items item
+    on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
+  where item.id is null
+     or coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id) is distinct from p_feed_type_id
+     or btrim(coalesce(item.void::text, '0')) <> '1';
+
+  if v_invalid_feed_items is not null then
+    raise exception 'Unable to save feed intake: selected Feed Type % does not match an active batch item: %',
+      p_feed_type_id, v_invalid_feed_items;
   end if;
 
   v_user := coalesce(auth.uid(), v_line.updated_by, v_line.created_by, v_card.updated_by, v_card.created_by);

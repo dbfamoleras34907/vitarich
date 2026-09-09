@@ -31,6 +31,7 @@ type BrDeliverySettingsLayoutProps = {
   embedded?: boolean;
   permissionBasePath?: string;
   usePreviousFarmDefaults?: boolean;
+  useConfiguredDefaults?: boolean;
   saveLabel?: string;
   onSaved?: () => void;
 };
@@ -41,6 +42,7 @@ export default function BrDeliverySettingsLayout({
   embedded = false,
   permissionBasePath = "/brd/dr/settings",
   usePreviousFarmDefaults = false,
+  useConfiguredDefaults = false,
   saveLabel,
   onSaved,
 }: BrDeliverySettingsLayoutProps = {}) {
@@ -93,7 +95,10 @@ export default function BrDeliverySettingsLayout({
 
     setLoading(true);
     try {
-      const nextSettings = await getBrDeliverySettings(farmId, { usePreviousFarmDefaults });
+      const nextSettings = await getBrDeliverySettings(farmId, {
+        usePreviousFarmDefaults,
+        useConfiguredDefaults,
+      });
       setSettings(nextSettings);
       setBatchAutoSelection(Boolean(nextSettings?.batch_auto_selection));
       setTargetDeliveryAge(String(nextSettings?.target_delivery_age ?? 0));
@@ -108,7 +113,7 @@ export default function BrDeliverySettingsLayout({
     } finally {
       setLoading(false);
     }
-  }, [activeFarmId, resetSettingsForm, usePreviousFarmDefaults]);
+  }, [activeFarmId, resetSettingsForm, useConfiguredDefaults, usePreviousFarmDefaults]);
 
   useEffect(() => {
     fetchSettings();

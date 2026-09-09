@@ -31,7 +31,7 @@ export type ComboboxItemType = {
 
 const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
 
-type MultiProps = {
+  type MultiProps = {
   multiple: true
   label?: string
   required?: boolean
@@ -45,6 +45,8 @@ type MultiProps = {
   showCode?: boolean
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
+  contentClassName?: string
+  wrapItemLabels?: boolean
   actionLabel?: string
   onAction?: () => void
   actionDisabled?: boolean
@@ -65,12 +67,20 @@ type SingleProps = {
   showCode?: boolean
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
+  contentClassName?: string
+  wrapItemLabels?: boolean
   actionLabel?: string
   onAction?: () => void
   actionDisabled?: boolean
   gridRow?: number
   gridColumn?: number
   onGridKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
+  inputRef?: (element: HTMLInputElement | null) => void
+  inputId?: string
+  inputAriaLabel?: string
+  inputClassName?: string
+  onInputFocus?: React.FocusEventHandler<HTMLInputElement>
+  dataGridCell?: boolean
   disabled?: boolean
   openOnFocus?: boolean
 }
@@ -105,6 +115,8 @@ export default function SearchableCombobox(props: Props) {
     showCode = false,
     contentPositionerClassName,
     contentPositionerZIndex,
+    contentClassName,
+    wrapItemLabels = false,
     actionLabel,
     onAction,
     actionDisabled = false,
@@ -323,15 +335,22 @@ export default function SearchableCombobox(props: Props) {
 
               return (
                 <ComboboxChipsInput
-                  ref={singleInputRef}
+                  ref={(element) => {
+                    singleInputRef.current = element
+                    props.inputRef?.(element)
+                  }}
+                  id={props.inputId}
+                  aria-label={props.inputAriaLabel}
+                  data-fc-cell={props.dataGridCell ? "true" : undefined}
                   value={formatLabel(item)}
                   placeholder={placeholder}
-                  className="text-sm placeholder:text-muted-foreground"
+                  className={cn("text-sm placeholder:text-muted-foreground", props.inputClassName)}
                   readOnly
                   data-grid-row={props.gridRow}
                   data-grid-column={props.gridColumn}
                   onKeyDown={props.onGridKeyDown}
-                  onFocus={() => {
+                  onFocus={(event) => {
+                    props.onInputFocus?.(event)
                     if (
                       props.openOnFocus &&
                       !disabled &&
@@ -353,7 +372,7 @@ export default function SearchableCombobox(props: Props) {
           anchor={anchor}
           positionerClassName={contentPositionerClassName}
           positionerZIndex={contentPositionerZIndex}
-          className="rounded-lg border border-stone-200 p-0 shadow-lg"
+          className={cn("rounded-lg border border-stone-200 p-0 shadow-lg", contentClassName)}
         >
           <div className="border-b border-stone-200 p-2">
             <div className="relative">
@@ -465,7 +484,12 @@ export default function SearchableCombobox(props: Props) {
                       {item.code}
                     </span>
                   )}
-                  <span className="truncate text-sm">{item.name}</span>
+                  <span
+                    className={cn("text-sm", wrapItemLabels ? "whitespace-normal break-words" : "truncate")}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </span>
                 </span>
               </ComboboxItem>
             )}

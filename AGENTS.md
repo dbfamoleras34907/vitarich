@@ -1,5 +1,12 @@
 # Vitarich Repository Instructions
 
+## Browser Access Rule
+
+- Do not attempt to discover, connect to, or use the in-app browser for this repository. It is unavailable in the user's environment.
+- Do not repeat browser availability checks or report that the in-app browser is unavailable on each task.
+- Use source inspection, static checks, and explicitly authorized read-only data verification instead.
+- Only retry the in-app browser when the user explicitly asks for a browser check in that request.
+
 ## Data Access Rule
 
 Before creating any Supabase query, SQL statement, API request, fetch call, axios call, server action data loader, or React data-loading hook:

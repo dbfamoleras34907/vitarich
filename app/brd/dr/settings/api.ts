@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { HARVEST_DELIVERY_DEFAULTS } from "./defaults";
 
 export type BrDeliverySettings = {
   id?: number;
@@ -14,7 +15,10 @@ export type BrDeliverySettings = {
 
 export async function getBrDeliverySettings(
   farmId: number,
-  options: { usePreviousFarmDefaults?: boolean } = {},
+  options: {
+    usePreviousFarmDefaults?: boolean;
+    useConfiguredDefaults?: boolean;
+  } = {},
 ) {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
@@ -28,9 +32,20 @@ export async function getBrDeliverySettings(
     .maybeSingle();
 
   if (error) throw error;
-  if (data || !options.usePreviousFarmDefaults) {
+  if (data) {
     return data as BrDeliverySettings | null;
   }
+
+  if (options.useConfiguredDefaults) {
+    return {
+      ...HARVEST_DELIVERY_DEFAULTS,
+      farm_id: farmId,
+      farm_code: null,
+      farm_name: null,
+    };
+  }
+
+  if (!options.usePreviousFarmDefaults) return null;
 
   const { data: previous, error: previousError } = await db
     .from("brd_dr_settings")

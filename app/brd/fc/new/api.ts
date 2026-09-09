@@ -1,3 +1,4 @@
+import { saveBroilerGrowingTransaction } from "@/lib/data/repositories/broilerGrowingSave";
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { actualAdgColumnIndex, feedTypeColumnIndex } from "./flockCardGridConfig";
@@ -490,9 +491,8 @@ function hasLineData(line: FlockCardLinePayload) {
     lineHasMortalityThinningAllocations(line);
 }
 
-async function saveFlockCardLineFeedIntake(lineId: number, line: FlockCardLinePayload) {
-  const result = await db.rpc("save_brd_fc_feed_intake", {
-    p_line_id: lineId,
+function feedIntakePayload(line: FlockCardLinePayload) {
+  return {
     p_feed_kg: parseNumberOrNull(line.values[8]),
     p_feed_bird: parseNumberOrNull(line.values[9]),
     p_feed_guideline: parseNumberOrNull(line.values[10]),
@@ -512,9 +512,7 @@ async function saveFlockCardLineFeedIntake(lineId: number, line: FlockCardLinePa
       expiryDate: allocation.expiryDate || null,
       source: allocation.source ?? "MANUAL",
     })),
-  });
-
-  if (result.error) throwDbError(result.error, "Unable to save feed intake");
+  };
 }
 
 export async function saveFlockCard(
@@ -546,96 +544,20 @@ export async function saveFlockCard(
     void: "1",
   };
 
-  const savedHeader = payload.id
-    ? await db
-      .from("brd_fc")
-      .update(headerPayload)
-      .eq("id", payload.id)
-      .select("id, fc_no")
-      .single()
-    : await db
-      .from("brd_fc")
-      .insert({ ...headerPayload, created_by: userId })
-      .select("id, fc_no")
-      .single();
-
-  if (savedHeader.error) throwDbError(savedHeader.error, "Unable to save flock card header");
-
-  const fcId = Number(savedHeader.data.id);
-  const linesToSave = payload.lines.filter(hasLineData);
-  if (linesToSave.length === 0) {
-    return { id: fcId, fcNo: savedHeader.data.fc_no, savedLines: [] };
+  try {
+    return await saveBroilerGrowingTransaction({
+      id: payload.id ?? null,
+      header: headerPayload,
+      lines: payload.lines.filter(hasLineData).map(line => ({
+        age: line.age,
+        insert: linePayloadToBaseInsertRow(line, 0, userId),
+        update: linePayloadToBaseUpdateRow(line, userId),
+        feed: lineNeedsFeedIntakeRpc(line) ? feedIntakePayload(line) : null,
+      })),
+    });
+  } catch (error) {
+    throwDbError(error, "Unable to save flock card");
   }
-
-  const agesToSave = linesToSave.map(line => line.age);
-  const activeLineResult = await db
-    .from("brd_fc_line")
-    .select("id, age")
-    .eq("fc_id", fcId)
-    .eq("void", "1")
-    .in("age", agesToSave);
-
-  if (activeLineResult.error) throwDbError(activeLineResult.error, "Unable to check saved flock card lines");
-
-  const activeLineIdByAge = new Map(
-    (activeLineResult.data ?? []).map(row => [Number(row.age), Number(row.id)]),
-  );
-  const linesToInsert = linesToSave.filter(line => !activeLineIdByAge.has(line.age));
-  const linesToUpdate = linesToSave.filter(line => activeLineIdByAge.has(line.age));
-
-  for (const line of linesToUpdate) {
-    const lineId = activeLineIdByAge.get(line.age);
-    if (!lineId) continue;
-
-    const updatePayload = linePayloadToBaseUpdateRow(line, userId);
-
-    const lineResult = await db
-      .from("brd_fc_line")
-      .update(updatePayload)
-      .eq("id", lineId)
-      .eq("void", "1")
-      .select("id, age")
-      .single();
-
-    if (lineResult.error) throwDbError(lineResult.error, "Unable to update flock card line");
-
-    if (lineNeedsFeedIntakeRpc(line)) {
-      await saveFlockCardLineFeedIntake(lineId, line);
-    }
-  }
-
-  const lineRows = linesToInsert.map(line => linePayloadToBaseInsertRow(line, fcId, userId));
-  const savedLinesResult = lineRows.length > 0
-    ? await db
-      .from("brd_fc_line")
-      .insert(lineRows)
-      .select("id, age")
-    : { data: [], error: null };
-
-  if (savedLinesResult.error) throwDbError(savedLinesResult.error, "Unable to save flock card lines");
-
-  const lineIdByAge = new Map(
-    (savedLinesResult.data ?? []).map(row => [Number(row.age), Number(row.id)]),
-  );
-
-  for (const line of linesToInsert) {
-    const fcLineId = lineIdByAge.get(line.age);
-    if (!fcLineId || !lineNeedsFeedIntakeRpc(line)) continue;
-
-    await saveFlockCardLineFeedIntake(fcLineId, line);
-  }
-
-  return {
-    id: fcId,
-    fcNo: savedHeader.data.fc_no,
-    savedLines: [
-      ...(activeLineResult.data ?? []),
-      ...(savedLinesResult.data ?? []),
-    ].map(row => ({
-      id: Number(row.id),
-      age: Number(row.age),
-    })),
-  };
 }
 
 export async function reverseFlockCardFeedIntake(lineId: number, reason?: string | null) {

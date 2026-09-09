@@ -4,11 +4,13 @@
 
 drop function if exists public.import_item_master_items(jsonb, uuid);
 drop function if exists public.import_item_master_items(jsonb, uuid, boolean);
+drop function if exists public.import_item_master_items(jsonb, uuid, boolean, boolean);
 
 create function public.import_item_master_items(
   p_rows jsonb,
   p_actor_auth_id uuid,
-  p_skip_existing boolean default false
+  p_skip_existing boolean default false,
+  p_skip_duplicate_keys boolean default false
 )
 returns jsonb
 language plpgsql
@@ -24,6 +26,9 @@ declare
   v_item_code text;
   v_imported_count integer := 0;
   v_skipped_count integer := 0;
+  v_existing_skipped_count integer := 0;
+  v_duplicate_key_skipped_count integer := 0;
+  v_constraint_name text;
 begin
   if p_actor_auth_id is null then
     raise exception 'The import actor is required.';
@@ -78,6 +83,7 @@ begin
               upper(btrim(coalesce(v_payload ->> 'item_group', '')))
       ) then
         v_skipped_count := v_skipped_count + 1;
+        v_existing_skipped_count := v_existing_skipped_count + 1;
         continue;
       end if;
 
@@ -141,6 +147,15 @@ begin
       v_imported_count := v_imported_count + 1;
     exception
       when others then
+        get stacked diagnostics v_constraint_name = constraint_name;
+        if p_skip_duplicate_keys
+           and sqlstate = '23505'
+           and v_constraint_name = 'items_pkey' then
+          v_skipped_count := v_skipped_count + 1;
+          v_duplicate_key_skipped_count := v_duplicate_key_skipped_count + 1;
+          continue;
+        end if;
+
         raise exception using
           errcode = sqlstate,
           message = format('Row %s: %s', v_row_number, sqlerrm);
@@ -149,14 +164,16 @@ begin
 
   return jsonb_build_object(
     'importedCount', v_imported_count,
-    'skippedCount', v_skipped_count
+    'skippedCount', v_skipped_count,
+    'existingSkippedCount', v_existing_skipped_count,
+    'duplicateKeySkippedCount', v_duplicate_key_skipped_count
   );
 end;
 $$;
 
-revoke all on function public.import_item_master_items(jsonb, uuid, boolean)
+revoke all on function public.import_item_master_items(jsonb, uuid, boolean, boolean)
 from public, anon, authenticated;
-grant execute on function public.import_item_master_items(jsonb, uuid, boolean)
+grant execute on function public.import_item_master_items(jsonb, uuid, boolean, boolean)
 to service_role;
 
 notify pgrst, 'reload schema';

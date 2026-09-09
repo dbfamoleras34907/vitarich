@@ -8,6 +8,8 @@ alter table public.farms
 create or replace function public.insert_farm_setup_wizard(payload jsonb)
 returns bigint
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   new_farm_id bigint;
@@ -23,7 +25,16 @@ declare
   farm_address text;
   farm_region text;
   farm_approval_status text;
+  assigned_warehouse_count integer;
 begin
+  if auth.uid() is null or not (
+    public.current_user_has_farm_permission('/a_dean/farm')
+    or public.current_user_has_farm_permission('/a_dean/farm/setup/insert')
+    or public.current_user_has_farm_permission('/a_dean/farm/setup/approval')
+  ) then
+    raise exception 'You do not have permission to create farms.';
+  end if;
+
   farm_address := nullif(
     concat_ws(
       ', ',
@@ -230,6 +241,12 @@ begin
     farm_name = payload->'farm'->>'name'
   where id = any(warehouse_ids);
 
+  get diagnostics assigned_warehouse_count = row_count;
+
+  if assigned_warehouse_count <> cardinality(warehouse_ids) then
+    raise exception 'Farm creation could not persist every warehouse assignment.';
+  end if;
+
   for machine_item in
     select * from jsonb_array_elements(coalesce(payload->'machines', '[]'::jsonb))
   loop
@@ -254,3 +271,6 @@ begin
   return new_farm_id;
 end;
 $$;
+
+revoke all on function public.insert_farm_setup_wizard(jsonb) from public;
+grant execute on function public.insert_farm_setup_wizard(jsonb) to authenticated;

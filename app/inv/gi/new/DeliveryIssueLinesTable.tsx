@@ -10,6 +10,7 @@ import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
 import { GoodsIssueFlockCardInfo } from './api'
 import { UomConversionOption, UomGroupOption } from '@/app/inv/gr/new/api'
+import styles from './DeliveryIssueLinesTable.module.css'
 
 type LineFlockCardState = {
   loading: boolean
@@ -31,6 +32,7 @@ type DeliveryIssueLinesTableProps = {
   quantityLabel?: string
   bodyWeightLabel?: string
   showTsDrNumber?: boolean
+  excelAppearance?: boolean
   showQuantityAllocationWarnings?: boolean
   showOnHandQuantity?: boolean
   showRemainingOnHand?: boolean
@@ -76,6 +78,7 @@ export default function DeliveryIssueLinesTable({
   quantityLabel = 'To Transfer',
   bodyWeightLabel = 'Weight g',
   showTsDrNumber = false,
+  excelAppearance = false,
   showQuantityAllocationWarnings = true,
   showOnHandQuantity = true,
   showRemainingOnHand = false,
@@ -107,6 +110,16 @@ export default function DeliveryIssueLinesTable({
 }: DeliveryIssueLinesTableProps) {
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const requiredMark = showTransportFields ? <span className="text-red-600">*</span> : null
+  const excelColumnWidths = [
+    38, 180, 140, 84, 60, 80, 220, 110,
+    ...(showVariance ? [110] : []),
+    220, 80,
+    ...(showTsDrNumber ? [120] : []),
+    ...(showOnHandQuantity ? [120] : []),
+    ...(showTransportFields ? [180, 130, 320, 100] : []),
+    ...(showLineRemarks ? [180] : []),
+    38,
+  ]
 
   const updateAllocationGroup = (allocationGroupKey: string, changes: Partial<GoodsIssueLine>) => {
     setIssue(current => current ? {
@@ -120,8 +133,15 @@ export default function DeliveryIssueLinesTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className={`${showTransportFields ? (showTsDrNumber ? 'min-w-[2660px]' : 'min-w-[2500px]') : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}>
+    <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'}>
+      <table
+        aria-label="Issue Lines"
+        className={`${showTransportFields ? (showTsDrNumber ? 'min-w-[2660px]' : 'min-w-[2500px]') : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}
+        style={excelAppearance ? { minWidth: excelColumnWidths.reduce((sum, width) => sum + width, 0) } : undefined}
+      >
+        {excelAppearance && <colgroup>
+          {excelColumnWidths.map((width, index) => <col key={index} style={{ width }} />)}
+        </colgroup>}
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>

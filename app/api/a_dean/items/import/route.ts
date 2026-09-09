@@ -45,7 +45,13 @@ export async function POST(request: Request) {
     })
 
     const skipExisting = body.skipExisting === true
-    const result = await importItemMasterRowsForAuthorizedUser(authData.user.id, rows, skipExisting)
+    const skipDuplicateKeys = body.skipDuplicateKeys === true
+    const result = await importItemMasterRowsForAuthorizedUser(
+      authData.user.id,
+      rows,
+      skipExisting,
+      skipDuplicateKeys,
+    )
     return NextResponse.json(result)
   } catch (error) {
     const message = getErrorMessage(error)

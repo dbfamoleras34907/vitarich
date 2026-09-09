@@ -221,7 +221,7 @@ These modules must not be connected to farm-targeted notification rules until th
 | Item Stock In | `goods_receipt.farm_id` is nullable in checked-in SQL | Make it required for farm-scoped posting or mark missing-farm events Invalid; verify the foreign key live |
 | Item Stock Out | `goods_issue.farm_id` is nullable in checked-in SQL | Make it required for farm-scoped posting or mark missing-farm events Invalid; verify the foreign key live |
 | DOC Placement | Uses `goods_receipt.farm_id` and now copies it to `recipient_farm_id`, but the source column remains nullable in checked-in SQL | Make the farm required for the business Post; missing farm events are now marked Invalid and cannot become global |
-| Growing & Farm Condition | Flock Card carries `farm_id`, but checked-in SQL allows null | Require it for creation/posting and verify the foreign key live |
+| Growing & Farm Condition | `save_brd_fc_transaction` requires a canonical Broiler `farms.id`; save/reversal events use persisted `brd_fc.farm_id`. Legacy rows still allow null. | `BRD_FC_POSTED` / `BRD_FC_EDITED` registered but rule activation hidden until SQL deployment and live farm/FK verification. No document Void action is supported by this Growing editor. |
 | Harvest & Delivery | Carries `farm_id`, but checked-in SQL allows null | Require it for Post and read it from the committed header |
 | Broiler Clean Up | Carries `farm_id`, but checked-in transaction header SQL allows null | Require it for Post and read it from the committed header |
 | Egg Laying Production | Carries nullable `farm_id` and still supports farm-name fallback queries | Require the numeric ID and remove farm-name notification routing fallback |

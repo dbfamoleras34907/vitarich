@@ -37,6 +37,7 @@ type FlockCardSettingsLayoutProps = {
   embedded?: boolean;
   permissionBasePath?: string;
   usePreviousFarmDefaults?: boolean;
+  useConfiguredDefaults?: boolean;
   saveLabel?: string;
   onSaved?: () => void;
 };
@@ -47,6 +48,7 @@ export default function FlockCardSettingsLayout({
   embedded = false,
   permissionBasePath = "/brd/fc/settings",
   usePreviousFarmDefaults = false,
+  useConfiguredDefaults = false,
   saveLabel,
   onSaved,
 }: FlockCardSettingsLayoutProps = {}) {
@@ -129,7 +131,10 @@ export default function FlockCardSettingsLayout({
 
     setLoading(true);
     try {
-      const nextSettings = await getFlockCardSettings(farmId, { usePreviousFarmDefaults });
+      const nextSettings = await getFlockCardSettings(farmId, {
+        usePreviousFarmDefaults,
+        useConfiguredDefaults,
+      });
       setSettings(nextSettings);
       setValue("FlockCardSettings", nextSettings);
       setFeedGroupId(nextSettings?.feed_group_id ? String(nextSettings.feed_group_id) : "");
@@ -157,7 +162,7 @@ export default function FlockCardSettingsLayout({
     } finally {
       setLoading(false);
     }
-  }, [activeFarmId, setValue, usePreviousFarmDefaults]);
+  }, [activeFarmId, setValue, useConfiguredDefaults, usePreviousFarmDefaults]);
 
   useEffect(() => {
     fetchSettings();

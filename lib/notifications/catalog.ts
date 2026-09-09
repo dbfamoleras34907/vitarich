@@ -3,6 +3,21 @@ import type { NotificationCatalog } from "./types"
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BRD_FC,
+    // Enable only after deploying and verifying the farm/transaction SQL.
+    ruleActivationReady: false,
+    label: "Growing & Farm Condition",
+    description: "Successful transactional Growing saves.",
+    fmsTypes: ["Broiler"],
+    permissionGroup: "Menus",
+    permissionTitle: "Growing & Farm Condition/view",
+    baseUrl: "/brd/fc",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.POSTED, label: "Growing Saved", description: "First successful save of a Growing record.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.EDITED, label: "Growing Edited", description: "Successful save of an existing Growing record.", action: "edited", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.DOC_RECEIVING,
     label: "DOC Placement",
     description: "DOC receiving and placement documents for Broiler farms.",
@@ -37,6 +52,39 @@ export const notificationCatalog: NotificationCatalog = [
         description: "Triggered only after a Hatchery DOC Dispatch successfully reaches Posted status.",
         action: "posted",
         farmRouting: "destination",
+      },
+    ],
+  },
+  {
+    key: NOTIFICATION_MODULE_KEYS.FARM,
+    label: "Farm Management",
+    description: "Farm master records created and maintained through the Farm Setup Wizard.",
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    defaultRecipientFmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    permissionGroup: "Modules",
+    permissionTitle: "Farm Management",
+    baseUrl: "/a_dean/farm",
+    events: [
+      {
+        key: NOTIFICATION_EVENT_KEYS.FARM.POSTED,
+        label: "Farm Posted",
+        description: "Triggered after a farm is created or its required approval is completed.",
+        action: "posted",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.FARM.EDITED,
+        label: "Farm Edited",
+        description: "Triggered once after an existing farm setup is saved.",
+        action: "edited",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.FARM.VOIDED,
+        label: "Farm Voided",
+        description: "Triggered once when an active farm becomes void.",
+        action: "voided",
+        farmRouting: "document",
       },
     ],
   },

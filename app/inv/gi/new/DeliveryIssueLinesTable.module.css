@@ -1,0 +1,89 @@
+.sheet {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--border);
+}
+
+.sheet table {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.sheet thead {
+  background: var(--muted);
+  color: var(--foreground);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sheet th,
+.sheet td {
+  border: 1px solid var(--border);
+}
+
+.sheet thead th {
+  width: auto;
+  height: 28px;
+  padding: 4px 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sheet tbody tr {
+  height: 28px;
+  background: var(--card);
+}
+
+.sheet tbody tr:hover {
+  background: var(--accent);
+}
+
+.sheet tbody td {
+  padding: 0;
+  vertical-align: middle;
+}
+
+.sheet tbody td:first-child {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet td:focus-within {
+  position: relative;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.sheet td input,
+.sheet td select,
+.sheet td button {
+  height: 27px;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet td input,
+.sheet td select,
+.sheet td button[data-slot='searchable-dropdown-trigger'],
+.sheet td button[data-slot='select-trigger'] {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.sheet td input:read-only {
+  color: var(--muted-foreground);
+}
+
+.sheet td button:disabled,
+.sheet td select:disabled {
+  color: var(--muted-foreground);
+}

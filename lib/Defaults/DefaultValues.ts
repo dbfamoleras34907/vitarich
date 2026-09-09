@@ -1331,6 +1331,7 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            void: true,
             approval: false,
           },
 

@@ -383,10 +383,10 @@ export default function AddItemPage() {
               </div>
             </Field>
             <Field label="Item Name" required>
-              <Input name="item_name" value={form.item_name} onChange={handleChange} placeholder="Feeds" />
+              <Input name="item_name" value={form.item_name} onChange={handleChange} />
             </Field>
             <Field label="Barcode">
-              <Input name="barcode" value={form.barcode} onChange={handleChange} placeholder="Optional" />
+              <Input name="barcode" value={form.barcode} onChange={handleChange} />
             </Field>
             <Field label="Item Group" required hint={selectedGroup?.name}>
               <SearchableDropdown
@@ -435,7 +435,7 @@ export default function AddItemPage() {
 
           <div className="mt-4">
             <Field label="Description">
-              <Textarea name="description" value={form.description} onChange={handleChange} placeholder="Optional item description" />
+              <Textarea name="description" value={form.description} onChange={handleChange} />
             </Field>
           </div>
         </section>
@@ -479,7 +479,6 @@ export default function AddItemPage() {
                     step="any"
                     value={form.min_on_hand}
                     onChange={event => updateForm('min_on_hand', event.target.value)}
-                    placeholder="0"
                   />
                 </Field>
                 <Field label="Max On Hand">
@@ -489,7 +488,6 @@ export default function AddItemPage() {
                     step="any"
                     value={form.max_on_hand}
                     onChange={event => updateForm('max_on_hand', event.target.value)}
-                    placeholder="0"
                   />
                 </Field>
               </div>
@@ -501,7 +499,6 @@ export default function AddItemPage() {
                   step={1}
                   value={form.default_expiration_months}
                   onChange={event => updateForm('default_expiration_months', event.target.value)}
-                  placeholder="0"
                 />
               </Field>
             </div>

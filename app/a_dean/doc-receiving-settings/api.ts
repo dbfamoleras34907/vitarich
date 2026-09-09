@@ -4,10 +4,6 @@ export type DocItemOption = {
   id: number
   item_code: string
   item_name: string | null
-  description?: string | null
-  item_group?: string | null
-  fms_group?: string | null
-  group?: string | null
 }
 
 export type DocReceivingSettings = {
@@ -28,25 +24,14 @@ export type DocCycleExcludedBuilding = {
 export async function getDocItemOptions() {
   const { data, error } = await db
     .from('items')
-    .select('*')
+    .select('id, item_code, item_name')
     .eq('void', 1)
+    .eq('fms_group', 'broiler')
+    .eq('item_group', 'DOC')
     .order('item_code', { ascending: true })
 
   if (error) throw error
-  return ((data || []) as DocItemOption[]).filter(isDocItem)
-}
-
-function isDocItem(item: DocItemOption) {
-  const tokens = [
-    item.item_code,
-    item.item_name,
-    item.description,
-    item.item_group,
-    item.fms_group,
-    item.group,
-  ].map(value => String(value ?? '').trim().toUpperCase())
-
-  return tokens.some(token => token === 'DOC' || token.startsWith('DOC'))
+  return (data || []) as DocItemOption[]
 }
 
 export async function getDocReceivingSettings(

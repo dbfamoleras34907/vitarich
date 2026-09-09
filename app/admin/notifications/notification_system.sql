@@ -433,6 +433,73 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'BRD_FC'
+            and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED') then
+        select exists (
+          select 1 from public.brd_fc card
+          join public.farms farm on farm.id = card.farm_id
+          where card.id::text = v_event.entity_id
+            and card.farm_id = v_event.farm_id
+            and card.farm_id = v_event.recipient_farm_id
+            and v_event.entity_type = 'brd_fc'
+            and v_event.fms_type = 'Broiler'
+            and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Growing event does not match its persisted farm.'
+          where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'FARM'
+            and v_event.event_key in ('FARM_POSTED', 'FARM_EDITED', 'FARM_VOIDED') then
+        if v_event.entity_id !~ '^[0-9]+$' then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Farm source ID is invalid.'
+          where id = v_event.id;
+          continue;
+        end if;
+
+        if v_event.farm_id is null
+           or v_event.recipient_farm_id is null
+           or v_event.farm_id <> v_event.recipient_farm_id then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Farm event routing identity is missing or inconsistent.'
+          where id = v_event.id;
+          continue;
+        end if;
+
+        select exists (
+          select 1
+          from public.farms farm
+          where farm.id = v_event.entity_id::bigint
+            and farm.id = v_event.farm_id
+            and case upper(btrim(coalesce(farm.farm_type, '')))
+              when 'BR' then 'Broiler'
+              when 'BROILER' then 'Broiler'
+              when 'BE' then 'Breeder'
+              when 'BREEDER' then 'Breeder'
+              when 'HA' then 'Hatchery'
+              when 'HATCHERY' then 'Hatchery'
+              else null
+            end is not distinct from v_event.fms_type
+            and (
+              v_event.event_key in ('FARM_POSTED', 'FARM_EDITED')
+              or (v_event.event_key = 'FARM_VOIDED'
+                and coalesce(btrim(farm.void::text), '0') <> '1')
+            )
+        ) into v_source_valid;
+
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Farm source does not match the recorded event and routing identity.'
+          where id = v_event.id;
+          continue;
+        end if;
       elsif v_event.module_key = 'VACCINATION_MEDS'
             and v_event.event_key in ('VACCINATION_MEDS_POSTED', 'VACCINATION_MEDS_EDITED', 'VACCINATION_MEDS_VOIDED') then
         if v_event.entity_id !~ '^[0-9]+$' then

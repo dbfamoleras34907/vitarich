@@ -29,6 +29,7 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       lineQuantityLabel="Harvest Quantity"
       bodyWeightLabel="ALW g"
       showLineTsDrNumber
+      excelIssueLines
       showLineQuantityAllocationWarnings={false}
       showRemarksInActionRow
     />

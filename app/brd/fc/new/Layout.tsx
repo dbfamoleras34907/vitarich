@@ -322,7 +322,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [feedTypes, setFeedTypes] = useState<ItemGroup[]>([]);
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
-  const [feedBatchRefreshKey, setFeedBatchRefreshKey] = useState(0);
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
   const [feedBatchDialogMode, setFeedBatchDialogMode] = useState<FeedBatchDialogMode>("onHand");
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
@@ -502,7 +501,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
     feedItems.forEach(item => {
       const code = String(item.item_code ?? "").trim().toUpperCase();
-      const feedTypeId = Number(item.sub_item_group_id ?? 0);
+      // Feed Type is the first subgroup directly under the configured Feed Group.
+      // Item Master keeps the selected leaf in sub_item_group_id, so use the
+      // persisted level-1 ancestor when the item has a deeper subgroup path.
+      const feedTypeId = Number(
+        item.sub_item_group_level_1_id ?? item.sub_item_group_id ?? 0
+      );
       if (code && Number.isFinite(feedTypeId) && feedTypeId > 0) {
         map.set(code, feedTypeId);
       }
@@ -794,6 +798,13 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const activeFeedTypeLabel = activeFeedType
     ? `${activeFeedType.code} - ${activeFeedType.name}`
     : "-";
+  const feedTypeOptions = useMemo(
+    () => feedTypes.map(feedType => ({
+      code: String(feedType.id),
+      name: `${feedType.code} - ${feedType.name}`,
+    })),
+    [feedTypes]
+  );
 
   const activeAvailableFeedBatches = useMemo(
     () => positiveAvailableFeedBatchRows
@@ -1053,7 +1064,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [feedBatchRefreshKey, feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
+  }, [feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
 
   useEffect(() => {
     const farmId = Number(selectedFarmId);
@@ -2165,7 +2176,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
-    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -2325,7 +2335,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchDialogMode("cell");
     setFeedBatchSelectionRowIndex(rowIndex);
     setReviewFeedBatch(null);
-    setFeedBatchRefreshKey(current => current + 1);
     setFeedBatchDialogOpen(true);
   }
 
@@ -4125,28 +4134,28 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               ) : null}
                             </div>
                           ) : colIndex === feedTypeColumnIndex ? (
-                            <select
-                              id={`row-${rowIndex}-col-${colIndex}`}
-                              data-fc-cell="true"
-                              ref={(element) => {
+                            <SearchableCombobox
+                              items={feedTypeOptions}
+                              value={computedGridValues[rowIndex][colIndex] ?? ""}
+                              onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
+                              placeholder="Select"
+                              disabled={disabled}
+                              openOnFocus
+                              inputId={`row-${rowIndex}-col-${colIndex}`}
+                              inputAriaLabel={`Feed Type for age ${row.age}`}
+                              dataGridCell
+                              inputRef={(element) => {
                                 inputRefs.current[rowIndex] ??= [];
                                 inputRefs.current[rowIndex][colIndex] = element;
                               }}
-                              value={computedGridValues[rowIndex][colIndex] ?? ""}
-                              disabled={disabled}
-                              aria-label={`Feed Type for age ${row.age}`}
-                              onFocus={() => setActiveCell({ rowIndex, colIndex })}
-                              onChange={(event) => handleFeedTypeChange(rowIndex, event.target.value)}
-                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
-                              className="h-8 w-full min-w-[150px] border-0 bg-white px-1.5 text-xs text-[#4f4a43] outline-none focus:font-semibold focus:text-emerald-950 focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[#7c766c] dark:bg-card dark:text-foreground dark:focus:text-emerald-100 dark:disabled:bg-transparent dark:disabled:text-muted-foreground"
-                            >
-                              <option value="">Select</option>
-                              {feedTypes.map(feedType => (
-                                <option key={feedType.id} value={String(feedType.id)}>
-                                  {feedType.code} - {feedType.name}
-                                </option>
-                              ))}
-                            </select>
+                              onInputFocus={() => setActiveCell({ rowIndex, colIndex })}
+                              onGridKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
+                              className="h-8 min-h-8 w-full min-w-[150px] rounded-none border-0 bg-white px-1.5 py-0 shadow-none hover:border-0 dark:bg-card disabled:bg-transparent"
+                              inputClassName="h-8 min-w-0 px-0 text-xs text-[#4f4a43] focus:font-semibold focus:text-emerald-950 disabled:text-[#7c766c] dark:text-foreground dark:focus:text-emerald-100 dark:disabled:text-muted-foreground"
+                              contentPositionerClassName="z-[80]"
+                              contentClassName="w-[420px] min-w-[300px] max-w-[calc(100vw-2rem)]"
+                              wrapItemLabels
+                            />
                           ) : colIndex === feedBatchColumnIndex ? (
                             <div className="flex min-h-8 w-full items-stretch" style={{ minWidth: feedBatchColumnWidth }}>
                               <button
@@ -4207,7 +4216,17 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   value
                                 )
                               }
-                              onBlur={() => undefined}
+                              onBlur={(value) => {
+                                if (
+                                  colIndex === feedDailyKgColumnIndex &&
+                                  !rowAgeLocked &&
+                                  !feedIntakeCellLocked &&
+                                  getNumericValue(value) > 0 &&
+                                  value !== (gridValues[rowIndex]?.[colIndex] ?? "")
+                                ) {
+                                  focusCell(rowIndex, feedTypeColumnIndex);
+                                }
+                              }}
                               onFocus={() => setActiveCell({ rowIndex, colIndex })}
                               onKeyDown={(event) =>
                                 handleCellKeyDown(event, rowIndex, colIndex)

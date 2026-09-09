@@ -44,6 +44,7 @@ export default function Layout() {
   const [pendingImportRows, setPendingImportRows] = useState<ItemMasterImportRow[]>([])
   const [confirmImportOpen, setConfirmImportOpen] = useState(false)
   const [skipExistingItems, setSkipExistingItems] = useState(false)
+  const [skipDuplicateKeys, setSkipDuplicateKeys] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const columns: ColumnConfig[] = useMemo(
@@ -145,18 +146,23 @@ export default function Layout() {
     setImportIssues([])
     setImportMessage(null)
     try {
-      const { importedCount, skippedCount } = await importItemMasterRows(rowsToImport, {
+      const { importedCount, existingSkippedCount, duplicateKeySkippedCount } = await importItemMasterRows(rowsToImport, {
         skipExisting: skipExistingItems,
+        skipDuplicateKeys,
       })
 
       setImportMessage([
         `${importedCount} ${importedCount === 1 ? 'item was' : 'items were'} imported successfully.`,
-        skippedCount > 0
-          ? `${skippedCount} existing ${skippedCount === 1 ? 'item was' : 'items were'} skipped.`
+        existingSkippedCount > 0
+          ? `${existingSkippedCount} existing ${existingSkippedCount === 1 ? 'item was' : 'items were'} skipped.`
+          : '',
+        duplicateKeySkippedCount > 0
+          ? `${duplicateKeySkippedCount} ${duplicateKeySkippedCount === 1 ? 'row was' : 'rows were'} skipped due to an items primary-key conflict.`
           : '',
       ].filter(Boolean).join(' '))
       setPendingImportRows([])
       setSkipExistingItems(false)
+      setSkipDuplicateKeys(false)
       await fetchData()
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'The import could not be completed.'
@@ -307,6 +313,19 @@ export default function Layout() {
                 <span className="block font-medium">Skip already existing items</span>
                 <span className="block text-xs text-muted-foreground">
                   Skip a row when the same Item Name already exists in the selected Item Group. Existing records are not updated.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={skipDuplicateKeys}
+                onCheckedChange={checked => setSkipDuplicateKeys(checked === true)}
+              />
+              <span>
+                <span className="block font-medium">Skip duplicate primary keys</span>
+                <span className="block text-xs text-muted-foreground">
+                  Skip only rows that conflict with the items_pkey constraint. Other errors still roll back the complete import.
                 </span>
               </span>
             </label>

@@ -14,7 +14,8 @@ as $$
 declare
   is_doc_receiving boolean;
   existing_posting_count integer;
-  posting_contract_mismatch boolean;  
+  posting_contract_mismatch boolean;
+  invalid_link_details text;
 begin
   if new.status <> 'Posted' then
     return new;
@@ -38,8 +39,54 @@ begin
       raise exception 'DOC Receiving % cannot post without a farm', new.gr_no;
     end if;
 
-    if exists (
-      select 1
+    select string_agg(
+      format(
+        'item line %s (%s; DOC detail %s): %s',
+        coalesce(gri.line_no::text, '?'),
+        coalesce(nullif(trim(gri.item_code), ''), 'unknown item'),
+        coalesce(gri.doc_line_no::text, 'missing'),
+        concat_ws(', ',
+          case when gri.doc_line_no is null then 'DOC detail link is missing' end,
+          case when gri.doc_line_no is not null and grd.id is null then 'linked DOC detail was not found or is void' end,
+          case when grd.id is not null and grd.building_warehouse_id is null then 'building is missing' end,
+          case when grd.id is not null and grd.flock_card_id is null then 'flock-card is missing' end,
+          case
+            when grd.id is not null and grd.flock_card_id is not null and fc.id is null
+              then format('flock-card %s was not found, is void, or is not Saved', grd.flock_card_id)
+          end,
+          case
+            when fc.id is not null and fc.farm_id is distinct from new.farm_id
+              then format('flock-card farm %s does not match document farm %s', coalesce(fc.farm_id::text, 'missing'), new.farm_id)
+          end,
+          case
+            when fc.id is not null and fc.building_whse_id is distinct from grd.building_warehouse_id
+              then format(
+                'flock-card building %s does not match DOC building %s',
+                coalesce(fc.building_whse_id::text, 'missing'),
+                coalesce(grd.building_warehouse_id::text, 'missing')
+              )
+          end,
+          case when fc.id is not null and nullif(trim(fc.cycle_no), '') is null then 'flock-card cycle number is missing' end,
+          case
+            when gri.warehouse_id is null then 'warehouse is missing'
+            when iw.id is null then format('warehouse %s was not found', gri.warehouse_id)
+          end,
+          case
+            when iw.id is not null
+             and nullif(trim(gri.warehouse_code), '') is distinct from nullif(trim(iw.whse_code), '')
+              then format(
+                'saved warehouse code %s does not match warehouse %s code %s',
+                coalesce(nullif(trim(gri.warehouse_code), ''), 'missing'),
+                iw.id,
+                coalesce(nullif(trim(iw.whse_code), ''), 'missing')
+              )
+          end,
+          case when nullif(trim(gri.batch_number), '') is null then 'batch number is missing' end
+        )
+      ),
+      '; ' order by gri.line_no
+    )
+    into invalid_link_details
       from public.goods_receipt_items gri
       left join public.goods_receipt_doc grd
         on grd.goods_reciept_id = gri.goods_reciept_id
@@ -66,9 +113,10 @@ begin
           or iw.id is null
           or nullif(trim(gri.warehouse_code), '') is distinct from nullif(trim(iw.whse_code), '')
           or nullif(trim(gri.batch_number), '') is null
-        )
-    ) then
-      raise exception 'DOC Receiving % has an incomplete item, building, flock-card, cycle, warehouse, or batch link', new.gr_no;
+        );
+
+    if invalid_link_details is not null then
+      raise exception 'DOC Receiving % cannot post: %', new.gr_no, invalid_link_details;
     end if;
 
     select count(*)

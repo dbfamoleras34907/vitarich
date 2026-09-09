@@ -26,6 +26,8 @@ import {
 import { useParams, useRouter } from 'next/navigation'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { usePermission } from '@/hooks/usePermission'
+import { voidFarm } from '../api'
 import {
   createFarmSetup,
   generateNextCode,
@@ -123,6 +125,15 @@ const warehouseFields: FieldConfig[] = [
 ]
 
 const compact = (value: unknown) => String(value ?? '').trim()
+const warehouseDisplayName = (draft?: WarehouseDraft) => {
+  if (!draft) return ''
+
+  const code = compact(draft.data.whse_code)
+  const name = compact(draft.data.whse_name)
+
+  if (code && name) return `${code} - ${name}`
+  return code || name || 'Unnamed draft'
+}
 const numericCapacity = (value: unknown) => {
   const text = compact(value)
   return text === '' ? null : Number(text)
@@ -256,6 +267,9 @@ function WizardActions({
   onNext,
   onSubmit,
   submitLabel,
+  canVoid,
+  voiding,
+  onVoid,
 }: {
   step: number
   loading: boolean
@@ -263,29 +277,42 @@ function WizardActions({
   onNext: () => void
   onSubmit: () => void
   submitLabel: string
+  canVoid: boolean
+  voiding: boolean
+  onVoid: () => void
 }) {
   return (
-    <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-4 dark:border-border sm:px-6">
-      <Button type="button" variant="secondary" onClick={onBack} className="h-10 bg-white px-4 text-neutral-700 dark:bg-secondary dark:text-secondary-foreground">
-        <ArrowLeft className="size-4" />
-        Back
-      </Button>
-      {step < STEPS.length - 1 ? (
-        <Button type="button" onClick={onNext} className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800">
-          Next
-          <ArrowRight className="size-4" />
+    <div className="flex items-center justify-between gap-3 border-t border-neutral-100 px-5 py-4 dark:border-border sm:px-6">
+      <div>
+        {canVoid ? (
+          <Button type="button" variant="destructive" onClick={onVoid} disabled={loading || voiding} className="h-10 px-4">
+            <Trash2 className="size-4" />
+            {voiding ? 'Voiding...' : 'Void Farm'}
+          </Button>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="button" variant="secondary" onClick={onBack} className="h-10 bg-white px-4 text-neutral-700 dark:bg-secondary dark:text-secondary-foreground">
+          <ArrowLeft className="size-4" />
+          Back
         </Button>
-      ) : (
-        <Button
-          type="button"
-          onClick={onSubmit}
-          disabled={loading}
-          className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800"
-        >
-          <Save className="size-4" />
-          {loading ? 'Submitting...' : submitLabel}
-        </Button>
-      )}
+        {step < STEPS.length - 1 ? (
+          <Button type="button" onClick={onNext} className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800">
+            Next
+            <ArrowRight className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={onSubmit}
+            disabled={loading || voiding}
+            className="h-10 bg-emerald-700 px-5 text-white hover:bg-emerald-800"
+          >
+            <Save className="size-4" />
+            {loading ? 'Submitting...' : submitLabel}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }
@@ -381,7 +408,9 @@ function ReviewDraftRow({
   return (
     <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 first:border-t-0 dark:border-border sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <div className="text-sm font-medium text-neutral-950 dark:text-foreground">{draft.data.whse_name || 'Unnamed draft'}</div>
+        <div className="text-sm font-medium text-neutral-950 dark:text-foreground">
+          {warehouseDisplayName(draft)}
+        </div>
         <div className="mt-1 text-xs text-neutral-500 dark:text-muted-foreground">
           {draft.data.warehouse_type} / {draft.data.fms_type}
         </div>
@@ -400,12 +429,16 @@ export default function Layout() {
   const params = useParams<{ farmid?: string }>()
   const farmId = Number(params?.farmid ?? 0)
   const isEditMode = Number.isFinite(farmId) && farmId > 0
+  const canVoid = !usePermission('/a_dean/farm/void')
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [loadingFarm, setLoadingFarm] = useState(isEditMode)
+  const [voiding, setVoiding] = useState(false)
   const [farmData, setFarmData] = useState<FormDataMap>({})
   const [addressData, setAddressData] = useState<FormDataMap>({})
   const [warehouseDrafts, setWarehouseDrafts] = useState<WarehouseDraft[]>([])
+  const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseDraft[]>([])
+  const [existingStructureKeys, setExistingStructureKeys] = useState<string[]>([])
   const [defaultFeedKey, setDefaultFeedKey] = useState('')
   const [defaultReceivingKey, setDefaultReceivingKey] = useState('')
   const [defaultDisposalKey, setDefaultDisposalKey] = useState('')
@@ -426,6 +459,31 @@ export default function Layout() {
         }),
     [warehouseDrafts]
   )
+  const assignableStructureOptions: ComboboxItemType[] = useMemo(() => {
+    const assignedIds = new Set(
+      warehouseDrafts.map((draft) => draft.id).filter((id): id is number => id != null)
+    )
+    const requiredFmsType = selectedFarmType?.warehouseType ?? ''
+
+    return warehouseCatalog
+      .filter(
+        (draft) =>
+          draft.id != null &&
+          !assignedIds.has(draft.id) &&
+          !isPenDraft(draft) &&
+          draft.data.fms_type === requiredFmsType
+      )
+      .map((draft) => {
+        const code = compact(draft.data.whse_code)
+        const name = compact(draft.data.whse_name) || 'Unnamed structure'
+        const type = compact(draft.data.warehouse_type) || 'Warehouse'
+
+        return {
+          code: draft.clientKey,
+          name: `${code ? `${code} - ` : ''}${name} (${type})`,
+        }
+      })
+  }, [selectedFarmType?.warehouseType, warehouseCatalog, warehouseDrafts])
   const locationPreview = useMemo(
     () =>
       [addressData.address, addressData.barangay, addressData.city, addressData.province]
@@ -480,6 +538,7 @@ export default function Layout() {
 
     if (code === 'farm_type') {
       const nextType = FARM_TYPES.find((type) => type.value === value)?.warehouseType ?? ''
+      setExistingStructureKeys([])
       setWarehouseDrafts((prev) =>
         prev.map((draft) => ({ ...draft, data: { ...draft.data, fms_type: nextType } }))
       )
@@ -739,6 +798,62 @@ export default function Layout() {
     }
   }
 
+  const addExistingStructures = () => {
+    if (existingStructureKeys.length === 0) return
+
+    const selectedKeySet = new Set(existingStructureKeys)
+    const structures = warehouseCatalog.filter(
+      (draft) =>
+        selectedKeySet.has(draft.clientKey) &&
+        !isPenDraft(draft) &&
+        compact(draft.data.fms_type) === selectedFarmType?.warehouseType
+    )
+    const buildingKeySet = new Set(
+      structures
+        .filter((draft) => draft.data.warehouse_type === 'Building')
+        .map((draft) => draft.clientKey)
+    )
+    const relatedPens = warehouseCatalog.filter(
+      (draft) => isPenDraft(draft) && buildingKeySet.has(draft.data.father_client_key)
+    )
+
+    setWarehouseDrafts((prev) => {
+      const selectedIds = new Set(
+        prev.map((draft) => draft.id).filter((id): id is number => id != null)
+      )
+      const additions = [...structures, ...relatedPens].filter((draft) => {
+        if (draft.id == null || selectedIds.has(draft.id)) return false
+        selectedIds.add(draft.id)
+        return true
+      })
+
+      return [...prev, ...additions]
+    })
+    setExistingStructureKeys([])
+  }
+
+  const handleVoid = async () => {
+    if (!isEditMode || !canVoid || voiding) return
+
+    const code = compact(farmData.code)
+    const name = compact(farmData.name)
+    const confirmed = window.confirm(
+      `Void farm "${[code, name].filter(Boolean).join(' - ')}"? The farm will no longer appear in farm lists.`,
+    )
+    if (!confirmed) return
+
+    setVoiding(true)
+    try {
+      await voidFarm(farmId)
+      toast.success('Farm voided successfully.')
+      router.push('/a_dean/farm')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to void farm.')
+    } finally {
+      setVoiding(false)
+    }
+  }
+
   const loadFarm = useCallback(async () => {
     try {
       if (isEditMode) {
@@ -747,6 +862,15 @@ export default function Layout() {
         setAddressData(record.address)
         setWarehouseDrafts(
           record.warehouses.map((warehouse) => ({
+            id: warehouse.id,
+            clientKey: warehouse.client_key,
+            data: Object.fromEntries(
+              Object.entries(warehouse).map(([key, value]) => [key, String(value ?? '')])
+            ),
+          }))
+        )
+        setWarehouseCatalog(
+          [...record.warehouses, ...record.assignableWarehouses].map((warehouse) => ({
             id: warehouse.id,
             clientKey: warehouse.client_key,
             data: Object.fromEntries(
@@ -768,8 +892,10 @@ export default function Layout() {
 
       const code = await generateNextCode('v_last_farm_code', 'FRM', 6)
       setFarmData((prev) => ({ ...prev, code }))
-    } catch {
-      toast.error(isEditMode ? 'Unable to load farm.' : 'Unable to generate farm code.')
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? error.message
+        : isEditMode ? 'Unable to load farm.' : 'Unable to generate farm code.')
     } finally {
       setLoadingFarm(false)
     }
@@ -854,6 +980,41 @@ export default function Layout() {
               />
               <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
                 <SectionIntro title="Associated Warehouse Or Building" description={STEPS[1].description} />
+
+                {isEditMode ? (
+                  <div className="mt-5 rounded-md border border-neutral-200 bg-neutral-50 p-4 dark:border-border dark:bg-secondary">
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <SearchableCombobox
+                        multiple
+                        label="Use Existing Warehouse / Building"
+                        items={assignableStructureOptions}
+                        value={existingStructureKeys}
+                        onValueChange={setExistingStructureKeys}
+                        placeholder={
+                          farmData.farm_type
+                            ? 'Select one or more unassigned structures...'
+                            : 'Select farm type first'
+                        }
+                        disabled={!farmData.farm_type || assignableStructureOptions.length === 0}
+                        className="w-full"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={addExistingStructures}
+                        disabled={existingStructureKeys.length === 0}
+                      >
+                        <Plus className="size-4" />
+                        Use Structures
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-muted-foreground">
+                      {farmData.farm_type && assignableStructureOptions.length === 0
+                        ? 'No active, unassigned warehouses or buildings match this farm type.'
+                        : 'Check one or more active, unassigned structures matching this farm type, then use them together.'}
+                    </p>
+                  </div>
+                ) : null}
 
                 {warehouseDrafts.length === 0 ? (
                   <div className="mt-5">
@@ -1083,20 +1244,28 @@ export default function Layout() {
                   <SummaryRow
                     label="Default Feed"
                     value={
-                      warehouseDrafts.find((draft) => draft.clientKey === defaultFeedKey)?.data.whse_name ||
+                      warehouseDisplayName(
+                        warehouseDrafts.find((draft) => draft.clientKey === defaultFeedKey)
+                      ) ||
                       'Not selected'
                     }
                   />
                   <SummaryRow
                     label="Default Receiving"
                     value={
-                      warehouseDrafts.find((draft) => draft.clientKey === defaultReceivingKey)?.data.whse_name ||
+                      warehouseDisplayName(
+                        warehouseDrafts.find((draft) => draft.clientKey === defaultReceivingKey)
+                      ) ||
                       'Not selected'
                     }
                   />
                   <SummaryRow
                     label="Default Disposal"
-                    value={warehouseDrafts.find((draft) => draft.clientKey === defaultDisposalKey)?.data.whse_name || 'Not selected'}
+                    value={
+                      warehouseDisplayName(
+                        warehouseDrafts.find((draft) => draft.clientKey === defaultDisposalKey)
+                      ) || 'Not selected'
+                    }
                   />
                 </div>
               </div>
@@ -1110,6 +1279,9 @@ export default function Layout() {
             onNext={goNext}
             onSubmit={handleSubmit}
             submitLabel={isEditMode ? 'Save Changes' : 'Submit Setup'}
+            canVoid={isEditMode && canVoid}
+            voiding={voiding}
+            onVoid={handleVoid}
           />
         </section>
       </main>
