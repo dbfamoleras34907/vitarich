@@ -244,7 +244,7 @@ export default function NewProjectTask({
               }
             />
           </div>
-
+{/*  */}
         {/* TASK TYPE */}
         <div>
           <SearchableCombobox
