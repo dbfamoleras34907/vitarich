@@ -8,13 +8,13 @@
 -- This does not grant table/sequence privileges or create a DELETE policy.
 -- Tables containing jmb or _baja in their names are excluded.
 -- Any error rolls back the entire function call, including RLS changes.
-
+-- 
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.enable_missing_public_rls()
 RETURNS TABLE (schema_name text, table_name text)
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY 
 SET search_path = pg_catalog
 AS $function$
 DECLARE
