@@ -112,7 +112,11 @@ export default function UserFarmSearchCombobox({
     [filteredFarms]
   );
 
-  const selectedValue = value == null ? "" : String(value);
+  // Persisted account defaults use farm codes; interactive selections use numeric IDs.
+  const reference = value == null ? "" : String(value);
+  const selectedFarm = filteredFarms.find(farm => farm.code === reference)
+    ?? filteredFarms.find(farm => String(farm.id) === reference);
+  const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
 
   if (display === "buttons") {
     return (

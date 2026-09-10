@@ -59,6 +59,7 @@ export type PermissionEditorHandle = {
 const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUser; permissionFolders: PermissionFolder[] }>(function PermissionEditor({ user, permissionFolders }, ref) {
   const [permissions, setPermissions] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
 
   const folders = useMemo(() => permissionFolders
@@ -69,6 +70,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
   useEffect(() => {
     let active = true
     setLoading(true)
+    setLoadError(false)
     getManagedUserPermissions(user.auth_id)
       .then(result => {
         if (!active) return
@@ -77,7 +79,11 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
           item.is_visible,
         ])))
       })
-      .catch(error => toast.error(error instanceof Error ? error.message : "Unable to load permissions."))
+      .catch(error => {
+        if (!active) return
+        setLoadError(true)
+        toast.error(error instanceof Error ? error.message : "Unable to load permissions.")
+      })
       .finally(() => active && setLoading(false))
     return () => { active = false }
   }, [user.auth_id])
@@ -93,9 +99,11 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
         title: action === "list" ? row.title : `${row.title}/${action}`,
         checked,
       })
+      return true
     } catch (error) {
       setPermissions(current => ({ ...current, [key]: !checked }))
       toast.error(error instanceof Error ? error.message : "Unable to update permission.")
+      return false
     } finally {
       setSaving(null)
     }
@@ -109,7 +117,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
 
   useImperativeHandle(ref, () => ({
     async setAll(checked: boolean) {
-      if (loading) {
+      if (loading || loadError) {
         toast.info("Wait for the selected user's permissions to finish loading.")
         return
       }
@@ -121,12 +129,17 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
         return
       }
 
-      for (const { row, action } of changes) await toggle(row, action, checked)
-      toast.success(`${checked ? "Allowed" : "Removed"} ${changes.length} permissions.`)
+      let completed = 0
+      for (const { row, action } of changes) {
+        if (await toggle(row, action, checked)) completed++
+      }
+      if (completed === changes.length) toast.success(`${checked ? "Allowed" : "Removed"} ${completed} permissions.`)
+      else toast.error(`Updated ${completed} of ${changes.length} permissions. Retry the remaining changes.`)
     },
-  }), [loading, permissions, rows, toggle])
+  }), [loading, loadError, permissions, rows, toggle])
 
   if (loading) return <PermissionEditorSkeleton />
+  if (loadError) return <p role="alert">Unable to load permissions. Reopen this tab to retry.</p>
 
   return <div className="space-y-4">
     {folders.map(folder => {
@@ -146,7 +159,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
                 <th className="px-4 py-2 text-left font-medium">Module</th>
                 {(["list", "view", "insert", "edit", "void", "approval"] as PermissionAction[]).map(action =>
                   <th key={action} className="w-24 px-2 py-2 text-center">
-                    <Button size="xs" variant="outline" onClick={() => toggleColumn(folderRows, action)}>
+                    <Button size="xs" variant="outline" disabled={saving !== null} onClick={() => toggleColumn(folderRows, action)}>
                       {action === "list" ? "List" : action[0].toUpperCase() + action.slice(1)}
                     </Button>
                   </th>)}

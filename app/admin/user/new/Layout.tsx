@@ -31,11 +31,13 @@ import { PERSONAL_INFORMATION_FIELDS } from '@/lib/auth/personalInformation'
 
 import {
   get_vwdmf_super_users,
-  getvwdmf_get_farmlist_code_name_farmtype,
 } from './api'
 import { getUsersGroups } from '../../user-group/api'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import Permissions from './Permesions'
+import PermissionEditor from '../../user-permissions/PermissionEditor'
+import { permissionFolders } from '../../user-permissions/permissionFolders'
+import type { PermissionUser } from '../../user-permissions/api'
+import { farmFmsType, listApprovedFarmAccessOptions } from '@/lib/data/repositories/farms'
 
 type FarmOption = {
   code: string
@@ -63,7 +65,6 @@ const USER_TYPES = [
   { code: '3', name: 'User' },
 ]
 
-const SHOW_LEGACY_PERMISSIONS = false
 
 const uniqueFarmCodes = (values: unknown[]) => {
   const seen = new Set<string>()
@@ -114,6 +115,8 @@ export default function Layout() {
 
   const [tab, setTab] = useState('account')
 
+  const [savedUser, setSavedUser] = useState<PermissionUser | null>(null)
+  const [accountDirty, setAccountDirty] = useState(false)
   const [form, setForm] = useState<Partial<UserRow>>({})
   const [authSelected, setAuthSelected] = useState<AuthUser>()
 
@@ -169,7 +172,7 @@ export default function Layout() {
       key: 'default_farm',
       label: 'Default Farm',
       type: 'list',
-      list: farmList,
+      list: farmList.filter(farm => defaultFarms.includes(farm.code)),
       code: 'code',
       name: 'name',
     },
@@ -234,7 +237,7 @@ export default function Layout() {
     {
       title: 'Access',
       icon: ShieldCheck,
-      fields: ['user_type', 'fms_type', 'default_farm', 'assigned_farms', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
+      fields: ['assigned_farms', 'default_farm', 'fms_type', 'user_type', 'supervisor', 'users_group_id', 'issuper', 'remarks'],
     },
   ]
 
@@ -244,13 +247,15 @@ export default function Layout() {
 
   const handleChange = useCallback(
     (key: keyof UserInsert, value: any) => {
+      setAccountDirty(true)
       setForm((prev) => ({
         ...prev,
         [key]: value,
+        ...(key === 'default_farm' ? { fms_type: farmFmsType(farmList.find(farm => farm.code === value)?.farm_type) } : {}),
         ...(key === 'user_type' ? { issuper: Number(value) === 3 ? '0' : '1' } : {}),
       }))
     },
-    []
+    [farmList]
   )
 
   const handleSubmit = async () => {
@@ -265,7 +270,8 @@ export default function Layout() {
 
     try {
       setLoading(true)
-      console.log({ form })
+      if (!defaultFarms.includes(String(form.default_farm ?? ''))) throw new Error('Select a default farm from Assigned Farms.')
+      if (!farmFmsType(farmList.find(farm => farm.code === form.default_farm)?.farm_type)) throw new Error('The selected default farm has no supported FMS Type.')
       const selectedFarmCodes = uniqueFarmCodes(defaultFarms)
 
       const result = await updateUserProfile(
@@ -278,7 +284,7 @@ export default function Layout() {
         selectedFarmCodes
       )
 
-      await loadSuperUserData(String(authSelected.id))
+      await Promise.all([fetchProfile(authSelected.auth_id), loadSuperUserData(String(authSelected.id))])
 
       if (Array.isArray(result.activeFarmCodes)) {
         setDefaultFarms(uniqueFarmCodes(result.activeFarmCodes))
@@ -287,8 +293,11 @@ export default function Layout() {
       if (authSelected.auth_id === loggedInUser.id) {
         const sessionUserInfo = await getUserInfoAuthSession()
         setValue('UserInfoAuthSession', sessionUserInfo)
+        const defaultFarm = farmList.find(farm => farm.code === form.default_farm)
+        if (defaultFarm) setValue('DefaultFarmId', defaultFarm.id)
       }
 
+      setTab('Permissions')
       toast.success(
         `Profile for ${authSelected.email} saved successfully`
       )
@@ -309,6 +318,8 @@ export default function Layout() {
 
       const profile = await getProfileByAuthId(authId)
 
+      setSavedUser(profile ? { ...profile, id: Number(profile.id), user_type: Number(profile.user_type ?? 3) } as PermissionUser : null)
+      setAccountDirty(false)
       setForm({
         ...profile,
         issuper: profile?.issuper === '1' ? '1' : '0',
@@ -320,8 +331,9 @@ export default function Layout() {
           : '',
         user_type: String(profile?.user_type ?? 3) as unknown as number,
       })
-    } catch {
-      toast.error('Failed to load profile')
+    } catch (error) {
+      setSavedUser(null)
+      throw error
     } finally {
       setInitialLoading(false)
     }
@@ -336,31 +348,9 @@ export default function Layout() {
       console.log({ userFarmCodes, superUsersList })
       setSuperUsers(superUsersList)
       setDefaultFarms(uniqueFarmCodes(userFarmCodes))
-    } catch {
-      toast.error('Failed loading supervisor data')
+    } catch (error) {
+      throw error
     }
-  }
-
-  const togglePermissions = (enable: boolean) => {
-    const checkboxes = document.querySelectorAll<HTMLInputElement>(
-      '#permissions-container .permission-checkbox'
-    )
-
-    let changed = 0
-
-    checkboxes.forEach((checkbox) => {
-      if (checkbox.checked !== enable) {
-        checkbox.click()
-        changed++
-      }
-    })
-
-    toast.success(
-      changed
-        ? `${enable ? 'Enabled' : 'Disabled'} ${changed} permissions`
-        : `All permissions already ${enable ? 'enabled' : 'disabled'
-        }`
-    )
   }
 
   /* -------------------------------------------------------------------------- */
@@ -380,7 +370,7 @@ export default function Layout() {
       }
 
       const farms =
-        await getvwdmf_get_farmlist_code_name_farmtype()
+        await listApprovedFarmAccessOptions(db)
       const groups = await getUsersGroups()
 
       setFarmList(uniqueFarmOptions(farms))
@@ -390,7 +380,7 @@ export default function Layout() {
       })))
     }
 
-    init()
+    void init().catch(error => toast.error(error.message || 'Failed to load account options'))
   }, [])
 
   useEffect(() => {
@@ -400,8 +390,10 @@ export default function Layout() {
   useEffect(() => {
     if (!authSelected?.auth_id) return
 
-    fetchProfile(authSelected.auth_id)
-    loadSuperUserData(authSelected.id)
+    setTab('account')
+    setSavedUser(null)
+    void Promise.all([fetchProfile(authSelected.auth_id), loadSuperUserData(authSelected.id)])
+      .catch(error => toast.error(error.message || 'Failed to load account'))
   }, [authSelected])
 
   /* -------------------------------------------------------------------------- */
@@ -412,9 +404,11 @@ export default function Layout() {
     loading || initialLoading || tab !== 'account' || !authSelected?.id
 
   const renderField = (field: typeof fields[number]) => {
-    const value = (form as any)[field.key] || ''
+    const value = field.key === 'fms_type'
+      ? farmFmsType(farmList.find(farm => farm.code === form.default_farm)?.farm_type) ?? ''
+      : (form as any)[field.key] || ''
     const superAdminOnly = field.key === 'user_type' || field.key === 'fms_type'
-    const fieldDisabled = superAdminOnly && Number(loggedInProfile?.user_type ?? 3) !== 1
+    const fieldDisabled = loading || initialLoading || field.key === 'fms_type' || (superAdminOnly && Number(loggedInProfile?.user_type ?? 3) !== 1)
     let control: ReactNode
 
     if (field.component === 'textarea') {
@@ -422,6 +416,7 @@ export default function Layout() {
         <Textarea
           className="min-h-24 border border-stone-300 bg-[#fffdfb] text-sm shadow-none focus-visible:ring-2 focus-visible:ring-stone-200"
           value={value}
+          disabled={fieldDisabled}
           onChange={(e) => handleChange(field.key as any, e.target.value)}
         />
       )
@@ -455,12 +450,20 @@ export default function Layout() {
       control = (
         <SearchableCombobox
           required
+          disabled={loading || initialLoading}
           multiple
           showCode
           items={(field.list || []) as ComboboxItemType[]}
           value={defaultFarms}
           placeholder="Search farms..."
-          onValueChange={(values) => setDefaultFarms(uniqueFarmCodes(values))}
+          onValueChange={(values) => {
+            const codes = uniqueFarmCodes(values)
+            setDefaultFarms(codes)
+            setAccountDirty(true)
+            if (!codes.includes(String(form.default_farm ?? ''))) {
+              setForm(prev => ({ ...prev, default_farm: '', fms_type: null }))
+            }
+          }}
           className="w-full"
         />
       )
@@ -469,6 +472,7 @@ export default function Layout() {
         <Input
           type={field.type || 'text'}
           value={value}
+          disabled={fieldDisabled}
           onChange={(e) => handleChange(field.key as any, e.target.value)}
         />
       )
@@ -499,33 +503,13 @@ export default function Layout() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {SHOW_LEGACY_PERMISSIONS && tab === 'Permissions' && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => togglePermissions(true)}
-                >
-                  Allow All
-                </Button>
-
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => togglePermissions(false)}
-                >
-                  Remove All
-                </Button>
-              </>
-            )}
-
             <Button size="sm" disabled={disabled} onClick={handleSubmit}>
               <Check className="size-4" />
               {initialLoading
                 ? 'Loading...'
                 : loading
                   ? 'Saving...'
-                  : 'Save'}
+                  : 'Save & Refresh'}
             </Button>
           </div>
         </div>
@@ -534,7 +518,7 @@ export default function Layout() {
           <div className="border-b border-stone-200 px-4 pt-3">
             <TabsList variant="line" className="h-9">
               <TabsTrigger value="account" className="px-3">Account</TabsTrigger>
-              {SHOW_LEGACY_PERMISSIONS && <TabsTrigger value="Permissions" className="px-3">Permissions</TabsTrigger>}
+              <TabsTrigger value="Permissions" disabled={!savedUser || accountDirty || loading || initialLoading} className="px-3">Permissions</TabsTrigger>
             </TabsList>
           </div>
 
@@ -577,9 +561,10 @@ export default function Layout() {
             </form>
           </TabsContent>
 
-          {SHOW_LEGACY_PERMISSIONS && <TabsContent value="Permissions" className="m-0 p-4">
-            <Permissions userId={authSelected?.auth_id || '0'} />
-          </TabsContent>}
+          <TabsContent value="Permissions" className="m-0 p-4">
+            <p className="mb-3 text-xs text-muted-foreground">Permissions save automatically. Save account changes before editing permissions.</p>
+            {savedUser && <PermissionEditor key={`${savedUser.auth_id}:${savedUser.fms_type}`} user={savedUser} permissionFolders={permissionFolders} />}
+          </TabsContent>
         </Tabs>
       </div>
     </div>
