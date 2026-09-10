@@ -33,7 +33,8 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
 
         try {
             const stored = localStorage.getItem('app_store')
-            return stored ? JSON.parse(stored) : {}
+            // Modal visibility belongs to this page session, not saved defaults.
+            return stored ? { ...JSON.parse(stored), openDefaultfarmModal: false } : {}
         } catch (error) {
             console.error('Failed to parse store from localStorage', error)
             return {} as StoreState
@@ -46,7 +47,7 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
      */
     useEffect(() => {
         try {
-            localStorage.setItem('app_store', JSON.stringify(store))
+            localStorage.setItem('app_store', JSON.stringify({ ...store, openDefaultfarmModal: false }))
         } catch (error) {
             console.error('Failed to save to localStorage', error)
         }

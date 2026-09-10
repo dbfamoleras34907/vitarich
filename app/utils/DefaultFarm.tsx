@@ -6,10 +6,13 @@ import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox"
 import { useGlobalContext } from "@/lib/context/GlobalContext"
 import { Modal } from "@/lib/Moda"
 import { useEffect } from "react"
+import { usePathname } from "next/navigation"
 
 export default function DefaultFarm() {
+    const pathname = usePathname()
     const { getValue, setValue } = useGlobalContext()
-    const farmModalOpen = Boolean(getValue("openDefaultfarmModal"))
+    const isAuthPage = ["/", "/login", "/init", "/logout", "/signup", "/signup_update"].includes(pathname)
+    const farmModalOpen = !isAuthPage && Boolean(getValue("openDefaultfarmModal"))
     const currentDefaultFarmId = getValue("DefaultFarmId")
     const session = getValue("UserInfoAuthSession")
     const sessionDefaultFarmId = session?.[0]?.default_farm
@@ -37,6 +40,7 @@ export default function DefaultFarm() {
                     {/* Farm selector component */}
                     <div>
                         <UserFarmSearchCombobox
+                            display="buttons"
                             value={defaultFarmId}
                             onValueChange={(farmId) => {
                                 setValue("DefaultFarmId", Number(farmId))

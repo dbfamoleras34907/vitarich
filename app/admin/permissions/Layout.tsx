@@ -234,6 +234,7 @@ export default function Layout() {
             <div className="mt-4">
 
                 <DynamicTable
+                    actionsFirst
                     loading={loading}
                     initialFilters={[]}
                     data={items}

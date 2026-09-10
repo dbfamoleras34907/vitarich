@@ -12,6 +12,11 @@ export async function proxy(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname
 
+  // Only these blank request templates can be shared without an account.
+  if (['/templates/farm-master-addition.xlsx', '/templates/item-master-addition.xlsx'].includes(pathname)) {
+    return res
+  }
+
   // ✅ Allow API routes without auth check
   if (pathname.startsWith('/api')) {
     return res

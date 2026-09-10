@@ -5,6 +5,8 @@ import { Activity, Bird, CalendarDays, ChevronRight, Droplets, HeartPulse, Refre
 import { toast } from 'sonner'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import CycleReportLayout from '@/app/brd/cycle-master/[cycleId]/Layout'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import { usePermission } from '@/hooks/usePermission'
@@ -18,6 +20,8 @@ import TransactionDetails, { detailTabs, formatDate, formatNumber, type DetailTa
 
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error
   ? String(error.message) : 'Unable to load Cycle Dashboard.'
+
+const cycleViewTabClassName = 'h-11 flex-none rounded-none border-0 px-6 text-sm text-muted-foreground hover:bg-muted/50 data-[state=active]:font-semibold data-[state=active]:text-primary dark:data-[state=active]:text-primary after:bg-primary group-data-[orientation=horizontal]/tabs:after:bottom-0 group-data-[orientation=horizontal]/tabs:after:h-[3px]'
 
 function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -92,7 +96,7 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
   </aside>
 }
 
-export default function CycleDashboard() {
+export default function CycleDashboard({ initialFarmId, initialCycleId }: { initialFarmId?: number; initialCycleId?: number } = {}) {
   const { getValue } = useGlobalContext()
   const blocked = usePermission('/brd/dashboard/view')
   const profile = getValue('UserInfoAuthSession')?.[0]
@@ -102,9 +106,9 @@ export default function CycleDashboard() {
   const farmsReady = farmState?.owner === profileKey
   const farms = farmsReady ? farmState.options : []
   const farmError = farmsReady ? farmState.error : ''
-  const [selectedFarm, setSelectedFarm] = useState('')
+  const [selectedFarm, setSelectedFarm] = useState(initialFarmId ? String(initialFarmId) : '')
   const [selectedBuilding, setSelectedBuilding] = useState('')
-  const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(null)
+  const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(initialFarmId && initialCycleId ? { farmId: initialFarmId, key: `farm:${initialCycleId}` } : null)
   const [tab, setTab] = useState<DetailTab>('overview')
   const [reload, setReload] = useState(0)
   const [catalog, setCatalog] = useState<{ data: CycleDashboardCatalog; owner: string } | null>(null)
@@ -125,8 +129,8 @@ export default function CycleDashboard() {
     return () => { cancelled = true }
   }, [blocked, profileKey, reload])
 
-  const farm = farms.find(farm => String(farm.id) === selectedFarm)
-    ?? farms.find(farm => String(farm.id) === defaultFarm)
+  const farm = selectedFarm ? farms.find(farm => String(farm.id) === selectedFarm)
+    : farms.find(farm => String(farm.id) === defaultFarm)
     ?? farms.find(farm => farm.code === defaultFarm)
     ?? farms[0]
   const farmId = farm?.id ?? 0
@@ -180,14 +184,14 @@ export default function CycleDashboard() {
   if (blocked) return <div className="m-4 flex items-center gap-2 rounded-md border p-4 text-sm"><ShieldAlert className="size-4" />You do not have permission to view Cycle Dashboard.</div>
 
   return <main className="min-h-[calc(100vh-4rem)] text-stone-950 dark:text-foreground">
-    <header className="mt-2 flex flex-wrap items-center justify-between gap-3">
-      <Breadcrumb FirstPreviewsPageName="Broiler" CurrentPageName="Cycle Dashboard" />
+    <header className="mt-2 flex flex-wrap items-center justify-between gap-3 print:hidden">
+      <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Dashboard" />
       <Button type="button" variant="outline" className="gap-2" onClick={() => setReload(value => value + 1)} disabled={loading} aria-label="Refresh Cycle Dashboard">
         <RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Loading...' : 'Refresh'}
       </Button>
     </header>
     <div className="mt-4 space-y-3 pb-4">
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark:border-border dark:bg-muted/30 md:grid-cols-[minmax(220px,320px)_minmax(220px,320px)]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark:border-border dark:bg-muted/30 print:hidden md:grid-cols-[minmax(220px,320px)_minmax(220px,320px)]">
         <SearchableCombobox label="Farm" value={farmId ? String(farmId) : ''}
           items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
           onValueChange={value => { setSelectedFarm(value); setCycleSelection(null); setSelectedBuilding(''); setTab('overview') }} disabled={!farmsReady} />
@@ -197,6 +201,12 @@ export default function CycleDashboard() {
           disabled={!cycleOptions.length}
           onValueChange={key => { setCycleSelection({ farmId, key }); setSelectedBuilding(''); setTab('overview') }} />
       </div>
+    <Tabs key={`${farmId}:${requestedCycleKey}`} defaultValue="dashboard">
+      <TabsList variant="line" className="w-full justify-start gap-0 border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-11 print:hidden" aria-label="Cycle view">
+        <TabsTrigger value="dashboard" className={cycleViewTabClassName}>Dashboard</TabsTrigger>
+        <TabsTrigger value="data" className={cycleViewTabClassName}>Data</TabsTrigger>
+      </TabsList>
+      <TabsContent value="dashboard">
     {data?.warnings.map(warning => <div key={warning} role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{warning}</div>)}
     {error ? <div role="alert" className="rounded-lg border border-destructive/30 bg-card p-5 text-sm text-destructive">{error}</div>
       : loading ? <div role="status" aria-label="Loading Cycle Dashboard" className="space-y-3">
@@ -220,11 +230,16 @@ export default function CycleDashboard() {
                   className={cn('shrink-0 border-b-2 px-3 py-2.5 text-xs', activeBuilding === 'all' ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground')}>All Buildings</button>
               </div>
 
-              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="space-y-3">
+              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="space-y-3 pt-4">
               {!cycles.length ? <div className="rounded-lg border bg-card p-12 text-center"><h2 className="text-sm font-medium">No records in this cycle</h2><p className="mt-2 text-xs text-muted-foreground">{title} has no non-void placement in {data.selectedCycle.label}.</p></div> : <>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2 text-xs"><span className="font-medium">{title}</span><span className="rounded-md bg-sidebar-accent px-2 py-1 font-semibold">{data.selectedCycle.label}</span><span className={getInventoryStatusBadgeClass(statusLabel)}>{statusLabel}</span></div>
-                  <span className="text-[10px] text-muted-foreground">Updated {result?.loadedAt} · — means not recorded or incomplete</span>
+                <div className="-mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/60 py-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5">
+                    <span className="font-semibold text-foreground">{title}</span>
+                    <span aria-hidden="true" className="h-3 border-l border-border" />
+                    <span className="text-muted-foreground">{data.selectedCycle.label}</span>
+                    <span className={cn(getInventoryStatusBadgeClass(statusLabel), 'h-5 px-2 py-0 text-[10px] font-medium leading-none dark:bg-muted dark:text-muted-foreground')}>{statusLabel}</span>
+                  </div>
+                  <span className="text-[10px] leading-4 text-muted-foreground" title="— means not recorded or incomplete">Updated {result?.loadedAt}</span>
                 </div>
                 <div className="flex overflow-x-auto border-b" role="tablist" aria-label="Cycle details" onKeyDown={navigateTabs}>
                   {detailTabs.map(item => <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}
@@ -254,6 +269,14 @@ export default function CycleDashboard() {
               </>}
               </section>
             </>}
+      </TabsContent>
+      <TabsContent value="data">
+        {loading ? <div role="status" className="p-6 text-sm text-muted-foreground">Loading cycle data...</div>
+          : error ? <div role="alert" className="p-6 text-sm text-destructive">{error}</div>
+            : data?.selectedCycle?.kind === 'farm' ? <CycleReportLayout key={`${farmId}:${data.selectedCycle.id}:${reload}`} requestedCycleId={data.selectedCycle.id} embedded />
+              : <div className="rounded-lg border p-6 text-sm text-muted-foreground">Select a farm cycle to view its Cycle Master data.</div>}
+      </TabsContent>
+    </Tabs>
     </div>
   </main>
 }

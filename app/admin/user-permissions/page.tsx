@@ -18,8 +18,9 @@ const permissionFolders: PermissionFolder[] = NavFolders.map(folder => ({
   }))),
 }))
 
-export default function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ user?: string | string[] }> }) {
+  const { user } = await searchParams
   return <NavigationBar currentLabel="User Permissions" fatherLabel="Administrator" fatherLink="/admin/user">
-    <Layout permissionFolders={permissionFolders} />
+    <Layout permissionFolders={permissionFolders} requestedUserId={typeof user === "string" ? user : ""} />
   </NavigationBar>
 }

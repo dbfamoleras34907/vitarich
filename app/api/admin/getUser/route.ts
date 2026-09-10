@@ -7,7 +7,7 @@ import { USER_TYPE, adminAccessError, requireAdminActor } from "@/lib/auth/admin
 export async function GET(request: Request) {
   try {
     const actor = await requireAdminActor(request)
-    let query = admin_db.from("users").select("*").order("email", { ascending: true })
+    let query = admin_db.from("users").select("*").order("id", { ascending: false })
 
     if (actor.user_type === USER_TYPE.ADMIN) {
       query = query.eq("user_type", USER_TYPE.USER).eq("fms_type", actor.fms_type)

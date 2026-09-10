@@ -1060,6 +1060,7 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Cycle Dashboard",
             url: "/brd/dashboard",
+            hideFromNavigation: true,
             view: true,
             insert: false,
             edit: false,
@@ -1380,6 +1381,30 @@ export const NavFolders: NavFolder[] = [
 
           // Permission Template is intentionally hidden while permission
           // assignment is managed from /admin/user-permissions.
+        ],
+      },
+    ],
+  },
+  {
+    id: 100,
+    title: "Others",
+    url: "/others",
+    icon: FolderTree,
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    items: [
+      {
+        group: "Modules",
+        children: [
+          {
+            id: 82,
+            type: "Module",
+            title: "Excel Request Files",
+            url: "/others/excel-request-files",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
         ],
       },
     ],

@@ -9,6 +9,8 @@ import { Check, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/Supabase/supabaseClient";
+import { useRouter } from "next/navigation";
+import { fetchWithInternetErrorNotice, readJsonResponse } from "@/lib/network/http";
 
 type UserActivationRow = Record<string, unknown> & {
   id: number;
@@ -30,6 +32,7 @@ function fullName(row: UserActivationRow) {
 }
 
 export default function Layout() {
+  const router = useRouter();
   const [rows, setRows] = useState<UserActivationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [activatingId, setActivatingId] = useState<number | null>(null);
@@ -37,11 +40,11 @@ export default function Layout() {
   const loadRows = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/userActivation", {
+      const response = await fetchWithInternetErrorNotice("/api/admin/userActivation", {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
-      const result = await response.json();
+      const result = await readJsonResponse<{ users?: UserActivationRow[]; error?: string }>(response, "Unable to load pending activations.");
 
       if (!response.ok) {
         throw new Error(result.error || "Unable to load pending activations.");
@@ -64,7 +67,7 @@ export default function Layout() {
         data: { session },
       } = await db.auth.getSession();
 
-      const response = await fetch("/api/admin/userActivation", {
+      const response = await fetchWithInternetErrorNotice("/api/admin/userActivation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -72,7 +75,7 @@ export default function Layout() {
           approvedBy: session?.user?.id ?? null,
         }),
       });
-      const result = await response.json();
+      const result = await readJsonResponse<{ user?: UserActivationRow; error?: string }>(response, "Unable to activate user.");
 
       if (!response.ok) {
         throw new Error(result.error || "Unable to activate user.");
@@ -80,6 +83,10 @@ export default function Layout() {
 
       toast.success("User activated.");
       setRows((current) => current.filter((item) => item.id !== row.id));
+      const approvedAuthId = result.user?.auth_id;
+      if (typeof approvedAuthId === "string" && approvedAuthId) {
+        router.push(`/admin/user-permissions?user=${encodeURIComponent(approvedAuthId)}`);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to activate user.");
     } finally {
@@ -149,6 +156,7 @@ export default function Layout() {
 
       <div className="mx-4">
         <DynamicTable
+          actionsFirst
           loading={loading}
           columns={columns}
           data={rows}

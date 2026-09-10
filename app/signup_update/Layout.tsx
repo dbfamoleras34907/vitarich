@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
+import type { User } from "@supabase/supabase-js"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -10,229 +12,155 @@ import { LoaderIcon } from "lucide-react"
 import SignUpStage from "../signup/SignUpStage"
 import SearchableDropdown from "@/lib/SearchableDropdown"
 import { db } from "@/lib/Supabase/supabaseClient"
-import { getUserInfoAuthSession,  signupUser, updateUserProfile } from "../admin/user/api"
-import Image from "next/image"
-import { useGlobalContext } from "@/lib/context/GlobalContext"
+import { getProfileByAuthId } from "../admin/user/api"
+import { DefaultGenders, islandGrouplist, regionList } from "@/lib/Defaults/DefaultValues"
+import { PERSONAL_INFORMATION_FIELDS, REGISTRATION_FMS_TYPES, validateRegistrationProfile, type RegistrationProfile, type RegistrationFarmOption } from "@/lib/auth/personalInformation"
+import { savePersonalInformation, getRegistrationFarms } from "@/lib/data/repositories/registration"
 
-const details = [
-  { required: true, key: "firstname", label: "First Name", type: "text" },
-  { required: true, key: "middlename", label: "Middle Name", type: "text" },
-  { required: true, key: "lastname", label: "Last Name", type: "text" },
-  { required: true, key: "birthdate", label: "Birthday", type: "date" },
-  {
-    required: true,
-    key: "gender",
-    label: "Gender",
-    type: "search",
-    list: [
-      { code: "Male", name: "Male" },
-      { code: "Female", name: "Female" }
-    ]
-  },
-  { required: true, key: "location", label: "Address", type: "text" },
-]
+function errorMessage(error: unknown) {
+  return error && typeof error === "object" && "message" in error && typeof error.message === "string"
+    ? error.message : "Unable to load or save personal information. Please try again."
+}
 
 export default function Layout() {
-
   const router = useRouter()
-  const { getValue } = useGlobalContext();
-  const [email, setemail] = useState("")
-  const [form, setForm] = useState<any>({})
+  const [form, setForm] = useState<RegistrationProfile>({})
   const [loading, setLoading] = useState(false)
-  const [sessionUser, setSessionUser] = useState<any>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [sessionUser, setSessionUser] = useState<User | null>(null)
+  const [farms, setFarms] = useState<RegistrationFarmOption[]>([])
 
-  const handleChange = (key: string, value: any) => {
-    setForm((prev: any) => ({
-      ...prev,
-      [key]: value
-    }))
-  }
-
-  /**
-   * Load session
-   */
   useEffect(() => {
-
-    const loadSession = async () => {
-
-      const {
-        data: { session },
-      } = await db.auth.getSession()
-
-      if (!session) {
-        router.push("/logout")
-        return
+    let cancelled = false
+    async function load() {
+      try {
+        const { data, error } = await db.auth.getSession()
+        if (error) throw error
+        if (!data.session) {
+          router.replace("/login")
+          return
+        }
+        const [profile, farmOptions] = await Promise.all([
+          getProfileByAuthId(data.session.user.id),
+          getRegistrationFarms(),
+        ])
+        if (cancelled) return
+        const personal: RegistrationProfile = {
+          fms_type: profile?.fms_type ?? "",
+          farm_id: farmOptions.find((farm) => farm.code === profile?.default_farm)?.id ?? null,
+        }
+        for (const field of PERSONAL_INFORMATION_FIELDS) personal[field.key] = profile?.[field.key] ?? ""
+        setForm(personal)
+        setFarms(farmOptions)
+        setSessionUser(data.session.user)
+      } catch (error) {
+        if (!cancelled) toast.error(errorMessage(error))
+      } finally {
+        if (!cancelled) setInitialLoading(false)
       }
-
-      setSessionUser(session.user)
-
     }
-
-    loadSession()
-
+    void load()
+    return () => { cancelled = true }
   }, [router])
 
-  /**
-   * Prevent leaving page during registration
-   */
   useEffect(() => {
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ""
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
     }
-
     window.addEventListener("beforeunload", handleBeforeUnload)
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload)
-    }
-
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
-  const handleSubmit = async () => {
-
-    if (!sessionUser?.id) {
-      toast.error("User session not found")
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (loading || !sessionUser) return
+    const validationError = validateRegistrationProfile(form)
+    if (validationError) {
+      toast.error(validationError)
       return
     }
-
     setLoading(true)
-
     try {
-
-      await signupUser({
-        ...form,
-        auth_id: sessionUser.id,
-        created_by: sessionUser.id,
-        email: sessionUser.email,
-
-        // profile_completed: true
-
-      })
-
-      toast.success(`Profile for ${sessionUser.email} saved`)
-
+      await savePersonalInformation(form)
+      toast.success(`Profile for ${sessionUser.email} saved. Please contact your administrator for account activation.`)
       router.push("/logout")
-
-    } catch (e: any) {
-
-      toast.error(e.message)
-
-    } finally {
-
-      setLoading(false)
-
-    }
-
-  }
-
-
-
-
-  const getEmail = async () => {
-    try {
-      // const data = await getUserInfoAuthSession();
-      // // setValue("UserInfoAuthSession", data);
-      // console.log("UserInfoAuthSession", data);
-
-
-      const { data: { session },
-      } = await db.auth.getSession();
-      setemail(session?.user.email || "")
-
-
-      // setForm((prev: any) => ({
-      //   ...prev,
-      //   email: email
-      // }))
     } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setLoading(false)
     }
   }
-  useEffect(() => {
-    getEmail()
-  }, [])
-
 
   return (
-    <div className="w-90 mx-auto mt-4">
-
+    <div className="mx-auto my-4 w-full max-w-2xl px-3">
       <div className="flex flex-col items-center gap-2 text-center">
         <Image
           src="https://cdn.prod.website-files.com/6819a7964b427b4964f82cc0/68203089539798c6cc2ba1c0_Corporate-Logo_Vitarich-White.png"
-          alt="Vitarich Logo"
-          width={110}
-          height={110}
+          alt="Vitarich Logo" width={110} height={110}
         />
-
         <h1 className="text-2xl">Create your account</h1>
-
-        <p className="text-muted-foreground text-sm">
-          Enter your personal information
-        </p>
+        <p className="text-muted-foreground text-sm">Enter your personal information</p>
       </div>
-      <div className="max-w-md mx-auto mt-10 grid gap-4 bg-white p-6 border rounded-md">
-
+      <form onSubmit={handleSubmit} className="mt-6 grid gap-4 rounded-md border bg-card p-4 text-card-foreground">
         <SignUpStage currentStage={2} />
-
-
-        <Label >
-          Email
-        </Label>
-        <Input
-          required={true}
-          type={"email"}
-          defaultValue={email}
-        />
-        {details.map((f, i) => (
-
-          <div key={i} className="grid gap-2">
-
-            <Label required={f.required}>
-              {f.label}
-            </Label>
-
-            {f.type === "search" ? (
-
-              <SearchableDropdown
-                list={f.list || []}
-                codeLabel="code"
-                nameLabel="name"
-                showNameOnly
-                value={form[f.key] || ""}
-                onChange={(v) => handleChange(f.key, v)}
-              />
-
-            ) : (
-
-              <Input
-                required={f.required}
-                type={f.type}
-                value={form[f.key] || ""}
-                onChange={(e) =>
-                  handleChange(f.key, e.target.value)
-                }
-              />
-
-            )}
-
-          </div>
-
+        <div className="grid gap-1.5">
+          <Label htmlFor="registration-email">Email</Label>
+          <Input id="registration-email" type="email" value={sessionUser?.email ?? ""} readOnly />
+        </div>
+        <div className="grid gap-1.5">
+          <Label required>FMS Type</Label>
+          <SearchableDropdown
+            list={REGISTRATION_FMS_TYPES}
+            codeLabel="code" nameLabel="name" showNameOnly
+            value={form.fms_type ?? ""}
+            disabled={initialLoading || loading}
+            onChange={(value) => setForm((previous) => ({ ...previous, fms_type: value }))}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label required>Farm</Label>
+          <SearchableDropdown
+            list={farms.map((farm) => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
+            codeLabel="code" nameLabel="name" showNameOnly
+            value={form.farm_id ? String(form.farm_id) : ""}
+            disabled={initialLoading || loading}
+            onChange={(value) => setForm((previous) => ({ ...previous, farm_id: value ? Number(value) : null }))}
+          />
+          <p className="text-xs text-muted-foreground">This will be your default and assigned farm.</p>
+          {!initialLoading && farms.length === 0 && <p className="text-xs text-destructive">No active, approved farms are available.</p>}
+        </div>
+        {(["Identity", "Contact"] as const).map((section) => (
+          <section key={section} className="rounded-md border">
+            <h2 className="border-b bg-muted/40 px-3 py-2 text-sm font-semibold">{section}</h2>
+            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2">
+              {PERSONAL_INFORMATION_FIELDS.filter((field) => field.section === section).map((field) => (
+                <div key={field.key} className="grid gap-1.5">
+                  <Label htmlFor={`registration-${field.key}`} required={field.required} className="text-xs">{field.label}</Label>
+                  {field.type === "list" ? (
+                    <SearchableDropdown
+                      list={field.key === "gender" ? DefaultGenders : field.key === "region" ? regionList : islandGrouplist}
+                      codeLabel="code" nameLabel="name"
+                      value={form[field.key] ?? ""}
+                      disabled={initialLoading || loading}
+                      onChange={(value) => setForm((previous) => ({ ...previous, [field.key]: value }))}
+                    />
+                  ) : (
+                    <Input
+                      id={`registration-${field.key}`} type={field.type} required={field.required}
+                      value={form[field.key] ?? ""} disabled={initialLoading || loading}
+                      onChange={(event) => setForm((previous) => ({ ...previous, [field.key]: event.target.value }))}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         ))}
-
-        <Button
-          onClick={handleSubmit}
-          disabled={loading}
-        >
-          {loading
-            ? <LoaderIcon className="animate-spin" />
-            : "Finish Registration"}
+        <Button type="submit" disabled={initialLoading || loading || !sessionUser}>
+          {initialLoading || loading ? <LoaderIcon className="animate-spin" /> : "Finish Registration"}
         </Button>
-
-
-      </div>
+      </form>
     </div>
-
-
   )
 }

@@ -155,7 +155,36 @@ export function AppSidebar() {
   }
 
 
-  const renderExpandedNavigation = () => (
+  const renderExpandedNavigation = () => {
+    if (pathname === "/home") {
+      if (!accessProfile || !Array.isArray(userPermissions)) {
+        return (
+          <p className="px-2 py-3 text-xs text-sidebar-foreground/55" role="status">
+            Loading modules...
+          </p>
+        )
+      }
+
+      const hasModules = filteredNavFolders.some(folder =>
+        folder.items.some(group =>
+          group.children.some(child => child.url && child.url !== "#" && !child.hideFromNavigation),
+        ),
+      )
+
+      if (!hasModules) {
+        return (
+          <div className="rounded-xl border border-dashed border-sidebar-border p-5 text-center">
+            <Boxes className="mx-auto mb-2 size-6 text-sidebar-foreground/45" />
+            <p className="text-sm font-medium">No modules assigned</p>
+            <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">
+              Your account does not have any modules assigned yet. Please contact your administrator to add modules to your account.
+            </p>
+          </div>
+        )
+      }
+    }
+
+    return (
     <>
       <div className="px-2 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/45">
         Module groups
@@ -258,7 +287,8 @@ export function AppSidebar() {
         )
       }
     </>
-  )
+    )
+  }
   // exclude appSideBar from this pages
   if (pathname === "/signup_update" || pathname === "/init" || pathname === "/logout") return null;
   // ===============================

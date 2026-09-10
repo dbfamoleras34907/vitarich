@@ -163,6 +163,7 @@ export default function FarmMasterPage() {
 
       <div className="mx-4">
         <DynamicTable
+          actionsFirst
           loading={loading}
           columns={tableColumns}
           data={initialRows}

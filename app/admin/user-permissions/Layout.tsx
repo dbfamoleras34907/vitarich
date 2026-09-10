@@ -39,7 +39,7 @@ function UserPermissionsPageSkeleton() {
   </div>
 }
 
-export default function Layout({ permissionFolders }: { permissionFolders: PermissionFolder[] }) {
+export default function Layout({ permissionFolders, requestedUserId = "" }: { permissionFolders: PermissionFolder[]; requestedUserId?: string }) {
   const [users, setUsers] = useState<PermissionUser[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [loading, setLoading] = useState(true)
@@ -47,17 +47,24 @@ export default function Layout({ permissionFolders }: { permissionFolders: Permi
   const editorRef = useRef<PermissionEditorHandle>(null)
 
   useEffect(() => {
+    let cancelled = false
     getManageableUsers()
       .then(result => {
+        if (cancelled) return
         setUsers(result.users)
         setActorUserType(result.actor.user_type)
-        if (result.users.some(user => user.auth_id === result.actor.auth_id)) {
-          setSelectedId(result.actor.auth_id)
+        const preferredId = requestedUserId || result.actor.auth_id
+        if (result.users.some(user => user.auth_id === preferredId)) {
+          setSelectedId(preferredId)
+        } else {
+          setSelectedId("")
+          if (requestedUserId) toast.error("You do not have access to assign permissions to this user.")
         }
       })
-      .catch(error => toast.error(error instanceof Error ? error.message : "Unable to load users."))
-      .finally(() => setLoading(false))
-  }, [])
+      .catch(error => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Unable to load users.") })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [requestedUserId])
 
   const selectedUser = useMemo(() => users.find(user => user.auth_id === selectedId), [selectedId, users])
 

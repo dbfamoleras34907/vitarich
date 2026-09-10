@@ -293,6 +293,9 @@ export default function Layout() {
         }
 
         toast.error(result.error ?? 'Unable to load farms.')
+      } catch (error) {
+        toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message : 'Unable to load farms. Please try again.')
       } finally {
         setLoadingFarms(false)
       }

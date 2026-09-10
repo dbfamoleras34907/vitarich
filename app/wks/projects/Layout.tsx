@@ -75,6 +75,7 @@ export default function Layout() {
       </div>
       <p className='text-gray-600 mx-4'>Manage your projects and related tasks here.</p>
       <DynamicTable
+        actionsFirst
         loading={loading}
 
         columns={tableColumnsx.map((col) => ({

@@ -3,6 +3,24 @@ import type { NotificationCatalog } from "./types"
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.USER_REGISTRATION,
+    label: "User Registration",
+    description: "Completed registration awaiting approval and module assignment.",
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    permissionGroup: "Modules",
+    permissionTitle: "User Management/view",
+    baseUrl: "/admin/user",
+    events: [
+      {
+        key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.POSTED,
+        label: "Registration Completed",
+        description: "Emitted once after the second registration phase is saved.",
+        action: "posted",
+        farmRouting: "none",
+      },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.BRD_FC,
     // Enable only after deploying and verifying the farm/transaction SQL.
     ruleActivationReady: false,

@@ -27,6 +27,7 @@ import SearchableDropdown from '@/lib/SearchableDropdown'
 import SearchableCombobox, { type ComboboxItemType } from '@/components/SearchableCombobox'
 
 import { DefaultGenders, islandGrouplist, regionList } from '@/lib/Defaults/DefaultValues'
+import { PERSONAL_INFORMATION_FIELDS } from '@/lib/auth/personalInformation'
 
 import {
   get_vwdmf_super_users,
@@ -133,40 +134,16 @@ export default function Layout() {
   /* -------------------------------------------------------------------------- */
 
   const fields = [
-    { required: true, key: 'firstname', label: 'First Name' },
-    { required: false, key: 'middlename', label: 'Middle Name' },
-    { required: true, key: 'lastname', label: 'Last Name' },
-    { required: false, key: 'mobile', label: 'Mobile' },
-    { required: true, key: 'birthdate', label: 'Birthdate', type: 'date' },
-    {
-      required: false,
-      key: 'gender',
-      label: 'Gender',
-      type: 'list',
-      list: DefaultGenders,
+    ...PERSONAL_INFORMATION_FIELDS.map((field) => ({
+      ...field,
+      list: field.key === 'gender' ? DefaultGenders
+        : field.key === 'region' ? regionList
+          : field.key === 'archipelago' ? islandGrouplist : undefined,
       code: 'code',
       name: 'name',
-    },
-    { required: false, key: 'phone', label: 'Phone' },
-    { required: true, key: 'location', label: 'Address' },
-    {
-      required: true,
-      key: 'region',
-      label: 'Region',
-      type: 'list',
-      list: regionList,
-      code: 'code',
-      name: 'name',
-    },
-    {
-      required: true,
-      key: 'archipelago',
-      label: 'Island Group',
-      type: 'list',
-      list: islandGrouplist,
-      code: 'code',
-      name: 'name',
-    },
+      component: undefined,
+      showNameOnly: false,
+    })),
     {
       required: true,
       key: 'user_type',

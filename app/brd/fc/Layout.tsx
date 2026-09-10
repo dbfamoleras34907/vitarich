@@ -427,6 +427,7 @@ export default function Layout() {
             <Table className="min-w-[1120px] bg-white dark:bg-card">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[260px] text-right">Action</TableHead>
                   <TableHead className="w-[220px]">Building</TableHead>
                   <TableHead className="w-[100px]">Cycle Age</TableHead>
                   <TableHead className="w-[90px]">Age</TableHead>
@@ -434,7 +435,6 @@ export default function Layout() {
                   <TableHead>Code</TableHead>
                   <TableHead className="w-[130px] text-right">Count</TableHead>
                   <TableHead className="w-[150px]">Status</TableHead>
-                  <TableHead className="w-[260px] text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -452,30 +452,6 @@ export default function Layout() {
                     <TableRow
                       key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
-                      <TableCell className="min-w-0">
-                        <div className="truncate text-base font-semibold">{building.code || index + 1}</div>
-                        <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
-                      </TableCell>
-                      <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
-                      <TableCell className="font-medium">
-                        {flockCard?.actualAge !== null && flockCard?.actualAge !== undefined
-                          ? `${flockCard.actualAge}d`
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="tabular-nums">{flockCard ? formatDateValue(flockCard.startDate) : "-"}</TableCell>
-                      <TableCell className="min-w-0">
-                        <div className="max-w-[220px] truncate font-medium">
-                          {flockCard?.flockCode || flockCard?.cardNo || "-"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {flockCard ? flockCard.animalQty.toLocaleString("en-PH") : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex max-w-full rounded border px-2 py-0.5 text-xs font-semibold ${getBuildingStatusClass(displayStatus)}`}>
-                          <span className="truncate">{displayStatus || "No status"}</span>
-                        </span>
-                      </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           {/* {hasFlockCard && !cannotViewReport ? (
@@ -524,6 +500,30 @@ export default function Layout() {
                             {openingFlock ? "Opening..." : hasFlockCard ? "Edit/View" : "Add Flock"}
                           </Button>
                         </div>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="truncate text-base font-semibold">{building.code || index + 1}</div>
+                        <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
+                      </TableCell>
+                      <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
+                      <TableCell className="font-medium">
+                        {flockCard?.actualAge !== null && flockCard?.actualAge !== undefined
+                          ? `${flockCard.actualAge}d`
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="tabular-nums">{flockCard ? formatDateValue(flockCard.startDate) : "-"}</TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="max-w-[220px] truncate font-medium">
+                          {flockCard?.flockCode || flockCard?.cardNo || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {flockCard ? flockCard.animalQty.toLocaleString("en-PH") : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex max-w-full rounded border px-2 py-0.5 text-xs font-semibold ${getBuildingStatusClass(displayStatus)}`}>
+                          <span className="truncate">{displayStatus || "No status"}</span>
+                        </span>
                       </TableCell>
                     </TableRow>
                   );

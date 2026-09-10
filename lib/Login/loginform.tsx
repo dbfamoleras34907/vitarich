@@ -13,6 +13,16 @@ import { useGlobalDefaults } from "../Defaults/GlobalDefaults";
 import { Modal } from "../Moda";
 import { encryptValue } from "../encrypt";
 import { createApprovalRequest } from "./api";
+import { getProfileByAuthId } from "@/app/admin/user/api";
+
+function normalizeLoginEmail(value: string): string {
+  const trimmed = value.trim()
+  const completeEmail = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
+  if (completeEmail.test(trimmed) || !/^[^\s@]+(?:@[^\s@]*)?$/.test(trimmed)) {
+    return trimmed
+  }
+  return `${trimmed.split("@")[0]}@vitarich.com`
+}
 
 export function LoginForm({
   className,
@@ -34,8 +44,10 @@ export function LoginForm({
     e.preventDefault();
     setloading(true)
     try {
-      const { error } = await db.auth.signInWithPassword({
-        email,
+      const loginEmail = normalizeLoginEmail(email)
+      setEmail(loginEmail)
+      const { data, error } = await db.auth.signInWithPassword({
+        email: loginEmail,
         password,
       });
 
@@ -43,14 +55,27 @@ export function LoginForm({
         toast(error.message)
         setloading(false)
       } else {
+        // Resume registration if the user left before saving personal information.
+        const profile = await getProfileByAuthId(data.user.id)
+        if (!profile) {
+          router.push("/signup_update")
+          return
+        }
         await setGlobals({ autoSelectSingleFarm: true })
+        setValue('openDefaultfarmModal', true)
         setValue('loading_g', true)
         router.push("/init");
         setloading(false)
         setValue('loading_g', false)
       }
     } catch (error) {
-      alert("An error occurred during login. Please try again.")
+      toast.error(
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "An error occurred during login. Please try again."
+      )
+    } finally {
+      setloading(false)
     }
   }
 
@@ -87,9 +112,14 @@ export function LoginForm({
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmail(normalizeLoginEmail(email))}
               className="h-11 pl-9"
               placeholder="name@vitarich.com"
               required

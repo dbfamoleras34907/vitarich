@@ -321,6 +321,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         )}
 
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]}
           title={config.title}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Copy, Eye, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -48,6 +49,9 @@ export default function InventoryTransferHistory() {
     setLoading(true)
     try {
       setTransfers(await getInventoryTransfers(100))
+    } catch (error) {
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to load Inventory Transfer records. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -185,6 +189,7 @@ export default function InventoryTransferHistory() {
 
       <div className="mt-4 space-y-3">
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]}
           title="Inventory Transfer"

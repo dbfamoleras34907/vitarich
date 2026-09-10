@@ -79,6 +79,7 @@ type Props<T> = {
   createRow?: () => T
   frozenColumns?: number
   excelRowActions?: boolean
+  actionsFirst?: boolean
 }
 
 type SortState = {
@@ -162,7 +163,7 @@ const matchesFilter = (cellValue: unknown, filter: FilterRule) => {
 }
 
 export default function DynamicTable<T extends Record<string, unknown>>({
-  columns,
+  columns: suppliedColumns,
   data,
   loading,
   initialFilters,
@@ -184,7 +185,18 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   createRow,
   frozenColumns = 1,
   excelRowActions = true,
+  actionsFirst = false,
 }: Props<T>) {
+  const columns = useMemo(() => {
+    if (!actionsFirst) return suppliedColumns
+    // Older list adapters provide action renderers without forwarding their type.
+    const isActionColumn = (column: Column<T>) =>
+      column.type === 'button' || /^(actions?|edit|options?|delete|update|button)$/i.test(String(column.key))
+    return [
+      ...suppliedColumns.filter(isActionColumn),
+      ...suppliedColumns.filter(column => !isActionColumn(column)),
+    ]
+  }, [suppliedColumns, actionsFirst])
   const tableId = useId()
   const [sort, setSort] = useState<SortState>({ key: null, direction: 'asc' })
   const [pageSize, setPageSize] = useState(pageSizeOptions[0] ?? 10)

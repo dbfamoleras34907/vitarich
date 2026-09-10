@@ -6,6 +6,16 @@ Related diagram: [Notification System Flow](./notification-system-flow.md)
 
 ## Current implementation status
 
+### Registration completion
+
+- Module `USER_REGISTRATION`, event `USER_REGISTRATION_POSTED`, represents completion of phase two only. Account creation in phase one emits nothing. This workflow has no separate Edit or Void operation; resubmitting phase two does not emit another event.
+- `complete_registration_profile` persists the profile and canonical numeric `users_farms.farm_id` relationship, stamps `users.registration_completed_at`, and inserts the outbox event in the same transaction. Any failure rolls all of these back.
+- Deduplication is `USER_REGISTRATION_POSTED:<auth_id>`, backed by the unique outbox dedupe constraint. Existing unique `(event_id, recipient_auth_id)` constraints protect inbox and email queue deliveries on dispatcher retries. Provider delivery after an ambiguous transport failure retains the existing worker's retry limitations; a deterministic Message-ID does not guarantee exactly-once email receipt.
+- Routing is explicitly `none`: account approval is an administrative event for superusers across farms. Neither routing farm column is populated. The selected farm is validated against `public.farms(id)` and persisted in `users_farms`; its code/name are display metadata only. The dispatcher verifies the source account, completion timestamp, event identity, and null routing columns before matching rules.
+- `registration_profile.sql` seeds an active email-enabled rule for active Super Admins (`user_type = 1`). It does not overwrite an existing rule, including a disabled one. No active matching rule remains a safe no-op. Recipient selection and View-permission enforcement remain centralized.
+- After confirmed persistence, the registration API schedules the shared outbox and email processors through `after`. Processing errors do not turn successful registration into a failed response; queued work remains available to the existing processor/retry controls. Email includes the registrant's name/email and the approval/module-assignment request; the accompanying inbox notification targets `/admin/user`.
+- Deployment order: apply `app/admin/notifications/notification_system.sql`, then `app/signup_update/registration_profile.sql`, and deploy the API/catalog changes. SQL execution, rollback/concurrency behavior, and actual email delivery still require deployment verification.
+
 Implemented in source:
 
 - Central DOC Placement and Hatchery DOC Dispatch module/event catalog

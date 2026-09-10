@@ -325,6 +325,9 @@ begin
 end;
 $$;
 
+-- Account registration is explicitly global administrative routing (none).
+alter table public.users add column if not exists registration_completed_at timestamptz;
+
 create or replace function public.process_notification_outbox(p_limit integer default 50)
 returns integer
 language plpgsql
@@ -356,7 +359,25 @@ begin
       -- Each module integration must provide an authoritative verifier. The
       -- first integration accepts only the same DOC Placement posting version
       -- that was atomically stamped by the source-table trigger.
-      if v_event.module_key = 'DOC_RECEIVING' and v_event.event_key = 'DOC_RECEIVING_POSTED' then
+      if v_event.module_key = 'USER_REGISTRATION' then
+        select exists (
+          select 1 from public.users registered
+          where registered.id::text = v_event.entity_id
+            and registered.auth_id = v_event.actor_auth_id
+            and registered.registration_completed_at = v_event.occurred_at
+            and v_event.event_key = 'USER_REGISTRATION_POSTED'
+            and v_event.entity_type = 'users'
+            and v_event.dedupe_key = 'USER_REGISTRATION_POSTED:' || registered.auth_id::text
+            and v_event.farm_id is null and v_event.recipient_farm_id is null
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Registration event does not match a persisted registration completion.'
+          where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'DOC_RECEIVING' and v_event.event_key = 'DOC_RECEIVING_POSTED' then
         if v_event.entity_id !~ '^[0-9]+$' then
           update public.notification_outbox
           set status = 'invalid',

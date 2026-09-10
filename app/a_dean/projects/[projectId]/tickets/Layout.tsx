@@ -81,6 +81,7 @@ export default function ProjectTicketsPage() {
         <div>No tickets found for this project</div>
       )}
       <DynamicTable
+      actionsFirst
       loading={loading}
         initialFilters={[]}
         columns={receivedColumns.map((col) => ({

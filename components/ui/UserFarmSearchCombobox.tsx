@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { listBroilerFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 
@@ -19,6 +21,7 @@ type UserFarmSearchComboboxProps = {
   onValueChange?: (farmId: string, farm?: UserFarm) => void;
   className?: string;
   farmType?: "BR" | "BE" | "HA";
+  display?: "combobox" | "buttons";
 };
 
 function normalizeFarmCode(value: unknown) {
@@ -56,6 +59,7 @@ export default function UserFarmSearchCombobox({
   onValueChange,
   className = "w-full",
   farmType,
+  display = "combobox",
 }: UserFarmSearchComboboxProps) {
   const { getValue } = useGlobalContext();
   const session = getValue("UserInfoAuthSession");
@@ -109,6 +113,38 @@ export default function UserFarmSearchCombobox({
   );
 
   const selectedValue = value == null ? "" : String(value);
+
+  if (display === "buttons") {
+    return (
+      <div className={className} role="group" aria-label={label}>
+        <div className="flex w-full flex-wrap gap-2">
+          {filteredFarms.map((farm) => {
+            const isSelected = String(farm.id) === selectedValue;
+
+            return (
+              <Button
+                key={farm.id}
+                type="button"
+                variant={isSelected ? "default" : "outline"}
+                aria-pressed={isSelected}
+                onClick={() => onValueChange?.(String(farm.id), farm)}
+                className="h-auto min-h-14 min-w-0 max-w-full flex-[1_1_10rem] justify-start whitespace-normal px-3 py-2 text-left"
+              >
+                <span className="min-w-0 flex-1 break-words">
+                  <span className="block text-xs font-normal opacity-75">{farm.code}</span>
+                  <span className="block">{farm.name}</span>
+                </span>
+                {isSelected && <Check className="size-4" aria-hidden="true" />}
+              </Button>
+            );
+          })}
+        </div>
+        {!filteredFarms.length && (
+          <p className="text-sm text-muted-foreground">No farms available</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

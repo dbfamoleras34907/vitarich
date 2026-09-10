@@ -123,7 +123,7 @@ export default function CycleMasterLayout() {
                 <TableHead className="text-right">Open Buildings</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Closed</TableHead>
-                <TableHead className="w-10"><span className="sr-only">Open report</span></TableHead>
+                <TableHead className="w-10"><span className="sr-only">Open cycle dashboard</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -139,11 +139,11 @@ export default function CycleMasterLayout() {
                   role="link"
                   tabIndex={0}
                   className="cursor-pointer"
-                  onClick={() => router.push(`/brd/cycle-master/${encryptData({ cycleId: row.id })}`)}
+                  onClick={() => router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id })}`)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      router.push(`/brd/cycle-master/${encryptData({ cycleId: row.id })}`)
+                      router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id })}`)
                     }
                   }}
                 >

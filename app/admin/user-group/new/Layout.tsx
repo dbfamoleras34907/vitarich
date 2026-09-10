@@ -1,31 +1,38 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { FormEvent, ReactNode, useState } from 'react'
 import { Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { addUsersGroup } from '../api'
 
-export default function NewUserGroupLayout() {
-  const router = useRouter()
+type NewUserGroupDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated: () => Promise<void>
+  children: ReactNode
+}
+
+export default function NewUserGroupDialog({ open, onOpenChange, onCreated, children }: NewUserGroupDialogProps) {
   const cannotInsert = usePermission('/admin/user-group/insert')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     group_name: '',
   })
 
-  useEffect(() => {
-    router.prefetch('/admin/user-group')
-  }, [router])
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (saving) return
+    setForm({ group_name: '' })
+    onOpenChange(nextOpen)
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    if (saving || cannotInsert) return
     if (!form.group_name.trim()) {
       toast('Please fill in the group name.')
       return
@@ -35,7 +42,9 @@ export default function NewUserGroupLayout() {
     try {
       await addUsersGroup(form)
       toast('User group created successfully')
-      router.push('/admin/user-group')
+      setForm({ group_name: '' })
+      onOpenChange(false)
+      await onCreated()
     } catch (error) {
       toast('Error: ' + (error instanceof Error ? error.message : 'Unable to save user group'))
     } finally {
@@ -44,19 +53,10 @@ export default function NewUserGroupLayout() {
   }
 
   return (
-    <div className="mx-auto p-6">
-      <div className="mb-4">
-        <Breadcrumb
-          SecondPreviewPageName="Admin"
-          SecondPreviewPageLink="/admin"
-          FirstPreviewsPageName="User Group"
-          FirstPreviewsPageLink="/admin/user-group"
-          CurrentPageName="New User Group"
-        />
-      </div>
-      <Card>
-        <CardHeader><CardTitle>New User Group</CardTitle></CardHeader>
-        <CardContent>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent aria-describedby={undefined} showCloseButton={!saving}>
+        <DialogHeader><DialogTitle>New User Group</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -64,8 +64,10 @@ export default function NewUserGroupLayout() {
                 <Input value="Auto generated" disabled />
               </div>
               <div className="space-y-2">
-                <Label required>Group Name</Label>
+                <Label htmlFor="new-user-group-name" required>Group Name</Label>
                 <Input
+                  id="new-user-group-name"
+                  disabled={saving}
                   value={form.group_name}
                   onChange={event => setForm(prev => ({ ...prev, group_name: event.target.value }))}
                   placeholder="Administrator"
@@ -79,13 +81,12 @@ export default function NewUserGroupLayout() {
                 <Save className="mr-2 h-4 w-4" />
                 {saving ? 'Saving...' : 'Save Group'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => router.push('/admin/user-group')}>
-                Back
+              <Button type="button" variant="outline" disabled={saving} onClick={() => handleOpenChange(false)}>
+                Cancel
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

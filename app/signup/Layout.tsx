@@ -9,7 +9,7 @@ import { LoaderIcon } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
 import SignUpStage from "./SignUpStage";
-import { db } from "@/lib/Supabase/supabaseClient";
+import { registerAccount } from "@/lib/data/repositories/registration";
 
 export function Layout({
     className,
@@ -30,7 +30,7 @@ export function Layout({
         { required: true, key: "email", label: "Email", type: "text" },
         { required: true, key: "password", label: "Password", type: "password" },
         { required: true, key: "re_password", label: "Re-Password", type: "password" },
-    ]
+    ] as const
 
     const handleChange = (key: string, value: string) => {
         setForm(prev => ({
@@ -102,39 +102,15 @@ export function Layout({
 
         try {
 
-            const res = await fetch('/api/admin/createUser', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            })
-
-            const data = await res.json()
-
-            if (!res.ok) {
-                toast.error(data.error || 'Failed to create user.')
-                setloading(false)
-                return
-            }
-
-            /**
-             * AUTO LOGIN
-             */
-
-            const { error } = await db.auth.signInWithPassword({
-                email,
-                password,
-            });
-
-            if (error) {
-                toast.error(error.message)
-                setloading(false)
-            } else {
-                router.push(`/signup_update`)
-            }
+            await registerAccount({ email, password })
+            router.push("/signup_update")
 
         } catch (err) {
-            console.error(err)
-            toast.error('Something went wrong.')
+            toast.error(
+                err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                    ? err.message
+                    : "Unable to register your account. Please try again."
+            )
         } finally {
             setloading(false)
         }
@@ -176,7 +152,7 @@ export function Layout({
                         <Input
                             required={e.required}
                             type={e.type}
-                            value={(form as any)[e.key] || ''}
+                            value={form[e.key] || ''}
                             onChange={(v) =>
                                 handleChange(e.key, v.target.value)
                             }

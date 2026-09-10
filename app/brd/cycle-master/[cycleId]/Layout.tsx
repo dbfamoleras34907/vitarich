@@ -220,9 +220,9 @@ const EXPORT_HEADERS: Record<BroilerCycleStage, string[]> = {
   cleanup: ['Building', 'Flock Card', 'Document No.', 'Status', 'Date', 'Item Code', 'Item Name', 'Batch', 'Quantity', 'Variance', 'UoM', 'Remarks', 'Record State'],
 }
 
-export default function CycleReportLayout() {
+export default function CycleReportLayout({ requestedCycleId, embedded = false }: { requestedCycleId?: number; embedded?: boolean } = {}) {
   const params = useParams<{ cycleId: string }>()
-  const cycleId = useMemo(() => parseCycleId(params.cycleId), [params.cycleId])
+  const cycleId = useMemo(() => requestedCycleId ?? parseCycleId(params.cycleId), [params.cycleId, requestedCycleId])
   const viewBlocked = usePermission('/brd/cycle-master/report/view')
   const [report, setReport] = useState<BroilerCycleReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -301,11 +301,11 @@ export default function CycleReportLayout() {
 
   if (!cycleId) return <main className="p-4"><div className="rounded-md border p-6 text-center text-sm text-muted-foreground">The encrypted Cycle reference is invalid.</div></main>
 
-  return <main className="min-h-[calc(100vh-4rem)] space-y-4 p-3 sm:p-4 print:p-0">
+  return <main className={cn('space-y-4 print:p-0', !embedded && 'min-h-[calc(100vh-4rem)] p-3 sm:p-4')}>
     <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-      <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Report" />
+      {!embedded && <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Report" />}
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={() => history.back()}><ArrowLeft className="size-4" />Back</Button>
+        {!embedded && <Button type="button" size="sm" variant="outline" onClick={() => history.back()}><ArrowLeft className="size-4" />Back</Button>}
         <Button type="button" size="sm" variant="outline" disabled={!report} onClick={() => window.print()}><Printer className="size-4" />Print</Button>
         <Button type="button" size="sm" variant="outline" disabled={!report || exporting} onClick={() => void exportExcel()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}Excel

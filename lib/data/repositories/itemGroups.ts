@@ -1,3 +1,4 @@
+import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 import { db } from '@/lib/Supabase/supabaseClient'
 
 export type ItemGroup = {
@@ -160,7 +161,7 @@ export async function addSubItemGroup(
   const accessToken = sessionData.session?.access_token
   if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  const response = await fetch('/api/a_dean/itemgroups/sub-item-groups', {
+  const response = await fetchWithInternetErrorNotice('/api/a_dean/itemgroups/sub-item-groups', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -169,7 +170,7 @@ export async function addSubItemGroup(
     body: JSON.stringify({ rootItemGroupId, subgroupLevel, actionId: crypto.randomUUID(), ...payload }),
   })
 
-  const result = await response.json() as { data?: ItemGroup; error?: string }
+  const result = await readJsonResponse<{ data?: ItemGroup; error?: string }>(response)
   if (!response.ok || !result.data) {
     throw new Error(result.error || 'Unable to add sub item group.')
   }
@@ -187,7 +188,7 @@ export async function updateItemGroup(
   const accessToken = sessionData.session?.access_token
   if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  const response = await fetch('/api/a_dean/itemgroups/update', {
+  const response = await fetchWithInternetErrorNotice('/api/a_dean/itemgroups/update', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -196,7 +197,7 @@ export async function updateItemGroup(
     body: JSON.stringify({ id, actionId: crypto.randomUUID(), ...payload }),
   })
 
-  const result = await response.json() as { data?: ItemGroup; error?: string }
+  const result = await readJsonResponse<{ data?: ItemGroup; error?: string }>(response)
   if (!response.ok || !result.data) {
     throw new Error(result.error || 'Unable to update item group.')
   }
@@ -211,7 +212,7 @@ export async function voidItemGroup(id: number) {
   const accessToken = sessionData.session?.access_token
   if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  const response = await fetch('/api/a_dean/itemgroups/void', {
+  const response = await fetchWithInternetErrorNotice('/api/a_dean/itemgroups/void', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -220,7 +221,7 @@ export async function voidItemGroup(id: number) {
     body: JSON.stringify({ id, actionId: crypto.randomUUID() }),
   })
 
-  const result = await response.json() as { data?: ItemGroup; error?: string }
+  const result = await readJsonResponse<{ data?: ItemGroup; error?: string }>(response)
   if (!response.ok || !result.data) {
     throw new Error(result.error || 'Unable to void item group.')
   }

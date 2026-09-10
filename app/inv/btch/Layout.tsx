@@ -727,6 +727,7 @@ export default function Layout() {
             </div>
 
             <DynamicTable
+              actionsFirst
               loading={loading}
               initialFilters={[]}
               title="My Created Batches"
@@ -978,6 +979,7 @@ export default function Layout() {
 
               <div className="min-w-0">
                 <DynamicTable
+                  actionsFirst
                   loading={loading}
                   initialFilters={[]}
                   title="Batch Rules"
@@ -1134,6 +1136,7 @@ export default function Layout() {
 
               <div className="min-w-0">
                 <DynamicTable
+                  actionsFirst
                   loading={loading}
                   initialFilters={[]}
                   title="Batch Number Series"
