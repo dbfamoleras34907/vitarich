@@ -38,6 +38,11 @@ export type BreederDailyPerformance = {
   male_feedtype_id: number | null;
   female_feedtype_id: number | null;
   isactive: boolean;
+  m_body_weight: number | null;
+  f_body_weight: number | null;
+  m_uniformity: number | null;
+  f_uniformity: number | null;
+  remarks: string | null;
 };
 
 export type BreederDailyPerformancePayload = Omit<
@@ -139,4 +144,40 @@ export async function saveDailyPerformance(payload: BreederDailyPerformancePaylo
     throw new Error(result.error || "Unable to save breeder daily performance.");
   }
   return result.data;
+}
+
+async function draftUserId() {
+  const { data, error } = await db.auth.getUser();
+  if (error) throw error;
+  if (!data.user) throw new Error("Your session expired. Please log in again.");
+  return data.user.id;
+}
+
+export async function loadPopulationDraft(placementId: number) {
+  const userId = await draftUserId();
+  const { data, error } = await db.from("population_record_drafts")
+    .select("rows").eq("placement_id", placementId).eq("user_id", userId).maybeSingle();
+  // Existing Population Records remain usable before the draft migration is installed.
+  if (error?.code === "PGRST205" || error?.code === "42P01") return null;
+  if (error) throw new Error(errorMessage(error));
+  return data ? data.rows as BreederDailyPerformancePayload[] : null;
+}
+
+export async function savePopulationDraft(placementId: number, rows: BreederDailyPerformancePayload[]) {
+  const userId = await draftUserId();
+  const { error } = await db.from("population_record_drafts").upsert({
+    placement_id: placementId, user_id: userId, rows, updated_at: new Date().toISOString(),
+  }, { onConflict: "placement_id,user_id" });
+  if (error?.code === "PGRST205" || error?.code === "42P01") {
+    throw new Error("Draft storage is not set up. Run sql/population_record_drafts.sql in Supabase first.");
+  }
+  if (error) throw new Error(errorMessage(error));
+}
+
+export async function deletePopulationDraft(placementId: number) {
+  const userId = await draftUserId();
+  const { error } = await db.from("population_record_drafts").delete()
+    .eq("placement_id", placementId).eq("user_id", userId);
+  if (error?.code === "PGRST205" || error?.code === "42P01") return;
+  if (error) throw new Error(errorMessage(error));
 }

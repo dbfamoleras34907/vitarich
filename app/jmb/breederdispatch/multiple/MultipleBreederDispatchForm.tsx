@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
   createBreederDispatch,
+  EGG_CATEGORIES,
+  POPULATION_CATEGORIES,
   getDefaultFarm,
   listAvailableDispatchItems,
   listHatcheryFarms,
@@ -317,7 +319,8 @@ export default function MultipleBreederDispatchForm() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => {
-                      const categoryOptions = [...new Map(farmItems.filter((item) => item.source_type === row.source_type).map((item) => [item.category, item.category_label])).entries()];
+                      const availableCategories = new Set(farmItems.filter((item) => item.source_type === row.source_type).map((item) => item.category));
+                      const categoryOptions = (row.source_type === "Population Record" ? POPULATION_CATEGORIES : row.source_type === "Egg Laying" ? EGG_CATEGORIES : []).filter(([category]) => availableCategories.has(category));
                       const productionDates = [...new Set(farmItems.filter((item) => item.source_type === row.source_type && item.category === row.category).map((item) => item.source_date.slice(0, 10)))].sort().reverse();
                       const available = availableFor(row);
                       return (

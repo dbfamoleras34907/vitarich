@@ -6,6 +6,29 @@ const TARGET_TABLE = "tbl_brd_vaccination_target";
 const REGISTER_VIEW = "brd_vaccination_register";
 const LOCATION_VIEW = "view_farm_new_lookup";
 
+export type VaccinationChoices = { vaccineTypes: string[]; dosages: number[] };
+
+export async function listVaccinationChoices(): Promise<VaccinationChoices> {
+  const [types, dosages] = await Promise.all([
+    db.from("tbl_brd_vaccine_type").select("name").eq("is_active", true).order("sort_order").order("name"),
+    db.from("tbl_brd_vaccine_dosage").select("dosage").eq("is_active", true).order("dosage"),
+  ]);
+  if (types.error || dosages.error) throw new Error("Unable to load vaccination choices. Please contact your administrator.");
+  const choices = {
+    vaccineTypes: (types.data ?? []).map((row) => String(row.name)),
+    dosages: (dosages.data ?? []).map((row) => Number(row.dosage)),
+  };
+  return choices;
+}
+
+async function validateVaccinationChoices(input: VaccinationInput) {
+  if (input.started_at && !Number.isFinite(Date.parse(input.started_at))) throw new Error("Date/Time Started is invalid.");
+  if (input.ended_at && (!input.started_at || !Number.isFinite(Date.parse(input.ended_at)) || Date.parse(input.ended_at) < Date.parse(input.started_at))) throw new Error("Date/Time Ended must be on or after Date/Time Started.");
+  const choices = await listVaccinationChoices();
+  if (!choices.vaccineTypes.includes(input.vaccine_type)) throw new Error("Select a valid vaccine type.");
+  if (!choices.dosages.includes(input.dosage)) throw new Error("Select a valid dosage.");
+}
+
 export const VACCINATION_ROUTES = ["Water", "Spray of bird", "Injection-SC", "Injection-IM", "Wing web", "Eye drop", "Spray of feed", "In-Ovo", "Other"] as const;
 export type VaccinationScope = "Farm" | "Building" | "Selected Pens" | "All Pens";
 
@@ -17,19 +40,21 @@ export type FarmLocation = {
 
 export type VaccinationRecord = {
   id: number; document_no: string; vaccination_date: string;
+  scheduled_vaccination_date: string | null; date_variance_days: number | null;
   farm_id: number; farm_code: string | null; farm_name: string; scope: VaccinationScope;
   building_id: number | null; building_code: string | null; building_name: string | null;
   vaccine_brand: string; vaccine_type: string; disease_target: string;
-  dosage: number; unit: string; route: string; booster_no: number; next_dose_date: string | null;
-  batch_number: string; manufacturing_date: string | null; expiry_date: string;
-  birds_before: number; birds_vaccinated: number; birds_missed: number;
+  dosage: number; route: string;
+  batch_number: string; expiry_date: string;
+  birds_before: number | null; birds_vaccinated: number | null; birds_missed: number | null;
+  started_at: string | null; ended_at: string | null;
   administered_by: string | null; supervised_by: string | null;
   cold_chain_verified: boolean; label_verified: boolean; expiry_verified: boolean;
   status: "Posted" | "Cancelled"; remarks: string | null; target_count?: number; target_names?: string | null;
   created_at: string;
 };
 
-export type VaccinationInput = Omit<VaccinationRecord, "id" | "document_no" | "status" | "created_at" | "target_count" | "target_names"> & {
+export type VaccinationInput = Omit<VaccinationRecord, "id" | "document_no" | "status" | "created_at" | "target_count" | "target_names" | "date_variance_days" | "birds_before" | "birds_vaccinated" | "birds_missed"> & {
   targets: Array<Pick<FarmLocation, "building_id" | "building_code" | "building_name" | "pen_id" | "pen_code" | "pen_name">>;
 };
 export type VaccinationTarget = VaccinationInput["targets"][number];
@@ -85,6 +110,7 @@ export async function getVaccinationById(id: number) {
 
 export async function createVaccination(input: VaccinationInput) {
   const userId = await currentUserId();
+  await validateVaccinationChoices(input);
   if ((input.scope === "Selected Pens" || input.scope === "All Pens") && input.targets.length === 0) {
     throw new Error(input.scope === "All Pens" ? "The selected building has no pens." : "Select at least one pen.");
   }
@@ -107,6 +133,7 @@ export async function createVaccination(input: VaccinationInput) {
 
 export async function updateVaccination(id: number, input: VaccinationInput) {
   const userId = await currentUserId();
+  await validateVaccinationChoices(input);
   if ((input.scope === "Selected Pens" || input.scope === "All Pens") && input.targets.length === 0) {
     throw new Error(input.scope === "All Pens" ? "The selected building has no pens." : "Select at least one pen.");
   }

@@ -6,6 +6,18 @@ const TARGET_TABLE = "tbl_brd_medication_target";
 const REGISTER_VIEW = "brd_medication_register";
 const LOCATION_VIEW = "view_farm_new_lookup";
 
+export async function listMedicationTypes(): Promise<string[]> {
+  const { data, error } = await db.from("tbl_brd_medication_type")
+    .select("name").eq("is_active", true).order("sort_order").order("name");
+  if (error) throw new Error("Unable to load medication types. Please contact your administrator.");
+  return (data ?? []).map((row) => String(row.name));
+}
+
+async function validateMedicationType(name: string) {
+  const types = await listMedicationTypes();
+  if (!types.includes(name)) throw new Error("Select an active medication type from the list.");
+}
+
 export const MEDICATION_ROUTES = [
   "Water",
   "Spray of bird",
@@ -154,6 +166,7 @@ export async function getMedicationById(id: number) {
 }
 
 export async function createMedication(input: MedicationInput) {
+  await validateMedicationType(input.medication_type);
   const userId = await currentUserId();
   if (input.scope === "Selected Pens" && input.targets.length === 0) {
     throw new Error("Select at least one pen.");
@@ -189,6 +202,7 @@ export async function createMedication(input: MedicationInput) {
 }
 
 export async function updateMedication(id: number, input: MedicationInput) {
+  await validateMedicationType(input.medication_type);
   const userId = await currentUserId();
   if (input.scope === "Selected Pens" && input.targets.length === 0) {
     throw new Error("Select at least one pen.");

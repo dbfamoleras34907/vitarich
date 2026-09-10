@@ -13,20 +13,37 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { createVaccination, getDefaultFarm, getVaccinationById, listVaccinationLocations, updateVaccination, VACCINATION_ROUTES, type FarmLocation, type VaccinationScope } from "./api";
+import { createVaccination, getDefaultFarm, getVaccinationById, listVaccinationLocations, listVaccinationChoices, type VaccinationChoices, updateVaccination, VACCINATION_ROUTES, type FarmLocation, type VaccinationScope } from "./api";
+
+function localDateTime(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function vaccinationDuration(startedAt: string, endedAt: string) {
+  if (!startedAt || !endedAt) return "";
+  const elapsed = Date.parse(endedAt) - Date.parse(startedAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "";
+  const minutes = Math.floor(elapsed / 60_000);
+  const hours = Math.floor(minutes / 60);
+  return `${hours} hr${hours === 1 ? "" : "s"} ${minutes % 60} min`;
+}
 
 const today = () => new Date().toLocaleDateString("en-CA");
 type FormState = {
-  vaccination_date: string; farm_id: string; scope: VaccinationScope; building_id: string;
-  vaccine_brand: string; vaccine_type: string; disease_target: string; dosage: string; unit: string; route: string;
-  booster_no: string; next_dose_date: string; batch_number: string; manufacturing_date: string; expiry_date: string;
-  birds_before: string; birds_vaccinated: string; birds_missed: string; administered_by: string; supervised_by: string; remarks: string;
+  vaccination_date: string; scheduled_vaccination_date: string; farm_id: string; scope: VaccinationScope; building_id: string;
+  vaccine_brand: string; vaccine_type: string; disease_target: string; dosage: string; route: string;
+  batch_number: string; expiry_date: string;
+  started_at: string; ended_at: string; administered_by: string; supervised_by: string; remarks: string;
   cold_chain_verified: boolean; label_verified: boolean; expiry_verified: boolean;
 };
 const initialForm = (): FormState => ({
-  vaccination_date: today(), farm_id: "", scope: "Farm", building_id: "", vaccine_brand: "", vaccine_type: "",
-  disease_target: "", dosage: "", unit: "", route: "", booster_no: "1", next_dose_date: "", batch_number: "",
-  manufacturing_date: "", expiry_date: "", birds_before: "0", birds_vaccinated: "0", birds_missed: "0",
+  vaccination_date: today(), scheduled_vaccination_date: "", farm_id: "", scope: "Farm", building_id: "", vaccine_brand: "", vaccine_type: "",
+  disease_target: "", dosage: "", route: "", batch_number: "",
+  expiry_date: "", started_at: "", ended_at: "",
   administered_by: "", supervised_by: "", remarks: "", cold_chain_verified: false, label_verified: false, expiry_verified: false,
 });
 
@@ -37,6 +54,8 @@ export default function VaccinationForm() {
   const vaccinationId = Number(searchParams.get("id"));
   const isEdit = Number.isInteger(vaccinationId) && vaccinationId > 0;
   const [locations, setLocations] = useState<FarmLocation[]>([]);
+  const [choices, setChoices] = useState<VaccinationChoices>({ vaccineTypes: [], dosages: [] });
+  const [choicesReady, setChoicesReady] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
   const [selectedPenIds, setSelectedPenIds] = useState<number[]>([]);
   const [addAnother, setAddAnother] = useState(false);
@@ -53,17 +72,22 @@ export default function VaccinationForm() {
     let cancelled = false;
     Promise.all([
       listVaccinationLocations(),
+      listVaccinationChoices(),
       isEdit ? getVaccinationById(vaccinationId) : getDefaultFarm().catch(() => null),
     ])
-      .then(([rows, recordOrDefaultFarm]) => {
+      .then(([rows, loadedChoices, recordOrDefaultFarm]) => {
         if (cancelled) return;
         setLocations(rows);
+        setChoices(loadedChoices);
+        setChoicesReady(loadedChoices.vaccineTypes.length > 0 && loadedChoices.dosages.length > 0);
+        if (!loadedChoices.vaccineTypes.length || !loadedChoices.dosages.length) setError("Vaccine type and dosage choices have not been configured. Please contact your administrator.");
         if (isEdit) {
           const record = recordOrDefaultFarm as Awaited<ReturnType<typeof getVaccinationById>>;
           setDocumentNo(record.document_no);
           setRecordStatus(record.status);
           setForm({
             vaccination_date: record.vaccination_date.slice(0, 10),
+            scheduled_vaccination_date: record.scheduled_vaccination_date?.slice(0, 10) ?? "",
             farm_id: String(record.farm_id),
             scope: record.scope,
             building_id: record.building_id == null ? "" : String(record.building_id),
@@ -71,16 +95,11 @@ export default function VaccinationForm() {
             vaccine_type: record.vaccine_type,
             disease_target: record.disease_target,
             dosage: String(record.dosage),
-            unit: record.unit,
             route: record.route,
-            booster_no: String(record.booster_no),
-            next_dose_date: record.next_dose_date?.slice(0, 10) ?? "",
             batch_number: record.batch_number,
-            manufacturing_date: record.manufacturing_date?.slice(0, 10) ?? "",
             expiry_date: record.expiry_date.slice(0, 10),
-            birds_before: String(record.birds_before),
-            birds_vaccinated: String(record.birds_vaccinated),
-            birds_missed: String(record.birds_missed),
+            started_at: localDateTime(record.started_at),
+            ended_at: localDateTime(record.ended_at),
             administered_by: record.administered_by ?? "",
             supervised_by: record.supervised_by ?? "",
             remarks: record.remarks ?? "",
@@ -95,7 +114,7 @@ export default function VaccinationForm() {
         const defaultId = Number(defaultFarm?.id);
         setForm((current) => ({ ...current, farm_id: String(rows.some((row) => row.farm_id === defaultId) ? defaultId : rows[0]?.farm_id ?? "") }));
       })
-      .catch((loadError) => { console.error(loadError); if (!cancelled) setError("Unable to load breeder locations."); })
+      .catch((loadError) => { console.error(loadError); if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Unable to load vaccination form."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [isEdit, vaccinationId]);
@@ -129,19 +148,21 @@ export default function VaccinationForm() {
   function togglePen(id: number, checked: boolean) { setSelectedPenIds((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id)); }
 
   function validate() {
+    if (!choicesReady) return "Vaccination choices are unavailable. Reload the form and try again.";
+    if (!choices.vaccineTypes.includes(form.vaccine_type)) return "Select a valid vaccine type.";
+    if (!choices.dosages.includes(Number(form.dosage))) return "Select a valid dosage.";
     if (!form.vaccination_date || !form.farm_id) return "Date and farm are required.";
     if (form.scope !== "Farm" && !form.building_id) return "Building is required.";
     if (form.scope === "Selected Pens" && !selectedPenIds.length) return "Select at least one pen.";
     if (form.scope === "All Pens" && !pens.length) return "The selected building has no pens.";
     if (!form.vaccine_brand.trim() || !form.vaccine_type.trim() || !form.disease_target.trim()) return "Vaccine brand, type, and disease target are required.";
-    if (!(Number(form.dosage) > 0) || !form.unit.trim() || !form.route) return "Valid dosage, unit, and route are required.";
-    if (!(Number(form.booster_no) > 0)) return "Dose/booster number must be greater than zero.";
+    if (!(Number(form.dosage) > 0) || !form.route) return "Valid dosage and route are required.";
     if (!form.batch_number.trim() || !form.expiry_date) return "Batch number and expiry date are required.";
     if (form.expiry_date < form.vaccination_date) return "Expired vaccine cannot be recorded.";
-    if (form.manufacturing_date && form.manufacturing_date > form.expiry_date) return "Manufacturing date cannot be after expiry date.";
-    const before = Number(form.birds_before), vaccinated = Number(form.birds_vaccinated), missed = Number(form.birds_missed);
-    if ([before, vaccinated, missed].some((value) => !Number.isInteger(value) || value < 0)) return "Bird counts must be non-negative whole numbers.";
-    if (vaccinated + missed > before) return "Vaccinated plus missed birds cannot exceed birds before vaccination.";
+    if (form.started_at && !Number.isFinite(Date.parse(form.started_at))) return "Date/Time Started is invalid.";
+    if (form.ended_at && !Number.isFinite(Date.parse(form.ended_at))) return "Date/Time Ended is invalid.";
+    if (form.ended_at && !form.started_at) return "Enter Date/Time Started before Date/Time Ended.";
+    if (form.started_at && form.ended_at && Date.parse(form.ended_at) < Date.parse(form.started_at)) return "Date/Time Ended cannot be before Date/Time Started.";
     if (!form.label_verified || !form.expiry_verified || !form.cold_chain_verified) return "Complete all vaccine safety verifications before posting.";
     return "";
   }
@@ -154,12 +175,13 @@ export default function VaccinationForm() {
     setSaving(true); setError(""); setSuccess("");
     try {
       const payload = {
-        vaccination_date: form.vaccination_date, farm_id: farm.farm_id, farm_code: farm.farm_code, farm_name: farm.farm_name,
+        vaccination_date: form.vaccination_date, scheduled_vaccination_date: form.scheduled_vaccination_date || null, farm_id: farm.farm_id, farm_code: farm.farm_code, farm_name: farm.farm_name,
         scope: form.scope, building_id: building?.building_id ?? null, building_code: building?.building_code ?? null, building_name: building?.building_name ?? null,
         vaccine_brand: form.vaccine_brand.trim(), vaccine_type: form.vaccine_type.trim(), disease_target: form.disease_target.trim(), dosage: Number(form.dosage),
-        unit: form.unit.trim(), route: form.route, booster_no: Number(form.booster_no), next_dose_date: form.next_dose_date || null,
-        batch_number: form.batch_number.trim(), manufacturing_date: form.manufacturing_date || null, expiry_date: form.expiry_date,
-        birds_before: Number(form.birds_before), birds_vaccinated: Number(form.birds_vaccinated), birds_missed: Number(form.birds_missed),
+        route: form.route,
+        batch_number: form.batch_number.trim(), expiry_date: form.expiry_date,
+        started_at: form.started_at ? new Date(form.started_at).toISOString() : null,
+        ended_at: form.ended_at ? new Date(form.ended_at).toISOString() : null,
         administered_by: form.administered_by.trim() || null, supervised_by: form.supervised_by.trim() || null,
         cold_chain_verified: form.cold_chain_verified, label_verified: form.label_verified, expiry_verified: form.expiry_verified,
         remarks: form.remarks.trim() || null,
@@ -193,7 +215,7 @@ export default function VaccinationForm() {
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {!isEdit ? <Label className="mr-2 flex cursor-pointer gap-2 font-normal"><Checkbox checked={addAnother} onCheckedChange={(checked) => setAddAnother(checked === true)} />Add another</Label> : null}
                   <Button type="button" variant="outline" onClick={() => router.push("/jmb/vaccination")} disabled={saving}><X className="size-4" />{readOnly ? "Close" : "Cancel"}</Button>
-                  {!readOnly ? <Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{saving ? "Saving..." : isEdit ? "Update" : "Save"}</Button> : null}
+                  {!readOnly ? <Button type="submit" disabled={saving || loading || !choicesReady}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{saving ? "Saving..." : isEdit ? "Update" : "Save"}</Button> : null}
                 </div>
               </div>
         </header>
@@ -203,10 +225,16 @@ export default function VaccinationForm() {
             {error ? <div className="m-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
             {success ? <div className="m-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div> : null}
 
-            <section className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="Vaccination date" required><Input type="date" value={form.vaccination_date} onChange={(e) => update("vaccination_date", e.target.value)} /></Field>
-              <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); update("building_id", ""); setSelectedPenIds([]); }} placeholder="Select farm" showCode className="w-full" /></Field>
-              <Field label="Disease target" required><Input value={form.disease_target} onChange={(e) => update("disease_target", e.target.value)} placeholder="Disease or pathogen target" maxLength={200} /></Field>
+            <section className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); update("building_id", ""); setSelectedPenIds([]); }} placeholder="Select farm" showCode className="w-full" /></Field>
+                <Field label="Disease target" required><Input value={form.disease_target} onChange={(e) => update("disease_target", e.target.value)} placeholder="Disease or pathogen target" maxLength={200} /></Field>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Field label="Target/Scheduled Vaccination Date"><Input type="date" value={form.scheduled_vaccination_date} onChange={(e) => update("scheduled_vaccination_date", e.target.value)} /></Field>
+                <Field label="Actual Vaccination Date" required><Input type="date" value={form.vaccination_date} onChange={(e) => update("vaccination_date", e.target.value)} /></Field>
+                <Field label="Date Variance (days)"><Input readOnly value={form.scheduled_vaccination_date && form.vaccination_date ? Math.round((Date.parse(form.vaccination_date) - Date.parse(form.scheduled_vaccination_date)) / 86400000) : ""} placeholder="—" /><p className="text-xs text-muted-foreground">Actual minus scheduled: positive = late, negative = early, 0 = on schedule.</p></Field>
+              </div>
             </section>
 
             <SectionDivider />
@@ -220,28 +248,40 @@ export default function VaccinationForm() {
 
             <SectionDivider />
             <section className="space-y-4 p-5">
-              <SectionHeading title="Vaccine Details" description="Record product, dosage, route, schedule, and batch traceability." />
+              <SectionHeading title="Vaccine Details" description="Record product, dosage, route, and batch traceability." />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Vaccine brand" required><Input value={form.vaccine_brand} onChange={(e) => update("vaccine_brand", e.target.value)} placeholder="Vaccine brand" maxLength={150} /></Field>
-                <Field label="Vaccine type" required><Input value={form.vaccine_type} onChange={(e) => update("vaccine_type", e.target.value)} placeholder="Live, inactivated, recombinant..." maxLength={100} /></Field>
+                <Field label="Vaccine type" required>
+                  <Select value={form.vaccine_type} onValueChange={(value) => update("vaccine_type", value)} disabled={loading || saving || readOnly || !choicesReady}>
+                    <SelectTrigger className="w-full" aria-label="Vaccine type"><SelectValue placeholder="Select vaccine type" /></SelectTrigger>
+                    <SelectContent>
+                      {form.vaccine_type && !choices.vaccineTypes.includes(form.vaccine_type) ? <SelectItem value={form.vaccine_type} disabled>{form.vaccine_type} (unavailable)</SelectItem> : null}
+                      {choices.vaccineTypes.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label="Batch / lot number" required><Input value={form.batch_number} onChange={(e) => update("batch_number", e.target.value)} maxLength={100} /></Field>
-                <Field label="Dosage" required><Input type="number" min="0" step="any" value={form.dosage} onChange={(e) => update("dosage", e.target.value)} /></Field>
-                <Field label="Unit" required><Input value={form.unit} onChange={(e) => update("unit", e.target.value)} placeholder="e.g. dose/bird, mL/bird" maxLength={100} /></Field>
+                <Field label="Dosage" required>
+                  <Select value={form.dosage} onValueChange={(value) => update("dosage", value)} disabled={loading || saving || readOnly || !choicesReady}>
+                    <SelectTrigger className="w-full" aria-label="Dosage"><SelectValue placeholder="Select dosage" /></SelectTrigger>
+                    <SelectContent>
+                      {form.dosage && !choices.dosages.includes(Number(form.dosage)) ? <SelectItem value={form.dosage} disabled>{Number(form.dosage).toLocaleString("en-US")} (unavailable)</SelectItem> : null}
+                      {choices.dosages.map((dosage) => <SelectItem key={dosage} value={String(dosage)}>{dosage.toLocaleString("en-US")}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label="Route" required><Select value={form.route} onValueChange={(value) => update("route", value)}><SelectTrigger className="w-full"><SelectValue placeholder="Select route" /></SelectTrigger><SelectContent>{VACCINATION_ROUTES.map((route) => <SelectItem key={route} value={route}>{route}</SelectItem>)}</SelectContent></Select></Field>
-                <Field label="Dose / booster number" required><Input type="number" min="1" step="1" value={form.booster_no} onChange={(e) => update("booster_no", e.target.value)} /></Field>
-                <Field label="Next dose date"><Input type="date" min={form.vaccination_date} value={form.next_dose_date} onChange={(e) => update("next_dose_date", e.target.value)} /></Field>
-                <Field label="Manufacturing date"><Input type="date" value={form.manufacturing_date} onChange={(e) => update("manufacturing_date", e.target.value)} /></Field>
                 <Field label="Expiry date" required><Input type="date" min={form.vaccination_date} value={form.expiry_date} onChange={(e) => update("expiry_date", e.target.value)} /></Field>
               </div>
             </section>
 
             <SectionDivider />
             <section className="space-y-4 p-5">
-              <SectionHeading title="Bird Reconciliation" description="Reconcile the flock population covered by this activity." />
+              <SectionHeading title="Vaccination Timing" description="Record when vaccination started and ended. Times use your local time zone." />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Field label="Birds before" required><Input type="number" min="0" step="1" value={form.birds_before} onChange={(e) => update("birds_before", e.target.value)} /></Field>
-                <Field label="Birds vaccinated" required><Input type="number" min="0" step="1" value={form.birds_vaccinated} onChange={(e) => update("birds_vaccinated", e.target.value)} /></Field>
-                <Field label="Birds missed" required><Input type="number" min="0" step="1" value={form.birds_missed} onChange={(e) => update("birds_missed", e.target.value)} /></Field>
+                <Field label="Date/Time Started"><Input type="datetime-local" value={form.started_at} onChange={(e) => update("started_at", e.target.value)} /></Field>
+                <Field label="Date/Time Ended"><Input type="datetime-local" min={form.started_at || undefined} value={form.ended_at} onChange={(e) => update("ended_at", e.target.value)} /></Field>
+                <Field label="Total Vaccination Timing"><Input readOnly value={vaccinationDuration(form.started_at, form.ended_at)} placeholder="—" className="bg-muted font-semibold" /></Field>
               </div>
             </section>
 

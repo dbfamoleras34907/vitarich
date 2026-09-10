@@ -62,6 +62,18 @@ export async function POST(req: Request) {
       payload[field] = value;
     });
 
+    for (const field of ["m_body_weight", "f_body_weight", "m_uniformity", "f_uniformity"]) {
+      if (!(field in input)) continue;
+      const raw = input[field];
+      const value = raw == null || raw === "" ? null : Number(raw);
+      if (value != null && (!Number.isFinite(value) || value < 0)) throw new Error(`${field} must be zero or greater.`);
+      payload[field] = value;
+    }
+    if ("remarks" in input) {
+      if (input.remarks != null && typeof input.remarks !== "string") throw new Error("Remarks must be text.");
+      payload.remarks = input.remarks == null ? null : String(input.remarks).trim() || null;
+    }
+
     const { data: existing, error: findError } = await admin_db
       .from(TABLE)
       .select("id, trans_in_male, trans_in_female, trans_out_male, trans_out_female")

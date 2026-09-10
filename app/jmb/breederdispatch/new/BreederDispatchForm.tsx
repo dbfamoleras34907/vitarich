@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
   createBreederDispatch, dispatchItemKey, EGG_CATEGORIES, getBreederDispatchById, getDefaultFarm,
-  listAvailableDispatchItems, listHatcheryFarms, POPULATION_CATEGORIES, updateBreederDispatch,
+  dispatchCategoryOrder, listAvailableDispatchItems, listHatcheryFarms, POPULATION_CATEGORIES, updateBreederDispatch,
   type AvailableDispatchItem, type BreederDispatchInput, type DispatchSourceType, type DispatchStatus,
   type HatcheryFarmLookup,
 } from "./api";
@@ -126,7 +126,7 @@ export default function BreederDispatchForm() {
       group.items.push(item);
       groups.set(key, group);
     });
-    return [...groups.values()].sort((a, b) => a.source_type.localeCompare(b.source_type) || a.category_label.localeCompare(b.category_label));
+    return [...groups.values()].sort((a, b) => a.source_type.localeCompare(b.source_type) || dispatchCategoryOrder(a.source_type, a.category) - dispatchCategoryOrder(b.source_type, b.category));
   }, [farmItems]);
   const categories = useMemo(() => {
     const base = sourceFilter === "Population Record" ? POPULATION_CATEGORIES : sourceFilter === "Egg Laying" ? EGG_CATEGORIES : [...POPULATION_CATEGORIES, ...EGG_CATEGORIES];

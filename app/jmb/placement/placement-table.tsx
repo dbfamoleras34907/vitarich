@@ -446,7 +446,7 @@ export default function PlacementTable() {
                               variant="outline"
                               onClick={() => openCard(latest)}
                             >
-                              <FileSpreadsheet className="size-4" /> Growing
+                              <FileSpreadsheet className="size-4" /> Population Records
                             </Button>
                           ) : null}
                           <Button
