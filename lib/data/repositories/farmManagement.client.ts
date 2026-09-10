@@ -6,6 +6,9 @@ export type FarmRecord = {
   code: string | null
   name: string | null
   farm_type: string | null
+  production_model: string | null
+  island: string | null
+  administrative_region: string | null
   approval_status: string | null
   contact_person: string | null
   contact_number: string | null

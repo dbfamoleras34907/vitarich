@@ -1,5 +1,8 @@
 'use client'
 
+import { FARM_PROFILE_FIELDS } from '@/lib/farmProfileOptions'
+import { FARM_WAREHOUSE_DEFAULTS } from './defaults'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,6 +59,7 @@ type WarehouseDraft = {
   clientKey: string
   id?: number | null
   hasAutomaticName?: boolean
+  requiredWarehouse?: boolean
   data: FormDataMap
 }
 
@@ -129,6 +133,47 @@ const warehouseFields: FieldConfig[] = [
 ]
 
 const compact = (value: unknown) => String(value ?? '').trim()
+
+const withDefaultWarehouses = (
+  drafts: WarehouseDraft[],
+  address: FormDataMap,
+  fmsType: string,
+) => {
+  const result = [...drafts]
+  const keys = new Map<string, string>()
+  for (const name of new Set(Object.values(FARM_WAREHOUSE_DEFAULTS))) {
+    const index = result.findIndex((draft) =>
+      draft.data.warehouse_type === 'Warehouse' &&
+      compact(draft.data.whse_name).toLowerCase() === name.toLowerCase()
+    )
+    if (index >= 0) {
+      result[index] = { ...result[index], requiredWarehouse: true }
+      keys.set(name, result[index].clientKey)
+    } else {
+      const clientKey = `default-warehouse-${name.toLowerCase()}`
+      result.push({
+        clientKey,
+        requiredWarehouse: true,
+        data: {
+          whse_name: name,
+          warehouse_type: 'Warehouse',
+          fms_type: fmsType,
+          addr1: address.address ?? '',
+          addr2: address.barangay ?? '',
+          city: address.city ?? '',
+          province: address.province ?? '',
+        },
+      })
+      keys.set(name, clientKey)
+    }
+  }
+  return {
+    drafts: result,
+    feed: keys.get(FARM_WAREHOUSE_DEFAULTS.feed)!,
+    receiving: keys.get(FARM_WAREHOUSE_DEFAULTS.receiving)!,
+    disposal: keys.get(FARM_WAREHOUSE_DEFAULTS.disposal)!,
+  }
+}
 const warehouseDisplayName = (draft?: WarehouseDraft) => {
   if (!draft) return ''
 
@@ -366,13 +411,13 @@ function StructureWorkspace({
       <aside aria-label="Farm structures" className={`${showMobileEditor && selected ? 'hidden md:block' : ''} min-w-0 border-border bg-muted/20 md:border-r`}>
         <div className="space-y-3 border-b border-border p-3">
           <div className="flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-wide">Structures</h2><span className="text-xs text-muted-foreground">{structures.length} total</span></div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { onAdd('Warehouse'); setShowMobileEditor(true) }}><Plus className="size-3.5" /> Warehouse</Button>
             <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { onAdd('Building'); setShowMobileEditor(true) }}><Plus className="size-3.5" /> Building</Button>
           </div>
         </div>
         {assignment}
-        <div className="p-2 md:max-h-[65vh] md:overflow-y-auto">
+        <div className="min-w-0 overflow-x-hidden p-2 md:max-h-[65vh] md:overflow-y-auto">
           {structures.length === 0 ? <div className="px-2 py-5 text-xs text-muted-foreground">No structures yet. Add a warehouse or building to get started.</div> : null}
           <ul className="space-y-1">
             {structures.map((draft) => {
@@ -382,18 +427,18 @@ function StructureWorkspace({
               const active = selected?.clientKey === draft.clientKey
               const Icon = isBuilding ? Building2 : Warehouse
               return (
-                <li key={draft.clientKey}>
-                  <div className={`flex items-center rounded-md border ${active ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100' : 'border-transparent hover:bg-muted'}`}>
-                    {isBuilding ? <button type="button" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${draft.data.whse_name || 'building'}`} aria-expanded={expanded} aria-controls={`pens-${draft.clientKey}`} className="flex size-7 shrink-0 items-center justify-center rounded focus-visible:outline-2 focus-visible:outline-emerald-600" onClick={() => setCollapsedKeys((prev) => { const next = new Set(prev); if (next.has(draft.clientKey)) next.delete(draft.clientKey); else next.add(draft.clientKey); return next })}>
+                <li key={draft.clientKey} className="min-w-0">
+                  <div className={`flex min-w-0 w-full items-center overflow-hidden rounded-md border transition-colors ${active ? 'border-primary/40 bg-accent text-accent-foreground' : 'border-transparent text-foreground hover:bg-muted'}`}>
+                    {isBuilding ? <button type="button" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${draft.data.whse_name || 'building'}`} aria-expanded={expanded} aria-controls={`pens-${draft.clientKey}`} className="flex size-7 shrink-0 items-center justify-center rounded focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setCollapsedKeys((prev) => { const next = new Set(prev); if (next.has(draft.clientKey)) next.delete(draft.clientKey); else next.add(draft.clientKey); return next })}>
                       {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                     </button> : <span className="w-7 shrink-0" />}
-                    <button type="button" aria-pressed={active} className="flex min-w-0 flex-1 items-start gap-2 rounded py-2 pr-2 text-left focus-visible:outline-2 focus-visible:outline-emerald-600" onClick={() => selectStructure(draft.clientKey)}>
+                    <button type="button" aria-pressed={active} className="flex min-w-0 flex-1 items-start gap-2 rounded py-2 pr-2 text-left focus-visible:outline-2 focus-visible:outline-ring" onClick={() => selectStructure(draft.clientKey)}>
                       <Icon className="mt-0.5 size-4 shrink-0" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium" title={draft.data.whse_name}>{draft.data.whse_name || 'Unnamed warehouse'}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground" title={draft.data.full_location_code}>{draft.data.full_location_code || draft.data.whse_code || 'Code on save'} · {draft.data.fms_type}</span>
+                        <span className={`block truncate text-[11px] ${active ? 'text-accent-foreground' : 'text-muted-foreground'}`} title={draft.data.full_location_code}>{draft.data.full_location_code || draft.data.whse_code || 'Code on save'} · {draft.data.fms_type}</span>
                       </span>
-                      <span className="pt-0.5 text-[10px] text-muted-foreground">{draft.data.warehouse_type}</span>
+                      <span className={`shrink-0 pt-0.5 text-[10px] ${active ? 'text-accent-foreground' : 'text-muted-foreground'}`}>{draft.data.warehouse_type}</span>
                     </button>
                   </div>
                   {isBuilding && expanded ? (
@@ -414,13 +459,13 @@ function StructureWorkspace({
             <Button type="button" variant="ghost" size="sm" className="md:hidden" onClick={() => setShowMobileEditor(false)}><ArrowLeft className="size-3.5" /> Structure List</Button>
             <div className="flex items-start justify-between gap-3">
               <div><h2 className="text-sm font-semibold">{selected.data.warehouse_type} Configuration</h2><p className="mt-1 text-xs text-muted-foreground">Changes stay in this setup until you save the farm.</p></div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(selected.clientKey)} className="text-destructive"><Trash2 className="size-3.5" /> Remove</Button>
+              <Button type="button" variant="ghost" size="sm" disabled={selected.requiredWarehouse} onClick={() => onRemove(selected.clientKey)} className="text-destructive"><Trash2 className="size-3.5" /> Remove</Button>
             </div>
             <div key={selected.clientKey} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <InlineSelect label="Structure Type" required disabled={selectedPens.length > 0} value={selected.data.warehouse_type ?? 'Warehouse'} placeholder="Select structure type" onValueChange={(value) => onUpdate(selected.clientKey, 'warehouse_type', value)}>
+              <InlineSelect label="Structure Type" required disabled={selected.requiredWarehouse || selectedPens.length > 0} value={selected.data.warehouse_type ?? 'Warehouse'} placeholder="Select structure type" onValueChange={(value) => onUpdate(selected.clientKey, 'warehouse_type', value)}>
                 {WAREHOUSE_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
               </InlineSelect>
-              {field('whse_name')}
+              {selected.requiredWarehouse ? <TextField field={{ code: 'whse_name', label: 'Name', required: true, readOnly: true }} value={selected.data.whse_name} onChange={() => undefined} /> : field('whse_name')}
               {field('full_location_code')}
               <TextField field={{ code: 'fms_type', label: 'FMS Type', readOnly: true }} value={selected.data.fms_type ?? ''} onChange={() => undefined} />
               {field('phone')}
@@ -604,6 +649,7 @@ export default function Layout() {
     setWarehouseDrafts((prev) =>
       prev.map((draft) => {
         if (draft.clientKey !== clientKey) return draft
+        if (draft.requiredWarehouse && ['whse_name', 'warehouse_type'].includes(code)) return draft
 
         if (code === 'warehouse_type') {
           if (value === 'Building' && !compact(draft.data.whse_name)) {
@@ -639,7 +685,7 @@ export default function Layout() {
 
   const removeWarehouse = (clientKey: string) => {
     const draft = warehouseDrafts.find((item) => item.clientKey === clientKey)
-    if (!draft) return
+    if (!draft || draft.requiredWarehouse) return
     const penCount = warehouseDrafts.filter((item) => isPenDraft(item) && item.data.father_client_key === clientKey).length
     const message = penCount
       ? `"${draft.data.whse_name || 'This building'}" contains ${penCount} pens. Removing this building will also remove its pens from this setup.`
@@ -651,9 +697,10 @@ export default function Layout() {
       )
     )
 
-    if (defaultFeedKey === clientKey) setDefaultFeedKey('')
-    if (defaultReceivingKey === clientKey) setDefaultReceivingKey('')
-    if (defaultDisposalKey === clientKey) setDefaultDisposalKey('')
+    const defaults = withDefaultWarehouses(warehouseDrafts, addressData, selectedFarmType?.warehouseType ?? '')
+    if (defaultFeedKey === clientKey) setDefaultFeedKey(defaults.feed)
+    if (defaultReceivingKey === clientKey) setDefaultReceivingKey(defaults.receiving)
+    if (defaultDisposalKey === clientKey) setDefaultDisposalKey(defaults.disposal)
   }
 
   const validateFarmStep = () => {
@@ -755,6 +802,13 @@ export default function Layout() {
   const goNext = () => {
     if (loadingFarm) return
     if (step === 0 && !validateFarmStep()) return
+    if (step === 0) {
+      const defaults = withDefaultWarehouses(warehouseDrafts, addressData, selectedFarmType?.warehouseType ?? '')
+      setWarehouseDrafts(defaults.drafts)
+      setDefaultFeedKey((key) => key || defaults.feed)
+      setDefaultReceivingKey((key) => key || defaults.receiving)
+      setDefaultDisposalKey((key) => key || defaults.disposal)
+    }
     if (step === 1 && !validateWarehouseStep()) return
 
     setStep((prev) => Math.min(prev + 1, STEPS.length - 1))
@@ -923,15 +977,18 @@ export default function Layout() {
         const record = await getFarmSetup(farmId)
         setFarmData(record.farm)
         setAddressData(record.address)
-        setWarehouseDrafts(
+        const defaults = withDefaultWarehouses(
           record.warehouses.map((warehouse) => ({
             id: warehouse.id,
             clientKey: warehouse.client_key,
             data: Object.fromEntries(
               Object.entries(warehouse).map(([key, value]) => [key, String(value ?? '')])
             ),
-          }))
+          })),
+          record.address,
+          FARM_TYPES.find((type) => type.value === record.farm.farm_type)?.warehouseType ?? '',
         )
+        setWarehouseDrafts(defaults.drafts)
         setWarehouseCatalog(
           [...record.warehouses, ...record.assignableWarehouses].map((warehouse) => ({
             id: warehouse.id,
@@ -942,13 +999,13 @@ export default function Layout() {
           }))
         )
         setDefaultFeedKey(
-          record.warehouses.find((warehouse) => warehouse.is_default_feed)?.client_key ?? ''
+          record.warehouses.find((warehouse) => warehouse.is_default_feed)?.client_key ?? defaults.feed
         )
         setDefaultReceivingKey(
-          record.warehouses.find((warehouse) => warehouse.is_default_receiving)?.client_key ?? ''
+          record.warehouses.find((warehouse) => warehouse.is_default_receiving)?.client_key ?? defaults.receiving
         )
         setDefaultDisposalKey(
-          record.warehouses.find((warehouse) => warehouse.is_default_disposal)?.client_key ?? ''
+          record.warehouses.find((warehouse) => warehouse.is_default_disposal)?.client_key ?? defaults.disposal
         )
         return
       }
@@ -1000,6 +1057,11 @@ export default function Layout() {
                   <InlineSelect label="Farm Type" required value={farmData.farm_type ?? ''} placeholder="Select farm type" onValueChange={(value) => updateFarm('farm_type', value)}>
                     {FARM_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
                   </InlineSelect>
+                  {FARM_PROFILE_FIELDS.map((field) => (
+                    <InlineSelect key={field.code} label={field.label} value={farmData[field.code] ?? ''} placeholder={`Select ${field.label.toLowerCase()}`} onValueChange={(value) => updateFarm(field.code, value)}>
+                      {field.options.map((value) => <SelectItem key={value} value={value} className="whitespace-normal">{value}</SelectItem>)}
+                    </InlineSelect>
+                  ))}
                   {farmField('tin')}
                   {farmField('contact_person')}
                   {farmField('contact_number')}
@@ -1045,6 +1107,9 @@ export default function Layout() {
                     <Button type="button" variant="ghost" size="sm" onClick={() => setStep(0)}>Edit</Button>
                   </div>
                   <dl className="grid gap-3 p-3 text-sm md:grid-cols-3">
+                    {FARM_PROFILE_FIELDS.map((field) => (
+                      <div key={field.code}><dt className="text-xs text-muted-foreground">{field.label}</dt><dd className="mt-1">{farmData[field.code] || 'Not set'}</dd></div>
+                    ))}
                     <div><dt className="text-xs text-muted-foreground">Farm</dt><dd className="mt-1 font-medium">{farmData.name}</dd><dd className="text-xs text-muted-foreground">{farmData.code} · {selectedFarmType?.label}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Location</dt><dd className="mt-1">{locationPreview || 'Not set'}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Contact</dt><dd className="mt-1">{farmData.contact_person || 'Not set'}</dd><dd className="text-xs text-muted-foreground">{[farmData.contact_number, farmData.tel].filter(Boolean).join(' · ')}</dd></div>

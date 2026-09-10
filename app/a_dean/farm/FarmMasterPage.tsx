@@ -1,5 +1,7 @@
 'use client'
 
+import { FARM_PROFILE_FIELDS } from '@/lib/farmProfileOptions'
+
 import { Button } from '@/components/ui/button'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -102,6 +104,11 @@ export default function FarmMasterPage() {
           )
         },
       },
+      ...FARM_PROFILE_FIELDS.map((field): Column<RowDataKey> => ({
+        key: field.code,
+        label: field.label,
+        render: row => String(row[field.code] || '-'),
+      })),
       { key: 'contact_person', label: 'Contact Person', render: row => row.contact_person || '-' },
       { key: 'contact_number', label: 'Contact No.', render: row => row.contact_number || '-' },
       { key: 'remarks', label: 'Remarks', render: row => row.remarks || '-' },

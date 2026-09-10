@@ -1,0 +1,10 @@
+-- Run with psql against the intended database after notification_system.sql
+-- and setup/farm_setup_wizard_columns.sql have been deployed.
+-- Relative includes resolve from this file, regardless of the working directory.
+\set ON_ERROR_STOP on
+begin;
+\ir farm_profile_columns.sql
+\ir farm_void_rls.sql
+\ir setup/insert_farm_setup_wizard.sql
+\ir setup/update_farm_setup_wizard.sql
+commit;
