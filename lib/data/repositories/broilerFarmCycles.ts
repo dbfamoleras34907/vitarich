@@ -31,19 +31,49 @@ export type StandaloneBuildingCycleOption = {
   cycleLabel: string
   buildingName: string
   status: string
+  createdAt: string | null
 }
 
 export async function getStandaloneBuildingCycleOptions(farmId: number): Promise<StandaloneBuildingCycleOption[]> {
   if (!Number.isInteger(farmId) || farmId <= 0) return []
   const { data, error } = await db.from('flock_card')
-    .select('id, cycle_no, building_name, building_code, status')
+    .select('id, cycle_no, building_name, building_code, status, created_at')
     .eq('farm_id', farmId).is('farm_cycle_id', null).eq('void', '1')
     .order('start_date', { ascending: false }).order('id', { ascending: false })
   if (error) throw error
   return (data ?? []).map(row => ({
     id: Number(row.id), cycleLabel: String(row.cycle_no ?? ''),
     buildingName: String(row.building_name || row.building_code || ''), status: String(row.status ?? ''),
+    createdAt: row.created_at ?? null,
   }))
+}
+
+export type CycleMasterListRow = Omit<FarmCycleMasterRow, 'cycleNumber' | 'status' | 'createdAt'> & {
+  kind: 'farm' | 'building'
+  cycleNumber: number | string
+  status: string
+  createdAt: string | null
+}
+
+export async function getCycleMasterListRows(farmId: number): Promise<CycleMasterListRow[]> {
+  const [farmCycles, standaloneCycles] = await Promise.all([
+    getFarmCycleMasterRows(farmId),
+    getStandaloneBuildingCycleOptions(farmId),
+  ])
+  return [
+    ...farmCycles.map(cycle => ({ ...cycle, kind: 'farm' as const })),
+    ...standaloneCycles.map(cycle => ({
+      id: cycle.id,
+      kind: 'building' as const,
+      farmId,
+      cycleNumber: `${cycle.cycleLabel} - ${cycle.buildingName}`,
+      status: cycle.status,
+      createdAt: cycle.createdAt,
+      closedAt: null,
+      participatingBuildings: 1,
+      openBuildings: cycle.status === 'Saved' ? 1 : 0,
+    })),
+  ]
 }
 
 export async function getFarmCycleMasterRows(

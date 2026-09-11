@@ -23,7 +23,7 @@ import UserFarmSearchCombobox, {
 import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
-import { getFarmCycleMasterRows, type FarmCycleMasterRow } from './api'
+import { getCycleMasterListRows, type CycleMasterListRow } from './api'
 
 const formatDate = (value: string | null) => {
   if (!value) return '-'
@@ -49,7 +49,7 @@ export default function CycleMasterLayout() {
   const rawFarmDB = getValue('getFarmDB')
   const rawUserFarms = session?.[0]?.users_farms
   const [selectedFarmId, setSelectedFarmId] = useState('')
-  const [rows, setRows] = useState<FarmCycleMasterRow[]>([])
+  const [rows, setRows] = useState<CycleMasterListRow[]>([])
   const [loading, setLoading] = useState(false)
 
   const allowedFarms = useMemo(
@@ -67,7 +67,7 @@ export default function CycleMasterLayout() {
     }
     setLoading(true)
     try {
-      setRows(await getFarmCycleMasterRows(farmId))
+      setRows(await getCycleMasterListRows(farmId))
     } catch (error) {
       setRows([])
       toast.error(errorMessage(error))
@@ -135,15 +135,15 @@ export default function CycleMasterLayout() {
                 <TableRow><TableCell colSpan={7} className="h-28 text-center text-stone-500">No farm cycles found.</TableCell></TableRow>
               ) : rows.map(row => (
                 <TableRow
-                  key={row.id}
+                  key={`${row.kind}:${row.id}`}
                   role="link"
                   tabIndex={0}
                   className="cursor-pointer"
-                  onClick={() => router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id })}`)}
+                  onClick={() => router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id })}`)
+                      router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)
                     }
                   }}
                 >

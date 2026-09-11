@@ -57,7 +57,8 @@ export async function getBroilerCycleDashboard(
     })),
   ]
   const selectCycle = () => (options.cycleKey
-    ? cycleOptions.find(cycle => cycle.key === options.cycleKey) : cycleOptions[0]) ?? null
+    ? cycleOptions.find(cycle => cycle.key === options.cycleKey)
+    : cycleOptions.find(cycle => cycle.status === 'Saved') ?? cycleOptions[0]) ?? null
   // Publish the exact Cycle Master list before any unrelated detail query.
   options.onCatalogLoaded?.({ farmId, cycleOptions: [...cycleOptions], selectedCycle: selectCycle() })
 

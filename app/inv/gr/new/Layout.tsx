@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
-import { flushSync } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
@@ -370,64 +369,47 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
   const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
 
+  const batchLookupLines = JSON.stringify((receipt?.lines ?? []).map(line => ({
+    id: line.id,
+    itemCode: line.itemCode,
+    manufacturingDate: line.manufacturingDate,
+    expiryDate: line.expiryDate,
+  })))
+
   useEffect(() => {
-    const lineId = batchLineForLookup?.id
-    const lineKey = lineId == null ? '' : String(lineId)
-
-    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate) {
-      if (lineKey) {
-        setBatchMatches(current => ({
-          ...current,
-          [lineKey]: null,
-        }))
-      }
-      return
-    }
-
+    const lines: Pick<GoodsReceiptLine, 'id' | 'itemCode' | 'manufacturingDate' | 'expiryDate'>[] = JSON.parse(batchLookupLines)
     let cancelled = false
-    findExistingItemBatch(
-      batchLineForLookup.itemCode,
-      batchLineForLookup.manufacturingDate,
-      batchLineForLookup.expiryDate,
-    )
-      .then(existingBatch => {
+    setBatchMatches({})
+
+    const lookups = new Map<string, ReturnType<typeof findExistingItemBatch>>()
+    for (const line of lines) {
+      if (!line.itemCode || !line.manufacturingDate) continue
+      const key = JSON.stringify([line.itemCode, line.manufacturingDate, line.expiryDate])
+      let lookup = lookups.get(key)
+      if (!lookup) {
+        lookup = findExistingItemBatch(line.itemCode, line.manufacturingDate, line.expiryDate)
+        lookups.set(key, lookup)
+      }
+      void lookup.then(existingBatch => {
         if (cancelled) return
-
-        setBatchMatches(current => ({
-          ...current,
-          [lineKey]: existingBatch,
-        }))
-
+        setBatchMatches(current => ({ ...current, [String(line.id)]: existingBatch }))
         if (existingBatch?.batch_number) {
           setReceipt(current => current ? {
             ...current,
-            lines: current.lines.map(line =>
-              line.id === lineId && line.batchNumber !== existingBatch.batch_number
-                ? { ...line, batchNumber: existingBatch.batch_number }
-                : line
+            lines: current.lines.map(candidate =>
+              candidate.id === line.id && candidate.batchNumber !== existingBatch.batch_number
+                ? { ...candidate, batchNumber: existingBatch.batch_number }
+                : candidate
             ),
           } : current)
         }
-      })
-      .catch(error => {
+      }).catch(error => {
         console.error(error)
-        if (!cancelled) {
-          setBatchMatches(current => ({
-            ...current,
-            [lineKey]: null,
-          }))
-        }
       })
-
-    return () => {
-      cancelled = true
     }
-  }, [
-    batchLineForLookup?.id,
-    batchLineForLookup?.itemCode,
-    batchLineForLookup?.manufacturingDate,
-    batchLineForLookup?.expiryDate,
-  ])
+
+    return () => { cancelled = true }
+  }, [batchLookupLines])
 
   useEffect(() => {
     if (!activeBatchLineId || !batchTrailItemCode || !batchTrailNumber) {
@@ -900,14 +882,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : ''
     const nextChanges = {
       ...changes,
-      ...(defaultExpiryDate ? { expiryDate: defaultExpiryDate } : {}),
+      ...(shouldDefaultExpiry ? { expiryDate: defaultExpiryDate } : {}),
     }
     const nextLine = { ...line, ...nextChanges }
     const generatedBatchNumber = getGeneratedBatchNumber(nextLine)
 
     updateLine(line.id, {
       ...nextChanges,
-      ...(generatedBatchNumber ? { batchNumber: generatedBatchNumber } : {}),
+      batchNumber: generatedBatchNumber,
     })
   }
 
@@ -937,7 +919,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         batchRuleId: null,
         batchNumber: '',
         supplierBatchNumber: '',
-        manufacturingDate: '',
         expiryDate: '',
         altUom: '',
         baseUom: '',
@@ -959,7 +940,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       batchRuleId: null,
       batchNumber: '',
       supplierBatchNumber: '',
-      manufacturingDate: '',
+      manufacturingDate: line.manufacturingDate,
       expiryDate: '',
       altUom: uom,
       baseUom: selectedGroupCode,
@@ -973,23 +954,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    flushSync(() => {
-      updateLine(line.id, {
-        ...nextLineChanges,
-        batchRuleId: batchRequirement.rule?.id ?? null,
-      })
-      setActiveBatchLineId(line.id)
+    updateBatchLine(nextLine, {
+      ...nextLineChanges,
+      batchRuleId: batchRequirement.rule?.id ?? null,
+      ...(batchRequirement.needsExpiryDate && typeof item.default_expiration_months === 'number'
+        ? { expiryDate: addMonthsToDate(line.manufacturingDate, item.default_expiration_months) }
+        : {}),
     })
-
-    const dateInput = manufacturingDateInputRef.current
-    if (!dateInput) return
-
-    dateInput.focus()
-    try {
-      dateInput.showPicker()
-    } catch {
-      dateInput.focus()
-    }
   }
 
   const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
@@ -1375,6 +1346,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
                     <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">DR Reference</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Received Date</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Mnf Date</th>
                     <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
@@ -1410,6 +1382,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                             value={line.receiveDate}
                             onChange={event => updateLine(line.id, { receiveDate: event.target.value })}
                             aria-label={`Received Date row ${index + 1}`}
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            type="date"
+                            value={line.manufacturingDate}
+                            required={Boolean(batchRequirement?.needsManufacturingDate)}
+                            onChange={event => updateBatchLine(line, { manufacturingDate: event.target.value })}
+                            aria-label={`Manufacturing Date row ${index + 1}`}
                             className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
                           />
                         </td>

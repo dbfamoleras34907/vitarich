@@ -5,6 +5,7 @@ import { Activity, Bird, CalendarDays, ChevronRight, Droplets, HeartPulse, Refre
 import { toast } from 'sonner'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import CycleReportLayout from '@/app/brd/cycle-master/[cycleId]/Layout'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -58,6 +59,7 @@ const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join
 function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCycleBuilding[]; farmName: string; buildingName: string }) {
   const metrics = dashboardMetrics(cycles)
   const placements = cycles.flatMap(cycle => cycle.placements)
+  const docBatches = [...new Set(placements.map(row => row.batchNumber).filter(Boolean))]
   const activityDates = cycles.flatMap(cycle => {
     const age = activeGrowingLines(cycle).at(-1)?.age
     const lastGrowing = age !== undefined && cycle.startDate
@@ -65,7 +67,7 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
     return [...cycle.placements.map(row => row.receiveDate), ...cycle.deliveries.map(row => row.date),
       ...cycle.cleanups.map(row => row.date), lastGrowing && Number.isFinite(lastGrowing.getTime()) ? lastGrowing.toISOString().slice(0, 10) : '']
   }).filter(Boolean).sort()
-  const details = [
+  const details: [string, ReactNode][] = [
     ['Farm', farmName], ['Building', buildingName],
     ['Cycle number', distinct(cycles.map(cycle => String(cycle.cycleNumber)))],
     ['Flock number', distinct(cycles.map(cycle => cycle.flockCode))],
@@ -81,7 +83,22 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
     ['Mortality', formatNumber(metrics.mortality, 0)],
     ['DOC source', distinct(placements.map(row => row.vendor))],
     ['Hatchery reference', distinct(placements.map(row => row.hatcheryReference))],
-    ['DOC batch', distinct(placements.map(row => row.batchNumber))],
+    ['DOC batch', <Dialog key="doc-batches">
+      <DialogTrigger asChild>
+        <Button type="button" variant="link" className="h-auto p-0 text-[11px]">Show Batch</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>DOC Batch</DialogTitle>
+          <DialogDescription>{farmName} · {buildingName}</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {docBatches.length ? <ul className="divide-y rounded-md border text-sm">
+            {docBatches.map(batch => <li key={batch} className="break-all px-3 py-2">{batch}</li>)}
+          </ul> : <p className="text-sm text-muted-foreground">No DOC batches found for this selection.</p>}
+        </div>
+      </DialogContent>
+    </Dialog>],
     ['Latest activity date', formatDate(activityDates.at(-1) ?? '')],
     ['Status', distinct(cycles.map(cycle => cycle.status === 'Saved' ? 'Active' : cycle.status))],
     ['Remarks', distinct(cycles.map(cycle => cycle.remarks))],
@@ -96,7 +113,7 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
   </aside>
 }
 
-export default function CycleDashboard({ initialFarmId, initialCycleId }: { initialFarmId?: number; initialCycleId?: number } = {}) {
+export default function CycleDashboard({ initialFarmId, initialCycleId, initialCycleKind = 'farm' }: { initialFarmId?: number; initialCycleId?: number; initialCycleKind?: 'farm' | 'building' } = {}) {
   const { getValue } = useGlobalContext()
   const blocked = usePermission('/brd/dashboard/view')
   const profile = getValue('UserInfoAuthSession')?.[0]
@@ -108,7 +125,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId }: { init
   const farmError = farmsReady ? farmState.error : ''
   const [selectedFarm, setSelectedFarm] = useState(initialFarmId ? String(initialFarmId) : '')
   const [selectedBuilding, setSelectedBuilding] = useState('')
-  const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(initialFarmId && initialCycleId ? { farmId: initialFarmId, key: `farm:${initialCycleId}` } : null)
+  const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(initialFarmId && initialCycleId ? { farmId: initialFarmId, key: `${initialCycleKind}:${initialCycleId}` } : null)
   const [tab, setTab] = useState<DetailTab>('overview')
   const [reload, setReload] = useState(0)
   const [catalog, setCatalog] = useState<{ data: CycleDashboardCatalog; owner: string } | null>(null)

@@ -2411,7 +2411,11 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       return;
     }
 
-    if (!selectedWarehouseCode) {
+    const hasNewFeedIntake = gridValues.some((row, rowIndex) =>
+      !savedLineByRowIndex[rowIndex] &&
+      getNumericValue(row[feedDailyKgColumnIndex] ?? "") > 0
+    );
+    if (hasNewFeedIntake && !selectedWarehouseCode) {
       toast("Please select a farm with a default feed warehouse.");
       return;
     }
@@ -3955,12 +3959,16 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
             <TableBody>
               {rows.map((row, rowIndex) => {
+                // Keep age-based indexes intact for saved data and calculations.
+                if (row.age === 0) return null;
+
                 const striped = isStripedRow(rowIndex);
                 // Computed once per row instead of once per cell (27x fewer calls).
                 const savedLine = savedLineByRowIndex[rowIndex];
                 const savedMortalityLine = savedMortalityLineByRowIndex[rowIndex];
                 const rowAgeLocked = isRowAgeLocked(rowIndex);
                 const feedIntakeLocked = isFeedIntakeLocked(rowIndex);
+                const hasActualFc = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
                 const mortalityThinningLocked = isMortalityThinningLocked(rowIndex);
                 const bodyBorderClasses = striped ? bodyBorderClassesStriped : bodyBorderClassesPlain;
 
@@ -4033,7 +4041,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                       const feedBatchCellCanOpen =
                         !rowAgeLocked &&
                         (!feedIntakeCellLocked || rowHasFeedBatchData(rowIndex)) &&
-                        (feedIntakeLocked || getFeedTypeIdForRow(rowIndex) != null);
+                        (feedIntakeLocked || (hasActualFc && getFeedTypeIdForRow(rowIndex) != null));
                       const mortalityBatchCellCanOpen =
                         !rowAgeLocked &&
                         (!mortalityThinningCellLocked || rowHasMortalityBatchData(rowIndex)) &&
@@ -4099,8 +4107,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               }] : feedTypeOptions}
                               value={computedGridValues[rowIndex][colIndex] ?? ""}
                               onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
-                              placeholder="Select"
-                              disabled={disabled}
+                              placeholder={hasActualFc ? "Select" : "Not required"}
+                              disabled={disabled || !hasActualFc}
                               openOnFocus
                               inputId={`row-${rowIndex}-col-${colIndex}`}
                               inputAriaLabel={`Feed Type for age ${row.age}`}
@@ -4137,6 +4145,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                     ? "Saved feed intake. Open to view batches or reverse feed intake before editing."
                                     : rowAgeLocked
                                       ? `Flock age is ${currentFlockAge}. Enable advance posting to edit this age.`
+                                      : !hasActualFc
+                                        ? "Feed batch is not required without Actual FC."
                                       : getFeedTypeIdForRow(rowIndex) == null
                                         ? "Select a Feed Type first."
                                         : gridValues[rowIndex]?.[feedBatchColumnIndex] || "Select feed batch"
