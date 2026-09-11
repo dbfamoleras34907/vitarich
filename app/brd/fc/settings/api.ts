@@ -1,6 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import {
-  getItemGroupById,
   type ItemGroup,
 } from "@/lib/data/repositories/itemGroups";
 import { GROWING_FARM_CONDITION_DEFAULTS } from "./defaults";
@@ -80,36 +79,13 @@ export async function getFlockCardSettings(
 
   if (!resolvedData) return null;
 
-  const settings = resolvedData as FlockCardSettings;
-  const feedGroupId = Number(settings.feed_group_id);
-  if (!Number.isFinite(feedGroupId) || feedGroupId <= 0) return settings;
-
-  const feedGroup = await getItemGroupById(feedGroupId);
-  return {
-    ...settings,
-    feed_group: {
-      id: feedGroup.id,
-      code: feedGroup.code,
-      name: feedGroup.name,
-      father: feedGroup.father,
-    },
-  };
+  return resolvedData as FlockCardSettings;
 }
 
 export async function saveFlockCardSettings(payload: FlockCardSettings) {
   const farmId = Number(payload.farm_id);
   if (!Number.isFinite(farmId) || farmId <= 0) {
     throw new Error("Please select a farm.");
-  }
-
-  const feedGroupId = Number(payload.feed_group_id);
-  if (!Number.isFinite(feedGroupId) || feedGroupId <= 0) {
-    throw new Error("Please select a feed group.");
-  }
-
-  const feedGroup = await getItemGroupById(feedGroupId);
-  if (feedGroup.void !== "1" || feedGroup.father != null) {
-    throw new Error("Feed Group must be an active item group, not a sub item group.");
   }
 
   const { data: authData } = await db.auth.getUser();
@@ -119,7 +95,7 @@ export async function saveFlockCardSettings(payload: FlockCardSettings) {
     farm_id: farmId,
     farm_code: payload.farm_code || null,
     farm_name: payload.farm_name || null,
-    feed_group_id: feedGroupId,
+    feed_group_id: payload.feed_group_id ?? null,
     allow_advance_posting: payload.allow_advance_posting,
     auto_feed_batch_selection: payload.auto_feed_batch_selection,
     auto_feed_batch_selection_mode: payload.auto_feed_batch_selection_mode,
@@ -146,13 +122,5 @@ export async function saveFlockCardSettings(payload: FlockCardSettings) {
       .single();
 
   if (result.error) throw result.error;
-  return {
-    ...(result.data as FlockCardSettings),
-    feed_group: {
-      id: feedGroup.id,
-      code: feedGroup.code,
-      name: feedGroup.name,
-      father: feedGroup.father,
-    },
-  };
+  return result.data as FlockCardSettings;
 }

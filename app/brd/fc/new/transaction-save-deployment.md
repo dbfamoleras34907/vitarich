@@ -12,11 +12,11 @@ Deployment
 
 1. Apply the current `app/admin/notifications/notification_system.sql` so the
    dispatcher validates BRD_FC events against persisted `brd_fc.farm_id`.
-2. Apply `save_brd_fc_transaction.sql`. This also replaces the seven-argument
-   feed-intake function, using the level-one item subgroup with the legacy leaf
-   fallback, and reloads the PostgREST schema cache. Existing Growing and item
+2. Apply `../settings/brd_fc_settings.sql` to make Feed Group optional.
+3. Apply `save_brd_fc_transaction.sql`. This also replaces the seven-argument
+   feed-intake function, using the selected `items.id` and the persisted farm feed warehouse, and reloads the PostgREST schema cache. Existing Growing and item
    hierarchy schema must already be installed.
-3. Deploy the application changes. Verify with an authorized user that a valid
+4. Deploy the application changes. Verify with an authorized user that a valid
    feed batch saves, and that an invalid batch leaves all pre-save values intact.
 
 The migration does not remove data left by earlier failed saves. Inspect those
@@ -51,7 +51,13 @@ Validation
 ----------
 
 Disposable PostgreSQL tests cover the real feed function, the transaction RPC,
-outbox triggers, valid level-one/leaf hierarchy, failed insert and later-age edit
+outbox triggers, warehouse item selection without Feed Group, failed insert and later-age edit
 rollback, and repeated requests. Mortality effects are represented by a probe
 trigger. This does not establish production RLS, production inventory-trigger
 behavior, notification delivery, or the supplied batch's live item mapping.
+
+Feed Type now selects an active item with positive batch stock in the farm feed
+warehouse. The existing RPC argument `p_feed_type_id` now carries `items.id`;
+application and SQL must be deployed together. New rows store `extra.feedItemId`,
+`feedItemCode`, and `feedItemName`. Historical group IDs are not interpreted as
+item IDs; saved rows display the item names from their persisted allocations.

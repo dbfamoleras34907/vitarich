@@ -421,7 +421,7 @@ async function loadBroilerCycleReport(
             docBatch: cardOrigins.map(origin => textValue(origin.batch_no)).filter(Boolean).join(', '),
             cumulative: numberValue(row.cum_total),
             feedActual: numberValue(row.feed_kg),
-            feedType: textValue(extra.feedTypeName ?? extra.feedTypeCode ?? extra.feedTypeId),
+            feedType: textValue(extra.feedItemName ?? extra.feedItemCode ?? extra.feedTypeName ?? extra.feedTypeCode ?? extra.feedTypeId),
             feedStandard: numberValue(row.feed_guideline),
             feedBatch: textValue(row.feed_batch_text),
             waterLiters: numberValue(row.water_l),

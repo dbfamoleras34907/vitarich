@@ -36,6 +36,8 @@ export type GoodsReceiptListParams = {
 
 const toReceiptLine = (row: GoodsReceiptListItemRow): GoodsReceiptLine => ({
   id: `${row.goods_reciept_id}-${row.item_code}`,
+  drReference: '',
+  receiveDate: '',
   itemId: null,
   itemCode: row.item_code,
   description: row.description ?? '',

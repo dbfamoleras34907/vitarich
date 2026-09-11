@@ -9,7 +9,7 @@ Run with `psql -v ON_ERROR_STOP=1`, in this order:
 2. `app/brd/fc/new/save_brd_fc_transaction.sql` (from the repository root)
 3. `assertions.sql`
 
-Coverage: feed-type mismatch rollback (including the header and mortality probe),
-level-one Feed Type with a deeper leaf subgroup, feed inventory persistence,
+Coverage: item mismatch rollback (even within the same subgroup) (including the header and mortality probe),
+warehouse item selection without Feed Group, wrong warehouse rejection, feed inventory persistence,
 request retry deduplication, changed-payload rejection, and rollback of an edit
 when a later age fails. Assertions also check notification outbox counts.

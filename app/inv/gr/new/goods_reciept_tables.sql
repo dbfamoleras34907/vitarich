@@ -32,6 +32,8 @@ create table if not exists public.goods_receipt_items (
   updated_at timestamp with time zone null,
   goods_reciept_id bigint not null,
   line_no integer not null,
+  dr_reference text null,
+  receive_date date null,
   item_id bigint null,
   item_code text not null,
   description text null,

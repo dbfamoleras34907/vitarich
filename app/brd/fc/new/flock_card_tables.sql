@@ -765,7 +765,7 @@ begin
     feed_bird = null,
     feed_guideline = null,
     feed_batch_text = null,
-    extra = coalesce(line.extra, '{}'::jsonb) - 'feedTypeId',
+    extra = coalesce(line.extra, '{}'::jsonb) - 'feedTypeId' - 'feedItemId' - 'feedItemCode' - 'feedItemName',
     is_locked = false,
     updated_by = v_user,
     reversed_by = v_user,
@@ -834,33 +834,39 @@ begin
     raise exception 'Unable to save feed intake: flock card % was not found', v_line.fc_id;
   end if;
 
-  if p_feed_type_id is null or not exists (
-    select 1
-    from public.brd_fc_settings settings
-    join public.item_groups feed_type
-      on feed_type.id = p_feed_type_id
-     and feed_type.father = settings.feed_group_id
-     and btrim(coalesce(feed_type.void::text, '0')) = '1'
-    where settings.farm_id = v_card.farm_id
-      and settings.void = '1'
+  if not exists (
+    select 1 from public.farms farm
+    cross join lateral jsonb_array_elements(
+      case when jsonb_typeof(farm.associated_warehouses::jsonb) = 'array'
+        then farm.associated_warehouses::jsonb else '[]'::jsonb end
+    ) warehouse
+    where farm.id = v_card.farm_id
+      and warehouse->>'is_default_feed' = 'true'
+      and nullif(btrim(warehouse->>'whse_code'), '') = nullif(btrim(v_card.feed_whse_code), '')
   ) then
-    raise exception 'Unable to save feed intake: select a valid Feed Type for the farm Feed Group';
+    raise exception 'Unable to save feed intake: warehouse must be the farm feed warehouse';
   end if;
 
-  select string_agg(format('item %s, batch %s (item Feed Type: %s)',
-    allocation->>'itemCode', allocation->>'batchNumber',
-    coalesce(coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id)::text, 'missing')),
-    '; ')
+  -- Keep the RPC argument name for compatibility; its value is now public.items.id.
+  if p_feed_type_id is null or not exists (
+    select 1 from public.items item
+    where item.id = p_feed_type_id and btrim(coalesce(item.void::text, '0')) = '1'
+  ) then
+    raise exception 'Unable to save feed intake: select an active feed item';
+  end if;
+
+  select string_agg(format('item %s, batch %s',
+    allocation->>'itemCode', allocation->>'batchNumber'), '; ')
   into v_invalid_feed_items
   from jsonb_array_elements(p_allocations) allocation
   left join public.items item
     on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
-  where item.id is null
-     or coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id) is distinct from p_feed_type_id
-     or btrim(coalesce(item.void::text, '0')) <> '1';
+  where item.id is distinct from p_feed_type_id
+     or btrim(coalesce(item.void::text, '0')) <> '1'
+     or nullif(btrim(allocation->>'warehouseCode'), '') is distinct from nullif(btrim(v_card.feed_whse_code), '');
 
   if v_invalid_feed_items is not null then
-    raise exception 'Unable to save feed intake: selected Feed Type % does not match an active batch item: %',
+    raise exception 'Unable to save feed intake: selected item % must match batches in the document feed warehouse: %',
       p_feed_type_id, v_invalid_feed_items;
   end if;
 
@@ -931,7 +937,7 @@ begin
     feed_bird = p_feed_bird,
     feed_guideline = p_feed_guideline,
     feed_batch_text = nullif(btrim(coalesce(p_feed_batch_text, '')), ''),
-    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || jsonb_build_object('feedTypeId', p_feed_type_id),
+    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || (select jsonb_build_object('feedItemId', item.id, 'feedItemCode', item.item_code, 'feedItemName', coalesce(item.item_name, item.description, item.item_code)) from public.items item where item.id = p_feed_type_id),
     is_locked = true,
     updated_by = v_user,
     reversed_at = null,

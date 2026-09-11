@@ -5,7 +5,6 @@ import { flushSync } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
-  CalendarDays,
   FileSpreadsheet,
   FileUp,
   Hash,
@@ -1031,8 +1030,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast('Please enter a vendor.')
       return
     }
-    if (posting && !receipt.drReference.trim()) {
-      toast('Please enter a DR Reference.')
+    if (posting && completedLines.some(line => !line.drReference.trim() || !line.receiveDate)) {
+      toast('Each item needs a DR Reference and Received Date.')
       return
     }
     if (posting && !receipt.fmsType) {
@@ -1180,19 +1179,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">
-              DR Reference <span className="text-destructive" aria-hidden="true">*</span>
-            </label>
-            <Input
-              value={receipt.drReference}
-              onChange={event => setReceipt(current => current ? { ...current, drReference: event.target.value } : current)}
-              placeholder="Enter DR reference"
-              required
-              aria-required="true"
-            />
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">FMS Type</label>
             <select
               value={receipt.fmsType}
@@ -1206,19 +1192,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Receive Date</label>
-            <label className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
-              <Input
-                type="date"
-                value={receipt.receiveDate}
-                onChange={event => setReceipt(current => current ? { ...current, receiveDate: event.target.value } : current)}
-                className="pl-9"
-              />
-            </label>
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
@@ -1345,10 +1318,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="w-full min-w-[1480px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
+              <table className="w-full min-w-[1800px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
                 <thead>
                   <tr>
                     <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
+                    <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">DR Reference</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Received Date</th>
                     <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
@@ -1368,6 +1343,24 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     return (
                       <tr key={line.id} className="even:bg-card odd:bg-muted/50">
                         <td className="border border-border bg-muted p-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            value={line.drReference}
+                            onChange={event => updateLine(line.id, { drReference: event.target.value })}
+                            aria-label={`DR Reference row ${index + 1}`}
+                            placeholder="DR reference"
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            type="date"
+                            value={line.receiveDate}
+                            onChange={event => updateLine(line.id, { receiveDate: event.target.value })}
+                            aria-label={`Received Date row ${index + 1}`}
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
                         <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={itemDropdownOptions}

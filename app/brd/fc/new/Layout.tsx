@@ -64,7 +64,6 @@ import Help from "./Help";
 import FlockCardExportMenu from "./FlockCardExportMenu";
 import { calculateFlockAgeFromStartDate } from "../age";
 import { getFlockCardSettings } from "../settings/api";
-import { getSubItemGroups, type ItemGroup } from "@/lib/data/repositories/itemGroups";
 import { CellInput, HeaderCells } from "./FlockCardGridCells";
 import { populateSensibleSampleData } from "./developmentAutoPopulate";
 import {
@@ -173,18 +172,6 @@ function getDefaultDisposalWarehouseCode(farm?: FeedFarm | null) {
   );
 
   return defaultWarehouse ? getAssociatedWarehouseCode(defaultWarehouse) : "";
-}
-
-function isFeedItem(item: Items, feedGroupCode: string) {
-  const normalizedFeedGroupCode = feedGroupCode.trim().toUpperCase();
-  if (!normalizedFeedGroupCode) return false;
-
-  const groupTokens = [
-    item.group,
-    item.item_group,
-  ].map(value => String(value ?? "").trim().toUpperCase());
-
-  return groupTokens.includes(normalizedFeedGroupCode);
 }
 
 function formatQuantity(value: number) {
@@ -319,7 +306,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [loadingFarmBuildings, setLoadingFarmBuildings] = useState(false);
   const [farmBuildingError, setFarmBuildingError] = useState("");
   const [feedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
-  const [feedTypes, setFeedTypes] = useState<ItemGroup[]>([]);
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
@@ -364,8 +350,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const autoFeedBatchSelection = Boolean(flockCardSettings?.auto_feed_batch_selection);
   const autoFeedBatchSelectionMode = flockCardSettings?.auto_feed_batch_selection_mode ?? "USER_SELECTED";
   const autoMortalityRateBatchSelection = Boolean(flockCardSettings?.auto_mortality_rate_batch_selection);
-  const feedGroupCode = String(flockCardSettings?.feed_group?.code ?? "");
-  const feedGroupId = Number(flockCardSettings?.feed_group_id ?? 0);
 
   useEffect(() => {
     const farmId = Number(selectedFarmId);
@@ -389,30 +373,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     };
   }, [selectedFarmId]);
 
-  useEffect(() => {
-    if (!Number.isFinite(feedGroupId) || feedGroupId <= 0) {
-      setFeedTypes([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    getSubItemGroups(feedGroupId)
-      .then(groups => {
-        if (!cancelled) setFeedTypes(groups);
-      })
-      .catch(error => {
-        console.error("FeedTypes error:", error);
-        if (!cancelled) {
-          setFeedTypes([]);
-          toast("Unable to load Feed Types for the configured Feed Group.");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [feedGroupId]);
   const currentFlockAge = requestedFlockStartDate
     ? calculateFlockAgeFromStartDate(requestedFlockStartDate)
     : rawRequestedFlockAge != null && String(rawRequestedFlockAge).trim() !== "" && Number.isFinite(requestedFlockAge)
@@ -461,9 +421,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
   const feedItems = useMemo(
     () => asArray<Items>(getValue("itemmaster"))
-      .filter(item => item.void === 1 || item.void == null)
-      .filter(item => isFeedItem(item, feedGroupCode)),
-    [feedGroupCode, getValue]
+      .filter(item => item.void === 1 && Number(item.id) > 0),
+    [getValue]
   );
 
   const feedItemCodes = useMemo(
@@ -501,12 +460,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
     feedItems.forEach(item => {
       const code = String(item.item_code ?? "").trim().toUpperCase();
-      // Feed Type is the first subgroup directly under the configured Feed Group.
-      // Item Master keeps the selected leaf in sub_item_group_id, so use the
-      // persisted level-1 ancestor when the item has a deeper subgroup path.
-      const feedTypeId = Number(
-        item.sub_item_group_level_1_id ?? item.sub_item_group_id ?? 0
-      );
+      const feedTypeId = Number(item.id);
       if (code && Number.isFinite(feedTypeId) && feedTypeId > 0) {
         map.set(code, feedTypeId);
       }
@@ -794,17 +748,18 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const activeFeedTypeId = feedBatchSelectionRowIndex == null
     ? null
     : getFeedTypeIdForRow(feedBatchSelectionRowIndex);
-  const activeFeedType = feedTypes.find(feedType => feedType.id === activeFeedTypeId) ?? null;
-  const activeFeedTypeLabel = activeFeedType
-    ? `${activeFeedType.code} - ${activeFeedType.name}`
-    : "-";
-  const feedTypeOptions = useMemo(
-    () => feedTypes.map(feedType => ({
-      code: String(feedType.id),
-      name: `${feedType.code} - ${feedType.name}`,
-    })),
-    [feedTypes]
-  );
+  const feedTypeOptions = useMemo(() => {
+    const availableCodes = new Set(feedBatchRows
+      .filter(batch => batch.onHandQty > 0 && batch.warehouseCode === selectedWarehouseCode)
+      .map(batch => batch.itemCode.trim().toUpperCase()));
+    return feedItems
+      .filter(item => availableCodes.has(String(item.item_code ?? "").trim().toUpperCase()))
+      .map(item => ({
+        code: String(item.id),
+        name: `${item.item_code} - ${item.item_name || item.description || item.item_code}`,
+      }));
+  }, [feedBatchRows, feedItems, selectedWarehouseCode]);
+  const activeFeedTypeLabel = feedTypeOptions.find(item => item.code === String(activeFeedTypeId))?.name ?? "-";
 
   const activeAvailableFeedBatches = useMemo(
     () => positiveAvailableFeedBatchRows
@@ -1039,6 +994,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
     let cancelled = false;
     setLoadingFeedBatches(true);
+    setFeedBatchRows([]);
     setFeedBatchError("");
 
     getFeedBatchOnHandByWarehouse(feedItemCodes, selectedWarehouseCode)
@@ -4135,7 +4091,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                             </div>
                           ) : colIndex === feedTypeColumnIndex ? (
                             <SearchableCombobox
-                              items={feedTypeOptions}
+                              items={isFeedIntakeLocked(rowIndex) ? [{
+                                code: computedGridValues[rowIndex][colIndex] ?? "",
+                                name: (feedBatchAllocationsByRow[rowIndex] ?? [])
+                                  .map(batch => `${batch.itemCode} - ${batch.itemName || batch.itemCode}`)
+                                  .filter((label, index, labels) => labels.indexOf(label) === index).join(", ") || "Saved feed",
+                              }] : feedTypeOptions}
                               value={computedGridValues[rowIndex][colIndex] ?? ""}
                               onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
                               placeholder="Select"

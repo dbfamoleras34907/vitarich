@@ -1,7 +1,7 @@
 import type { AutoFeedBatchSelectionMode } from "./api";
 
 export type GrowingFarmConditionDefaults = {
-  feed_group_id: number;
+  feed_group_id: number | null;
   allow_advance_posting: boolean;
   auto_feed_batch_selection: boolean;
   auto_feed_batch_selection_mode: AutoFeedBatchSelectionMode;
@@ -12,10 +12,10 @@ export type GrowingFarmConditionDefaults = {
  * Initial Growing & Farm Condition values shown for a farm that does not have
  * saved settings yet. Edit these values when the setup defaults change.
  *
- * The feed_group_id must be the ID of an active root Item Group.
+ * Feed inventory is selected from the farm feed warehouse.
  */
 export const GROWING_FARM_CONDITION_DEFAULTS: GrowingFarmConditionDefaults = {
-  feed_group_id: 4,
+  feed_group_id: null,
   allow_advance_posting: false,
   auto_feed_batch_selection: true,
   auto_feed_batch_selection_mode: "FIFO",
