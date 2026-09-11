@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -57,7 +57,7 @@ import {
 import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
 import BatchDetailsDialog from './BatchDetailsDialog'
 import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
-import { parseGoodsReceiptLinesImport } from './goodsReceiptLinesImport'
+import { GOODS_RECEIPT_LINE_HEADERS, parseGoodsReceiptLinesImport, parseGoodsReceiptLinesText } from './goodsReceiptLinesImport'
 import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
 import {
   FMS_TYPE_OPTIONS,
@@ -116,6 +116,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [pasteLinesOpen, setPasteLinesOpen] = useState(false)
+  const [pastedLinesText, setPastedLinesText] = useState('')
   const [importingGoodsReceiptLines, setImportingGoodsReceiptLines] = useState(false)
   const [goodsReceiptLinesImportIssues, setGoodsReceiptLinesImportIssues] = useState<string[]>([])
 
@@ -470,6 +472,34 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     )
   }
 
+  const pasteDrReferences = (event: ClipboardEvent<HTMLInputElement>, lineId: GoodsReceiptLine['id']) => {
+    const text = event.clipboardData.getData('text/plain')
+    if (!/[\r\n\t]/.test(text)) return
+    event.preventDefault()
+    if (receipt.status !== 'Draft' || saving) return
+
+    const references = text.replace(/\r\n?/g, '\n').split('\n')
+    // Excel ends copied ranges with a newline; it is not another row.
+    if (references[references.length - 1] === '') references.pop()
+    if (references.some(value => value.includes('\t'))) {
+      toast.error('Copy a single column of DR references, then paste into the first DR Reference cell.')
+      return
+    }
+    if (!references.length) return
+
+    setReceipt(current => {
+      if (!current || current.status !== 'Draft') return current
+      const startIndex = current.lines.findIndex(line => line.id === lineId)
+      if (startIndex < 0) return current
+      const lines = [...current.lines]
+      references.forEach((reference, offset) => {
+        const index = startIndex + offset
+        lines[index] = { ...(lines[index] ?? newLine()), drReference: reference.trim() }
+      })
+      return { ...current, lines }
+    })
+  }
+
   const calculateBaseQty = (
     altQty: number,
     altUom: string,
@@ -602,7 +632,125 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
+  const applyGoodsReceiptLinesImport = (parsed: ReturnType<typeof parseGoodsReceiptLinesImport>) => {
+    if (!canEditDraft || saving) return false
+    setGoodsReceiptLinesImportIssues([])
+    if (!receipt.farmId) {
+      setGoodsReceiptLinesImportIssues(['Select a Farm before importing Goods Receipt item lines.'])
+      return false
+    }
+    const resolvedLines = parsed.rows.map(row => {
+      const rowNumber = row.rowNumber
+      const normalizedItemCode = row.itemCode.toUpperCase()
+      const item = availableItems.find(candidate =>
+        String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
+      )
+      if (!item) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
+        return null
+      }
+      if (item.id == null) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
+        return null
+      }
+
+      const inventoryUom = item.inventory_uom || ''
+      const unitMeasure = item.unit_measure || ''
+      const selectedGroup = uomGroups.find(group =>
+        group.code.toUpperCase() === inventoryUom.toUpperCase(),
+      )
+      const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
+        option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+      )?.groupCode ?? ''
+      const requestedAltUom = row.altUom.toUpperCase()
+      const selectedConversion = conversions.find(option =>
+        option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
+        option.uomCode.toUpperCase() === requestedAltUom,
+      )
+      const altUom = row.altUom
+        ? selectedConversion?.uomCode ?? ''
+        : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+
+      if (!selectedGroupCode) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
+      } else if (row.altUom && !selectedConversion) {
+        parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
+      } else if (!altUom) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
+      }
+
+      const warehouseKey = row.warehouse.trim().toLowerCase()
+      const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
+      const warehouse = warehouseKey
+        ? farmWarehouses.find(candidate => [
+            candidate.whse_code,
+            candidate.whse_name,
+            `${candidate.whse_code} - ${candidate.whse_name}`,
+          ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
+        : defaultWarehouse
+
+      if (row.warehouse && !warehouse) {
+        parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
+      }
+
+      const altQty = Number(row.altQty)
+      const expiryDate = row.expiryDate || (
+        row.manufacturingDate && typeof item.default_expiration_months === 'number'
+          ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
+          : ''
+      )
+      const line: GoodsReceiptLine = {
+        ...newLine(),
+        itemId: item.id,
+        itemCode: item.item_code || '',
+        description: getItemDescription(item),
+        batchNumber: row.batchNumber,
+        supplierBatchNumber: row.supplierBatchNumber,
+        manufacturingDate: row.manufacturingDate,
+        expiryDate,
+        altQty,
+        altUom,
+        baseUom: selectedGroupCode,
+        baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
+        warehouseId: warehouse?.id ?? null,
+        warehouseCode: warehouse?.whse_code ?? '',
+        warehouseName: warehouse?.whse_name ?? '',
+      }
+      const batchRequirement = getBatchRequirement(line)
+      line.batchRuleId = batchRequirement?.rule?.id ?? null
+
+      if (line.baseQty <= 0) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
+      }
+      if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
+        parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
+      }
+      if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
+        parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
+      }
+      if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
+        parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
+      }
+      if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
+        parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
+      }
+
+      return line
+    })
+
+    if (parsed.issues.length > 0) {
+      setGoodsReceiptLinesImportIssues(parsed.issues)
+      return false
+    }
+
+    const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
+    setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
+    toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+    return true
+  }
+
   const handleGoodsReceiptLinesImport = async (file: File) => {
+    if (!canEditDraft || importingGoodsReceiptLines || saving) return
     setGoodsReceiptLinesImportIssues([])
 
     if (!receipt.farmId) {
@@ -620,114 +768,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         return
       }
 
-      const parsed = parseGoodsReceiptLinesImport(itemLinesSheet.data)
-      const resolvedLines = parsed.rows.map((row, index) => {
-        const rowNumber = index + 2
-        const normalizedItemCode = row.itemCode.toUpperCase()
-        const item = availableItems.find(candidate =>
-          String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
-        )
-        if (!item) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
-          return null
-        }
-        if (item.id == null) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
-          return null
-        }
-
-        const inventoryUom = item.inventory_uom || ''
-        const unitMeasure = item.unit_measure || ''
-        const selectedGroup = uomGroups.find(group =>
-          group.code.toUpperCase() === inventoryUom.toUpperCase(),
-        )
-        const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
-          option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
-        )?.groupCode ?? ''
-        const requestedAltUom = row.altUom.toUpperCase()
-        const selectedConversion = conversions.find(option =>
-          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
-          option.uomCode.toUpperCase() === requestedAltUom,
-        )
-        const altUom = row.altUom
-          ? selectedConversion?.uomCode ?? ''
-          : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
-
-        if (!selectedGroupCode) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
-        } else if (row.altUom && !selectedConversion) {
-          parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
-        } else if (!altUom) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
-        }
-
-        const warehouseKey = row.warehouse.trim().toLowerCase()
-        const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
-        const warehouse = warehouseKey
-          ? farmWarehouses.find(candidate => [
-              candidate.whse_code,
-              candidate.whse_name,
-              `${candidate.whse_code} - ${candidate.whse_name}`,
-            ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
-          : defaultWarehouse
-
-        if (row.warehouse && !warehouse) {
-          parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
-        }
-
-        const altQty = Number(row.altQty)
-        const expiryDate = row.expiryDate || (
-          row.manufacturingDate && typeof item.default_expiration_months === 'number'
-            ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
-            : ''
-        )
-        const line: GoodsReceiptLine = {
-          ...newLine(),
-          itemId: item.id,
-          itemCode: item.item_code || '',
-          description: getItemDescription(item),
-          batchNumber: row.batchNumber,
-          supplierBatchNumber: row.supplierBatchNumber,
-          manufacturingDate: row.manufacturingDate,
-          expiryDate,
-          altQty,
-          altUom,
-          baseUom: selectedGroupCode,
-          baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
-          warehouseId: warehouse?.id ?? null,
-          warehouseCode: warehouse?.whse_code ?? '',
-          warehouseName: warehouse?.whse_name ?? '',
-        }
-        const batchRequirement = getBatchRequirement(line)
-        line.batchRuleId = batchRequirement?.rule?.id ?? null
-
-        if (line.baseQty <= 0) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
-        }
-        if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
-          parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
-        }
-        if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
-          parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
-        }
-        if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
-          parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
-        }
-        if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
-          parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
-        }
-
-        return line
-      })
-
-      if (parsed.issues.length > 0) {
-        setGoodsReceiptLinesImportIssues(parsed.issues)
-        return
-      }
-
-      const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
-      setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
-      toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+      applyGoodsReceiptLinesImport(parseGoodsReceiptLinesImport(itemLinesSheet.data))
     } catch (error) {
       console.error(error)
       setGoodsReceiptLinesImportIssues(['The Excel file could not be read. Use the exported Goods Receipt item-lines template.'])
@@ -1285,6 +1326,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   {importingGoodsReceiptLines ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
                   {importingGoodsReceiptLines ? 'Importing...' : 'Import Excel'}
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDraft || importingGoodsReceiptLines || saving}
+                  aria-expanded={pasteLinesOpen}
+                  aria-controls="goods-receipt-paste-lines"
+                  onClick={() => setPasteLinesOpen(open => !open)}
+                >
+                  Paste Text
+                </Button>
               </div>
             )}
             emptyState={receipt.lines.length === 0 && (
@@ -1347,6 +1398,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           <Input
                             value={line.drReference}
                             onChange={event => updateLine(line.id, { drReference: event.target.value })}
+                            onPaste={event => pasteDrReferences(event, line.id)}
                             aria-label={`DR Reference row ${index + 1}`}
                             placeholder="DR reference"
                             className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
@@ -1539,6 +1591,41 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </tbody>
               </table>
           </FormTable>
+          {pasteLinesOpen && canEditDraft && (
+            <div id="goods-receipt-paste-lines" className="mx-4 mt-3 space-y-2 rounded-md border border-border bg-muted/30 p-3">
+              <Label htmlFor="goods-receipt-paste-text">Paste item lines from Excel or tab-delimited text</Label>
+              <p id="goods-receipt-paste-help" className="text-xs text-muted-foreground">
+                Use template headers, or paste without headers in this order: {GOODS_RECEIPT_LINE_HEADERS.join(' | ')}.
+                Separate columns with tabs and rows with new lines. Blank Alt UoM and Warehouse use existing defaults.
+                Dates: YYYY-MM-DD or M/D/YYYY. Valid rows are appended only after the entire paste passes validation.
+              </p>
+              <textarea
+                id="goods-receipt-paste-text"
+                aria-describedby="goods-receipt-paste-help"
+                value={pastedLinesText}
+                onChange={event => setPastedLinesText(event.target.value)}
+                placeholder={'ITEM001\t10\tBAG'}
+                rows={5}
+                spellCheck={false}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPasteLinesOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  disabled={!pastedLinesText.trim() || importingGoodsReceiptLines || saving}
+                  onClick={() => {
+                    if (applyGoodsReceiptLinesImport(parseGoodsReceiptLinesText(pastedLinesText))) {
+                      setPastedLinesText('')
+                      setPasteLinesOpen(false)
+                    }
+                  }}
+                >
+                  Add Pasted Lines
+                </Button>
+              </div>
+            </div>
+          )}
           {goodsReceiptLinesImportIssues.length > 0 && (
             <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <p className="font-semibold">Goods Receipt item-lines import was not applied.</p>
