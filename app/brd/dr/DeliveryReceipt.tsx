@@ -137,7 +137,7 @@ export default function DeliveryReceipt({
                   <div className="mt-2 grid grid-cols-[auto_150px] gap-x-3 text-left">
                     <span className="font-semibold">DR No.</span>
                     <span className="border-b border-black font-bold">{delivery.giNo}</span>
-                    <span className="font-semibold">Date</span>
+                    <span className="font-semibold">{isCleanup ? 'Date' : 'Posting Date'}</span>
                     <span className="border-b border-black">{formatDate(delivery.issueDate)}</span>
                     <span className="font-semibold">Status</span>
                     <span className="border-b border-black">{delivery.status}</span>
@@ -172,6 +172,7 @@ export default function DeliveryReceipt({
                       <th className="border border-black px-2 py-2 text-left">Batch</th>
                       <th className="border border-black px-2 py-2 text-left">Building</th>
                       {!isCleanup && <>
+                        <th className="border border-black px-2 py-2 text-left">Delivered Date</th>
                         <th className="border border-black px-2 py-2 text-left">Hauler Name</th>
                         <th className="border border-black px-2 py-2 text-left">Plate Number</th>
                         <th className="border border-black px-2 py-2 text-left">Destination</th>
@@ -192,6 +193,7 @@ export default function DeliveryReceipt({
                         <td className="border border-black px-2 py-2">{line.batchNumber || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.fromWarehouseCode || '-'}</td>
                         {!isCleanup && <>
+                          <td className="border border-black px-2 py-2">{formatDate(line.deliveredDate ?? '')}</td>
                           <td className="border border-black px-2 py-2">{line.haulerName || '-'}</td>
                           <td className="border border-black px-2 py-2">{line.plateNumber || '-'}</td>
                           <td className="border border-black px-2 py-2">

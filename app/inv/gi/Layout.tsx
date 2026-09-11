@@ -193,7 +193,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       },
       { key: 'itemDescription', label: 'Item Description' },
       { key: 'farmName', label: 'Farm' },
-      { key: 'issueDate', label: 'Issue Date' },
+      { key: 'issueDate', label: config.triggeredBy === 'BR-DR' ? 'Posting Date' : 'Issue Date' },
       { key: 'warehouse', label: 'Warehouse' },
       { key: 'issueQty', label: 'Issue Qty', align: 'center' },
       {
@@ -272,6 +272,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       cannotView,
       config.basePath,
       config.documentPrefix,
+      config.triggeredBy,
       config.receiptLabel,
       config.showDeliveryReceipt,
       config.showDuplicateAction,

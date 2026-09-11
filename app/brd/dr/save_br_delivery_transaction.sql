@@ -62,7 +62,7 @@ begin
     update public.br_delivery
     set
       gi_no = trim(p_document->>'giNo'),
-      issue_date = (p_document->>'issueDate')::date,
+      issue_date = (now() at time zone 'Asia/Manila')::date,
       farm_id = v_farm_id,
       farm_code = nullif(trim(v_farm_code), ''),
       farm_name = nullif(trim(v_farm_name), ''),
@@ -90,7 +90,7 @@ begin
       created_by
     ) values (
       trim(p_document->>'giNo'),
-      (p_document->>'issueDate')::date,
+      (now() at time zone 'Asia/Manila')::date,
       v_farm_id,
       nullif(trim(v_farm_code), ''),
       nullif(trim(v_farm_name), ''),
@@ -132,6 +132,7 @@ begin
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
+        delivered_date = nullif(v_line->>'deliveredDate', '')::date,
         hauler_name = nullif(trim(v_line->>'haulerName'), ''),
         plate_number = nullif(trim(v_line->>'plateNumber'), ''),
         destination = nullif(trim(v_line->>'destination'), ''),
@@ -160,6 +161,7 @@ begin
         line_no,
         allocation_group_key,
         ts_dr_no,
+        delivered_date,
         hauler_name,
         plate_number,
         destination,
@@ -186,6 +188,7 @@ begin
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
         nullif(trim(v_line->>'tsDrNo'), ''),
+        nullif(v_line->>'deliveredDate', '')::date,
         nullif(trim(v_line->>'haulerName'), ''),
         nullif(trim(v_line->>'plateNumber'), ''),
         nullif(trim(v_line->>'destination'), ''),

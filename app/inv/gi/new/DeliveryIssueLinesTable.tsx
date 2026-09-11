@@ -11,6 +11,7 @@ import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
 import { GoodsIssueFlockCardInfo } from './api'
 import { UomConversionOption, UomGroupOption } from '@/app/inv/gr/new/api'
 import styles from './DeliveryIssueLinesTable.module.css'
+import { DELIVERY_COLUMNS, parseDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 
 type LineFlockCardState = {
   loading: boolean
@@ -40,6 +41,7 @@ type DeliveryIssueLinesTableProps = {
   lockedQuantityEditable?: boolean
   allowDuplicateBuildings?: boolean
   showTransportFields?: boolean
+  onPasteRows?: (rows: DeliveryPasteRow[], startRow: number) => Promise<void>
   getAllocationGroupKey: (line: GoodsIssueLine) => string
   getItemsForLine: (line: GoodsIssueLine) => Items[]
   itemNeedsBatch: (line: GoodsIssueLine) => boolean
@@ -86,6 +88,7 @@ export default function DeliveryIssueLinesTable({
   lockedQuantityEditable = false,
   allowDuplicateBuildings = false,
   showTransportFields = false,
+  onPasteRows,
   getAllocationGroupKey,
   getItemsForLine,
   itemNeedsBatch,
@@ -109,14 +112,16 @@ export default function DeliveryIssueLinesTable({
   formatQuantity,
 }: DeliveryIssueLinesTableProps) {
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+  const [pasting, setPasting] = useState(false)
+  const spreadsheetEnabled = excelAppearance && showTransportFields && Boolean(onPasteRows)
   const requiredMark = showTransportFields ? <span className="text-red-600">*</span> : null
   const excelColumnWidths = [
-    38, 180, 140, 84, 60, 80, 220, 110,
+    38, ...(spreadsheetEnabled ? [130] : []), 180, 140, 84, 60, 80, 220, 110,
     ...(showVariance ? [110] : []),
     220, 80,
     ...(showTsDrNumber ? [120] : []),
     ...(showOnHandQuantity ? [120] : []),
-    ...(showTransportFields ? [180, 130, 320, 100] : []),
+    ...(showTransportFields ? [180, 130, 150, 190, 100] : []),
     ...(showLineRemarks ? [180] : []),
     38,
   ]
@@ -133,8 +138,79 @@ export default function DeliveryIssueLinesTable({
   }
 
   return (
-    <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'}>
+    <>
+    {spreadsheetEnabled && <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+      <p className="text-xs text-muted-foreground">Paste Excel cells into the table. Extra rows are added automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
+      <Button type="button" size="sm" variant="outline" onClick={async () => {
+        try {
+          const { default: writeXlsxFile } = await import('write-excel-file/browser')
+          const groups = new Map<string, GoodsIssueLine[]>()
+          issue.lines.forEach(line => groups.set(getAllocationGroupKey(line), [...(groups.get(getAllocationGroupKey(line)) ?? []), line]))
+          const rows = Array.from(groups.values()).map((lines, index) => {
+            const line = lines[0]
+            const info = lineFlockCardInfo[String(line.id)]?.info
+            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, info?.cardNo ?? '', info?.cycleNumber ?? '', info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
+              line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
+              lines.filter(entry => entry.batchNumber).map(entry => `${entry.batchNumber} (${entry.altQty})`).join('; '),
+              line.altUom, line.tsDrNo ?? '', getRemainingOnHandForLine(line), line.haulerName ?? '', line.plateNumber ?? '', line.destination ?? '', line.liveSalesCustomerName ?? '', line.truckSeal ?? '']
+              .map(value => ({ value: String(value) }))
+          })
+          await writeXlsxFile([{
+            sheet: 'Delivery Lines',
+            data: [DELIVERY_COLUMNS.map(([value, key]) => ({ value, fontWeight: 'bold' as const, backgroundColor: key ? '#1C1917' : '#57534E', textColor: '#FFFFFF' })), ...rows],
+            columns: DELIVERY_COLUMNS.map(([label]) => ({ width: Math.max(14, label.length + 4) })),
+            stickyRowsCount: 1,
+          }, {
+            sheet: 'Instructions',
+            data: [
+              ['Paste the Delivery Lines worksheet into the table, including headers to map columns by name.'],
+              ['Without headers, paste starting at the matching table cell. Extra rows are created automatically.'],
+              ['Gray headers are calculated/read-only; pasted values in these columns are ignored.'],
+              ['Dates: YYYY-MM-DD or M/D/YYYY. Building and Item: exact code, name, or Code - Name.'],
+              ['Batch: one exact batch number, or Batch (Quantity); Batch (Quantity) for multiple allocations. Leave blank to use the configured batch selection behavior.'],
+              ['Destination: Dressing Plant or Live Sales. Put the plant/customer name in Destination Details.'],
+            ].map(row => row.map(value => ({ value, wrap: true }))),
+            columns: [{ width: 110 }],
+          }], { fontFamily: 'Arial', fontSize: 10 }).toFile(`${issue.giNo || 'delivery'}-lines.xlsx`)
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Unable to export delivery lines.')
+        }
+      }}>Export Table</Button>
+    </div>}
+    <fieldset disabled={pasting} className="min-w-0 border-0 p-0">
+    <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'} aria-busy={pasting}>
       <table
+        onPaste={spreadsheetEnabled ? async event => {
+          if (issue.status !== 'Draft' || pasting) { event.preventDefault(); return }
+          const cell = (event.target as HTMLElement).closest('td')
+          const row = cell?.parentElement as HTMLTableRowElement | null
+          if (!cell || !row || !onPasteRows) return
+          const text = event.clipboardData.getData('text/plain')
+          event.preventDefault()
+          try {
+            setPasting(true)
+            await onPasteRows(parseDeliveryPaste(text, cell.cellIndex), row.sectionRowIndex)
+            setQuantityDrafts({})
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Unable to paste delivery rows.')
+          } finally { setPasting(false) }
+        } : undefined}
+        onKeyDown={spreadsheetEnabled ? event => {
+          if (event.key !== 'Enter' && !event.key.startsWith('Arrow')) return
+          const target = event.target as HTMLElement
+          if (target.tagName !== 'INPUT' || (target as HTMLInputElement).type === 'date') return
+          const input = target as HTMLInputElement
+          if (event.key === 'ArrowLeft' && input.selectionStart !== 0) return
+          if (event.key === 'ArrowRight' && input.selectionEnd !== input.value.length) return
+          const cell = target.closest('td')
+          const row = cell?.parentElement as HTMLTableRowElement | null
+          if (!cell || !row) return
+          const vertical = ['Enter', 'ArrowUp', 'ArrowDown'].includes(event.key)
+          const step = event.key === 'ArrowUp' || event.key === 'ArrowLeft' || (event.key === 'Enter' && event.shiftKey) ? -1 : 1
+          const nextRow = vertical ? row.parentElement?.children[row.sectionRowIndex + step] as HTMLTableRowElement | undefined : row
+          const next = nextRow?.cells[cell.cellIndex + (vertical ? 0 : step)]?.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled), select:not(:disabled)')
+          if (next) { event.preventDefault(); next.focus() }
+        } : undefined}
         aria-label="Issue Lines"
         className={`${showTransportFields ? (showTsDrNumber ? 'min-w-[2660px]' : 'min-w-[2500px]') : showLineRemarks ? (showOnHandQuantity ? 'min-w-[1740px]' : showVariance ? 'min-w-[1700px]' : 'min-w-[1580px]') : 'min-w-[1520px]'} w-full table-fixed border-collapse text-sm`}
         style={excelAppearance ? { minWidth: excelColumnWidths.reduce((sum, width) => sum + width, 0) } : undefined}
@@ -145,6 +221,7 @@ export default function DeliveryIssueLinesTable({
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
+            {spreadsheetEnabled && <th className="border-r px-3 py-2">Delivered Date {requiredMark}</th>}
             <th className="w-[240px] border-r px-3 py-2">{warehouseLabel} {requiredMark}</th>
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
             <th className="w-[10%] border-r px-3 py-2">Cycle Count</th>
@@ -165,6 +242,7 @@ export default function DeliveryIssueLinesTable({
               <th className="w-[190px] border-r px-3 py-2">Hauler Name {requiredMark}</th>
               <th className="w-[150px] border-r px-3 py-2">Plate Number {requiredMark}</th>
               <th className="w-[360px] border-r px-3 py-2">Destination {requiredMark}</th>
+              <th className="border-r px-3 py-2">Destination Details {requiredMark}</th>
               <th className="w-[140px] border-r px-3 py-2">Truck Seal {requiredMark}</th>
             </>}
             {showLineRemarks && <th className="w-[16%] border-r px-3 py-2">Remarks</th>}
@@ -228,6 +306,12 @@ export default function DeliveryIssueLinesTable({
                 <td className="border-r p-0 text-center align-middle text-stone-500">
                   {index + 1}
                 </td>
+                {spreadsheetEnabled && <td className="border-r p-1 align-middle">
+                  <Input type="date" value={line.deliveredDate ?? ''} required readOnly={activeDocumentIsPosted}
+                    aria-label={`Delivered Date row ${index + 1}`}
+                    onChange={event => updateAllocationGroup(allocationGroupKey, { deliveredDate: event.target.value })}
+                    className="h-8 rounded-sm shadow-none focus-visible:ring-1" />
+                </td>}
                 <td className="border-r p-1 align-middle">
                   <SearchableDropdown
                     list={availableBuildings}
@@ -484,6 +568,9 @@ export default function DeliveryIssueLinesTable({
                           <SelectItem value="Live Sales">Live Sales</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  </td>
+                  <td className="border-r p-1 align-middle">
                       <Input
                         value={line.liveSalesCustomerName ?? ''}
                         placeholder={line.destination === 'Live Sales'
@@ -496,7 +583,6 @@ export default function DeliveryIssueLinesTable({
                         onChange={event => updateAllocationGroup(allocationGroupKey, { liveSalesCustomerName: event.target.value })}
                         className="h-8 min-w-0 rounded-sm shadow-none focus-visible:ring-1"
                       />
-                    </div>
                   </td>
                   <td className="border-r p-1 align-middle">
                     <Input
@@ -557,5 +643,7 @@ export default function DeliveryIssueLinesTable({
         </tbody>
       </table>
     </div>
+    </fieldset>
+    </>
   )
 }

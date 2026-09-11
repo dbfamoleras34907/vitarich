@@ -9,6 +9,7 @@ export type GoodsIssueLine = {
   id: number | string
   allocationGroupKey?: string
   tsDrNo?: string
+  deliveredDate?: string
   haulerName?: string
   plateNumber?: string
   destination?: string
@@ -103,6 +104,7 @@ type GoodsIssueItemRow = {
   void: string
   allocation_group_key?: string | null
   ts_dr_no?: string | null
+  delivered_date?: string | null
   hauler_name?: string | null
   plate_number?: string | null
   destination?: string | null
@@ -191,6 +193,7 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       : `line:${row.id}`
   ),
   tsDrNo: row.ts_dr_no ?? '',
+  deliveredDate: row.delivered_date ?? legacyHeader?.issue_date ?? '',
   haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
   plateNumber: row.plate_number ?? legacyHeader?.plate_number ?? '',
   destination: row.destination ?? legacyHeader?.destination ?? '',

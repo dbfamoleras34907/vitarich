@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
+import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -85,6 +86,7 @@ const newLine = (): GoodsIssueLine => {
     id,
     allocationGroupKey: id,
     tsDrNo: '',
+    deliveredDate: today(),
     haulerName: '',
     plateNumber: '',
     destination: '',
@@ -352,6 +354,8 @@ export default function NewGoodsIssue({
   const cannotInsert = usePermission(`${permissionPath}/insert`)
   const cannotEdit = usePermission(`${permissionPath}/edit`)
   const [issue, setIssue] = useState<GoodsIssue | null>(null)
+  const issueSnapshotRef = useRef(issue)
+  issueSnapshotRef.current = issue
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -393,6 +397,7 @@ export default function NewGoodsIssue({
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [pastingDelivery, setPastingDelivery] = useState(false)
   const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
   const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
@@ -1461,6 +1466,36 @@ export default function NewGoodsIssue({
     autoSelectDeliveryBatches({ ...line, requestedAltQty })
   }
 
+  const pasteDeliveryRows = async (rows: DeliveryPasteRow[], startRow: number) => {
+    if (!issue || !canEditDraft || saving || triggeredBy !== 'BR-DR') return
+    if (!issue.farmId) throw new Error('Select a farm before pasting delivery rows.')
+    const snapshot = issue
+    setPastingDelivery(true)
+    try {
+      const placementLookups = new Map<string, Promise<DeliveryPlacementBatch[]>>()
+      const lines = await prepareDeliveryPaste({
+        lines: issue.lines, rows, startRow, newLine, getAllocationGroupKey,
+        warehouses: deliveryFarmWarehouses, items, getDefaultAltUom, getGroupUoms, calculateBaseQty,
+        getBatchRuleId: line => getBatchRuleForLine(line)?.id ?? null,
+        getPlacementBatches: warehouse => {
+          const code = warehouse.whse_code ?? ''
+          let lookup = placementLookups.get(code)
+          if (!lookup) {
+            lookup = (async () => {
+              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
+              if (!info) throw new Error('The building has no eligible flock card.')
+              return getDeliveryFlockCardPlacementBatches({ flockCardId: info.id, farmId: info.farmId, buildingWarehouseId: info.buildingWarehouseId, buildingCode: info.buildingCode, cycleNumber: info.cycleNumber })
+            })()
+            placementLookups.set(code, lookup)
+          }
+          return lookup
+        },
+      })
+      if (issueSnapshotRef.current !== snapshot) throw new Error('The document changed while paste was loading. Paste again into the current table.')
+      setIssue(current => current === snapshot ? { ...current, lines } : current)
+    } finally { setPastingDelivery(false) }
+  }
+
   useEffect(() => {
     if (!issue || issue.status !== 'Draft' || !isCleanup) return
 
@@ -1579,6 +1614,7 @@ export default function NewGoodsIssue({
 
   const handleSave = async (targetStatus: GoodsIssueStatus) => {
     if (!issue) return
+    if (pastingDelivery) return
 
     const posting = targetStatus === 'Posted'
     if (!canEditDraft) {
@@ -1623,6 +1659,12 @@ export default function NewGoodsIssue({
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
     if (triggeredBy === 'BR-DR') {
+      try {
+        linesToSave.forEach(line => deliveryDateValue(line.deliveredDate ?? ''))
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Delivered Date is required for every row.')
+        return
+      }
       const missingTransportField = linesToSave
         .map(line => {
           if (!line.haulerName?.trim()) return { line, field: 'Hauler Name' }
@@ -1770,6 +1812,7 @@ export default function NewGoodsIssue({
 
       const savedIssue = await saveGoodsIssue({
         ...issueToSave,
+        issueDate: triggeredBy === 'BR-DR' ? today() : issueToSave.issueDate,
         triggeredBy,
         status: targetStatus,
         lines: linesToSave,
@@ -1822,7 +1865,7 @@ export default function NewGoodsIssue({
     : false
   const activeDocumentIsPosted = issue.status === 'Posted'
 
-  const canSave = !saving && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
+  const canSave = !saving && !pastingDelivery && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
   const renderFlockCardInformation = (
     info: GoodsIssueFlockCardInfo | null,
     loading: boolean,
@@ -1904,7 +1947,8 @@ export default function NewGoodsIssue({
           <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
           <Input
             type="date"
-            value={issue.issueDate}
+            value={triggeredBy === 'BR-DR' && issue.status === 'Draft' ? today() : issue.issueDate}
+            disabled={triggeredBy === 'BR-DR'}
             onChange={event => setIssue(current => current ? { ...current, issueDate: event.target.value } : current)}
             className="pl-9"
           />
@@ -2044,6 +2088,7 @@ export default function NewGoodsIssue({
                 lockedQuantityEditable={lockedLineQuantityEditable}
                 allowDuplicateBuildings={triggeredBy === 'BR-DR'}
                 showTransportFields={triggeredBy === 'BR-DR'}
+                onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
                 getAllocationGroupKey={getAllocationGroupKey}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}

@@ -60,8 +60,8 @@ begin
   if not exists (
     select 1 from public.farms farm
     cross join lateral jsonb_array_elements(
-      case when jsonb_typeof(farm.associated_warehouses::jsonb) = 'array'
-        then farm.associated_warehouses::jsonb else '[]'::jsonb end
+      case when jsonb_typeof(to_jsonb(farm.associated_warehouses)) = 'array'
+        then to_jsonb(farm.associated_warehouses) else '[]'::jsonb end
     ) warehouse
     where farm.id = v_card.farm_id
       and warehouse->>'is_default_feed' = 'true'

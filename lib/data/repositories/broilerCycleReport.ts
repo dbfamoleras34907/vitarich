@@ -207,7 +207,7 @@ async function loadCycleMovements(farmId: number, stage: 'delivery' | 'cleanup',
           .select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, variance_qty, remarks, from_warehouse_id, from_warehouse_code, void')
           .in('br_cleanup_id', ids).order('id').range(offset, offset + 499)
         : await db.from('br_delivery_lines')
-          .select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
+          .select('id, br_delivery_id, delivered_date, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
           .in('br_delivery_id', ids).order('id').range(offset, offset + 499)
       if (result.error) throwQueryError(result.error, `Unable to load ${label} lines`)
       lines.push(...(result.data ?? []) as UnknownRow[])
@@ -369,7 +369,7 @@ async function loadBroilerCycleReport(
           id: numberValue(line.id),
           documentId: numberValue(header.id),
           documentNo: textValue(header.gi_no),
-          date: textValue(header.issue_date),
+          date: textValue(cleanup ? header.issue_date : line.delivered_date ?? header.issue_date),
           status: textValue(header.status),
           remarks: textValue(header.remarks),
           itemCode: textValue(line.item_code),

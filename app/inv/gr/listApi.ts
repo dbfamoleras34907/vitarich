@@ -1,5 +1,7 @@
 'use client'
 
+import { addDays, parseISO } from 'date-fns'
+
 import { db } from '@/lib/Supabase/supabaseClient'
 
 import type { GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus } from './api'
@@ -105,8 +107,9 @@ export async function getGoodsReceipts({
     .limit(limit)
 
   if (farmId !== undefined && farmId !== '') query = query.eq('farm_id', farmId)
-  if (dateFrom) query = query.gte('receive_date', dateFrom)
-  if (dateTo) query = query.lte('receive_date', dateTo)
+  if (dateFrom) query = query.gte('created_at', parseISO(dateFrom).toISOString())
+  // Use the next local midnight so the entire selected end date is included.
+  if (dateTo) query = query.lt('created_at', addDays(parseISO(dateTo), 1).toISOString())
 
   if (documentReceivingReceiptIds.length > 0) {
     query = query.not('id', 'in', `(${documentReceivingReceiptIds.join(',')})`)

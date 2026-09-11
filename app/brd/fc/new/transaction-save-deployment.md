@@ -22,6 +22,18 @@ Deployment
 The migration does not remove data left by earlier failed saves. Inspect those
 records and inventory postings before deciding whether a reversal is needed.
 
+If the current item-based application still reports `Unable to save feed intake:
+select valid feed type`, apply `scripts/database/update-growing-feed-intake-items.sql`
+from the repository root in the target database SQL editor. This focused patch
+replaces only `save_brd_fc_feed_intake` with the same definition used by the full
+transaction migration and reloads the schema cache. Use the full deployment above
+if the transaction RPC or its notification dependencies are not installed yet.
+The selected active item must match the allocation item codes in the persisted
+farm feed warehouse; batch on-hand validation still prevents overconsumption.
+This patch also fixes SQLSTATE `42846` (`cannot cast type jsonb[] to jsonb`)
+by converting `farms.associated_warehouses` with `to_jsonb`, which supports both
+PostgreSQL `jsonb[]` columns and JSON arrays stored in `jsonb` columns.
+
 Notification readiness
 ----------------------
 

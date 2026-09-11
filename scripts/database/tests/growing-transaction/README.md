@@ -11,5 +11,6 @@ Run with `psql -v ON_ERROR_STOP=1`, in this order:
 
 Coverage: item mismatch rollback (even within the same subgroup) (including the header and mortality probe),
 warehouse item selection without Feed Group, wrong warehouse rejection, feed inventory persistence,
+native `jsonb[]` farm warehouse associations (regression for SQLSTATE 42846),
 request retry deduplication, changed-payload rejection, and rollback of an edit
 when a later age fails. Assertions also check notification outbox counts.
