@@ -454,6 +454,26 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'BR_DELIVERY'
+            and v_event.event_key in ('BR_DELIVERY_POSTED', 'BR_DELIVERY_EDITED') then
+        select exists (
+          select 1 from public.br_delivery delivery
+          join public.farms farm on farm.id = delivery.farm_id
+          where delivery.id::text = v_event.entity_id
+            and delivery.farm_id = v_event.farm_id
+            and delivery.farm_id = v_event.recipient_farm_id
+            and v_event.entity_type = 'br_delivery'
+            and v_event.fms_type = 'Broiler'
+            and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
+            and (v_event.event_key <> 'BR_DELIVERY_POSTED' or delivery.status = 'Posted')
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Harvest & Delivery event does not match its persisted farm.'
+          where id = v_event.id;
+          continue;
+        end if;
       elsif v_event.module_key = 'BRD_FC'
             and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED') then
         select exists (

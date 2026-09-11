@@ -404,9 +404,9 @@ export default function NewGoodsIssue({
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
   const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
-  const getAllocationGroupKey = (line: GoodsIssueLine) => triggeredBy === 'BR-DR'
+  const getAllocationGroupKey = useCallback((line: GoodsIssueLine) => triggeredBy === 'BR-DR'
     ? line.allocationGroupKey || String(line.id)
-    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`, [triggeredBy])
   const isSameAllocationGroup = (left: GoodsIssueLine, right: GoodsIssueLine) =>
     getAllocationGroupKey(left) === getAllocationGroupKey(right)
   const isCleanup = triggeredBy === 'BR-CU'
@@ -2089,6 +2089,7 @@ export default function NewGoodsIssue({
                 allowDuplicateBuildings={triggeredBy === 'BR-DR'}
                 showTransportFields={triggeredBy === 'BR-DR'}
                 onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
+                enableCopyDown={triggeredBy === 'BR-DR' && canSave}
                 getAllocationGroupKey={getAllocationGroupKey}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}

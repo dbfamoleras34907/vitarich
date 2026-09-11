@@ -3,6 +3,20 @@ import type { NotificationCatalog } from "./types"
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BR_DELIVERY,
+    ruleActivationReady: false, // Enable only after target SQL deployment and verification.
+    label: "Harvest & Delivery",
+    description: "Successful Harvest & Delivery posts and draft edits.",
+    fmsTypes: ["Broiler"],
+    permissionGroup: "Menus",
+    permissionTitle: "Harvest & Delivery/view",
+    baseUrl: "/brd/dr",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.POSTED, label: "Harvest Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.EDITED, label: "Harvest Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.USER_REGISTRATION,
     label: "User Registration",
     description: "Completed registration awaiting approval and module assignment.",

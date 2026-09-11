@@ -16,7 +16,7 @@ function load(relative) {
   }, module, module.exports)
   return module.exports
 }
-const { parseDeliveryPaste, deliveryDateValue, prepareDeliveryPaste, DELIVERY_COLUMNS } = load('app/inv/gi/new/deliverySpreadsheet.ts')
+const { parseDeliveryPaste, deliveryDateValue, prepareDeliveryPaste, calculateHarvestAlw, DELIVERY_COLUMNS } = load('app/inv/gi/new/deliverySpreadsheet.ts')
 const { parseExcelClipboard } = load('lib/utils/parseExcelClipboard.ts')
 let serial = 0
 const newLine = () => ({ id: `new-${++serial}`, allocationGroupKey: `group-${serial}`, deliveredDate: '2026-09-11', itemId: null, itemCode: '', description: '', altQty: 1, requestedAltQty: 1, altUom: '', baseQty: 0, baseUom: '', fromWarehouseId: null, fromWarehouseCode: '', fromWarehouseName: '', batchNumber: '', batchRuleId: null, manufacturingDate: '', expiryDate: '', onHandQty: 0 })
@@ -30,6 +30,11 @@ const base = {
 }
 
 async function run() {
+  assert.equal(calculateHarvestAlw(1250, 500), 2.5)
+  assert.equal(calculateHarvestAlw(null, 500), null)
+  assert.equal(calculateHarvestAlw(1250, 0), null)
+  assert.equal(calculateHarvestAlw(0, 500), 0)
+  assert.deepEqual(parseDeliveryPaste('Harvest Quantity\tNet Live Weight\tALW\n500\t1250\t999', 0), [{ requestedAltQty: '500', netLiveWeight: '1250' }])
   assert.deepEqual(parseExcelClipboard('"A\tB"\t"C\nD"\t"E""F"\r\n'), [['A\tB', 'C\nD', 'E"F']])
   assert.throws(() => parseExcelClipboard('"unfinished'), /unclosed/)
   assert.equal(deliveryDateValue('9/1/2026'), '2026-09-01')
@@ -49,6 +54,13 @@ async function run() {
   assert.equal(allocations.length, 2)
   assert.equal(allocations[0].allocationGroupKey, allocations[1].allocationGroupKey)
   assert.deepEqual(allocations.map(line => line.altQty), [2, 3])
+  const weighted = await prepareDeliveryPaste({ ...base, lines: allocations, rows: [{ netLiveWeight: '12.5' }] })
+  assert.deepEqual(weighted.map(line => line.netLiveWeight), [12.5, 12.5])
+  assert.deepEqual(weighted.map(line => line.altQty), [2, 3])
+  assert.equal(calculateHarvestAlw(weighted[0].netLiveWeight, weighted.reduce((sum, line) => sum + line.altQty, 0)), 2.5)
+  await assert.rejects(prepareDeliveryPaste({ ...base, lines: allocations, rows: [{ netLiveWeight: '-1' }] }), /negative/)
+  const cleared = await prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ netLiveWeight: '' }] })
+  assert.ok(cleared.every(line => line.netLiveWeight === null))
   const untouched = newLine()
   const changed = await prepareDeliveryPaste({ ...base, lines: [...allocations, untouched], rows: [{ tsDrNo: '001', deliveredDate: '9/5/2026' }, { tsDrNo: '002' }, { tsDrNo: '003' }] })
   assert.equal(changed.length, 4)

@@ -8,6 +8,7 @@ export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 export type GoodsIssueLine = {
   id: number | string
   allocationGroupKey?: string
+  netLiveWeight?: number | null
   tsDrNo?: string
   deliveredDate?: string
   haulerName?: string
@@ -103,6 +104,7 @@ type GoodsIssueItemRow = {
   from_warehouse_name: string | null
   void: string
   allocation_group_key?: string | null
+  net_live_weight?: number | null
   ts_dr_no?: string | null
   delivered_date?: string | null
   hauler_name?: string | null
@@ -192,6 +194,7 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
       : `line:${row.id}`
   ),
+  netLiveWeight: row.net_live_weight == null ? null : Number(row.net_live_weight),
   tsDrNo: row.ts_dr_no ?? '',
   deliveredDate: row.delivered_date ?? legacyHeader?.issue_date ?? '',
   haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',

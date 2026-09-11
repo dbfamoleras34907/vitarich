@@ -12,6 +12,8 @@ export const DELIVERY_COLUMNS = [
   ['ALW g', null],
   ['Item', 'itemCode'],
   ['Harvest Quantity', 'requestedAltQty'],
+  ['Net Live Weight', 'netLiveWeight'],
+  ['ALW', null],
   ['Batch', 'batchNumber'],
   ['UOM', 'altUom'],
   ['TS/DR #', 'tsDrNo'],
@@ -22,6 +24,11 @@ export const DELIVERY_COLUMNS = [
   ['Destination Details', 'liveSalesCustomerName'],
   ['Truck Seal', 'truckSeal'],
 ] as const
+
+export function calculateHarvestAlw(netLiveWeight: number | null | undefined, harvestQuantity: number): number | null {
+  if (netLiveWeight == null || !Number.isFinite(netLiveWeight) || netLiveWeight < 0 || !Number.isFinite(harvestQuantity) || harvestQuantity <= 0) return null
+  return netLiveWeight / harvestQuantity
+}
 
 export type DeliveryPasteKey = Exclude<typeof DELIVERY_COLUMNS[number][1], null>
 export type DeliveryPasteRow = Partial<Record<DeliveryPasteKey, string>>
@@ -101,6 +108,10 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.altQty = line.requestedAltQty
         line.baseQty = calculateBaseQty(line.altQty, line.altUom, line.baseUom)
       }
+      if (values.netLiveWeight !== undefined) {
+        line.netLiveWeight = values.netLiveWeight ? deliveryNumberValue(values.netLiveWeight, 'Net Live Weight') : null
+        if (line.netLiveWeight != null && line.netLiveWeight < 0) throw new Error('Net Live Weight cannot be negative.')
+      }
       if (values.deliveredDate !== undefined) line.deliveredDate = deliveryDateValue(values.deliveredDate)
       for (const key of ['tsDrNo', 'haulerName', 'plateNumber', 'liveSalesCustomerName'] as const) {
         if (values[key] !== undefined) line[key] = values[key]
@@ -113,7 +124,7 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
       if (values.truckSeal !== undefined) line.truckSeal = values.truckSeal ? deliveryNumberValue(values.truckSeal, 'Truck Seal') : null
       const inventoryKeys = ['fromWarehouseCode', 'itemCode', 'requestedAltQty', 'altUom', 'batchNumber'] as const
       if (!inventoryKeys.some(key => values[key] !== undefined)) {
-        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
+        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
         continue
       }
       const buildingValue = normalize(values.fromWarehouseCode ?? line.fromWarehouseCode)
