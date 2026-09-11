@@ -281,11 +281,14 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const { getValue, setValue } = useGlobalContext();
   const flockCardNavigationContext = getValue("brdFcNewContext") as FlockCardNavigationContext | undefined;
   const inputRefs = useRef<(HTMLElement | null)[][]>([]);
+  const [openFeedTypeRow, setOpenFeedTypeRow] = useState<number | null>(null);
+  const [pendingFeedTypeFocus, setPendingFeedTypeFocus] = useState<{ rowIndex: number; value: string } | null>(null);
   const autoSelectFeedBatchRef = useRef<() => void>(() => undefined);
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
+
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [savedLineByRowIndex, setSavedLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
   const [savedMortalityLineByRowIndex, setSavedMortalityLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
@@ -305,7 +308,10 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [farmBuildings, setFarmBuildings] = useState<FarmBuildingOption[]>([]);
   const [loadingFarmBuildings, setLoadingFarmBuildings] = useState(false);
   const [farmBuildingError, setFarmBuildingError] = useState("");
-  const [feedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
+  const [rawFeedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
+  const feedInventoryCache = useRef(new Map<string, Promise<FeedBatchOnHand[]>>());
+  const [feedInventoryRevision, setFeedInventoryRevision] = useState(0);
+  const [loadedFeedInventoryKey, setLoadedFeedInventoryKey] = useState("");
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
@@ -431,6 +437,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       .filter(Boolean),
     [feedItems]
   );
+  // Use catalog contents rather than context object identities as request dependencies.
+  const feedInventoryKey = JSON.stringify([
+    sessionUser?.id ?? null,
+    selectedWarehouseCode,
+    [...new Set(feedItemCodes)].sort(),
+  ]);
 
   const feedItemNameByCode = useMemo(() => {
     const map = new Map<string, string>();
@@ -443,6 +455,11 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
     return map;
   }, [feedItems]);
+
+  const feedBatchRows = useMemo(() => rawFeedBatchRows.map(row => ({
+    ...row,
+    itemName: feedItemNameByCode.get(row.itemCode.toUpperCase()) ?? row.itemName,
+  })), [rawFeedBatchRows, feedItemNameByCode]);
 
   const feedItemByCode = useMemo(() => {
     const map = new Map<string, Items>();
@@ -878,9 +895,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           }
           const hasSavedFeedIntake =
             getNumericValue(line.values[feedDailyKgColumnIndex] ?? "") > 0 ||
-            String(line.values[feedTypeColumnIndex] ?? "").trim() !== "" ||
-            String(line.values[feedBatchColumnIndex] ?? "").trim() !== "" ||
-            line.allocations.length > 0;
+            line.allocations.some(allocation => allocation.selectedQty > 0);
 
           if (hasSavedFeedIntake) {
             nextSavedLineByRowIndex[rowIndex] = { id: line.id, age: line.age };
@@ -985,10 +1000,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }, [selectedFarm, selectedWarehouseCode]);
 
   useEffect(() => {
-    if (!selectedWarehouseCode || feedItemCodes.length === 0) {
+    const [, warehouseCode, itemCodes] = JSON.parse(feedInventoryKey) as [number | null, string, string[]];
+    if (!warehouseCode || itemCodes.length === 0) {
       setFeedBatchRows([]);
       setFeedBatchError("");
       setLoadingFeedBatches(false);
+      setLoadedFeedInventoryKey("");
       return;
     }
 
@@ -997,16 +1014,21 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchRows([]);
     setFeedBatchError("");
 
-    getFeedBatchOnHandByWarehouse(feedItemCodes, selectedWarehouseCode)
+    const cache = feedInventoryCache.current;
+    let request = cache.get(feedInventoryKey);
+    if (!request) {
+      request = getFeedBatchOnHandByWarehouse(itemCodes, warehouseCode);
+      cache.set(feedInventoryKey, request);
+    }
+    request
       .then(rows => {
         if (cancelled) return;
 
-        setFeedBatchRows(rows.map(row => ({
-          ...row,
-          itemName: feedItemNameByCode.get(row.itemCode.toUpperCase()) ?? row.itemName,
-        })));
+        setFeedBatchRows(rows);
+        setLoadedFeedInventoryKey(feedInventoryKey);
       })
       .catch(error => {
+        if (cache.get(feedInventoryKey) === request) cache.delete(feedInventoryKey);
         console.error(error);
         if (!cancelled) {
           setFeedBatchRows([]);
@@ -1020,7 +1042,27 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [feedItemCodes, feedItemNameByCode, selectedWarehouseCode]);
+  }, [feedInventoryKey, feedInventoryRevision]);
+
+  useEffect(() => {
+    if (!pendingFeedTypeFocus || loadingFeedBatches || loadedFeedInventoryKey !== feedInventoryKey) return;
+    const { rowIndex, value } = pendingFeedTypeFocus;
+    if (deferredGridValues[rowIndex]?.[feedDailyKgColumnIndex] !== value) return;
+    // Wait for the deferred grid and combobox DOM to settle before opening.
+    const frame = requestAnimationFrame(() => {
+      const input = inputRefs.current[rowIndex]?.[feedTypeColumnIndex];
+      if (!input || input.hasAttribute("disabled")) return;
+      input.focus();
+      setOpenFeedTypeRow(rowIndex);
+      setPendingFeedTypeFocus(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [deferredGridValues, pendingFeedTypeFocus, loadingFeedBatches, loadedFeedInventoryKey, feedInventoryKey]);
+
+  function refreshFeedInventory() {
+    feedInventoryCache.current.clear();
+    setFeedInventoryRevision(revision => revision + 1);
+  }
 
   useEffect(() => {
     const farmId = Number(selectedFarmId);
@@ -1307,9 +1349,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     const rowValues = gridValues[rowIndex] ?? [];
 
     return getNumericValue(rowValues[feedDailyKgColumnIndex] ?? "") > 0 ||
-      String(rowValues[feedTypeColumnIndex] ?? "").trim() !== "" ||
-      String(rowValues[feedBatchColumnIndex] ?? "").trim() !== "" ||
-      (feedBatchAllocationsByRow[rowIndex] ?? []).length > 0;
+      (feedBatchAllocationsByRow[rowIndex] ?? []).some(allocation => allocation.selectedQty > 0);
   }
 
   function rowHasFeedBatchData(rowIndex: number) {
@@ -2585,6 +2625,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
         return next;
       });
+      refreshFeedInventory();
       toast(`Flock card saved: ${savedCard.fcNo}`);
     } catch (error) {
       console.error(error);
@@ -2626,6 +2667,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         delete next[rowIndex];
         return next;
       });
+      refreshFeedInventory();
       toast(`Age ${savedLine.age} feed intake reversed. You can now enter corrected feed intake.`);
     } catch (error) {
       console.error(error);
@@ -4109,6 +4151,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
                               placeholder={hasActualFc ? "Select" : "Not required"}
                               disabled={disabled || !hasActualFc}
+                              open={openFeedTypeRow === rowIndex}
+                              onOpenChange={(open) => setOpenFeedTypeRow(current => open ? rowIndex : current === rowIndex ? null : current)}
                               openOnFocus
                               inputId={`row-${rowIndex}-col-${colIndex}`}
                               inputAriaLabel={`Feed Type for age ${row.age}`}
@@ -4187,15 +4231,15 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   value
                                 )
                               }
-                              onBlur={(value) => {
+                              onBlur={(value, previousValue) => {
                                 if (
                                   colIndex === feedDailyKgColumnIndex &&
                                   !rowAgeLocked &&
                                   !feedIntakeCellLocked &&
                                   getNumericValue(value) > 0 &&
-                                  value !== (gridValues[rowIndex]?.[colIndex] ?? "")
+                                  getNumericValue(value) !== getNumericValue(previousValue)
                                 ) {
-                                  focusCell(rowIndex, feedTypeColumnIndex);
+                                  setPendingFeedTypeFocus({ rowIndex, value });
                                 }
                               }}
                               onFocus={() => setActiveCell({ rowIndex, colIndex })}

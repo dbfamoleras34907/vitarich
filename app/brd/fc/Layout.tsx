@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { reverseBroilerGrowing } from "@/lib/data/repositories/broilerGrowing";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Building2,
   BarChart3,
@@ -137,6 +141,11 @@ export default function Layout() {
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState("");
   const [openingAction, setOpeningAction] = useState<string | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<FarmBuildingListRow | null>(null);
+  const [reverseReason, setReverseReason] = useState("");
+  const [reversing, setReversing] = useState(false);
+  const [reverseError, setReverseError] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   const farmMaster = useMemo(() => {
     const goodsReceiptReferences = getValue("goodsReceiptReferences") as
@@ -150,7 +159,7 @@ export default function Layout() {
   }, [getValue]);
 
   const sessionUser = getValue("UserInfoAuthSession")?.[0] as
-    | { id?: number | string; users_farms?: unknown[] }
+    | { id?: number | string; user_type?: number | string; users_farms?: unknown[] }
     | undefined;
 
   const assignedFarmCodes = useMemo(
@@ -266,7 +275,24 @@ export default function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [selectedFarm]);
+  }, [selectedFarm, refreshVersion]);
+
+  async function confirmReverseGrowing() {
+    if (reversing || !reverseTarget?.flockCard?.growingId || !reverseReason.trim()) return;
+    setReversing(true);
+    setReverseError("");
+    try {
+      await reverseBroilerGrowing(reverseTarget.flockCard.growingId, reverseReason);
+      setReverseTarget(null);
+      setValue("brdFcNewContext", null);
+      setRefreshVersion(value => value + 1);
+      toast.success("Growing reversed. The cycle and DOC placement are retained.");
+    } catch (error) {
+      setReverseError(error instanceof Error ? error.message : "Unable to reverse Growing.");
+    } finally {
+      setReversing(false);
+    }
+  }
 
   function openFlockForm(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
@@ -454,6 +480,13 @@ export default function Layout() {
                     >
                       <TableCell>
                         <div className="flex justify-end gap-2">
+                          {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
+                            <Button type="button" size="sm" variant="outline"
+                              className="text-destructive" disabled={openingAction !== null || reversing}
+                              onClick={() => { setReverseTarget(building); setReverseReason(""); setReverseError(""); }}>
+                              Reverse Growing
+                            </Button>
+                          ) : null}
                           {/* {hasFlockCard && !cannotViewReport ? (
                             <Button
                               type="button"
@@ -537,6 +570,28 @@ export default function Layout() {
         )}
       </section>
 
+      <Dialog open={reverseTarget !== null} onOpenChange={open => { if (!open && !reversing) setReverseTarget(null); }}>
+        <DialogContent showCloseButton={!reversing}>
+          <DialogHeader>
+            <DialogTitle>Reverse Growing</DialogTitle>
+            <DialogDescription>
+              Reverse all mortality and feed intake and clear Growing data for {reverseTarget?.code}
+              {" "}({reverseTarget?.flockCard?.cardNo}). The cycle and DOC placement will remain.
+              Active Harvest or Clean Up records for this building and cycle will block reversal.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="reverse-growing-reason" className="text-sm font-medium">Reason</label>
+          <Textarea id="reverse-growing-reason" value={reverseReason} disabled={reversing} maxLength={1000}
+            onChange={event => setReverseReason(event.target.value)} placeholder="Enter the reason for reversal" />
+          {reverseError && <p role="alert" className="text-sm text-destructive">{reverseError}</p>}
+          <DialogFooter>
+            <Button variant="outline" disabled={reversing} onClick={() => setReverseTarget(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={reversing || !reverseReason.trim()} onClick={() => void confirmReverseGrowing()}>
+              {reversing ? "Reversing..." : "Confirm Reverse Growing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

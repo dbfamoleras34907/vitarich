@@ -47,6 +47,7 @@ export const notificationCatalog: NotificationCatalog = [
     events: [
       { key: NOTIFICATION_EVENT_KEYS.BRD_FC.POSTED, label: "Growing Saved", description: "First successful save of a Growing record.", action: "posted", farmRouting: "document" },
       { key: NOTIFICATION_EVENT_KEYS.BRD_FC.EDITED, label: "Growing Edited", description: "Successful save of an existing Growing record.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.VOIDED, label: "Growing Reversed", description: "Successful full Growing reversal; cycle and DOC placement retained.", action: "voided", farmRouting: "document" },
     ],
   },
   {

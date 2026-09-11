@@ -7,6 +7,7 @@ import type {
   ReactNode,
   RefCallback,
 } from "react";
+import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { TableHead } from "@/components/ui/table";
 import {
@@ -34,11 +35,13 @@ export function CellInput({
   value: string;
   inputRef: RefCallback<HTMLInputElement>;
   onCommit: (value: string) => void;
-  onBlur: (value: string) => void;
+  onBlur: (value: string, previousValue: string) => void;
   onFocus: (event: FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
 }) {
+  const valueOnFocus = useRef(value);
+
   return (
     <Input
       key={`${id}-${value}`}
@@ -49,13 +52,17 @@ export function CellInput({
       ref={inputRef}
       onBlur={(event) => {
         const nextValue = event.currentTarget.value;
+        const previousValue = valueOnFocus.current;
 
         window.setTimeout(() => {
           onCommit(nextValue);
-          onBlur(nextValue);
+          onBlur(nextValue, previousValue);
         }, 0);
       }}
-      onFocus={onFocus}
+      onFocus={(event) => {
+        valueOnFocus.current = event.currentTarget.value;
+        onFocus(event);
+      }}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
       style={{ minWidth: dataColumnWidth }}

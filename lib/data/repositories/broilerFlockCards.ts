@@ -47,6 +47,7 @@ export type FlockCardListInfo = {
   cardNo: string;
   age: number;
   actualAge?: number | null;
+  growingId?: number | null;
   startDate: string;
   flockCode: string;
   breed: string;
@@ -493,6 +494,7 @@ export async function getFarmBuildingsForFlockCard(
       cardNo: String(card.card_no ?? "").trim(),
       age: startDate ? calculateFlockAgeFromStartDate(startDate) : Number(card.age ?? 0),
       actualAge: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.actualAge ?? null,
+      growingId: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.id ?? null,
       startDate,
       flockCode: String(card.flock_code ?? "").trim(),
       breed: String(card.breed ?? "").trim(),

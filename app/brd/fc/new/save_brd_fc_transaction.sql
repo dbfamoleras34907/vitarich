@@ -513,6 +513,9 @@ declare
   v_changed text[] := array[]::text[];
 begin
   if new.reversed_at is null then return new; end if;
+  if to_regprocedure('public.brd_fc_is_full_reversal(bigint)') is not null then
+    if public.brd_fc_is_full_reversal(new.fc_id) then return new; end if;
+  end if;
   if old.feed_kg is not null and new.feed_kg is null then
     v_changed := array_append(v_changed, 'feedIntake');
   end if;

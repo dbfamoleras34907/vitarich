@@ -475,7 +475,7 @@ begin
           continue;
         end if;
       elsif v_event.module_key = 'BRD_FC'
-            and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED') then
+            and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED', 'BRD_FC_VOIDED') then
         select exists (
           select 1 from public.brd_fc card
           join public.farms farm on farm.id = card.farm_id

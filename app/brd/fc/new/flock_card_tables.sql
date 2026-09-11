@@ -1154,6 +1154,8 @@ begin
         select 1
         from public.inventory_postings reversal_posting
         where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and (reversal_posting.source_docentry = p_line_id
+            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
           and reversal_posting.id > ip.id
           and reversal_posting.ref = ip.ref
           and reversal_posting.item_code = ip.item_code
@@ -1262,6 +1264,8 @@ begin
           select 1
           from public.inventory_postings reversal_posting
           where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and (reversal_posting.source_docentry = old.id
+            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
             and reversal_posting.id > usage_posting.id
             and reversal_posting.ref = usage_posting.ref
             and reversal_posting.item_code = usage_posting.item_code
@@ -1345,6 +1349,8 @@ begin
           select 1
           from public.inventory_postings reversal_posting
           where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and (reversal_posting.source_docentry = old.id
+            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
             and reversal_posting.id > ip.id
             and reversal_posting.ref = ip.ref
             and reversal_posting.item_code = ip.item_code
@@ -1403,6 +1409,8 @@ begin
           select 1
           from public.inventory_postings reversal_posting
           where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and (reversal_posting.source_docentry = old.id
+            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
             and reversal_posting.id > ip.id
             and reversal_posting.ref = ip.ref
             and reversal_posting.item_code = ip.item_code

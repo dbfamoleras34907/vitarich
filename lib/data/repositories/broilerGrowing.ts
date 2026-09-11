@@ -8,6 +8,18 @@ export type BroilerGrowingHeaderSnapshot = {
 
 const normalizeCardNo = (value: string) => value.trim().toUpperCase()
 
+export async function reverseBroilerGrowing(growingId: number, reason: string): Promise<void> {
+  if (!Number.isSafeInteger(growingId) || growingId <= 0 || !reason.trim()) {
+    throw new Error('A Growing record and reversal reason are required.')
+  }
+  const result = await db.rpc('reverse_brd_fc_transaction', {
+    p_growing_id: growingId,
+    p_reason: reason.trim(),
+  })
+  if (result.error) throw new Error(result.error.message)
+  if (!result.data) throw new Error('The reversal did not return a confirmation. Refresh before trying again.')
+}
+
 export async function getLatestBroilerGrowingHeaders(
   cardNumbers: string[],
 ): Promise<Record<string, BroilerGrowingHeaderSnapshot>> {

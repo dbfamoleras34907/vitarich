@@ -222,7 +222,7 @@ function parseNumberOrNull(value: string | number | null | undefined) {
 }
 
 function formatDbValue(value: string | number | null | undefined) {
-  if (value == null) return "";
+  if (value == null || String(value).trim() === "") return "";
 
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return String(value);
