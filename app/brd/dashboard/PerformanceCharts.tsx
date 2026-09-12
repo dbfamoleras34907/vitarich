@@ -23,15 +23,15 @@ function Trend({ title, unit, data, actual, standard, actualLabel = 'Actual', st
   standardLabel?: string
 }) {
   const hasData = data.some(point => point[actual] !== null)
-  return <section className="min-w-0 rounded-lg border border-stone-200 bg-card p-3 dark:border-border" aria-label={title}>
+  return <section className="min-w-0 rounded-lg border border-stone-200 bg-card p-3 group-data-[compact=true]/dashboard:p-2 dark:border-border" aria-label={title}>
     <h3 className="text-xs font-medium">{title}</h3>
     <p className="mb-3 mt-1 text-[10px] text-muted-foreground">{unit} · Posted age in days</p>
-    {!hasData ? <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">No posted measurements</div> :
-      <div className="h-48 w-full" role="img" aria-label={`${title}. Exact values are available in the detail tabs.`}>
+    {!hasData ? <div className="flex h-48 group-data-[compact=true]/dashboard:h-36 items-center justify-center text-xs text-muted-foreground">No posted measurements</div> :
+      <div className="h-48 w-full group-data-[compact=true]/dashboard:h-36" role="img" aria-label={`${title}. Exact values are available in the detail tabs.`}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} style={chartStyle} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-            <XAxis dataKey="age" type="number" domain={['dataMin', 'dataMax']} allowDecimals={false} tickLine={false} axisLine={false} minTickGap={18} />
+            <XAxis dataKey="age" type="number" domain={[0, 45]} allowDataOverflow allowDecimals={false} tickLine={false} axisLine={false} minTickGap={18} />
             <YAxis width={45} tickLine={false} axisLine={false} />
             <Tooltip contentStyle={tooltipStyle} formatter={number} labelFormatter={age => `Age ${age}`} />
             <Legend iconType="plainline" />
@@ -50,7 +50,7 @@ export function PerformanceCharts({ cycles }: { cycles: DashboardCycleBuilding[]
       <h2 className="text-sm font-semibold">Cycle Performance</h2>
       {cycles.length > 1 && <p className="mt-1 text-[11px] text-muted-foreground">Aligned by age. Weight, feed, and water use bird-weighted measurements available at that age. Mortality totals require all selected flocks.</p>}
     </div>
-    <div className="grid gap-3 xl:grid-cols-2">
+    <div className="grid gap-3 xl:grid-cols-2 group-data-[compact=true]/dashboard:gap-2">
       <Trend title="Body Weight" unit="g / bird" data={data} actual="weight" standard="standardWeight" />
       <Trend title="Mortality" unit="birds" data={data} actual="mortality" standard="cumulativeMortality" actualLabel="Daily" standardLabel="Cumulative" />
       <Trend title="Feed Consumption" unit="g / bird / day" data={data} actual="feed" standard="standardFeed" />
@@ -77,7 +77,7 @@ export function BuildingComparison({ buildings, onSelect }: { buildings: Dashboa
       age: ageRange(metrics.postedAges), cycle: [...new Set(building.cycles.map(cycle => cycle.cycleNumber))].join(', ') }
   })
   const label = comparisons.find(item => item.key === metric)?.label ?? ''
-  return <section className="min-w-0 space-y-3 rounded-lg border border-stone-200 bg-card p-3 dark:border-border">
+  return <section className="min-w-0 space-y-3 rounded-lg border border-stone-200 bg-card p-3 group-data-[compact=true]/dashboard:p-2 dark:border-border">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="text-sm font-semibold">Building Comparison</h2>
         <p className="mt-1 text-[11px] text-muted-foreground">Selected cycle · Compare posted ages before assessing performance.</p></div>
@@ -85,7 +85,7 @@ export function BuildingComparison({ buildings, onSelect }: { buildings: Dashboa
         {comparisons.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
       </select>
     </div>
-    <div className="h-52" role="img" aria-label={`${label} by building. Values and cycle ages appear in the table below.`}>
+    <div className="h-52 group-data-[compact=true]/dashboard:h-40" role="img" aria-label={`${label} by building. Values and cycle ages appear in the table below.`}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} style={chartStyle}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />

@@ -19,7 +19,7 @@ export default function AppSideBarControler() {
 
   return (
     <div>
-      {user && <AppSidebar />}
+      {user && !["/signup_update", "/login", "/signup", "/logout"].includes(pathname) && <AppSidebar />}
       {/* <AppSidebar /> */}
     </div>
   )

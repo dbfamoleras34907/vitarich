@@ -1,7 +1,8 @@
 'use client'
 
+import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
+
 import { db } from '@/lib/Supabase/supabaseClient'
-import { getBrCleanupIdentityByDocumentNo } from '@/lib/data/repositories/brCleanup'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
@@ -526,6 +527,11 @@ type BrDeliveryTransactionResult = {
 }
 
 async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
+  const userId = await getSessionUserId()
+  if (!userId) {
+    throw new Error('Your session expired. Please sign in again before saving Harvest & Delivery.')
+  }
+
   const { data, error } = await db.rpc('save_br_delivery_transaction', {
     p_document: {
       id: issue.id,
@@ -541,7 +547,14 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
     },
   })
 
-  if (error) throw error
+  if (error) {
+    if (error.code === '42501' && error.message.includes('save_br_delivery_transaction')) {
+      throw new Error(
+        'Harvest & Delivery database access is not enabled for authenticated users. Apply the RPC execute grant to the same Supabase project used by this app.',
+      )
+    }
+    throw error
+  }
   const result = data as BrDeliveryTransactionResult | null
   if (!result?.header || !Array.isArray(result.lines)) {
     throw new Error('Harvest & Delivery transaction did not return the saved document.')
@@ -551,26 +564,18 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
 }
 
 export async function saveGoodsIssue(issue: GoodsIssue) {
+  if (issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
+    const result = await saveBroilerCleanup(issue)
+    if (!result?.header || !Array.isArray(result.lines)) throw new Error('Clean Up transaction did not return the saved document.')
+    return toIssue(result.header as GoodsIssueRow, result.lines as GoodsIssueItemRow[])
+  }
   if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
     return saveBrDeliveryTransaction(issue)
   }
 
   const tables = getIssueTables(issue.triggeredBy)
   const userId = await getSessionUserId()
-  let documentId = issue.id
-
-  if (!documentId && issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
-    const existingCleanup = await getBrCleanupIdentityByDocumentNo(issue.giNo)
-    if (existingCleanup) {
-      if (existingCleanup.status !== 'Draft') {
-        throw new Error(`Clean Up ${issue.giNo} already exists and is not an editable draft.`)
-      }
-      if (existingCleanup.createdBy && userId && existingCleanup.createdBy !== userId) {
-        throw new Error(`Clean Up ${issue.giNo} belongs to another user and cannot be overwritten.`)
-      }
-      documentId = Number(existingCleanup.id)
-    }
-  }
+  const documentId = issue.id
 
   const previousStatus = documentId
     ? await db

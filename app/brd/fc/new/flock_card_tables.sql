@@ -1089,6 +1089,102 @@ create unique index inventory_postings_brd_fc_feed_idx
   on public.inventory_postings (source_doc_type, source_docentry)
   where source_doc_type in ('BRD_FC_FEED_USAGE', 'BRD_FC_FEED_REVERSAL');
 
+alter table public.inventory_postings
+  add column if not exists reverses_posting_id bigint;
+
+do $$
+begin
+  alter table public.inventory_postings
+    add constraint inventory_postings_reverses_posting_fk
+    foreign key (reverses_posting_id)
+    references public.inventory_postings(id)
+    on delete restrict;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+create unique index if not exists inventory_postings_one_reversal_per_posting_idx
+  on public.inventory_postings (reverses_posting_id)
+  where reverses_posting_id is not null;
+
+create or replace function public.brd_fc_mort_thin_posting_is_reversed(
+  p_posting_id bigint,
+  p_line_id bigint
+)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.inventory_postings source_posting
+    join public.inventory_postings reversal_posting
+      on reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+     and (
+       reversal_posting.reverses_posting_id = source_posting.id
+       or (
+         reversal_posting.reverses_posting_id is null
+         and reversal_posting.source_docentry between p_line_id * 1000000 and p_line_id * 1000000 + 999999
+         and reversal_posting.id > source_posting.id
+         and reversal_posting.ref is not distinct from source_posting.ref
+         and reversal_posting.item_code is not distinct from source_posting.item_code
+         and reversal_posting.warehouse_code is not distinct from source_posting.warehouse_code
+         and reversal_posting.qty is not distinct from source_posting.qty
+         and reversal_posting.transfer_type is distinct from source_posting.transfer_type
+       )
+     )
+    where source_posting.id = p_posting_id
+  );
+$$;
+
+create or replace function public.validate_brd_fc_mort_thin_reversal_link()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_source public.inventory_postings%rowtype;
+begin
+  if new.source_doc_type is distinct from 'BRD_FC_MORT_THIN_REVERSAL' then
+    if new.reverses_posting_id is not null then
+      raise exception 'Only a Growing mortality/thinning reversal may reference a reversed posting.';
+    end if;
+    return new;
+  end if;
+
+  if new.reverses_posting_id is null then
+    raise exception 'A Growing mortality/thinning reversal must reference its exact source posting.';
+  end if;
+
+  select * into v_source
+  from public.inventory_postings posting
+  where posting.id = new.reverses_posting_id;
+
+  if not found
+    or v_source.source_doc_type not in (
+      'BRD_FC_MORT_THIN_USAGE',
+      'BRD_FC_MORT_THIN_TRANSFER_OUT',
+      'BRD_FC_MORT_THIN_TRANSFER_IN'
+    )
+    or new.item_code is distinct from v_source.item_code
+    or new.warehouse_code is distinct from v_source.warehouse_code
+    or new.ref is distinct from v_source.ref
+    or new.qty is distinct from v_source.qty
+    or new.transfer_type is not distinct from v_source.transfer_type then
+    raise exception 'Growing mortality/thinning reversal does not match source posting %.', new.reverses_posting_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_brd_fc_mort_thin_reversal_link on public.inventory_postings;
+create trigger validate_brd_fc_mort_thin_reversal_link
+before insert or update of source_doc_type, reverses_posting_id, item_code,
+  warehouse_code, ref, qty, transfer_type
+on public.inventory_postings
+for each row execute function public.validate_brd_fc_mort_thin_reversal_link();
+
 create or replace function public.reverse_brd_fc_mortality_thinning(
   p_line_id bigint,
   p_reason text default null
@@ -1150,18 +1246,7 @@ begin
         ip.source_docentry = p_line_id
         or ip.source_docentry between v_docentry_start and v_docentry_end
       )
-      and not exists (
-        select 1
-        from public.inventory_postings reversal_posting
-        where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
-          and (reversal_posting.source_docentry = p_line_id
-            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
-          and reversal_posting.id > ip.id
-          and reversal_posting.ref = ip.ref
-          and reversal_posting.item_code = ip.item_code
-          and reversal_posting.warehouse_code = ip.warehouse_code
-          and reversal_posting.qty = ip.qty
-      )
+      and not public.brd_fc_mort_thin_posting_is_reversed(ip.id, p_line_id)
   loop
     insert into public.inventory_postings (
       source_doc_type,
@@ -1175,7 +1260,8 @@ begin
       ref,
       transfer_type,
       ref_type2,
-      ref2
+      ref2,
+      reverses_posting_id
     )
     values (
       'BRD_FC_MORT_THIN_REVERSAL',
@@ -1189,7 +1275,8 @@ begin
       v_posting.ref,
       case when v_posting.transfer_type = 'OUT' then 'IN' else 'OUT' end,
       'FLOCK_CARD',
-      v_card.fc_no
+      v_card.fc_no,
+      v_posting.id
     );
   end loop;
 
@@ -1260,18 +1347,7 @@ begin
       from public.inventory_postings usage_posting
       where usage_posting.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
         and usage_posting.source_docentry = old.id
-        and not exists (
-          select 1
-          from public.inventory_postings reversal_posting
-          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
-          and (reversal_posting.source_docentry = old.id
-            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
-            and reversal_posting.id > usage_posting.id
-            and reversal_posting.ref = usage_posting.ref
-            and reversal_posting.item_code = usage_posting.item_code
-            and reversal_posting.warehouse_code = usage_posting.warehouse_code
-            and reversal_posting.qty = usage_posting.qty
-        )
+        and not public.brd_fc_mort_thin_posting_is_reversed(usage_posting.id, old.id)
     )
     into v_has_legacy_usage;
     v_should_reverse := v_has_usage and (v_line_changed or (old.void = '1' and new.void = '0'));
@@ -1338,6 +1414,7 @@ begin
     for v_allocation in
       select
         row_number() over (order by ip.id)::integer as line_no,
+        ip.id as posting_id,
         ip.item_code,
         ip.ref as batch_no,
         ip.warehouse_code as whse_code,
@@ -1345,18 +1422,7 @@ begin
       from public.inventory_postings ip
       where ip.source_doc_type = 'BRD_FC_MORT_THIN_USAGE'
         and ip.source_docentry = old.id
-        and not exists (
-          select 1
-          from public.inventory_postings reversal_posting
-          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
-          and (reversal_posting.source_docentry = old.id
-            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
-            and reversal_posting.id > ip.id
-            and reversal_posting.ref = ip.ref
-            and reversal_posting.item_code = ip.item_code
-            and reversal_posting.warehouse_code = ip.warehouse_code
-            and reversal_posting.qty = ip.qty
-        )
+        and not public.brd_fc_mort_thin_posting_is_reversed(ip.id, old.id)
     loop
       insert into public.inventory_postings (
         source_doc_type,
@@ -1370,7 +1436,8 @@ begin
         ref,
         transfer_type,
         ref_type2,
-        ref2
+        ref2,
+        reverses_posting_id
       )
       values (
         'BRD_FC_MORT_THIN_REVERSAL',
@@ -1384,7 +1451,8 @@ begin
         v_allocation.batch_no,
         'IN',
         'FLOCK_CARD',
-        v_card.fc_no
+        v_card.fc_no,
+        v_allocation.posting_id
       );
     end loop;
   end if;
@@ -1393,6 +1461,7 @@ begin
     for v_allocation in
       select
         row_number() over (order by ip.id)::integer as line_no,
+        ip.id as posting_id,
         ip.item_code,
         ip.ref as batch_no,
         ip.warehouse_code as whse_code,
@@ -1405,18 +1474,7 @@ begin
         'BRD_FC_MORT_THIN_TRANSFER_IN'
       )
         and ip.source_docentry between v_docentry_start and v_docentry_end
-        and not exists (
-          select 1
-          from public.inventory_postings reversal_posting
-          where reversal_posting.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
-          and (reversal_posting.source_docentry = old.id
-            or reversal_posting.source_docentry between v_docentry_start and v_docentry_end)
-            and reversal_posting.id > ip.id
-            and reversal_posting.ref = ip.ref
-            and reversal_posting.item_code = ip.item_code
-            and reversal_posting.warehouse_code = ip.warehouse_code
-            and reversal_posting.qty = ip.qty
-        )
+        and not public.brd_fc_mort_thin_posting_is_reversed(ip.id, old.id)
     loop
       if v_allocation.item_code is null
         or v_allocation.whse_code is null
@@ -1437,7 +1495,8 @@ begin
         ref,
         transfer_type,
         ref_type2,
-        ref2
+        ref2,
+        reverses_posting_id
       )
       values (
         'BRD_FC_MORT_THIN_REVERSAL',
@@ -1451,7 +1510,8 @@ begin
         v_allocation.batch_no,
         case when v_allocation.transfer_type = 'OUT' then 'IN' else 'OUT' end,
         'FLOCK_CARD',
-        v_card.fc_no
+        v_card.fc_no,
+        v_allocation.posting_id
       );
     end loop;
   end if;
@@ -1607,6 +1667,193 @@ create trigger post_brd_fc_mortality_thinning_inventory_update
 after update on public.brd_fc_line
 for each row
 execute function public.post_brd_fc_mortality_thinning_inventory();
+
+create or replace function public.get_brd_fc_mort_thin_inventory_discrepancies()
+returns table (
+  line_id bigint,
+  growing_id bigint,
+  farm_id bigint,
+  card_no text,
+  age integer,
+  expected_quantity numeric,
+  inventory_quantity numeric,
+  difference numeric
+)
+language sql
+stable
+as $$
+  with reconciliation as (
+    select
+      line.id as line_id,
+      line.fc_id as growing_id,
+      card.farm_id,
+      card.card_no::text,
+      line.age,
+      case when line.void = '1' then
+        coalesce(line.mort_am, 0)
+          + coalesce(line.mort_pm, 0)
+          + coalesce(line.thin_am, 0)
+          + coalesce(line.thin_pm, 0)
+      else 0 end::numeric as expected_quantity,
+      -coalesce(sum(
+        case when posting.transfer_type = 'IN' then posting.qty else -posting.qty end
+      ), 0)::numeric as inventory_quantity
+    from public.brd_fc_line line
+    join public.brd_fc card on card.id = line.fc_id
+    left join public.i_warehouse warehouse on warehouse.id = card.building_whse_id
+    left join public.inventory_postings posting
+      on posting.source_doc_type in (
+        'BRD_FC_MORT_THIN_USAGE',
+        'BRD_FC_MORT_THIN_TRANSFER_OUT',
+        'BRD_FC_MORT_THIN_REVERSAL'
+      )
+     and (
+       posting.source_docentry = line.id
+       or posting.source_docentry between line.id * 1000000 and line.id * 1000000 + 999999
+     )
+     and posting.warehouse_code = nullif(btrim(coalesce(card.building_code, warehouse.whse_code, '')), '')
+    group by line.id, line.fc_id, card.farm_id, card.card_no, line.age, line.void,
+      line.mort_am, line.mort_pm, line.thin_am, line.thin_pm
+  )
+  select
+    reconciliation.line_id,
+    reconciliation.growing_id,
+    reconciliation.farm_id,
+    reconciliation.card_no,
+    reconciliation.age,
+    reconciliation.expected_quantity,
+    reconciliation.inventory_quantity,
+    reconciliation.expected_quantity - reconciliation.inventory_quantity
+  from reconciliation
+  where abs(reconciliation.expected_quantity - reconciliation.inventory_quantity) > 0.000001
+  order by reconciliation.farm_id, reconciliation.card_no, reconciliation.age;
+$$;
+
+revoke all on function public.get_brd_fc_mort_thin_inventory_discrepancies()
+  from public, anon, authenticated;
+
+create or replace function public.assert_brd_fc_mort_thin_inventory_balance(p_line_id bigint)
+returns void
+language plpgsql
+as $$
+declare
+  v_line public.brd_fc_line%rowtype;
+  v_source_whse_code text;
+  v_expected numeric := 0;
+  v_inventory_net numeric := 0;
+begin
+  select * into v_line
+  from public.brd_fc_line line
+  where line.id = p_line_id;
+
+  if not found then
+    raise exception 'Growing mortality/thinning balance check could not find line %.', p_line_id;
+  end if;
+
+  select nullif(btrim(coalesce(card.building_code, warehouse.whse_code, '')), '')
+  into v_source_whse_code
+  from public.brd_fc card
+  left join public.i_warehouse warehouse on warehouse.id = card.building_whse_id
+  where card.id = v_line.fc_id;
+
+  if v_source_whse_code is null then
+    raise exception 'Growing mortality/thinning balance check requires a source warehouse for line %.', p_line_id;
+  end if;
+
+  if v_line.void = '1' then
+    v_expected := coalesce(v_line.mort_am, 0)
+      + coalesce(v_line.mort_pm, 0)
+      + coalesce(v_line.thin_am, 0)
+      + coalesce(v_line.thin_pm, 0);
+  end if;
+
+  select coalesce(sum(
+    case when posting.transfer_type = 'IN' then posting.qty else -posting.qty end
+  ), 0)
+  into v_inventory_net
+  from public.inventory_postings posting
+  where posting.source_doc_type in (
+      'BRD_FC_MORT_THIN_USAGE',
+      'BRD_FC_MORT_THIN_TRANSFER_OUT',
+      'BRD_FC_MORT_THIN_REVERSAL'
+    )
+    and (
+      posting.source_docentry = p_line_id
+      or posting.source_docentry between p_line_id * 1000000 and p_line_id * 1000000 + 999999
+    )
+    and posting.warehouse_code = v_source_whse_code;
+
+  if abs(v_inventory_net + v_expected) > 0.000001 then
+    raise exception
+      'Growing mortality/thinning inventory is out of balance for line %: persisted quantity %, inventory quantity %.',
+      p_line_id,
+      v_expected,
+      -v_inventory_net;
+  end if;
+end;
+$$;
+
+create or replace function public.enforce_brd_fc_mort_thin_inventory_balance()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.assert_brd_fc_mort_thin_inventory_balance(new.id);
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_brd_fc_mort_thin_inventory_balance on public.brd_fc_line;
+create constraint trigger enforce_brd_fc_mort_thin_inventory_balance
+after insert or update of mort_am, mort_pm, thin_am, thin_pm, extra, void
+on public.brd_fc_line
+deferrable initially deferred
+for each row execute function public.enforce_brd_fc_mort_thin_inventory_balance();
+
+create or replace function public.enforce_brd_fc_mort_thin_posting_balance()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_posting public.inventory_postings%rowtype;
+  v_line_id bigint;
+begin
+  v_posting := case when tg_op = 'DELETE' then old else new end;
+
+  if v_posting.source_doc_type is null or v_posting.source_doc_type not in (
+    'BRD_FC_MORT_THIN_USAGE',
+    'BRD_FC_MORT_THIN_TRANSFER_OUT',
+    'BRD_FC_MORT_THIN_TRANSFER_IN',
+    'BRD_FC_MORT_THIN_REVERSAL'
+  ) then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+
+  select line.id
+  into v_line_id
+  from public.brd_fc_line line
+  where line.id = v_posting.source_docentry
+     or line.id = (v_posting.source_docentry / 1000000)
+  order by case when line.id = v_posting.source_docentry then 0 else 1 end
+  limit 1;
+
+  if v_line_id is null then
+    raise exception 'Growing mortality/thinning posting % has no source line.', v_posting.id;
+  end if;
+
+  perform public.assert_brd_fc_mort_thin_inventory_balance(v_line_id);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_brd_fc_mort_thin_posting_balance on public.inventory_postings;
+create constraint trigger enforce_brd_fc_mort_thin_posting_balance
+after insert or update or delete
+on public.inventory_postings
+deferrable initially deferred
+for each row execute function public.enforce_brd_fc_mort_thin_posting_balance();
 
 drop index if exists public.inventory_postings_brd_fc_mort_thin_idx;
 

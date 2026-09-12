@@ -258,8 +258,8 @@ export default function Layout({ catalog }: { catalog: NotificationCatalog }) {
     try {
       const result = await processPendingNotificationsRequest({ retryFailedEmails })
       const requeued = retryFailedEmails ? `${result.emails.requeued} failed email${result.emails.requeued === 1 ? "" : "s"} requeued; ` : ""
-      const message = `${requeued}${result.processed} event${result.processed === 1 ? "" : "s"} processed; ${result.emails.sent} email${result.emails.sent === 1 ? "" : "s"} sent; ${result.emails.failed} failed; ${result.emails.skipped} skipped.`
-      if (result.emails.failed > 0) toast.error(message)
+      const message = `${requeued}${result.processed} event${result.processed === 1 ? "" : "s"} processed; ${result.emails.sent} notification emails sent; ${result.emails.failed} failed; ${result.emails.skipped} skipped. Account emails: ${result.accountEmails.sent} sent; ${result.accountEmails.failed} failed.`
+      if (result.emails.failed + result.accountEmails.failed > 0) toast.error(message)
       else toast.success(message)
       await loadSetup()
     } catch (error) {

@@ -2,8 +2,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getAccountAccessByAuthId, RegistrationError } from '@/lib/data/repositories/registration.server'
 
-// Rename this to 'middleware' so Next.js recognizes it!
+// Authenticate route and API requests before rendering or business access.
 export async function proxy(req: NextRequest) {
 
   let res = NextResponse.next({
@@ -17,10 +18,8 @@ export async function proxy(req: NextRequest) {
     return res
   }
 
-  // ✅ Allow API routes without auth check
-  if (pathname.startsWith('/api')) {
-    return res
-  }
+  if (pathname === '/api/auth/register') return res
+  const isApi = pathname.startsWith('/api/')
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,21 +43,44 @@ export async function proxy(req: NextRequest) {
     }
   )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
   const publicRoutes = ['/login', '/signup', '/about']
-  const isPublicRoute = publicRoutes.some((route) =>
-    pathname.startsWith(route)
-  )
-
-  if (!session && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/login', req.url))
+  const isPublicRoute = publicRoutes.includes(pathname)
+  const redirect = (path: string) => {
+    const response = NextResponse.redirect(new URL(path, req.url))
+    for (const cookie of res.cookies.getAll()) response.cookies.set(cookie)
+    return response
   }
-
-  if (session && ['/login', '/signup'].includes(pathname)) {
-    return NextResponse.redirect(new URL('/home', req.url))
+  try {
+    const authorization = req.headers.get('authorization') ?? ''
+    const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : undefined
+    const { data: { user }, error } = await supabase.auth.getUser(token)
+    if (error || !user) {
+      if (isPublicRoute) return res
+      return isApi ? NextResponse.json({ error: 'Authentication required.' }, { status: 401 }) : redirect('/login')
+    }
+    if (pathname === '/logout') return res
+    const access = await getAccountAccessByAuthId(user.id)
+    if (access.approvalStatus !== 'activated') {
+      if (!isApi) {
+        await supabase.auth.signOut()
+        return redirect('/login')
+      }
+      return NextResponse.json({ error: 'Your account is not activated.' }, { status: 403 })
+    }
+    if (pathname === '/api/auth/registration-profile') return res
+    if (access.registrationReady !== false && !access.profileComplete) {
+      if (pathname === '/signup_update') return res
+      return isApi
+        ? NextResponse.json({ error: 'Complete your personal information before continuing.', code: 'PROFILE_INCOMPLETE' }, { status: 403 })
+        : redirect('/signup_update')
+    }
+    if (['/login', '/signup', '/signup_update'].includes(pathname)) return redirect('/init')
+  } catch (error) {
+    if (!isApi) {
+      if (isPublicRoute) return res
+      return redirect('/login?accountError=unavailable')
+    }
+    return NextResponse.json({ error: error instanceof RegistrationError ? error.message : 'Unable to check account access. Please try again.' }, { status: 503 })
   }
 
   return res

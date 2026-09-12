@@ -66,7 +66,7 @@ type Props<T> = {
   searchPlaceholder?: string
   emptyMessage?: string
   noResultsMessage?: string
-  pageSizeOptions?: number[]
+  pageSizeOptions?: (number | 'Full')[]
   rowKey?: keyof T | ((row: T, index: number) => React.Key)
   enableSearch?: boolean
   enableFilters?: boolean
@@ -199,7 +199,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   }, [suppliedColumns, actionsFirst])
   const tableId = useId()
   const [sort, setSort] = useState<SortState>({ key: null, direction: 'asc' })
-  const [pageSize, setPageSize] = useState(pageSizeOptions[0] ?? 10)
+  const [selectedPageSize, setPageSize] = useState(pageSizeOptions[0] ?? 10)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [draftFilters, setDraftFilters] = useState<FilterRule[]>(initialFilters ?? [])
@@ -329,6 +329,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     })
   }, [filteredData, sort])
 
+  const pageSize = selectedPageSize === 'Full' ? Math.max(1, sortedData.length) : selectedPageSize
   const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize))
   const safePage = Math.min(page, totalPages)
 
@@ -439,8 +440,8 @@ export default function DynamicTable<T extends Record<string, unknown>>({
     setDraftFilters([])
     setAppliedFilters([])
     setSort({ key: null, direction: 'asc' })
-    setPage(enablePagination ? Math.max(1, Math.ceil(nextData.length / pageSize)) : 1)
-  }, [columns, commitExcelData, createRow, enablePagination, excelData, pageSize])
+    setPage(enablePagination && selectedPageSize !== 'Full' ? Math.max(1, Math.ceil(nextData.length / pageSize)) : 1)
+  }, [columns, commitExcelData, createRow, enablePagination, excelData, pageSize, selectedPageSize])
 
   const handleExcelDeleteRows = useCallback((rowsToDelete: T[]) => {
     const rowIdsToDelete = new Set(rowsToDelete.map(getExcelRowId))
@@ -575,9 +576,9 @@ export default function DynamicTable<T extends Record<string, unknown>>({
                 <label className={`flex items-center gap-2 text-foreground ${compact ? 'h-8 text-xs' : 'h-10 text-sm'}`}>
                   {/* <span>Rows</span> */}
                   <select
-                    value={pageSize}
+                    value={selectedPageSize}
                     onChange={event => {
-                      setPageSize(Number(event.target.value))
+                      setPageSize(event.target.value === 'Full' ? 'Full' : Number(event.target.value))
                       setPage(1)
                     }}
                     className={`h-8 rounded-md border border-input bg-[#fffdfb] text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15 dark:bg-input/30 ${compact ? 'px-2 text-xs' : 'px-3 text-sm'}`}

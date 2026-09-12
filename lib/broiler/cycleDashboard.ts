@@ -1,4 +1,4 @@
-import type { CycleGrowingLine, CycleMovementRecord } from '@/lib/data/repositories/broilerCycleReport'
+import type { CycleGrowingLine, CycleMovementRecord, CyclePlacementRecord } from '@/lib/data/repositories/broilerCycleReport'
 import type { DashboardBuilding, DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
 import { getBroilerDepletionSummary } from './performance'
 import {
@@ -19,12 +19,23 @@ export function calendarAge(startDate: string, today = new Date()): number | nul
     timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(today)
   const days = (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`)) / 86400000
-  return Number.isFinite(days) ? Math.max(0, Math.floor(days)) : null
+  return Number.isFinite(days) ? Math.min(45, Math.max(0, Math.floor(days))) : null
+}
+
+export function goodBirdPlacements(rows: CyclePlacementRecord[]) {
+  return [...new Map(rows.filter(row => row.status === 'Posted' && !row.isVoided && row.isGoodBirdItem !== false)
+    .map(row => [`${row.documentId}:${row.id}`, row])).values()]
+}
+
+export function growingWaterLiters(line: CycleGrowingLine, population: number) {
+  if (line.hasWater && line.waterLiters > 0) return line.waterLiters
+  if (line.waterPerBird > 0) return line.waterPerBird * Math.max(0, population - line.cumulative) / 1000
+  return line.hasWater ? line.waterLiters : null
 }
 
 export function activeGrowingLines(building: DashboardCycleBuilding) {
   return building.growingLines.filter(line => !line.isVoided &&
-    (line.hasMortality || line.hasFeed || line.hasWater || line.hasWeight)).sort((a, b) => a.age - b.age)
+    (line.hasMortality || line.hasFeed || line.hasWater || line.waterPerBird > 0 || line.hasWeight)).sort((a, b) => a.age - b.age)
 }
 
 export function movementQuantity(row: CycleMovementRecord, kind: 'heads' | 'kg'): number | null {
@@ -77,26 +88,33 @@ export function buildingMetrics(building: DashboardCycleBuilding) {
     return { mortalityTotal, thinningTotal, depletionTotal: line.thinningTotal || mortalityTotal + thinningTotal }
   })
   const population = building.placements.length ? building.startingPopulation : null
+  const placed = nullableSum([...new Map(building.placements.filter(row => row.status === 'Posted' && !row.isVoided)
+    .map(row => [`${row.documentId}:${row.id}`, row.actualReceived])).values()])
   const depletion = getBroilerDepletionSummary(population ?? 0, depletionLines)
-  const latestWeight = [...lines].reverse().find(line => line.hasWeight)
+  const latestWeight = [...lines].reverse().find(line => line.hasWeight && line.actualWeight > 0)
+    ?? [...lines].reverse().find(line => line.hasWeight)
   const weight = latestWeight?.actualWeight ?? null
   const standardWeight = latestWeight
     ? latestWeight.standardWeight || getBodyWeightGuidelineGrams(latestWeight.age, building.breed) || null : null
   const feed = measuredSum(lines, 'feed')
-  const remaining = population === null ? null : depletion.currentLiveBirds
+  const deliveredHeads = movementTotal(building.deliveries, 'heads')
+  const cleanupHeads = movementTotal(building.cleanups, 'heads')
+  const remaining = population === null || deliveredHeads === null || cleanupHeads === null ? null
+    : Math.max(0, depletion.currentLiveBirds - deliveredHeads - cleanupHeads)
+  const waterValues = lines.map(line => growingWaterLiters(line, building.startingPopulation)).filter((value): value is number => value !== null)
   const closedDate = building.status === 'Closed'
     ? building.cleanups.map(row => row.date).filter(Boolean).sort().at(-1) || building.cycleClosedAt : undefined
   return {
-    startingPopulation: startingPopulation(building), population, remaining,
+    startingPopulation: startingPopulation(building), population, placed, remaining, cleanupHeads,
     mortality: mortalityLines.length ? depletion.totalMortality : null,
     mortalityPercent: mortalityLines.length && population ? depletion.cumulativeMortality : null,
     thinning: mortalityLines.length ? depletion.totalThinning : null,
-    feed, water: measuredSum(lines, 'water'), weight, standardWeight,
+    feed, water: waterValues.length ? waterValues.reduce((sum, value) => sum + value, 0) : null, weight, standardWeight,
     weightAge: latestWeight?.age ?? null,
     calendarAge: building.status === 'Closed' && !closedDate ? null
       : calendarAge(building.startDate, closedDate ? new Date(closedDate.length > 10 ? closedDate : `${closedDate}T12:00:00+08:00`) : undefined),
-    postedAge: lines.at(-1)?.age ?? null,
-    deliveredHeads: movementTotal(building.deliveries, 'heads'),
+    postedAge: lines.length ? Math.min(45, lines.at(-1)!.age) : null,
+    deliveredHeads,
     deliveredKg: movementTotal(building.deliveries, 'kg'),
     fcr: estimatedFcr(feed, remaining, weight),
   }
@@ -109,13 +127,16 @@ export function dashboardMetrics(buildings: DashboardCycleBuilding[]) {
   const mortality = nullableSum(metrics.map(metric => metric.mortality))
   const weighted = (field: 'weight' | 'standardWeight') => {
     if (metrics.length === 1) return metrics[0][field]
-    if (!metrics.length || metrics.some(metric => metric[field] === null || metric.remaining === null)) return null
-    return remaining && remaining > 0
-      ? metrics.reduce((sum, metric) => sum + (metric[field] ?? 0) * (metric.remaining ?? 0), 0) / remaining : null
+    if (!metrics.length || metrics.some(metric => metric[field] === null || metric.population === null)) return null
+    return population && population > 0
+      ? metrics.reduce((sum, metric) => sum + (metric[field] ?? 0) * (metric.population ?? 0), 0) / population : null
   }
   return {
     startingPopulation: nullableSum(metrics.map(metric => metric.startingPopulation)),
     population, remaining, mortality,
+    placed: nullableSum(metrics.map(metric => metric.placed)),
+    thinning: nullableSum(metrics.map(metric => metric.thinning)),
+    cleanupHeads: nullableSum(metrics.map(metric => metric.cleanupHeads)),
     mortalityPercent: mortality !== null && population ? mortality / population * 100 : null,
     feed: nullableSum(metrics.map(metric => metric.feed)),
     water: nullableSum(metrics.map(metric => metric.water)),
@@ -145,7 +166,7 @@ export type PerformancePoint = {
 export function buildingPerformance(building: DashboardCycleBuilding): PerformancePoint[] {
   let depletion = 0
   let cumulativeMortality = 0
-  return activeGrowingLines(building).map(line => {
+  return activeGrowingLines(building).filter(line => line.age <= 45).map(line => {
     const mortality = line.mortalityTotal || line.mortalityAm + line.mortalityPm
     if (line.hasMortality) {
       depletion += line.thinningTotal || mortality + line.thinningAm + line.thinningPm
@@ -161,7 +182,8 @@ export function buildingPerformance(building: DashboardCycleBuilding): Performan
       standardWeight: line.standardWeight || getBodyWeightGuidelineGrams(line.age, building.breed) || null,
       feed: line.hasFeed && birds > 0 ? calculateFeedDailyPerBird({ ...args, dailyKgFlock: line.feedActual }) : null,
       standardFeed: line.feedStandard || getFeedGuidelineGramsPerBird(line.age, building.breed) || null,
-      water: line.hasWater && birds > 0 ? calculateWaterDailyPerBird({ ...args, dailyLitersFlock: line.waterLiters }) : null,
+      water: growingWaterLiters(line, building.startingPopulation) !== null && birds > 0
+        ? calculateWaterDailyPerBird({ ...args, dailyLitersFlock: growingWaterLiters(line, building.startingPopulation)! }) : null,
       standardWater: line.waterGuideline || getWaterGuidelineMillilitersPerBird(line.age, building.breed) || null,
     }
   })

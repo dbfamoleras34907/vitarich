@@ -1,5 +1,6 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import { isServiceUnavailableError } from "@/lib/networkError"
+import { getAccountAccessByAuthId } from "@/lib/data/repositories/registration.server"
 
 export const USER_TYPE = {
   SUPER_ADMIN: 1,
@@ -30,6 +31,8 @@ export async function requireAdminActor(request: Request) {
     throw new Error("UNAUTHENTICATED")
   }
   if (!authData.user?.id) throw new Error("UNAUTHENTICATED")
+  const access = await getAccountAccessByAuthId(authData.user.id)
+  if (access.approvalStatus !== "activated" || (access.registrationReady !== false && !access.profileComplete)) throw new Error("FORBIDDEN")
 
   const { data, error } = await admin_db
     .from("users")

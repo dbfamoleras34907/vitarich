@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server"
-import { RegistrationError, saveRegistrationProfile, listRegistrationFarms } from "@/lib/data/repositories/registration.server"
+import { RegistrationError, saveRegistrationProfile, requireRegistrationUser, getAccountAccessByAuthId } from "@/lib/data/repositories/registration.server"
 import { processPendingNotificationEvents } from "@/lib/data/repositories/notifications.server"
 import { processPendingNotificationEmails } from "@/lib/notifications/processEmailDeliveries.server"
 
@@ -9,9 +9,10 @@ export async function GET(request: Request) {
   try {
     const authorization = request.headers.get("authorization") ?? ""
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : ""
-    return NextResponse.json({ farms: await listRegistrationFarms(token) })
+    const user = await requireRegistrationUser(token)
+    return NextResponse.json(await getAccountAccessByAuthId(user.id), { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof RegistrationError ? error.message : "Unable to load farms." },
+    return NextResponse.json({ error: error instanceof RegistrationError ? error.message : "Unable to check your account." },
       { status: error instanceof RegistrationError ? error.status : 500 })
   }
 }

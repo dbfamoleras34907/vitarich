@@ -4,11 +4,9 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation";
 import { LoaderIcon } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
-import SignUpStage from "./SignUpStage";
 import { registerAccount } from "@/lib/data/repositories/registration";
 
 export function Layout({
@@ -16,7 +14,7 @@ export function Layout({
     ...props
 }: React.ComponentProps<"form">) {
 
-    const router = useRouter()
+    const [submitted, setSubmitted] = useState(false)
 
     const [form, setForm] = useState({
         email: "",
@@ -27,9 +25,9 @@ export function Layout({
     const [loading, setloading] = useState(false)
 
     const account = [
-        { required: true, key: "email", label: "Email", type: "text" },
+        { required: true, key: "email", label: "Email", type: "email" },
         { required: true, key: "password", label: "Password", type: "password" },
-        { required: true, key: "re_password", label: "Re-Password", type: "password" },
+        { required: true, key: "re_password", label: "Confirm Password", type: "password" },
     ] as const
 
     const handleChange = (key: string, value: string) => {
@@ -70,6 +68,7 @@ export function Layout({
 
     async function handleCreateUser(e: React.FormEvent) {
         e.preventDefault()
+        if (loading) return
         setloading(true)
 
         const { email, password, re_password } = form
@@ -103,7 +102,8 @@ export function Layout({
         try {
 
             await registerAccount({ email, password })
-            router.push("/signup_update")
+            setForm({ email: "", password: "", re_password: "" })
+            setSubmitted(true)
 
         } catch (err) {
             toast.error(
@@ -115,6 +115,14 @@ export function Layout({
             setloading(false)
         }
     }
+
+    if (submitted) return (
+        <div className="grid gap-3 rounded-md border bg-card p-6 text-center">
+            <h1 className="text-xl font-semibold">Awaiting activation</h1>
+            <p className="text-sm text-muted-foreground">Your account has been registered. Please wait for administrator approval. We will email you when your registration is activated or rejected.</p>
+            <a href="/login" className="text-sm font-semibold text-primary">Back to Login</a>
+        </div>
+    )
 
     return (
         <form
@@ -140,7 +148,6 @@ export function Layout({
 
             <div className="grid gap-4 bg-white p-4 rounded-md border">
 
-                <SignUpStage currentStage={1} />
 
                 {account.map((e, i) => (
                     <div key={i} className="grid gap-2">
@@ -161,7 +168,7 @@ export function Layout({
                         {e.key === "password" && (
                             <p className="text-xs text-muted-foreground">
                                 Password must be at least 8 characters and include
-                                uppercase, lowercase, number, and special character.
+                                uppercase, lowercase, and a number.
                             </p>
                         )}
 
@@ -175,7 +182,7 @@ export function Layout({
                 >
                     {loading
                         ? <LoaderIcon className="animate-spin" />
-                        : "Next"}
+                        : "Sign Up"}
                 </Button>
 
             </div>

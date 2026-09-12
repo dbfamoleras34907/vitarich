@@ -1,4 +1,5 @@
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getDocReceivingSettings } from '@/app/a_dean/doc-receiving-settings/api'
 
 export type BroilerCycleStage = 'placement' | 'growing' | 'delivery' | 'cleanup'
 
@@ -20,6 +21,7 @@ export type CyclePlacementRecord = {
   shortCount: number
   doaQuantity: number
   rejectCount: number
+  isGoodBirdItem?: boolean
   isVoided: boolean
 }
 
@@ -126,6 +128,15 @@ function throwQueryError(error: unknown, context: string): never {
   throw new Error(`${context}: ${textValue(row.message) || 'Unknown database error'}`)
 }
 
+function isMissingColumnError(error: unknown, table: string, column: string) {
+  if (!error || typeof error !== 'object') return false
+  const row = error as UnknownRow
+  const message = textValue(row.message).toLowerCase()
+  return textValue(row.code) === '42703'
+    && message.includes(table.toLowerCase())
+    && message.includes(column.toLowerCase())
+}
+
 function movementMatchesCard(
   header: UnknownRow,
   line: UnknownRow,
@@ -202,13 +213,22 @@ async function loadCycleMovements(farmId: number, stage: 'delivery' | 'cleanup',
   for (let index = 0; index < headers.length; index += 100) {
     const ids = headers.slice(index, index + 100).map(header => numberValue(header.id))
     for (let offset = 0; ; offset += 500) {
-      const result = cleanup
+      const initialResult = cleanup
         ? await db.from('br_cleanup_lines')
           .select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, variance_qty, remarks, from_warehouse_id, from_warehouse_code, void')
           .in('br_cleanup_id', ids).order('id').range(offset, offset + 499)
         : await db.from('br_delivery_lines')
           .select('id, br_delivery_id, delivered_date, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
           .in('br_delivery_id', ids).order('id').range(offset, offset + 499)
+      // Older databases predate per-line Delivery Date. Their historical value is
+      // the header issue_date, which is already used below as the read fallback.
+      const result = !cleanup && isMissingColumnError(
+        initialResult.error, 'br_delivery_lines', 'delivered_date',
+      )
+        ? await db.from('br_delivery_lines')
+          .select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
+          .in('br_delivery_id', ids).order('id').range(offset, offset + 499)
+        : initialResult
       if (result.error) throwQueryError(result.error, `Unable to load ${label} lines`)
       lines.push(...(result.data ?? []) as UnknownRow[])
       if ((result.data?.length ?? 0) < 500) break
@@ -296,16 +316,17 @@ async function loadBroilerCycleReport(
   const receiptIds = Array.from(new Set(placements.map(row => numberValue(row.goods_reciept_id)).filter(Boolean)))
   const growingIds = growingHeaders.map(row => numberValue(row.id)).filter(Boolean)
 
-  const [receiptHeaderResult, receiptItemResult, growingLines, deliveryData, cleanupData] = await Promise.all([
+  const [receiptHeaderResult, receiptItemResult, growingLines, deliveryData, cleanupData, docSettings] = await Promise.all([
     receiptIds.length
       ? db.from('goods_receipt').select('id, gr_no, vendor, status').in('id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
     receiptIds.length
-      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_code, description, batch_number, void').in('goods_reciept_id', receiptIds)
+      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_id, item_code, description, batch_number, void').in('goods_reciept_id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
     loadCycleGrowingLines(growingIds),
     loadCycleMovements(farmId, 'delivery', options.postedOnly === true),
     loadCycleMovements(farmId, 'cleanup', options.postedOnly === true),
+    getDocReceivingSettings(farmId),
   ])
   if (receiptHeaderResult.error) throwQueryError(receiptHeaderResult.error, 'Unable to load DOC Placement headers')
   if (receiptItemResult.error) throwQueryError(receiptItemResult.error, 'Unable to load DOC Placement items')
@@ -350,6 +371,10 @@ async function loadBroilerCycleReport(
           hatcheryReference: textValue(row.transfer_slip),
           itemCode: textValue(item.item_code),
           itemName: textValue(item.description),
+          // Preserve historical good-bird batch identity; settings cover receipts
+          // whose flock origin link is missing.
+          isGoodBirdItem: originKeys.has(`${normalized(item.item_code)}|${normalized(item.batch_number)}`)
+            || Boolean(docSettings?.good_doc && numberValue(item.item_id) === docSettings.good_doc),
           batchNumber: textValue(item.batch_number),
           quantityReceived: numberValue(row.quantity_received),
           actualReceived: numberValue(row.actual_received),

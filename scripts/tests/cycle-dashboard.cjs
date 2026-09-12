@@ -43,6 +43,7 @@ function database(tables) {
       in(field, values) { rows = rows.filter(row => values.some(value => String(row[field]) === String(value))); return query },
       order(field, options) { ordering.push([field, options?.ascending === false ? -1 : 1]); return query },
       range(from, to) { start = from; end = to; return query },
+      limit(count) { end = count - 1; return query },
       maybeSingle() { single = true; return query },
       then(resolve, reject) {
         rows.sort((a, b) => { for (const [field, direction] of ordering) { const diff = (a[field] > b[field] ? 1 : a[field] < b[field] ? -1 : 0) * direction; if (diff) return diff } return 0 })
@@ -112,6 +113,17 @@ async function main() {
   assert.equal(building.growingLines.some(row => row.id === 4), false)
   assert.deepEqual(model.activeGrowingLines(building).map(row => row.age), [1, 2], 'Guidelines alone do not advance posted age')
   const metrics = model.buildingMetrics(building)
+  assert.equal(metrics.placed, 100)
+  const measurements = { ...building, growingLines: [
+    building.growingLines.find(row => row.id === 3),
+    { ...building.growingLines.find(row => row.id === 2), age: 3 },
+  ] }
+  assert.equal(model.buildingMetrics(measurements).weight, 120, 'Later zero does not hide the last positive weight')
+  assert.equal(model.growingWaterLiters({ waterLiters: 0, hasWater: false, waterPerBird: 200, cumulative: 3 }, 100), 19.4)
+  assert.equal(model.growingWaterLiters({ waterLiters: 15, hasWater: true, waterPerBird: 200, cumulative: 3 }, 100), 15, 'Recorded liters take precedence')
+  assert.equal(model.goodBirdPlacements([
+    building.placements[0], { ...building.placements[0], isGoodBirdItem: false }, building.placements[0],
+  ]).length, 1, 'Only one good-bird row per receipt detail')
   assert.equal(metrics.population, 100)
   assert.equal(metrics.startingPopulation, 100)
   const openingReceipt = building.placements[0]
@@ -141,7 +153,7 @@ async function main() {
   }
   assert.equal(model.dashboardMetrics([openingPopulation, laterStartingBuilding]).startingPopulation, 225,
     'All Buildings uses each building cycle start date')
-  assert.equal(metrics.remaining, 97, 'Match Flock Card depletion; delivery is separate')
+  assert.equal(metrics.remaining, 84, 'Deduct mortality, thinning, harvest, and cleanup once')
   assert.equal(metrics.mortalityPercent, 2)
   assert.equal(metrics.thinning, 1)
   assert.equal(metrics.feed, 10)
@@ -165,9 +177,9 @@ async function main() {
   const second = { ...building, flockCardId: 20, startingPopulation: 900, deliveries: [], growingLines: [{ ...building.growingLines.find(row => row.id === 3), mortalityAm: 9, mortalityTotal: 9, thin_am: 0, thinningAm: 0, thinningPm: 0, thinningTotal: 9, actualWeight: 200 }] }
   const combined = model.dashboardMetrics([building, second])
   assert(Math.abs(combined.mortalityPercent - 1.1) < 1e-12, 'Farm mortality uses total deaths / total placed, not mean percentages')
-  assert.equal(combined.weight, (97 * 120 + 891 * 200) / 988)
-  assert.equal(metrics.fcr, 10 / (97 * 120 / 1000))
-  assert.equal(combined.fcr, 20 / (988 * combined.weight / 1000), 'Aggregate FCR uses total feed / total estimated live weight')
+  assert.equal(combined.weight, (100 * 120 + 900 * 200) / 1000)
+  assert.equal(metrics.fcr, 10 / (84 * 120 / 1000))
+  assert.equal(combined.fcr, 20 / (972 * combined.weight / 1000), 'Aggregate FCR uses total feed / total estimated live weight')
   assert.equal(model.estimatedFcr(0, 10, 100), 0)
   assert.equal(model.estimatedFcr(10, 0, 100), null)
   assert.equal(model.estimatedFcr(10, 10, 0), null)
@@ -176,7 +188,7 @@ async function main() {
   assert.equal(model.movementQuantity({ baseQuantity: 10, baseUom: 'HEAD', quantity: 10, uom: 'HEAD' }, 'kg'), null)
   assert.equal(model.calendarAge('2026-09-01', new Date('2026-09-08T16:01:00Z')), 8, 'Use Manila calendar date')
   assert.equal(model.calendarAge('', new Date()), null)
-  assert.equal(model.calendarAge('2026-07-01', new Date('2026-09-09T00:00:00Z')), 70, 'Calendar age is not capped at 45')
+  assert.equal(model.calendarAge('2026-07-01', new Date('2026-09-09T00:00:00Z')), 45, 'Calendar age is capped at 45')
   assert.equal(model.buildingMetrics({ ...building, status: 'Closed', cycleClosedAt: '2026-09-06T15:00:00Z', cleanups: [{ ...building.cleanups[0], date: '2026-09-04' }] }).calendarAge, 3, 'Recalled building age stops at its cleanup date')
   assert.equal(model.buildingMetrics({ ...building, status: 'Closed', cycleClosedAt: '2026-09-06T15:00:00Z', cleanups: [] }).calendarAge, 5)
   assert.equal(model.buildingMetrics({ ...building, status: 'Closed', cleanups: [] }).calendarAge, null)
@@ -193,6 +205,21 @@ async function main() {
   assert.equal(standalone.buildings[0].cycleLabel, 'Backlog Cycle 7', 'Preserve excluded-building cycle labels')
   assert.equal(await getBroilerOpenBuildingCycleReport(2, 13), null, 'Standalone cycles must belong to the requested farm')
   assert.equal(await getBroilerOpenBuildingCycleReport(1, 10), null, 'Farm-owned cycles cannot be loaded as standalone')
+
+  const itemTables = structuredClone(tables)
+  itemTables.doc_rec_settings = [{ farm_id: 1, good_doc: 500, void: '1' }]
+  itemTables.flock_card_origin = []
+  itemTables.goods_receipt_items = [
+    { goods_reciept_id: 20, doc_line_no: 1, item_id: 501, item_code: 'DOA', void: '1' },
+    { goods_reciept_id: 20, doc_line_no: 1, item_id: 500, item_code: 'GOOD', void: '1' },
+    { goods_reciept_id: 20, doc_line_no: 1, item_id: 502, item_code: 'REJECT', void: '1' },
+  ]
+  const itemReport = await loader({ '@/lib/Supabase/supabaseClient': { db: database(itemTables) } })('lib/data/repositories/broilerCycleReport.ts').getBroilerCycleReport(1, { postedOnly: true, openBuildingsOnly: true })
+  const itemBuilding = itemReport.buildings[0]
+  assert.deepEqual(model.goodBirdPlacements(itemBuilding.placements).map(row => row.itemCode), ['GOOD'], 'Use farm good-DOC configuration when origin links are missing')
+  assert.equal(model.buildingMetrics(itemBuilding).placed, 100, 'Do not triple-count Actual Received across good, DOA and reject items')
+  assert.equal(model.buildingMetrics({ ...building, growingLines: [{ ...building.growingLines[1], age: 60 }] }).postedAge, 45)
+  assert.equal(model.buildingPerformance({ ...building, growingLines: [{ ...building.growingLines[1], age: 60 }] }).length, 0)
 
   const largeTables = structuredClone(tables)
   largeTables.brd_fc_line = Array.from({ length: 1100 }, (_, index) => ({ id: index + 1, fc_id: 50, age: index, mort_am: 0, void: '1' }))
@@ -226,10 +253,10 @@ async function main() {
   const dashboard = await getBroilerCycleDashboard(1)
   assert.equal(dashboard.buildings.length, 3)
   assert.equal(dashboard.buildings[0].cycles.length, 0)
-  assert.equal(dashboard.selectedCycle.key, 'farm:2', 'Default to the highest farm cycle number even when closed')
-  assert.equal(dashboard.buildings[1].cycles[0].status, 'Closed')
+  assert.equal(dashboard.selectedCycle.key, 'farm:1', 'Default to the latest active farm cycle')
+  assert.equal(dashboard.buildings[1].cycles[0].status, 'Saved')
   assert.equal(dashboard.buildings[2].cycles.length, 0, 'Do not mix standalone cycles into a selected farm cycle')
-  assert.deepEqual(requests, [2], 'Load only the selected report')
+  assert.deepEqual(requests, [1], 'Load only the selected report')
   const recalled = await getBroilerCycleDashboard(1, { cycleKey: 'farm:1' })
   assert.equal(recalled.selectedCycle.key, 'farm:1')
   assert.equal(recalled.buildings[1].cycles[0].cycleNumber, '7')

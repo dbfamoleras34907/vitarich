@@ -90,6 +90,7 @@ export async function processPendingNotificationsRequest(options?: { retryFailed
   return request<{
     processed: number
     emails: { claimed: number; sent: number; failed: number; skipped: number; requeued: number }
+    accountEmails: { claimed: number; sent: number; failed: number }
   }>("/api/notifications/process", {
     method: "POST",
     ...(options?.retryFailedEmails ? { body: JSON.stringify({ retryFailedEmails: true }) } : {}),

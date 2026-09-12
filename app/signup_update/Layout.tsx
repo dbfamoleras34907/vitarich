@@ -9,13 +9,11 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { LoaderIcon } from "lucide-react"
-import SignUpStage from "../signup/SignUpStage"
 import SearchableDropdown from "@/lib/SearchableDropdown"
 import { db } from "@/lib/Supabase/supabaseClient"
-import { getProfileByAuthId } from "../admin/user/api"
 import { DefaultGenders, islandGrouplist, regionList } from "@/lib/Defaults/DefaultValues"
-import { PERSONAL_INFORMATION_FIELDS, REGISTRATION_FMS_TYPES, validateRegistrationProfile, type RegistrationProfile, type RegistrationFarmOption } from "@/lib/auth/personalInformation"
-import { savePersonalInformation, getRegistrationFarms } from "@/lib/data/repositories/registration"
+import { PERSONAL_INFORMATION_FIELDS, validatePersonalInformation, type PersonalInformation } from "@/lib/auth/personalInformation"
+import { savePersonalInformation, getRegistrationStatus } from "@/lib/data/repositories/registration"
 
 function errorMessage(error: unknown) {
   return error && typeof error === "object" && "message" in error && typeof error.message === "string"
@@ -24,11 +22,10 @@ function errorMessage(error: unknown) {
 
 export default function Layout() {
   const router = useRouter()
-  const [form, setForm] = useState<RegistrationProfile>({})
+  const [form, setForm] = useState<PersonalInformation>({})
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [sessionUser, setSessionUser] = useState<User | null>(null)
-  const [farms, setFarms] = useState<RegistrationFarmOption[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -40,18 +37,18 @@ export default function Layout() {
           router.replace("/login")
           return
         }
-        const [profile, farmOptions] = await Promise.all([
-          getProfileByAuthId(data.session.user.id),
-          getRegistrationFarms(),
-        ])
+        const status = await getRegistrationStatus()
         if (cancelled) return
-        const personal: RegistrationProfile = {
-          fms_type: profile?.fms_type ?? "",
-          farm_id: farmOptions.find((farm) => farm.code === profile?.default_farm)?.id ?? null,
+        if (status.approvalStatus !== "activated") {
+          await db.auth.signOut()
+          router.replace("/login")
+          return
         }
-        for (const field of PERSONAL_INFORMATION_FIELDS) personal[field.key] = profile?.[field.key] ?? ""
-        setForm(personal)
-        setFarms(farmOptions)
+        if (status.registrationReady === false || status.profileComplete) {
+          router.replace("/init")
+          return
+        }
+        setForm(status.profile)
         setSessionUser(data.session.user)
       } catch (error) {
         if (!cancelled) toast.error(errorMessage(error))
@@ -75,7 +72,7 @@ export default function Layout() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (loading || !sessionUser) return
-    const validationError = validateRegistrationProfile(form)
+    const validationError = validatePersonalInformation(form)
     if (validationError) {
       toast.error(validationError)
       return
@@ -83,8 +80,8 @@ export default function Layout() {
     setLoading(true)
     try {
       await savePersonalInformation(form)
-      toast.success(`Profile for ${sessionUser.email} saved. Please contact your administrator for account activation.`)
-      router.push("/logout")
+      toast.success("Your information has been saved.")
+      router.replace("/init")
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
@@ -99,36 +96,13 @@ export default function Layout() {
           src="https://cdn.prod.website-files.com/6819a7964b427b4964f82cc0/68203089539798c6cc2ba1c0_Corporate-Logo_Vitarich-White.png"
           alt="Vitarich Logo" width={110} height={110}
         />
-        <h1 className="text-2xl">Create your account</h1>
-        <p className="text-muted-foreground text-sm">Enter your personal information</p>
+        <h1 className="text-2xl">Complete Your Information</h1>
+        <p className="text-muted-foreground text-sm">Complete the required information to continue to Vita FMS.</p>
       </div>
       <form onSubmit={handleSubmit} className="mt-6 grid gap-4 rounded-md border bg-card p-4 text-card-foreground">
-        <SignUpStage currentStage={2} />
         <div className="grid gap-1.5">
           <Label htmlFor="registration-email">Email</Label>
           <Input id="registration-email" type="email" value={sessionUser?.email ?? ""} readOnly />
-        </div>
-        <div className="grid gap-1.5">
-          <Label required>FMS Type</Label>
-          <SearchableDropdown
-            list={REGISTRATION_FMS_TYPES}
-            codeLabel="code" nameLabel="name" showNameOnly
-            value={form.fms_type ?? ""}
-            disabled={initialLoading || loading}
-            onChange={(value) => setForm((previous) => ({ ...previous, fms_type: value }))}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label required>Farm</Label>
-          <SearchableDropdown
-            list={farms.map((farm) => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
-            codeLabel="code" nameLabel="name" showNameOnly
-            value={form.farm_id ? String(form.farm_id) : ""}
-            disabled={initialLoading || loading}
-            onChange={(value) => setForm((previous) => ({ ...previous, farm_id: value ? Number(value) : null }))}
-          />
-          <p className="text-xs text-muted-foreground">This will be your default and assigned farm.</p>
-          {!initialLoading && farms.length === 0 && <p className="text-xs text-destructive">No active, approved farms are available.</p>}
         </div>
         {(["Identity", "Contact"] as const).map((section) => (
           <section key={section} className="rounded-md border">
@@ -158,8 +132,9 @@ export default function Layout() {
           </section>
         ))}
         <Button type="submit" disabled={initialLoading || loading || !sessionUser}>
-          {initialLoading || loading ? <LoaderIcon className="animate-spin" /> : "Finish Registration"}
+          {initialLoading || loading ? <LoaderIcon className="animate-spin" /> : "Save and Continue"}
         </Button>
+        <Button type="button" variant="secondary" disabled={loading} onClick={() => router.replace("/logout")}>Logout</Button>
       </form>
     </div>
   )

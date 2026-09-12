@@ -4,7 +4,8 @@ import Image from "next/image"
 import { LoginForm } from "@/lib/Login/loginform"
 import poultryHero from "./fms-poultry-hero.png"
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ accountError?: string }> }) {
+    const { accountError } = await searchParams
     return (
         <main className="min-h-full bg-background text-foreground lg:h-full lg:min-h-0 lg:overflow-hidden">
             <div className="grid min-h-full lg:h-full lg:min-h-0 lg:grid-cols-[1.08fr_0.92fr]">
@@ -76,6 +77,11 @@ export default function LoginPage() {
                             </p>
                         </div>
 
+                        {accountError === "unavailable" && (
+                            <p role="alert" className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                                We could not check your account. Please try logging in again. If this continues, contact your administrator.
+                            </p>
+                        )}
                         <LoginForm />
                     </div>
                 </section>

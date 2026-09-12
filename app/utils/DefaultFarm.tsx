@@ -44,6 +44,7 @@ export default function DefaultFarm() {
                             value={defaultFarmId}
                             onValueChange={(farmId) => {
                                 setValue("DefaultFarmId", Number(farmId))
+                                setValue("openDefaultfarmModal", false)
                             }}
                         />
                     </div>

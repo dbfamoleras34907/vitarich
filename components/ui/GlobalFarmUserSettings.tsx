@@ -20,7 +20,7 @@ export function getAllowedFarms(farmDB: Farm[], userFarms: string[]): Farm[] {
   return farmDB.filter((farm) => userFarms.includes(farm.code));
 }
 
-export default function GlobalFarmUserSettings() {
+export default function GlobalFarmUserSettings({ onFarmSelected }: { onFarmSelected?: () => void }) {
   const { getValue, setValue } = useGlobalContext();
   const currentDefaultFarmId = getValue("DefaultFarmId");
   const session = getValue("UserInfoAuthSession");
@@ -36,7 +36,10 @@ export default function GlobalFarmUserSettings() {
     <UserFarmSearchCombobox
       display="buttons"
       value={currentDefaultFarmId ?? sessionDefaultFarmId ?? ""}
-      onValueChange={(farmId) => setValue("DefaultFarmId", Number(farmId))}
+      onValueChange={(farmId) => {
+        setValue("DefaultFarmId", Number(farmId));
+        onFarmSelected?.();
+      }}
     />
   );
 }

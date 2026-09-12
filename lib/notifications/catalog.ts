@@ -3,6 +3,20 @@ import type { NotificationCatalog } from "./types"
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BR_CLEANUP,
+    ruleActivationReady: false, // Enable only after target SQL deployment and verification.
+    label: "Clean up",
+    description: "Successful Clean up posts and draft edits.",
+    fmsTypes: ["Broiler"],
+    permissionGroup: "Menus",
+    permissionTitle: "Clean up/view",
+    baseUrl: "/brd/cu",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.POSTED, label: "Clean Up Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.EDITED, label: "Clean Up Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.BR_DELIVERY,
     ruleActivationReady: false, // Enable only after target SQL deployment and verification.
     label: "Harvest & Delivery",
@@ -19,19 +33,21 @@ export const notificationCatalog: NotificationCatalog = [
   {
     key: NOTIFICATION_MODULE_KEYS.USER_REGISTRATION,
     label: "User Registration",
-    description: "Completed registration awaiting approval and module assignment.",
+    description: "Account signup, activation, rejection and first profile completion.",
     fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     permissionGroup: "Modules",
     permissionTitle: "User Management/view",
-    baseUrl: "/admin/user",
+    baseUrl: "/admin/user-activation",
     events: [
       {
         key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.POSTED,
-        label: "Registration Completed",
-        description: "Emitted once after the second registration phase is saved.",
+        label: "Registration Submitted",
+        description: "Emitted after the Auth account and pending registration are saved together.",
         action: "posted",
         farmRouting: "none",
       },
+      { key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.EDITED, label: "Registration Updated", description: "Account activation or first successful personal information completion.", action: "edited", farmRouting: "none" },
+      { key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.VOIDED, label: "Registration Rejected", description: "Successful transition from pending to rejected.", action: "voided", farmRouting: "none" },
     ],
   },
   {

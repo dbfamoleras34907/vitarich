@@ -604,7 +604,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
 
           {/* Farm selector component */}
           <div className="max-h-100 overflow-y-auto">
-            <GlobalFarmUserSettings />
+            <GlobalFarmUserSettings onFarmSelected={() => setFarmModalOpen(false)} />
           </div>
         </div>
         <Button

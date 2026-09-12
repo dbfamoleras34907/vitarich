@@ -9,10 +9,21 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
 ## Selection and data
 
 - Default to the user's working default farm, resolved only within assigned farms.
-- Match DOC Placement's NavigationBar, breadcrumb heading, Refresh toolbar, and
-  stone-colored filter panel. Farm and Cycle selectors sit above the building tabs.
-- Default to the highest farm cycle number, including a closed or cancelled latest
-  cycle. The Cycle selector recalls earlier cycles without reopening or editing them.
+- Keep the breadcrumb and compact Refresh toolbar separate from navigation.
+  The toolbar's **Compact view** switch reduces card padding, section spacing,
+  details-column width, chart height, and transaction-row padding. It adds a fourth
+  metric column on wide screens without hiding values. Standard view is the default;
+  the switch preserves current selections and applies while the page remains open.
+  Farm and Cycle share a context panel, side-by-side from tablet widths and stacked
+  on mobile. Primary navigation uses **Farm View / Records** segmented tabs.
+- Group the green segmented Building selector and selected building/cycle/status
+  in one compact navigation card. Process tabs use soft green filled selected states.
+  Building and process controls scroll horizontally on narrow screens, retain keyboard
+  navigation, and preserve farm/cycle/building context when changing processes.
+- Default to the latest active farm cycle, falling back to the highest cycle number.
+  The Cycle selector recalls closed and cancelled cycles without reopening them.
+- Records opens the existing Cycle Master report for both farm and standalone building
+  cycles, retaining the Cycle Report View permission.
 - Publish the Cycle Master list before loading buildings and transaction details.
   Keep that list and its selected cycle visible if a detail query fails; show the
   precise detail error separately. Additional warehouse/standalone-cycle lookup
@@ -45,25 +56,29 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   is counted once even when linked to multiple inventory items. Later receipts are
   excluded; no matching receipts show Not recorded. All Buildings sums each
   building's starting population using its own cycle start date.
-- Placement population uses the same active origin population as Cycle Report,
-  shown only when posted placement records are available.
+- Placement totals Actual Received (good birds) once per posted, non-void receipt
+  detail. Placement tables show only the good-bird item, identified by historical
+  flock origin batches or the farm DOC receiving settings, with DOA/reject/short
+  counts retained as columns.
 - Mortality, depletion, and remaining birds share `getBroilerDepletionSummary`
-  with Flock Card Report. Remaining birds are placed less mortality and thinning;
-  this preserves the report's existing treatment of delivery as a separate metric.
-- Calendar age is elapsed days from placement in the Philippines, without the
-  operational entry screen's age cap. Posted Growing age is the latest age with
+  with Flock Card Report. Dashboard remaining birds subtract mortality, thinning,
+  posted harvest heads, and posted clean-up heads from the Growing population.
+  The Population card shows the formula and its component values.
+- Calendar age is elapsed days from placement in the Philippines. Calendar and
+  posted age displays and chart axes stop at 45 days. Posted Growing age is the latest age with
   a recorded daily metric. Weight identifies its own latest measurement age.
   Recalled closed cycles stop calendar age at the building's last posted cleanup
   date, falling back to the farm-cycle closure date; absent both, age is unavailable.
 - Feed and water charts reuse the Growing sheet's per-bird calculations and
   breed standards. Feed units are g/bird/day; water units are mL/bird/day.
-- **Estimated FCR** is cumulative feed kg divided by remaining birds times latest
-  posted average weight kg. No pre-existing FCR formula was found in the report.
-  This running estimate is labeled with its formula; it is not final harvest FCR.
+- Feed Conversion is hidden. The calculation helper remains available.
+- Body Weight uses the latest positive measurement, falling back to recorded zero
+  only when no positive measurement exists. Water uses recorded flock liters;
+  legacy per-bird-only entries are converted using the row's population and cumulative depletion.
 - Delivery weight uses recorded kg (or gram) quantities, never a head count or
   an inferred weight. Unknown units/missing weight show **Not recorded**.
-- All Buildings ratios use underlying totals, and body weight uses remaining-bird
-  weights. Missing inputs make totals unavailable rather than silently treating
+- All Buildings ratios use underlying totals, and body weight uses Growing-population
+  weights so fully harvested buildings retain their measured weight. Missing inputs make totals unavailable rather than silently treating
   unrecorded data as zero. Duplicate delivery line IDs are counted once.
 - Charts align by age. Feed, water, and weight use available bird-weighted
   measurements; mortality totals require all selected flocks at that age.

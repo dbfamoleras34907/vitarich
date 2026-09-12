@@ -363,17 +363,29 @@ begin
         select exists (
           select 1 from public.users registered
           where registered.id::text = v_event.entity_id
-            and registered.auth_id = v_event.actor_auth_id
-            and registered.registration_completed_at = v_event.occurred_at
-            and v_event.event_key = 'USER_REGISTRATION_POSTED'
             and v_event.entity_type = 'users'
-            and v_event.dedupe_key = 'USER_REGISTRATION_POSTED:' || registered.auth_id::text
+            and v_event.document_no is not distinct from registered.email
             and v_event.farm_id is null and v_event.recipient_farm_id is null
+            and (
+              (v_event.event_key = 'USER_REGISTRATION_POSTED'
+                and coalesce(registered.created_by,registered.auth_id) = v_event.actor_auth_id
+                and coalesce((to_jsonb(registered)->>'registration_submitted_at')::timestamptz,registered.registration_completed_at) = v_event.occurred_at
+                and v_event.dedupe_key = 'USER_REGISTRATION_POSTED:' || registered.auth_id::text)
+              or (v_event.event_key in ('USER_REGISTRATION_EDITED','USER_REGISTRATION_VOIDED')
+                and (to_jsonb(registered)->>'registration_decided_by')::uuid = v_event.actor_auth_id
+                and (to_jsonb(registered)->>'registration_decided_at')::timestamptz = v_event.occurred_at
+                and to_jsonb(registered)->>'approval_status' = case when v_event.event_key='USER_REGISTRATION_EDITED' then 'activated' else 'rejected' end
+                and v_event.dedupe_key = v_event.event_key || ':' || registered.auth_id::text || ':' || (to_jsonb(registered)->>'approval_status'))
+              or (v_event.event_key='USER_REGISTRATION_EDITED'
+                and registered.auth_id = v_event.actor_auth_id
+                and registered.registration_completed_at = v_event.occurred_at
+                and v_event.dedupe_key = 'USER_REGISTRATION_EDITED:' || registered.auth_id::text || ':profile')
+            )
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox
           set status = 'invalid', processed_at = now(), processing_started_at = null,
-              last_error = 'Registration event does not match a persisted registration completion.'
+              last_error = 'Registration event does not match its persisted signup, decision or profile completion.'
           where id = v_event.id;
           continue;
         end if;
@@ -451,6 +463,26 @@ begin
           update public.notification_outbox
           set status = 'invalid', processed_at = now(), processing_started_at = null,
               last_error = 'Hatchery DOC Dispatch is not posted at the recorded posting version.'
+          where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'BR_CLEANUP'
+            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED') then
+        select exists (
+          select 1 from public.br_cleanup delivery
+          join public.farms farm on farm.id = delivery.farm_id
+          where delivery.id::text = v_event.entity_id
+            and delivery.farm_id = v_event.farm_id
+            and delivery.farm_id = v_event.recipient_farm_id
+            and v_event.entity_type = 'br_cleanup'
+            and v_event.fms_type = 'Broiler'
+            and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
+            and (v_event.event_key <> 'BR_CLEANUP_POSTED' or delivery.status = 'Posted')
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Clean Up event does not match its persisted farm.'
           where id = v_event.id;
           continue;
         end if;

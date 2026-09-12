@@ -32,6 +32,8 @@ type DeliveryIssueLinesTableProps = {
   lineFlockCardInfo: Record<string, LineFlockCardState>
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
+  canCleanupAtZero?: (line: GoodsIssueLine) => boolean
+  allowBuildingSelection?: boolean
   lockCycleCloseout?: boolean
   allowLockedRowDelete?: boolean
   showLineRemarks?: boolean
@@ -81,6 +83,8 @@ export default function DeliveryIssueLinesTable({
   loadingLinePlacementBatches,
   activeDocumentIsPosted,
   lockCycleCloseout = false,
+  allowBuildingSelection = false,
+  canCleanupAtZero = () => false,
   allowLockedRowDelete = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
@@ -387,7 +391,7 @@ export default function DeliveryIssueLinesTable({
                     onChange={(value) => {
                       selectLineWarehouse(line, value).catch(console.error)
                     }}
-                    disabled={lockCycleCloseout}
+                    disabled={issue.status !== 'Draft' || (lockCycleCloseout && !allowBuildingSelection)}
                   />
                 </TableCopyDownCell>
                 <td className="border-r p-1 align-middle">
@@ -450,7 +454,7 @@ export default function DeliveryIssueLinesTable({
                   <Input
                     type={showVariance ? 'text' : 'number'}
                     inputMode={showVariance ? 'decimal' : undefined}
-                    min={showVariance ? 1 : 0}
+                    min={showVariance && !canCleanupAtZero(line) ? 1 : 0}
                     max={showVariance ? maxTransferQty : undefined}
                     step="any"
                     value={quantityInputValue}
@@ -492,7 +496,7 @@ export default function DeliveryIssueLinesTable({
                         clearDraft()
                         return
                       }
-                      if (requestedTotal < 1) {
+                      if (requestedTotal < 1 && !(requestedTotal === 0 && canCleanupAtZero(line))) {
                         toast('Clean up Quantity must be at least 1.')
                         clearDraft()
                         return

@@ -1,4 +1,5 @@
 -- TEST ONLY: disposable database prepared by prepare_fixture.py.
+begin;
 insert into flock_card(card_no,farm_id,building_whse_id,building_code,cycle_no,animal_qty)
 values('PLACEMENT',61,10,'B1','1',100);
 insert into flock_card_origin values(1,1,'BIRD','DOC:F61:B10:1',100,'1');
@@ -13,6 +14,54 @@ insert into inventory_postings(source_doc_type,source_docentry,item_code,warehou
 select 'BRD_FC_MORT_THIN_TRANSFER_OUT',id*1000000+1,'BIRD','B1',2,'DOC:F61:B10:1','OUT' from brd_fc_line
 union all select 'BRD_FC_MORT_THIN_TRANSFER_IN',id*1000000+1,'BIRD','DISPOSAL',2,'DOC:F61:B10:1','IN' from brd_fc_line
 union all select 'BRD_FC_FEED_USAGE',id,'FEED','FEEDS',3,'FD-2609-2709-002','OUT' from brd_fc_ba;
+commit;
+
+-- Repeated edits with the same quantity must reverse one exact posting at a
+-- time. This reproduces the equal-quantity history that previously allowed one
+-- reversal to hide multiple OUT rows.
+update brd_fc_line
+set extra = jsonb_set(extra, '{guardVersion}', '1')
+where age = 1;
+update brd_fc_line
+set extra = jsonb_set(extra, '{guardVersion}', '2')
+where age = 1;
+do $$
+declare
+  v_line_id bigint := (select id from brd_fc_line where age = 1);
+begin
+  if exists(select 1 from get_brd_fc_mort_thin_inventory_discrepancies()) then
+    raise exception 'TEST FAILED: equal-quantity edit left an inventory discrepancy';
+  end if;
+  if (select count(*) from inventory_postings reversal
+      join inventory_postings source on source.id = reversal.reverses_posting_id
+      where reversal.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+        and source.source_doc_type = 'BRD_FC_MORT_THIN_TRANSFER_OUT'
+        and source.source_docentry between v_line_id * 1000000 and v_line_id * 1000000 + 999999) <> 2 then
+    raise exception 'TEST FAILED: equal-quantity edits were not linked one-to-one';
+  end if;
+end;
+$$;
+
+-- Even a direct/legacy writer cannot commit a Growing inventory movement that
+-- disagrees with the persisted line.
+do $$
+declare
+  v_line_id bigint := (select id from brd_fc_line where age = 1);
+begin
+  begin
+    insert into inventory_postings (
+      source_doc_type, source_docentry, item_code, warehouse_code, qty, ref, transfer_type
+    ) values (
+      'BRD_FC_MORT_THIN_TRANSFER_OUT', v_line_id * 1000000 + 990001,
+      'BIRD', 'B1', 1, 'DOC:F61:B10:1', 'OUT'
+    );
+    set constraints enforce_brd_fc_mort_thin_posting_balance immediate;
+    raise exception 'TEST FAILED: imbalanced direct posting committed';
+  exception when raise_exception then
+    if sqlerrm not like 'Growing mortality/thinning inventory is out of balance%' then raise; end if;
+  end;
+end;
+$$;
 
 create function test_expect_block(expected text) returns void language plpgsql as $$
 begin
@@ -54,7 +103,7 @@ create trigger fail_reversal before update on brd_fc_line for each row execute f
 select test_expect_block('Injected reversal failure');
 do $$begin
   if exists(select 1 from brd_fc_line where void <> '1' or mort_am <> 2 or feed_kg <> 3)
-    or (select count(*) from inventory_postings) <> 8 then
+    or (select count(*) from inventory_postings) <> 16 then
     raise exception 'TEST FAILED: partial reversal persisted';
   end if;
 end;$$;
@@ -92,7 +141,7 @@ do $$begin
   if (select count(*) from notification_outbox) <> 1 or not exists(select 1 from brd_fc where fc_no='RESTART' and void='1') then
     raise exception 'TEST FAILED: retry duplicated an event or reversed new Growing'; end if;
 end;$$;
-select 'PASS: authorization, harvest/cleanup, rollback, inventory, audit, retry, restart and no-rule dispatch';
+select 'PASS: authorization, harvest/cleanup, rollback, exact reversal links, balance guards, audit, retry, restart and no-rule dispatch';
 
 -- Activate a rule only in this disposable database; delivery retries stay unique.
 insert into notification_rules(name,module_key,event_key,exclude_actor)

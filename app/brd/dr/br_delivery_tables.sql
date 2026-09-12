@@ -37,6 +37,7 @@ create table if not exists public.br_delivery_lines (
   line_no integer not null,
   allocation_group_key text null,
   ts_dr_no text null,
+  delivered_date date not null,
   hauler_name text null,
   plate_number text null,
   destination text null,
@@ -64,11 +65,21 @@ create table if not exists public.br_delivery_lines (
 alter table public.br_delivery_lines
   add column if not exists allocation_group_key text null,
   add column if not exists ts_dr_no text null,
+  add column if not exists delivered_date date null,
   add column if not exists hauler_name text null,
   add column if not exists plate_number text null,
   add column if not exists destination text null,
   add column if not exists live_sales_customer_name text null,
   add column if not exists truck_seal numeric null;
+
+update public.br_delivery_lines line
+set delivered_date = delivery.issue_date
+from public.br_delivery delivery
+where delivery.id = line.br_delivery_id
+  and line.delivered_date is null;
+
+alter table public.br_delivery_lines
+  alter column delivered_date set not null;
 
 create index if not exists br_delivery_issue_date_idx on public.br_delivery (issue_date desc);
 create index if not exists br_delivery_farm_id_idx on public.br_delivery (farm_id);
@@ -105,14 +116,14 @@ on conflict (id) do nothing;
 
 insert into public.br_delivery_lines (
   id, created_by, created_at, updated_by, updated_at, br_delivery_id, line_no,
-  item_id, item_code, description, batch_rule_id, batch_number,
+  delivered_date, item_id, item_code, description, batch_rule_id, batch_number,
   manufacturing_date, expiry_date, alt_qty, alt_uom, base_qty, base_uom,
   from_warehouse_id, from_warehouse_code, from_warehouse_name, void
 )
 overriding system value
 select
   line.id, line.created_by, line.created_at, line.updated_by, line.updated_at,
-  line.goods_issue_id, line.line_no, line.item_id, line.item_code,
+  line.goods_issue_id, line.line_no, header.issue_date, line.item_id, line.item_code,
   line.description, line.batch_rule_id, line.batch_number,
   line.manufacturing_date, line.expiry_date, line.alt_qty, line.alt_uom,
   line.base_qty, line.base_uom, line.from_warehouse_id,

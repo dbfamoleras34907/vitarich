@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
-import { activeGrowingLines, movementQuantity } from '@/lib/broiler/cycleDashboard'
+import { activeGrowingLines, goodBirdPlacements, growingWaterLiters, movementQuantity } from '@/lib/broiler/cycleDashboard'
 import { usePermission } from '@/hooks/usePermission'
 
 export type DetailTab = 'overview' | 'placement' | 'growing' | 'feed' | 'delivery' | 'cleanup'
@@ -37,7 +37,7 @@ export default function TransactionDetails({ tab, cycles }: { tab: Exclude<Detai
   const rawRows: { key: string; cells: ReactNode[] }[] = cycles.flatMap(building => {
     const prefix = [building.buildingName || building.buildingCode, building.cycleNumber]
     const growingLink = <DocumentLink href={`/brd/fc/report?cardNo=${encodeURIComponent(building.cardNo)}`} blocked={growingBlocked && reportBlocked}>{building.growingNumber || building.cardNo}</DocumentLink>
-    if (tab === 'placement') return building.placements.map((row, index) => ({
+    if (tab === 'placement') return goodBirdPlacements(building.placements).map((row, index) => ({
       key: `${building.flockCardId}-${row.id}-${index}`, cells: [...prefix,
         <DocumentLink key="doc" href={`/inv/doc-receiving/post?id=${row.documentId}`} blocked={placementBlocked}>{row.documentNo}</DocumentLink>,
         formatDate(row.receiveDate), formatDate(row.productionDate), row.vendor || '—',
@@ -50,7 +50,7 @@ export default function TransactionDetails({ tab, cycles }: { tab: Exclude<Detai
       .map(row => ({ key: `${building.flockCardId}-${row.id}`, cells: tab === 'growing' ? [...prefix, growingLink, row.age,
         formatNumber(row.hasMortality ? row.mortalityTotal || row.mortalityAm + row.mortalityPm : null),
         formatNumber(row.hasMortality ? row.thinningAm + row.thinningPm : null),
-        formatNumber(row.hasWater ? row.waterLiters : null), formatNumber(row.hasWeight ? row.actualWeight : null),
+        formatNumber(growingWaterLiters(row, building.startingPopulation)), formatNumber(row.hasWeight ? row.actualWeight : null),
         formatNumber(row.standardWeight || null),
       ] : [...prefix, growingLink, row.age, row.feedType || '—', row.feedBatch || '—', formatNumber(row.feedActual), formatNumber(row.feedStandard || null)] }))
     return (tab === 'delivery' ? building.deliveries : building.cleanups).map(row => ({
@@ -70,7 +70,7 @@ export default function TransactionDetails({ tab, cycles }: { tab: Exclude<Detai
       <div className="max-h-[65vh] overflow-auto">
         <table className="w-full border-collapse whitespace-nowrap text-xs">
           <thead className="sticky top-0 bg-muted"><tr>{headers[tab].map(header => <th key={header} className="border-b px-3 py-2 text-left font-medium">{header}</th>)}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 tabular-nums">{cell}</td>)}</tr>)}</tbody>
+          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 tabular-nums group-data-[compact=true]/dashboard:px-2 group-data-[compact=true]/dashboard:py-1">{cell}</td>)}</tr>)}</tbody>
         </table>
       </div>}
   </section>

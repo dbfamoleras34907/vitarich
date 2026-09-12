@@ -47,7 +47,6 @@ export default function RootLayout({
       >
         <NextTopLoader color="#00754A" showSpinner={false} />
         <GlobalProvider>
-          <RouteGuard />
           <GlobalLoaderController />
 
           <ThemeProvider
@@ -65,7 +64,7 @@ export default function RootLayout({
                     <AppSideBarControler />
                     <main className="h-full min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto print:h-auto print:overflow-visible">
                         <CollapsedSidebarLabel />
-                        {children}
+                        <RouteGuard>{children}</RouteGuard>
                     </main>
                   </div>
                 </SidebarProvider>

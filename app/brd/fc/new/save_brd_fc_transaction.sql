@@ -472,6 +472,39 @@ end;
 $$;
 revoke all on function public.save_brd_fc_transaction(uuid, jsonb) from public;
 grant execute on function public.save_brd_fc_transaction(uuid, jsonb) to authenticated;
+
+-- Wait for an ambiguous/disconnected save request to finish before reporting
+-- its outcome. The lock is the same lock used by save_brd_fc_transaction, so a
+-- client cannot mistake an in-flight commit for a rolled-back request.
+create or replace function public.get_brd_fc_save_request_status(p_request_id uuid)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_request public.brd_fc_save_requests%rowtype;
+begin
+  if v_user is null or p_request_id is null then
+    raise exception 'A signed-in user and save request ID are required.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_request_id::text, 0));
+  select * into v_request
+  from public.brd_fc_save_requests request
+  where request.request_id = p_request_id
+    and request.actor_auth_id = v_user;
+
+  if found then
+    return jsonb_build_object('committed', true, 'result', v_request.result);
+  end if;
+  return jsonb_build_object('committed', false);
+end;
+$$;
+revoke all on function public.get_brd_fc_save_request_status(uuid) from public;
+grant execute on function public.get_brd_fc_save_request_status(uuid) to authenticated;
+
 -- The receipt is written once, after every mutation succeeds. This trigger
 -- enqueues in that same transaction; it never resolves recipients itself.
 create or replace function public.enqueue_brd_fc_save_event()

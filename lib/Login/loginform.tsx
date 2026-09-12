@@ -13,7 +13,7 @@ import { useGlobalDefaults } from "../Defaults/GlobalDefaults";
 import { Modal } from "../Moda";
 import { encryptValue } from "../encrypt";
 import { createApprovalRequest } from "./api";
-import { getProfileByAuthId } from "@/app/admin/user/api";
+import { getRegistrationStatus } from "@/lib/data/repositories/registration";
 
 function normalizeLoginEmail(value: string): string {
   const trimmed = value.trim()
@@ -46,18 +46,23 @@ export function LoginForm({
     try {
       const loginEmail = normalizeLoginEmail(email)
       setEmail(loginEmail)
-      const { data, error } = await db.auth.signInWithPassword({
+      const { error } = await db.auth.signInWithPassword({
         email: loginEmail,
         password,
       });
 
       if (error) {
-        toast(error.message)
+        toast.error(error.code === "user_banned" ? "Your account is awaiting activation or has been rejected. Please check your email." : error.message)
         setloading(false)
       } else {
         // Resume registration if the user left before saving personal information.
-        const profile = await getProfileByAuthId(data.user.id)
-        if (!profile) {
+        const status = await getRegistrationStatus()
+        if (status.approvalStatus !== "activated") {
+          await db.auth.signOut()
+          toast.error(status.approvalStatus === "rejected" ? "Your registration was rejected. Please check your email." : "Your account is awaiting administrator activation.")
+          return
+        }
+        if (status.registrationReady !== false && !status.profileComplete) {
           router.push("/signup_update")
           return
         }
