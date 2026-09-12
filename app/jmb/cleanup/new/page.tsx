@@ -6,9 +6,9 @@ import CleanupForm from "./CleanupForm";
 export default function Page() {
   return (
     <NavigationBar
-      currentLabel="New Clean-Up"
+      currentLabel="New Terminal Culling"
       fatherLink="/jmb/cleanup"
-      fatherLabel="Breeder Clean-Up"
+      fatherLabel="Breeder Terminal Culling"
     >
       <CleanupForm />
     </NavigationBar>

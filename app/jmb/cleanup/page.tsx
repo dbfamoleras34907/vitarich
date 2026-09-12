@@ -5,7 +5,7 @@ import CleanupTable from "./cleanup-table";
 
 export default function Page() {
   return (
-    <NavigationBar currentLabel="Breeder Clean-Up">
+    <NavigationBar currentLabel="Breeder Terminal Culling">
       <CleanupTable />
     </NavigationBar>
   );

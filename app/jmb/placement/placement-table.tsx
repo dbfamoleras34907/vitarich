@@ -487,7 +487,7 @@ export default function PlacementTable() {
         <div className="border-b bg-muted/20 px-5 py-3">
           <h2 className="text-sm font-semibold">Buildings History</h2>
           <p className="text-xs text-muted-foreground">
-            Placement, production, loss, and clean-up totals by building cycle.
+            Placement, production, loss, and Terminal Culling totals by building cycle.
           </p>
         </div>
 
@@ -536,7 +536,7 @@ export default function PlacementTable() {
                     <TableHead className="w-27.5 text-right">Kitchen</TableHead>
                     <TableHead className="w-27.5 text-right">Condem</TableHead>
                     <TableHead className="w-35 text-right">
-                      Total Clean Up
+                      Total Terminal Culling
                     </TableHead>
                     <TableHead className="w-37.5 text-right">Action</TableHead>
                   </TableRow>

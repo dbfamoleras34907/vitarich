@@ -60,7 +60,6 @@ import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import {
-  attachFarmFilterFromRefs,
   FARM_FILTER_KEY,
 } from "@/lib/farmFilter";
 
@@ -178,6 +177,7 @@ export default function ChickgradingTable() {
                 item: ChickGradingProcess,
               ) => ({
                 id: Number(item.id),
+                [FARM_FILTER_KEY]: item.farm_id == null ? "" : String(item.farm_id),
 
                 egg_ref_no:
                   item.egg_ref_no || "-",
@@ -192,7 +192,7 @@ export default function ChickgradingTable() {
 
                 total_chicks:
                   Number(
-                    item.total_chicks || 0,
+                    item.total_egg_set || 0,
                   ),
 
                 good_quality_chicks:
@@ -220,12 +220,7 @@ export default function ChickgradingTable() {
             )
           : [];
 
-      setItems(
-        await attachFarmFilterFromRefs(
-          mapped,
-          (row) => row.egg_ref_no,
-        ),
-      );
+      setItems(mapped);
     } catch (e) {
       console.error(e);
 

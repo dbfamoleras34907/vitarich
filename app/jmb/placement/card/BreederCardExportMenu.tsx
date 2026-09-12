@@ -13,7 +13,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronDown, ClipboardCopy, Download, FileSpreadsheet, FileText, Upload } from "lucide-react";
+import {
+  ChevronDown,
+  ClipboardCopy,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export type BreederExportRow = {
@@ -66,13 +73,31 @@ export type BreederImportRow = {
 
 export const BREEDER_IMPORT_HEADERS = [
   "daterec",
-  "inv_male", "inv_female", "mc_male", "mc_female", "cull_male", "cull_female",
-  "trans_in_male", "trans_in_female", "trans_out_male", "trans_out_female",
-  "kitchen_male", "kitchen_female", "condem_male", "condem_female",
-  "avg_body_weight_male", "avg_body_weight_female",
-  "feed_consumption_male", "feed_consumption_female",
-  "male_feedtype_id", "female_feedtype_id",
-  "m_body_weight", "f_body_weight", "m_uniformity", "f_uniformity", "remarks",
+  "inv_male",
+  "inv_female",
+  "mc_male",
+  "mc_female",
+  "cull_male",
+  "cull_female",
+  "trans_in_male",
+  "trans_in_female",
+  "trans_out_male",
+  "trans_out_female",
+  "kitchen_male",
+  "kitchen_female",
+  "condem_male",
+  "condem_female",
+  "avg_body_weight_male",
+  "avg_body_weight_female",
+  "feed_consumption_male",
+  "feed_consumption_female",
+  "male_feedtype_id",
+  "female_feedtype_id",
+  "m_body_weight",
+  "f_body_weight",
+  "m_uniformity",
+  "f_uniformity",
+  "remarks",
 ] as const;
 
 const headers = [
@@ -99,16 +124,18 @@ const headers = [
   "Remarks",
   "Feeds (kg) Male",
   "Feeds (kg) Female",
-  "Grams/Bird (kg/pc) Male",
-  "Grams/Bird (kg/pc) Female",
+  "Grams/Bird (g/pc) Male",
+  "Grams/Bird (g/pc) Female",
   "Body Weight Male",
   "Body Weight Female",
   "Uniformity Male",
-  "Uniformity Female"
+  "Uniformity Female",
 ];
 
 function clean(value: unknown) {
-  return String(value ?? "").replace(/\r?\n/g, " ").replace(/\t/g, " ");
+  return String(value ?? "")
+    .replace(/\r?\n/g, " ")
+    .replace(/\t/g, " ");
 }
 
 function html(value: unknown) {
@@ -120,20 +147,30 @@ function html(value: unknown) {
 }
 
 function filename(value: string) {
-  return value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "breeder-card";
+  return (
+    value
+      .trim()
+      .replace(/[^a-z0-9-_]+/gi, "-")
+      .replace(/^-+|-+$/g, "") || "breeder-card"
+  );
 }
 
 function tabText(rows: BreederExportRow[]) {
   return [
     headers.join("\t"),
-    ...rows.map((row) => [row.date, row.age, ...row.values].map(clean).join("\t")),
+    ...rows.map((row) =>
+      [row.date, row.age, ...row.values].map(clean).join("\t"),
+    ),
   ].join("\n");
 }
 
 function htmlDocument(props: Props) {
   const context = [
-    ["Farm", props.farm], ["Building", props.building], ["Pen", props.pen],
-    ["Placement Date", props.placementDate], ["Placed Birds", props.placedBirds],
+    ["Farm", props.farm],
+    ["Building", props.building],
+    ["Pen", props.pen],
+    ["Placement Date", props.placementDate],
+    ["Placed Birds", props.placedBirds],
     ["Live Birds", props.liveBirds],
   ];
   return `<!doctype html><html><head><meta charset="utf-8" />
@@ -170,7 +207,11 @@ export default function BreederCardExportMenu(props: Props) {
   }
 
   function exportExcel() {
-    download(`${base}.xls`, htmlDocument(props), "application/vnd.ms-excel;charset=utf-8");
+    download(
+      `${base}.xls`,
+      htmlDocument(props),
+      "application/vnd.ms-excel;charset=utf-8",
+    );
     toast("Excel export downloaded.");
   }
 
@@ -194,22 +235,35 @@ export default function BreederCardExportMenu(props: Props) {
       backgroundColor: "#FACC15",
       align: "center" as const,
     }));
-    const body = props.templateRows.map((row) => BREEDER_IMPORT_HEADERS.map((field) => {
-      if (field === "daterec") {
-        return { value: new Date(`${row.daterec}T00:00:00`), type: Date, format: "yyyy-mm-dd" };
-      }
-      if (field === "remarks") return { value: row.remarks ?? "", type: String };
-      const value = row[field];
-      return {
-        value: value ?? undefined,
-        type: Number,
-        format: field.includes("consumption") ? "0.00" : field.includes("weight") ? "0.000" : "0",
-      };
-    }));
+    const body = props.templateRows.map((row) =>
+      BREEDER_IMPORT_HEADERS.map((field) => {
+        if (field === "daterec") {
+          return {
+            value: new Date(`${row.daterec}T00:00:00`),
+            type: Date,
+            format: "yyyy-mm-dd",
+          };
+        }
+        if (field === "remarks")
+          return { value: row.remarks ?? "", type: String };
+        const value = row[field];
+        return {
+          value: value ?? undefined,
+          type: Number,
+          format: field.includes("consumption")
+            ? "0.00"
+            : field.includes("weight")
+              ? "0.000"
+              : "0",
+        };
+      }),
+    );
     const workbook = writeXlsxFile([header, ...body], {
       sheet: "Breeder Daily Performance",
       stickyRowsCount: 1,
-      columns: BREEDER_IMPORT_HEADERS.map((headerName) => ({ width: headerName === "daterec" ? 15 : 22 })),
+      columns: BREEDER_IMPORT_HEADERS.map((headerName) => ({
+        width: headerName === "daterec" ? 15 : 22,
+      })),
     });
     await workbook.toFile(`${base}-import-template.xlsx`);
     toast("Excel import template downloaded.");
@@ -218,7 +272,9 @@ export default function BreederCardExportMenu(props: Props) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm">Export as <ChevronDown className="size-4" /></Button>
+        <Button type="button" variant="outline" size="sm">
+          Export as <ChevronDown className="size-4" />
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onSelect={() => void exportTemplate()}>
@@ -226,18 +282,29 @@ export default function BreederCardExportMenu(props: Props) {
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={props.importing}
-          onSelect={() => window.setTimeout(() => fileInputRef.current?.click(), 0)}
+          onSelect={() =>
+            window.setTimeout(() => fileInputRef.current?.click(), 0)
+          }
         >
-          <Upload className="size-4" /> {props.importing ? "Importing..." : "Import Excel"}
+          <Upload className="size-4" />{" "}
+          {props.importing ? "Importing..." : "Import Excel"}
         </DropdownMenuItem>
         <Tooltip>
           <TooltipTrigger asChild>
-            <DropdownMenuItem onSelect={() => void copyText()}><ClipboardCopy className="size-4" /> Text tab delimited</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void copyText()}>
+              <ClipboardCopy className="size-4" /> Text tab delimited
+            </DropdownMenuItem>
           </TooltipTrigger>
-          <TooltipContent side="left" className="max-w-64">Copies rows as tab-separated text for Excel.</TooltipContent>
+          <TooltipContent side="left" className="max-w-64">
+            Copies rows as tab-separated text for Excel.
+          </TooltipContent>
         </Tooltip>
-        <DropdownMenuItem onSelect={exportExcel}><FileSpreadsheet className="size-4" /> Export as Excel</DropdownMenuItem>
-        <DropdownMenuItem onSelect={exportPdf}><FileText className="size-4" /> Export as PDF</DropdownMenuItem>
+        <DropdownMenuItem onSelect={exportExcel}>
+          <FileSpreadsheet className="size-4" /> Export as Excel
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={exportPdf}>
+          <FileText className="size-4" /> Export as PDF
+        </DropdownMenuItem>
       </DropdownMenuContent>
       <input
         ref={fileInputRef}

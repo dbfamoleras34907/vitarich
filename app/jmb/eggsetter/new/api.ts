@@ -10,10 +10,7 @@ type SetterRefNoViewRow = {
   egg_ref_no: string | null;
 };
 
-export type SetterRefHistory = {
-  ref_no: string | null;
-  qty_set_egg: number | null;
-};
+export { listSetterReferenceHistory, type SetterRefHistory } from "@/lib/data/repositories/eggSetter";
 
 export async function listHatchClassiRefs(
   includeRefs: string[] = [],
@@ -154,15 +151,6 @@ export async function deleteSetterIncubation(id: number) {
   return true;
 }
 
-export async function listSetterReferenceHistory() {
-  const { data, error } = await db
-    .from(TABLE)
-    .select("ref_no, qty_set_egg")
-    .not("ref_no", "is", null);
-
-  if (error) throw error;
-  return (data ?? []) as SetterRefHistory[];
-}
 
 export async function getUserInfo() {
   const {

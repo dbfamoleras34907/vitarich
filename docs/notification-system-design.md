@@ -207,7 +207,7 @@ Scope: active operational document routes registered in `NavFolders`, their chec
 | Egg Transfer Process | `/jmb/eggtransferv2` / `egg_transfer_process` | Stores free-text `farm_source` and a reference | Add and validate direct `farm_id`; retain `farm_source` only as a display snapshot if needed |
 | Egg Hatcher Process | `/jmb/egghatcherv2` / `egg_hatchery_process` | Stores free-text `farm_source` | Add and validate direct `farm_id` |
 | Chick Pullout Process | `/jmb/chickpulloutv2` / `chick_pullout_process` | Stores free-text `farm_source` | Add and validate direct `farm_id` |
-| DOC Classification | `/jmb/docclassification` / `chick_grading_process` | Stores batch/reference values but no direct farm identity | Add and validate the processing Hatchery `farm_id` and carry forward any required origin farm ID |
+| DOC Classification | `/jmb/docclassification` / `chick_grading_process` | Prepared migration persists `farm_id` from `hatch_classification.classi_ref_no = egg_ref_no`; transactional Post/Edit/Void events and dispatcher verification are prepared | Apply the setter-source and dispatcher SQL and verify authenticated transactions/routing; activation remains blocked. See `docs/doc-classification-setter-source.md` |
 
 These modules must not be connected to farm-targeted notification rules until their farm identity is authoritative. A temporary join through a reference may help a migration backfill, but it is not the long-term event contract.
 
@@ -635,6 +635,12 @@ Every event copies the committed `vnm_documents.farm_id` to both `farm_id` and `
 - Excluding the triggering user is configurable; the default still needs confirmation.
 
 ## Acceptance criteria
+
+Terminal Culling (`BREEDER_CLEANUP`) has prepared Save/Edit events with document
+farm routing, but remains activation-blocked until its migration and authenticated
+checks pass. See [Terminal Culling schema and readiness audit](breeder-terminal-culling.md).
+The module uses `tbl_breeder_cleanup.farm_id` with canonical cycle/farm validation;
+its existing physical Delete is not a Void transition.
 
 - A successful posting commits both the document and one outbox event.
 - A failed or rolled-back posting creates no outbox event or inbox delivery.

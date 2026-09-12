@@ -467,7 +467,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 6,
             type: "Module",
-            title: "Clean-Up",
+            title: "Terminal Culling",
             url: "/jmb/cleanup",
             newDocumentUrl: "/jmb/cleanup/new",
           },

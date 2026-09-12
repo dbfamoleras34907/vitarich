@@ -3,6 +3,35 @@ import type { NotificationCatalog } from "./types"
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BREEDER_CLEANUP,
+    ruleActivationReady: false, // Requires SQL deployment and authenticated verification.
+    label: "Terminal Culling",
+    description: "Breeder culling saves and persisted edits.",
+    fmsTypes: ["Breeder"],
+    permissionGroup: "Breeder Masters",
+    permissionTitle: "Terminal Culling/view",
+    baseUrl: "/jmb/cleanup",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_CLEANUP.POSTED, label: "Culling Saved", description: "Successful culling batch and cycle close-out.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_CLEANUP.EDITED, label: "Culling Edited", description: "Successful persisted culling edit.", action: "edited", farmRouting: "document" },
+    ],
+  },
+  {
+    key: NOTIFICATION_MODULE_KEYS.DOC_CLASSIFICATION,
+    ruleActivationReady: false, // Requires SQL deployment and authenticated verification.
+    label: "DOC Classification",
+    description: "Hatchery DOC classification with farm identity resolved from egg classification.",
+    fmsTypes: ["Hatchery"],
+    permissionGroup: "Hatchery Masters",
+    permissionTitle: "DOC Classification/view",
+    baseUrl: "/jmb/docclassification",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.DOC_CLASSIFICATION.POSTED, label: "Classification Posted", description: "Successful classification and inventory posting.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.DOC_CLASSIFICATION.EDITED, label: "Classification Edited", description: "Successful persisted classification edit.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.DOC_CLASSIFICATION.VOIDED, label: "Classification Voided", description: "Successful active-to-void transition.", action: "voided", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.BRD_FC,
     // Enable only after deploying and verifying the farm/transaction SQL.
     ruleActivationReady: false,

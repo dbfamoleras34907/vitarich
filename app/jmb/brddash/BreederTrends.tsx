@@ -110,7 +110,7 @@ export default function BreederTrends({
         <Card>
           <CardHeader>
             <CardTitle>Population and Mortality</CardTitle>
-            <p className="text-sm text-muted-foreground">Male and female closing population with period mortality</p>
+            <p className="text-sm text-muted-foreground">Population with Growing (0.1–25.0) and Laying (25.1–65.0) mortality; ages are Weeks.Day.</p>
           </CardHeader>
           <CardContent className="h-80">
             {loading ? <Skeleton className="h-full w-full" /> : chartRows.length ? (
@@ -124,8 +124,8 @@ export default function BreederTrends({
                   <Legend />
                   <Line yAxisId="population" type="monotone" dataKey="populationMale" name="Male Population" stroke="#2563eb" strokeWidth={2} dot={false} />
                   <Line yAxisId="population" type="monotone" dataKey="populationFemale" name="Female Population" stroke="#db2777" strokeWidth={2} dot={false} />
-                  <Line yAxisId="mortality" type="monotone" dataKey="mortalityMale" name="Male Mortality" stroke="#f97316" strokeWidth={2} dot={false} />
-                  <Line yAxisId="mortality" type="monotone" dataKey="mortalityFemale" name="Female Mortality" stroke="#dc2626" strokeWidth={2} dot={false} />
+                  <Line yAxisId="mortality" type="monotone" dataKey="growingMortality" name="Growing Mortality (0.1–25.0)" stroke="#f97316" strokeWidth={2} dot={false} />
+                  <Line yAxisId="mortality" type="monotone" dataKey="layingMortality" name="Laying Mortality (25.1–65.0)" stroke="#dc2626" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             ) : <div className="grid h-full place-items-center text-sm text-muted-foreground">No trend records found.</div>}

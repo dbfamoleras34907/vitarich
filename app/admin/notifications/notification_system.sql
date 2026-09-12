@@ -433,6 +433,47 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'DOC_CLASSIFICATION' then
+        select exists (
+          select 1 from public.chick_grading_process g
+          join public.hatch_classification h on h.classi_ref_no = btrim(g.egg_ref_no)
+          join public.farms f on f.id = h.farm_id
+          where g.id::text = v_event.entity_id
+            and (to_jsonb(g)->>'farm_id')::bigint = f.id
+            and f.id = v_event.farm_id and f.id = v_event.recipient_farm_id
+            and v_event.entity_type = 'chick_grading_process'
+            and v_event.fms_type = 'Hatchery'
+            and v_event.permission_group = 'Hatchery Masters'
+            and v_event.permission_title = 'DOC Classification/view'
+            and v_event.event_key in ('DOC_CLASSIFICATION_POSTED','DOC_CLASSIFICATION_EDITED','DOC_CLASSIFICATION_VOIDED')
+            and coalesce((to_jsonb(g)->>'notification_revision')::integer, 0) >= v_event.posting_version
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'DOC Classification event does not match its persisted canonical farm.'
+          where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'BREEDER_CLEANUP' then
+        select exists (
+          select 1 from public.tbl_breeder_cleanup c
+          join public.farms f on f.id = c.farm_id
+          join public.tbl_breeder_cycle cycle on cycle.id = c.cycle_id and cycle.farm_id = f.id
+          where c.id::text = v_event.entity_id
+            and c.farm_id = v_event.farm_id and c.farm_id = v_event.recipient_farm_id
+            and v_event.entity_type = 'tbl_breeder_cleanup' and v_event.fms_type = 'Breeder'
+            and v_event.permission_group = 'Breeder Masters'
+            and v_event.permission_title = 'Terminal Culling/view'
+            and v_event.event_key in ('BREEDER_CLEANUP_POSTED','BREEDER_CLEANUP_EDITED')
+            and c.notification_revision >= v_event.posting_version and v_event.posting_version > 0
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox set status = 'invalid', processed_at = now(),
+            processing_started_at = null, last_error = 'Terminal Culling source or canonical farm is invalid.'
+          where id = v_event.id;
+          continue;
+        end if;
       elsif v_event.module_key = 'BRD_FC'
             and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED') then
         select exists (
@@ -612,7 +653,9 @@ begin
               left join public.farms farm on farm.code = recipient_farm.farm_code
               where recipient_farm.users_id = recipient.id
                 and btrim(coalesce(recipient_farm.void::text, '0')) = '1'
-                and coalesce(recipient_farm.farm_id, farm.id) = v_event.recipient_farm_id
+                and case when v_event.module_key in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP')
+                  then recipient_farm.farm_id
+                  else coalesce(recipient_farm.farm_id, farm.id) end = v_event.recipient_farm_id
             )
           )
           and (
@@ -620,7 +663,7 @@ begin
             or recipient.auth_id is distinct from v_event.actor_auth_id
           )
           and (
-            not rule.require_view_permission
+            (not rule.require_view_permission and v_event.module_key not in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP'))
             or coalesce(recipient.user_type, 3) = 1
             or exists (
               select 1
