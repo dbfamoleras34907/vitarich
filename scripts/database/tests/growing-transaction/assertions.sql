@@ -1,7 +1,7 @@
 -- TEST ONLY: run against a new disposable local database, never a live FMS database.
 do $$
 declare
- p jsonb := '{"id": null, "header": {"fc_no": "FC-TEST", "fc_date": "2026-09-09", "farm_id": 61, "animal_qty": 11120}, "lines": [{"age": 0, "insert": {"mort_am": null, "mort_pm": null, "mort_total": 4, "thin_am": null, "thin_pm": null, "row_total": null, "cum_total": null, "feed_kg": null, "feed_bird": null, "feed_guideline": null, "feed_batch_text": null, "water_l": 258.1, "water_bird": null, "body_wt": null, "body_guideline": null, "temp_min": null, "temp_max": null, "hum_min": null, "hum_max": null, "nh3_max": null, "skin_b": null, "skin_a": null, "skin_l": null, "extra": {"feedTypeId": 29}, "is_locked": false}, "update": {"mort_am": null, "mort_pm": null, "mort_total": 4, "thin_am": null, "thin_pm": null, "row_total": null, "cum_total": null, "feed_kg": null, "feed_bird": null, "feed_guideline": null, "feed_batch_text": null, "water_l": 258.1, "water_bird": null, "body_wt": null, "body_guideline": null, "temp_min": null, "temp_max": null, "hum_min": null, "hum_max": null, "nh3_max": null, "skin_b": null, "skin_a": null, "skin_l": null, "extra": {"feedTypeId": 29}, "is_locked": false}, "feed": {"p_feed_kg": 3, "p_feed_bird": 0.27, "p_feed_guideline": null, "p_feed_batch_text": "FD-2609-2709-002 (3)", "p_feed_type_id": 29, "p_allocations": [{"itemId": 1, "itemCode": "FEED", "batchNumber": "FD-2609-2709-002", "warehouseCode": "FEEDS", "allocatedQty": 3, "onHandSnapshot": 100}]}}]}'::jsonb;
+ p jsonb := '{"id": null, "header": {"fc_no": "FC-TEST", "fc_date": "2026-09-09", "farm_id": 61, "animal_qty": 11120, "feed_whse_code": "FEEDS"}, "lines": [{"age": 0, "insert": {"mort_am": null, "mort_pm": null, "mort_total": 4, "thin_am": null, "thin_pm": null, "row_total": null, "cum_total": null, "feed_kg": null, "feed_bird": null, "feed_guideline": null, "feed_batch_text": null, "water_l": 258.1, "water_bird": null, "body_wt": null, "body_guideline": null, "temp_min": null, "temp_max": null, "hum_min": null, "hum_max": null, "nh3_max": null, "skin_b": null, "skin_a": null, "skin_l": null, "extra": {"feedItemId": 1}, "is_locked": false}, "update": {"mort_am": null, "mort_pm": null, "mort_total": 4, "thin_am": null, "thin_pm": null, "row_total": null, "cum_total": null, "feed_kg": null, "feed_bird": null, "feed_guideline": null, "feed_batch_text": null, "water_l": 258.1, "water_bird": null, "body_wt": null, "body_guideline": null, "temp_min": null, "temp_max": null, "hum_min": null, "hum_max": null, "nh3_max": null, "skin_b": null, "skin_a": null, "skin_l": null, "extra": {"feedItemId": 1}, "is_locked": false}, "feed": {"p_feed_kg": 3, "p_feed_bird": 0.27, "p_feed_guideline": null, "p_feed_batch_text": "FD-2609-2709-002 (3)", "p_feed_type_id": 1, "p_allocations": [{"itemId": 1, "itemCode": "FEED", "batchNumber": "FD-2609-2709-002", "warehouseCode": "FEEDS", "allocatedQty": 3, "onHandSnapshot": 100}]}}]}'::jsonb;
  bad jsonb;
  result jsonb;
  request uuid := '22222222-2222-2222-2222-222222222222';
@@ -20,9 +20,26 @@ begin
     or exists(select 1 from notification_outbox) or (select count(*) from inventory_postings)<>1 then
    raise exception 'TEST FAILED: failed insert left partial data';
  end if;
+ bad := jsonb_set(p, '{lines,0,feed,p_allocations,0,warehouseCode}', '"OTHER"');
+ begin
+   perform save_brd_fc_transaction(gen_random_uuid(),bad);
+   raise exception 'TEST FAILED: wrong warehouse succeeded';
+ exception when raise_exception then
+   if sqlerrm not like 'Age 0: Unable to save feed intake:%' then raise; end if;
+ end;
+ bad := jsonb_set(p, '{header,feed_whse_code}', '"OTHER"');
+ begin
+   perform save_brd_fc_transaction(gen_random_uuid(),bad);
+   raise exception 'TEST FAILED: non-farm warehouse succeeded';
+ exception when raise_exception then
+   if sqlerrm not like 'Age 0: Unable to save feed intake:%' then raise; end if;
+ end;
  result := save_brd_fc_transaction(request,p);
+ if (select extra->>'feedItemId' from brd_fc_line where fc_id=(result->>'id')::bigint) is distinct from '1' then
+   raise exception 'TEST FAILED: selected item identity not saved';
+ end if;
  if (select feed_kg from brd_fc_line where fc_id=(result->>'id')::bigint)<>3 then
-   raise exception 'TEST FAILED: valid level-1 type with deeper leaf not saved';
+   raise exception 'TEST FAILED: valid warehouse item not saved';
  end if;
  if (select count(*) from notification_outbox)<>1 then raise exception 'TEST FAILED: missing event'; end if;
  select count(*) into old_postings from inventory_postings;
@@ -52,6 +69,6 @@ begin
     or (select count(*) from notification_outbox)<>1 then
    raise exception 'TEST FAILED: edit rollback changed earlier age/inventory/event';
  end if;
- raise notice 'PASS: invalid feed rollback, level-one hierarchy success, retries deduped, changed-request rejection, later-age edit rollback';
+ raise notice 'PASS: invalid feed rollback, warehouse item success without Feed Group, retries deduped, changed-request rejection, later-age edit rollback';
 end;
 $$;

@@ -6,6 +6,8 @@ export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
 export type GoodsReceiptLine = {
+  drReference: string
+  receiveDate: string
   id: number | string
   itemId: number | null
   itemCode: string
@@ -57,6 +59,8 @@ type GoodsReceiptRow = {
 }
 
 type GoodsReceiptItemRow = {
+  dr_reference: string | null
+  receive_date: string | null
   id: number
   goods_reciept_id: number
   item_id: number | null
@@ -98,6 +102,8 @@ const isDuplicateGoodsReceiptNumberError = (error: DbErrorLike | null | undefine
 
 const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   id: row.id,
+  drReference: row.dr_reference ?? '',
+  receiveDate: row.receive_date ?? '',
   itemId: row.item_id,
   itemCode: row.item_code,
   description: row.description ?? '',
@@ -291,9 +297,10 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
 
   const headerPayload = {
     gr_no: receipt.grNo,
-    dr_reference: receipt.drReference.trim(),
+    // Compatibility summary for existing header consumers; item rows own these values.
+    dr_reference: receipt.lines[0]?.drReference.trim() ?? '',
     vendor: receipt.vendor,
-    receive_date: receipt.receiveDate,
+    receive_date: receipt.lines.find(line => line.receiveDate)?.receiveDate || receipt.receiveDate,
     fms_type: receipt.fmsType || null,
     farm_id: receipt.farmId,
     farm_code: receipt.farmCode || null,
@@ -423,6 +430,8 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
     const itemPayload = {
       goods_reciept_id: header.id,
       line_no: index + 1,
+      dr_reference: line.drReference.trim() || null,
+      receive_date: line.receiveDate || null,
       item_id: line.itemId,
       item_code: line.itemCode,
       description: line.description || null,

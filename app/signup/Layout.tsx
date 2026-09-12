@@ -4,19 +4,17 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation";
 import { LoaderIcon } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
-import SignUpStage from "./SignUpStage";
-import { db } from "@/lib/Supabase/supabaseClient";
+import { registerAccount } from "@/lib/data/repositories/registration";
 
 export function Layout({
     className,
     ...props
 }: React.ComponentProps<"form">) {
 
-    const router = useRouter()
+    const [submitted, setSubmitted] = useState(false)
 
     const [form, setForm] = useState({
         email: "",
@@ -27,10 +25,10 @@ export function Layout({
     const [loading, setloading] = useState(false)
 
     const account = [
-        { required: true, key: "email", label: "Email", type: "text" },
+        { required: true, key: "email", label: "Email", type: "email" },
         { required: true, key: "password", label: "Password", type: "password" },
-        { required: true, key: "re_password", label: "Re-Password", type: "password" },
-    ]
+        { required: true, key: "re_password", label: "Confirm Password", type: "password" },
+    ] as const
 
     const handleChange = (key: string, value: string) => {
         setForm(prev => ({
@@ -70,6 +68,7 @@ export function Layout({
 
     async function handleCreateUser(e: React.FormEvent) {
         e.preventDefault()
+        if (loading) return
         setloading(true)
 
         const { email, password, re_password } = form
@@ -102,43 +101,28 @@ export function Layout({
 
         try {
 
-            const res = await fetch('/api/admin/createUser', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            })
-
-            const data = await res.json()
-
-            if (!res.ok) {
-                toast.error(data.error || 'Failed to create user.')
-                setloading(false)
-                return
-            }
-
-            /**
-             * AUTO LOGIN
-             */
-
-            const { error } = await db.auth.signInWithPassword({
-                email,
-                password,
-            });
-
-            if (error) {
-                toast.error(error.message)
-                setloading(false)
-            } else {
-                router.push(`/signup_update`)
-            }
+            await registerAccount({ email, password })
+            setForm({ email: "", password: "", re_password: "" })
+            setSubmitted(true)
 
         } catch (err) {
-            console.error(err)
-            toast.error('Something went wrong.')
+            toast.error(
+                err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                    ? err.message
+                    : "Unable to register your account. Please try again."
+            )
         } finally {
             setloading(false)
         }
     }
+
+    if (submitted) return (
+        <div className="grid gap-3 rounded-md border bg-card p-6 text-center">
+            <h1 className="text-xl font-semibold">Awaiting activation</h1>
+            <p className="text-sm text-muted-foreground">Your account has been registered. Please wait for administrator approval. We will email you when your registration is activated or rejected.</p>
+            <a href="/login" className="text-sm font-semibold text-primary">Back to Login</a>
+        </div>
+    )
 
     return (
         <form
@@ -164,7 +148,6 @@ export function Layout({
 
             <div className="grid gap-4 bg-white p-4 rounded-md border">
 
-                <SignUpStage currentStage={1} />
 
                 {account.map((e, i) => (
                     <div key={i} className="grid gap-2">
@@ -176,7 +159,7 @@ export function Layout({
                         <Input
                             required={e.required}
                             type={e.type}
-                            value={(form as any)[e.key] || ''}
+                            value={form[e.key] || ''}
                             onChange={(v) =>
                                 handleChange(e.key, v.target.value)
                             }
@@ -185,7 +168,7 @@ export function Layout({
                         {e.key === "password" && (
                             <p className="text-xs text-muted-foreground">
                                 Password must be at least 8 characters and include
-                                uppercase, lowercase, number, and special character.
+                                uppercase, lowercase, and a number.
                             </p>
                         )}
 
@@ -199,7 +182,7 @@ export function Layout({
                 >
                     {loading
                         ? <LoaderIcon className="animate-spin" />
-                        : "Next"}
+                        : "Sign Up"}
                 </Button>
 
             </div>

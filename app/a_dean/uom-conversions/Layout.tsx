@@ -111,6 +111,7 @@ export default function UomConversionsLayout() {
       </div>
       <div className="mx-4">
         <DynamicTable
+          actionsFirst
           loading={loading}
           columns={columns}
           data={rows}

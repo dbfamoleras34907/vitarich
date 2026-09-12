@@ -1,4 +1,4 @@
-import { USER_TYPE, requireAdminActor } from "@/lib/auth/adminAccess"
+import { USER_TYPE, requireAdminActor, adminAccessError } from "@/lib/auth/adminAccess"
 import {
   getNotificationActorByToken,
   hasNotificationSetupPermission,
@@ -34,8 +34,5 @@ export async function requireNotificationRuleActor(request: Request, action: "vi
 }
 
 export function notificationAccessError(error: unknown) {
-  const message = error instanceof Error ? error.message : ""
-  if (message === "UNAUTHENTICATED") return { status: 401, message: "Authentication required." }
-  if (message === "FORBIDDEN") return { status: 403, message: "You are not allowed to perform this action." }
-  return { status: 500, message: "Internal Server Error" }
+  return adminAccessError(error)
 }

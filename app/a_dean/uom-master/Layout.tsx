@@ -102,6 +102,7 @@ export default function UomMasterLayout() {
       </div>
       <div className="mx-4">
         <DynamicTable
+          actionsFirst
           loading={loading}
           columns={columns}
           data={rows}

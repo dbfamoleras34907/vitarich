@@ -244,78 +244,78 @@ export default function NewProjectTask({
               }
             />
           </div>
-
-          {/* TASK TYPE */}
-          <div>
-            <SearchableCombobox
-              label="Task Type"
-              required
-              items={taskTypes}
-              value={formValues.task_type}
-              onValueChange={val =>
-                handleChange(
-                  'task_type',
-                  val
-                )
-              }
-            />
-          </div>
-
-          {/* PARENT TASK */}
-          <div>
-            <SearchableCombobox
-              label="Parent Task"
-              items={tasksList}
-              value={formValues.parent_task}
-              onValueChange={val =>
-                handleChange(
-                  'parent_task',
-                  val
-                )
-              }
-            />
-          </div>
 {/*  */}
-          {/* COLOR */}
-          <div>
-            <Label className='mb-2'>Color</Label>
-            <Input
-              type="color"
-              value={formValues.color}
-              onChange={e =>
-                handleChange(
-                  'color',
-                  e.target.value
-                )
-              }
-            />
-          </div>
-
-          {/* ISSUE */}
-          <div className="col-span-2">
-            <Label>Issue</Label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm"
-              value={formValues.issue}
-              onChange={e =>
-                handleChange(
-                  'issue',
-                  e.target.value
-                )
-              }
-            />
-          </div>
-
+        {/* TASK TYPE */}
+        <div>
+          <SearchableCombobox
+            label="Task Type"
+            required
+            items={taskTypes}
+            value={formValues.task_type}
+            onValueChange={val =>
+              handleChange(
+                'task_type',
+                val
+              )
+            }
+          />
         </div>
 
-        <div className="flex justify-end p-4">
-          <Button
-            type="submit"
-            disabled={isLoading}
-          >
-            Save Task
-          </Button>
+        {/* PARENT TASK */}
+        <div>
+          <SearchableCombobox
+            label="Parent Task"
+            items={tasksList}
+            value={formValues.parent_task}
+            onValueChange={val =>
+              handleChange(
+                'parent_task',
+                val
+              )
+            }
+          />
         </div>
+{/*  */}
+        {/* COLOR */}
+        <div>
+          <Label className='mb-2'>Color</Label>
+          <Input
+            type="color"
+            value={formValues.color}
+            onChange={e =>
+              handleChange(
+                'color',
+                e.target.value
+              )
+            }
+          />
+        </div>
+
+        {/* ISSUE */}
+        <div className="col-span-2">
+          <Label>Issue</Label>
+          <textarea
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            value={formValues.issue}
+            onChange={e =>
+              handleChange(
+                'issue',
+                e.target.value
+              )
+            }
+          />
+        </div>
+
+      </div>
+
+      <div className="flex justify-end p-4">
+        <Button
+          type="submit"
+          disabled={isLoading}
+        >
+          Save Task
+        </Button>
+      </div>
     </form>
   )
 }

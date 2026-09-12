@@ -384,7 +384,7 @@ export default function Layout() {
         loading={loading}
         columns={columns}
         data={rows}
-        pageSizeOptions={[25, 50, 100]}
+        pageSizeOptions={[25, 50, 100, 'Full']}
         rowKey="id"
         emptyMessage="Select warehouses and generate the report."
         searchPlaceholder="Search warehouse movements..."

@@ -169,6 +169,21 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const navtype = ["All", "Settings", "Navigation"]
   const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
 
+  useEffect(() => {
+    if (!farmModalOpen) return
+
+    const closeFarmModal = (event: KeyboardEvent) => {
+      if (event.isComposing || !["Enter", "Escape", " "].includes(event.key)) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      setFarmModalOpen(false)
+    }
+
+    document.addEventListener("keydown", closeFarmModal, true)
+    return () => document.removeEventListener("keydown", closeFarmModal, true)
+  }, [farmModalOpen])
+
   const rawPermissions = getValue("UserPermission")
   const rawSession = getValue("UserInfoAuthSession")
   const accessProfile = Array.isArray(rawSession) ? rawSession[0] : null
@@ -589,7 +604,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
 
           {/* Farm selector component */}
           <div className="max-h-100 overflow-y-auto">
-            <GlobalFarmUserSettings />
+            <GlobalFarmUserSettings onFarmSelected={() => setFarmModalOpen(false)} />
           </div>
         </div>
         <Button

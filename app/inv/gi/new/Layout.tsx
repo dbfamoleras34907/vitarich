@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
+import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -70,6 +71,7 @@ const QUANTITY_LOCALE = 'en-PH'
 const QUANTITY_FORMAT_OPTIONS: Intl.NumberFormatOptions = { maximumFractionDigits: 6 }
 
 type DeliveryPlacementBatch = GoodsIssueOnHandBatch & {
+  harvestEmptied?: boolean
   itemName?: string
 }
 
@@ -85,6 +87,7 @@ const newLine = (): GoodsIssueLine => {
     id,
     allocationGroupKey: id,
     tsDrNo: '',
+    deliveredDate: today(),
     haulerName: '',
     plateNumber: '',
     destination: '',
@@ -352,6 +355,8 @@ export default function NewGoodsIssue({
   const cannotInsert = usePermission(`${permissionPath}/insert`)
   const cannotEdit = usePermission(`${permissionPath}/edit`)
   const [issue, setIssue] = useState<GoodsIssue | null>(null)
+  const issueSnapshotRef = useRef(issue)
+  issueSnapshotRef.current = issue
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -389,19 +394,22 @@ export default function NewGoodsIssue({
   const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
   const [eligibleDeliveryBuildingCodes, setEligibleDeliveryBuildingCodes] = useState<Set<string> | null>(null)
   const [noAvailableDeliveryBuildings, setNoAvailableDeliveryBuildings] = useState(false)
+  const [deliverySettingsError, setDeliverySettingsError] = useState('')
+  const [deliverySettingsRetry, setDeliverySettingsRetry] = useState(0)
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [pastingDelivery, setPastingDelivery] = useState(false)
   const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
   const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
   const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
-  const getAllocationGroupKey = (line: GoodsIssueLine) => triggeredBy === 'BR-DR'
+  const getAllocationGroupKey = useCallback((line: GoodsIssueLine) => triggeredBy === 'BR-DR'
     ? line.allocationGroupKey || String(line.id)
-    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`, [triggeredBy])
   const isSameAllocationGroup = (left: GoodsIssueLine, right: GoodsIssueLine) =>
     getAllocationGroupKey(left) === getAllocationGroupKey(right)
   const isCleanup = triggeredBy === 'BR-CU'
@@ -552,6 +560,7 @@ export default function NewGoodsIssue({
     let cancelled = false
 
     async function loadDeliverySettings() {
+      setDeliverySettingsError('')
       if (!isBroilerCycleIssue || !issue?.farmId) {
         setDeliveryBatchAutoSelection(false)
         setEligibleDeliveryBuildingCodes(null)
@@ -585,6 +594,7 @@ export default function NewGoodsIssue({
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
           targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
+          allowHarvestEmptied: triggeredBy === 'BR-CU',
         })
         if (cancelled) return
 
@@ -623,8 +633,12 @@ export default function NewGoodsIssue({
           }
         })
       } catch (error) {
-        console.error(error)
         if (!cancelled) {
+          const message = error instanceof Error ? error.message
+            : error && typeof error === 'object' && 'message' in error ? String(error.message)
+              : 'Unable to load eligible buildings. Please retry.'
+          setDeliverySettingsError(message)
+          setNoAvailableDeliveryBuildings(false)
           setDeliveryBatchAutoSelection(false)
           setEligibleDeliveryBuildingCodes(new Set())
           initializedDeliveryFarmRef.current = ''
@@ -647,6 +661,7 @@ export default function NewGoodsIssue({
     loadingReferences,
     triggeredBy,
     isBroilerCycleIssue,
+    deliverySettingsRetry,
   ])
 
   const lineWarehouseSignature = useMemo(
@@ -904,6 +919,7 @@ export default function NewGoodsIssue({
                   buildingWarehouseId: result.info.buildingWarehouseId,
                   buildingCode: result.info.buildingCode,
                   cycleNumber: result.info.cycleNumber,
+                  allowHarvestEmptied: isCleanup,
                 })
               : []
             return { lookupKey: result.lookupKey, placementBatches }
@@ -1039,8 +1055,14 @@ export default function NewGoodsIssue({
   const lineHasEnteredItem = (line: GoodsIssueLine) =>
     Boolean(line.itemCode.trim() || line.description.trim() || line.itemId)
 
+  const canCleanupAtZero = (line: GoodsIssueLine) => isCleanup &&
+    Boolean(linePlacementBatches[String(line.id)]?.some(batch => batch.harvestEmptied &&
+      batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber))
+
   const lineHasInvalidQuantity = (line: GoodsIssueLine) =>
-    !line.baseUom || !line.altUom || line.altQty <= 0 || line.baseQty <= 0
+    !line.baseUom || !line.altUom || !Number.isFinite(line.altQty) || !Number.isFinite(line.baseQty) ||
+    (!(canCleanupAtZero(line) && line.altQty === 0 && line.baseQty === 0) &&
+      (line.altQty <= 0 || line.baseQty <= 0))
 
   const getGroupUoms = useCallback((groupCode: string) => {
     const seen = new Set<string>()
@@ -1204,7 +1226,7 @@ export default function NewGoodsIssue({
       const matchingBatches = selectedItemCode
         ? placementBatches.filter(batch => batch.itemCode.trim().toUpperCase() === selectedItemCode)
         : placementBatches
-      return matchingBatches.filter(batch => batch.onHandQty > 0 || batch.batchNumber === line.batchNumber)
+      return matchingBatches.filter(batch => batch.onHandQty > 0 || (isCleanup && 'harvestEmptied' in batch && batch.harvestEmptied) || batch.batchNumber === line.batchNumber)
     }
 
     return batchOptions[batchOptionKey(line)] ?? []
@@ -1267,7 +1289,7 @@ export default function NewGoodsIssue({
           onHandQty: remainingOnHandQty,
         }
       })
-      .filter(batch => batch.onHandQty > 0 || batch.batchNumber === line.batchNumber)
+      .filter(batch => batch.onHandQty > 0 || (isCleanup && 'harvestEmptied' in batch && batch.harvestEmptied) || batch.batchNumber === line.batchNumber)
 
   const lineHasPlacementBatchOptions = (line: GoodsIssueLine) =>
     usesLineWarehouse && (linePlacementBatches[String(line.id)]?.length ?? 0) > 0
@@ -1314,7 +1336,7 @@ export default function NewGoodsIssue({
     const availableAltQty = baseQtyPerAltQty > 0 ? Number(batch?.onHandQty || 0) / baseQtyPerAltQty : 0
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
-    if (altQty <= 0) {
+    if (altQty <= 0 && !(isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied)) {
       toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
     }
@@ -1458,7 +1480,38 @@ export default function NewGoodsIssue({
 
   const handleTransferQuantityChange = (line: GoodsIssueLine, requestedAltQty: number) => {
     if (!deliveryBatchAutoSelection || issue?.status !== 'Draft') return
+    if (requestedAltQty === 0 && canCleanupAtZero(line)) return
     autoSelectDeliveryBatches({ ...line, requestedAltQty })
+  }
+
+  const pasteDeliveryRows = async (rows: DeliveryPasteRow[], startRow: number) => {
+    if (!issue || !canEditDraft || saving || triggeredBy !== 'BR-DR') return
+    if (!issue.farmId) throw new Error('Select a farm before pasting delivery rows.')
+    const snapshot = issue
+    setPastingDelivery(true)
+    try {
+      const placementLookups = new Map<string, Promise<DeliveryPlacementBatch[]>>()
+      const lines = await prepareDeliveryPaste({
+        lines: issue.lines, rows, startRow, newLine, getAllocationGroupKey,
+        warehouses: deliveryFarmWarehouses, items, getDefaultAltUom, getGroupUoms, calculateBaseQty,
+        getBatchRuleId: line => getBatchRuleForLine(line)?.id ?? null,
+        getPlacementBatches: warehouse => {
+          const code = warehouse.whse_code ?? ''
+          let lookup = placementLookups.get(code)
+          if (!lookup) {
+            lookup = (async () => {
+              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
+              if (!info) throw new Error('The building has no eligible flock card.')
+              return getDeliveryFlockCardPlacementBatches({ flockCardId: info.id, farmId: info.farmId, buildingWarehouseId: info.buildingWarehouseId, buildingCode: info.buildingCode, cycleNumber: info.cycleNumber })
+            })()
+            placementLookups.set(code, lookup)
+          }
+          return lookup
+        },
+      })
+      if (issueSnapshotRef.current !== snapshot) throw new Error('The document changed while paste was loading. Paste again into the current table.')
+      setIssue(current => current === snapshot ? { ...current, lines } : current)
+    } finally { setPastingDelivery(false) }
   }
 
   useEffect(() => {
@@ -1473,7 +1526,7 @@ export default function NewGoodsIssue({
 
       const options = linePlacementBatches[String(line.id)]
         ?.filter(option => option.itemCode.trim().toUpperCase() === line.itemCode.trim().toUpperCase())
-        .filter(option => option.onHandQty > 0) ?? []
+        .filter(option => option.onHandQty > 0 || option.harvestEmptied) ?? []
       if (options.length === 0 || loadingLinePlacementBatches[String(line.id)]) return
 
       const selectedItem = getSelectedItem(line)
@@ -1484,6 +1537,14 @@ export default function NewGoodsIssue({
 
       const fullBaseQty = options.reduce((total, option) => total + Number(option.onHandQty || 0), 0)
       const requestedAltQty = fullBaseQty / baseQtyPerAltQty
+      if (requestedAltQty === 0 && options.every(option => option.harvestEmptied)) {
+        const batch = options[0]
+        setIssue(current => current ? { ...current, lines: current.lines.map(candidate =>
+          candidate.id === line.id ? { ...candidate, batchNumber: batch.batchNumber,
+            altUom, baseUom, altQty: 0, baseQty: 0, requestedAltQty: 0, onHandQty: 0 } : candidate),
+        } : current)
+        return
+      }
       if (requestedAltQty <= 0) return
 
       const signature = options.map(option => `${option.itemCode}:${option.batchNumber}:${option.onHandQty}`).join('|')
@@ -1579,8 +1640,15 @@ export default function NewGoodsIssue({
 
   const handleSave = async (targetStatus: GoodsIssueStatus) => {
     if (!issue) return
+    if (pastingDelivery) return
+    if (deliverySettingsError) {
+      toast.error(deliverySettingsError)
+      return
+    }
 
     const posting = targetStatus === 'Posted'
+    // Harvest drafts may be saved before stock and batch allocations are ready.
+    const requiresStockValidation = posting || triggeredBy !== 'BR-DR'
     if (!canEditDraft) {
       toast('Only draft documents can be edited or posted.')
       return
@@ -1623,6 +1691,12 @@ export default function NewGoodsIssue({
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
     if (triggeredBy === 'BR-DR') {
+      try {
+        linesToSave.forEach(line => deliveryDateValue(line.deliveredDate ?? ''))
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Delivered Date is required for every row.')
+        return
+      }
       const missingTransportField = linesToSave
         .map(line => {
           if (!line.haulerName?.trim()) return { line, field: 'Hauler Name' }
@@ -1686,7 +1760,9 @@ export default function NewGoodsIssue({
       toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
       return
     }
-    const overOnHandLine = linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
+    const overOnHandLine = requiresStockValidation
+      ? linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
+      : undefined
     if (overOnHandLine) {
       toast(`Line ${getDocumentLineNumber(overOnHandLine)}, batch ${overOnHandLine.batchNumber}: ${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the remaining on-hand quantity.`)
       return
@@ -1703,12 +1779,12 @@ export default function NewGoodsIssue({
       (itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue) &&
       !line.batchNumber.trim(),
     )
-    if (missingBatchLine) {
+    if (requiresStockValidation && missingBatchLine) {
       toast(`Line ${getDocumentLineNumber(missingBatchLine)}: Please select an on-hand batch for ${missingBatchLine.itemCode}.`)
       return
     }
 
-    if (usesLineWarehouse) {
+    if (requiresStockValidation && usesLineWarehouse) {
       const allocationGroups = new Map<string, GoodsIssueLine[]>()
       linesToSave
         .filter(line => itemNeedsBatch(line) || lineHasPlacementBatchOptions(line) || isBroilerCycleIssue)
@@ -1744,7 +1820,7 @@ export default function NewGoodsIssue({
 
     setSaving(true)
     try {
-      if (linesToSave.length > 0) {
+      if (requiresStockValidation && linesToSave.length > 0) {
         const [shortage] = await getGoodsIssueOnHandShortages(linesToSave)
         if (shortage) {
           const shortageLine = linesToSave.find(line =>
@@ -1770,6 +1846,7 @@ export default function NewGoodsIssue({
 
       const savedIssue = await saveGoodsIssue({
         ...issueToSave,
+        issueDate: triggeredBy === 'BR-DR' ? today() : issueToSave.issueDate,
         triggeredBy,
         status: targetStatus,
         lines: linesToSave,
@@ -1822,7 +1899,7 @@ export default function NewGoodsIssue({
     : false
   const activeDocumentIsPosted = issue.status === 'Posted'
 
-  const canSave = !saving && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
+  const canSave = !saving && !pastingDelivery && !deliverySettingsError && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
   const renderFlockCardInformation = (
     info: GoodsIssueFlockCardInfo | null,
     loading: boolean,
@@ -1904,7 +1981,8 @@ export default function NewGoodsIssue({
           <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
           <Input
             type="date"
-            value={issue.issueDate}
+            value={triggeredBy === 'BR-DR' && issue.status === 'Draft' ? today() : issue.issueDate}
+            disabled={triggeredBy === 'BR-DR'}
             onChange={event => setIssue(current => current ? { ...current, issueDate: event.target.value } : current)}
             className="pl-9"
           />
@@ -2004,16 +2082,24 @@ export default function NewGoodsIssue({
               </TabsList>
             )}
             <TabsContent value="lines" className="mt-0">
+          {deliverySettingsError && (
+            <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <span>{deliverySettingsError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setDeliverySettingsRetry(value => value + 1)}>Retry</Button>
+            </div>
+          )}
           <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h2 className="text-base font-semibold">Issue Lines</h2>
-                {usesLineWarehouse && showFlockCardInformation && (
+                {usesLineWarehouse && showFlockCardInformation && !deliverySettingsError && (
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
-                      ? `No buildings meet the ${isCleanup ? 'Clean-up' : 'Delivery'} age and available-batch requirements.`
+                      ? isCleanup
+                        ? 'No buildings are eligible for Clean Up. Buildings with stock must meet the cleanup age; zero-stock buildings qualify when a posted harvest emptied the active cycle.'
+                        : 'No buildings meet the Delivery age and available-batch requirements.'
                       : isCleanup
-                        ? 'Eligible buildings load their full placement-batch balance by default. Clean up Quantity can be reduced, and Variance shows the remaining difference.'
+                        ? 'Eligible buildings load their full placement-batch balance. Zero quantity is allowed when a posted harvest emptied the cycle. Variance shows any remaining difference.'
                         : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
                   </span>
                 )}
@@ -2031,6 +2117,8 @@ export default function NewGoodsIssue({
                 loadingLinePlacementBatches={loadingLinePlacementBatches}
                 activeDocumentIsPosted={activeDocumentIsPosted}
                 lockCycleCloseout={isCleanup}
+                allowBuildingSelection={isCleanup && canSave}
+                canCleanupAtZero={canCleanupAtZero}
                 allowLockedRowDelete={allowLockedRowDelete}
                 showLineRemarks={showLineRemarks}
                 quantityLabel={lineQuantityLabel}
@@ -2044,6 +2132,8 @@ export default function NewGoodsIssue({
                 lockedQuantityEditable={lockedLineQuantityEditable}
                 allowDuplicateBuildings={triggeredBy === 'BR-DR'}
                 showTransportFields={triggeredBy === 'BR-DR'}
+                onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
+                enableCopyDown={triggeredBy === 'BR-DR' && canSave}
                 getAllocationGroupKey={getAllocationGroupKey}
                 getItemsForLine={getItemsForLine}
                 itemNeedsBatch={itemNeedsBatch}
@@ -2291,7 +2381,7 @@ export default function NewGoodsIssue({
             </div>
             )}
 
-            {!isCleanup && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
+            {(!isCleanup || canEditDraft) && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
               <Input
                 type="number"
                 min="1"

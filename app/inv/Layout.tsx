@@ -63,6 +63,7 @@ export default function Layout() {
       </div>
       <div className="px-4 mt-2">
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]} // show all records
           columns={tableColumnsx.map((col) => ({

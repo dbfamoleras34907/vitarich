@@ -1,4 +1,5 @@
 export type GoodsReceiptLineImportRow = {
+  rowNumber: number
   itemCode: string
   altQty: string
   altUom: string
@@ -9,7 +10,7 @@ export type GoodsReceiptLineImportRow = {
   batchNumber: string
 }
 
-const HEADERS = [
+export const GOODS_RECEIPT_LINE_HEADERS = [
   'Item Code',
   'Alt Qty',
   'Alt UoM',
@@ -19,6 +20,47 @@ const HEADERS = [
   'Expiry Date',
   'Batch Number',
 ] as const
+
+const HEADERS = GOODS_RECEIPT_LINE_HEADERS
+
+// Excel quotes cells containing tabs, newlines, or double quotes.
+export function parseGoodsReceiptLinesText(text: string) {
+  const data: string[][] = []
+  let row: string[] = []
+  let value = ''
+  let quoted = false
+  const input = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index]
+    if (char === '"' && quoted && input[index + 1] === '"') {
+      value += '"'
+      index += 1
+    } else if (char === '"' && (quoted || value === '')) {
+      quoted = !quoted
+    } else if (!quoted && (char === '\t' || char === '\n')) {
+      row.push(value)
+      value = ''
+      if (char === '\n') {
+        data.push(row)
+        row = []
+      }
+    } else {
+      value += char
+    }
+  }
+  if (quoted) return { rows: [], issues: ['Pasted text contains an unclosed quoted cell.'] }
+  row.push(value)
+  data.push(row)
+  while (data.length && data[0].every(cell => !cell.trim())) data.shift()
+  while (data.length && data[data.length - 1].every(cell => !cell.trim())) data.pop()
+  if (!data.length) return { rows: [], issues: ['Paste at least one item line.'] }
+
+  const hasHeaders = data[0].some(cell => normalizeHeader(cell) === 'item code')
+  if (!hasHeaders && data.some(cells => cells.length > HEADERS.length)) {
+    return { rows: [], issues: [`Pasted rows must follow the ${HEADERS.length} template columns. Include template headers when copying additional columns.`] }
+  }
+  return parseGoodsReceiptLinesImport(hasHeaders ? data : [[...HEADERS], ...data], hasHeaders ? 2 : 1)
+}
 
 const normalizeHeader = (value: unknown) => String(value ?? '').trim().toLowerCase()
 const textValue = (value: unknown) => String(value ?? '').trim()
@@ -48,7 +90,7 @@ const isValidDate = (value: string) => {
     date.getUTCDate() === Number(match[3])
 }
 
-export function parseGoodsReceiptLinesImport(data: unknown[][]) {
+export function parseGoodsReceiptLinesImport(data: unknown[][], firstDataRow = 2) {
   const issues: string[] = []
   const headerRow = data[0] ?? []
   const headerIndexes = new Map(
@@ -69,9 +111,10 @@ export function parseGoodsReceiptLinesImport(data: unknown[][]) {
   const rows = data.slice(1).flatMap((row, index) => {
     if (row.every(value => textValue(value) === '')) return []
 
-    const rowNumber = index + 2
+    const rowNumber = index + firstDataRow
     const quantityText = textValue(cell(row, 'Alt Qty')).replace(/,/g, '')
     const parsed: GoodsReceiptLineImportRow = {
+      rowNumber,
       itemCode: textValue(cell(row, 'Item Code')),
       altQty: quantityText,
       altUom: textValue(cell(row, 'Alt UoM')),

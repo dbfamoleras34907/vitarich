@@ -1,3 +1,4 @@
+import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 import { db } from "@/lib/Supabase/supabaseClient"
 import type {
   NotificationInboxItem,
@@ -10,7 +11,8 @@ import type {
 } from "@/lib/notifications/types"
 
 async function authHeaders() {
-  const { data } = await db.auth.getSession()
+  const { data, error } = await db.auth.getSession()
+  if (error) throw error
   const token = data.session?.access_token
   if (!token) throw new Error("Authentication required.")
   return { Authorization: `Bearer ${token}` }
@@ -22,8 +24,8 @@ async function request<T>(url: string, init?: RequestInit) {
   headers.set("Authorization", authorization.Authorization)
   if (init?.body) headers.set("Content-Type", "application/json")
 
-  const response = await fetch(url, { ...init, headers })
-  const result = await response.json() as T & { error?: string }
+  const response = await fetchWithInternetErrorNotice(url, { ...init, headers })
+  const result = await readJsonResponse<T & { error?: string }>(response)
   if (!response.ok) throw new Error(result.error || "Notification request failed.")
   return result
 }
@@ -88,6 +90,7 @@ export async function processPendingNotificationsRequest(options?: { retryFailed
   return request<{
     processed: number
     emails: { claimed: number; sent: number; failed: number; skipped: number; requeued: number }
+    accountEmails: { claimed: number; sent: number; failed: number }
   }>("/api/notifications/process", {
     method: "POST",
     ...(options?.retryFailedEmails ? { body: JSON.stringify({ retryFailedEmails: true }) } : {}),

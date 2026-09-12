@@ -2,6 +2,8 @@
 
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, Trash2 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useTableCopyDown } from '@/hooks/useTableCopyDown'
+import { TableCopyDownCell } from './TableCopyDownCell'
 
 export type ExcelCellChange<T> = {
   row: T
@@ -125,6 +127,19 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
     signature: string
     widths: Record<string, number>
   }>({ signature: '', widths: {} })
+
+  const copyDown = useTableCopyDown({
+    rows,
+    columns,
+    disabled: loading,
+    isEditable: isColumnEditable,
+    getValue: (column, row) => row[column.key as keyof T],
+    onCopy: (column, targets, value) => onCellsChange(targets.map(row => ({
+      row,
+      columnKey: String(column.key),
+      value: column.parseValue ? column.parseValue(String(value ?? ''), row) : value,
+    }))),
+  })
 
   const columnSignature = columns
     .map(column => `${String(column.key)}:${column.width ?? ''}`)
@@ -527,14 +542,18 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                     const editorType = getEditorType(column)
 
                     return (
-                      <td
+                      <TableCopyDownCell
                         key={String(column.key)}
+                        canCopyDown={!loading && editable && !editing && rowIndex < rows.length - 1}
+                        onCopyDown={() => copyDown.copyToBottom(rowIndex, columnIndex)}
                         data-excel-cell={`${rowIndex}:${columnIndex}`}
+                        data-copy-down-row={rowIndex}
+                        data-copy-down-column={columnIndex}
                         role="gridcell"
                         aria-selected={selected}
                         tabIndex={active ? 0 : -1}
                         onPointerDown={event => {
-                          if (editing) return
+                          if (editing || event.button !== 0) return
                           event.preventDefault()
                           dragSelectingRef.current = true
                           setActiveCell(position)
@@ -545,7 +564,7 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                           if (dragSelectingRef.current) setActiveCell(position)
                         }}
                         onDoubleClick={() => beginEditing(position)}
-                        className={`relative h-7 overflow-hidden border-b border-r p-0 align-middle outline-none ${selected ? 'bg-primary/10' : rowIndex % 2 === 0 ? 'bg-card' : 'bg-secondary/25'} ${active ? 'ring-2 ring-inset ring-primary' : ''} ${frozen ? 'sticky z-10 shadow-[1px_0_0_var(--border)]' : ''}`}
+                        className={`relative h-7 overflow-hidden border-b border-r p-0 align-middle outline-none ${copyDown.isCopyTarget(rowIndex, columnIndex) && editable ? 'bg-primary/20 ring-1 ring-inset ring-primary/50' : selected ? 'bg-primary/10' : rowIndex % 2 === 0 ? 'bg-card' : 'bg-secondary/25'} ${active ? 'ring-2 ring-inset ring-primary' : ''} ${frozen ? 'sticky z-10 shadow-[1px_0_0_var(--border)]' : ''}`}
                         style={frozen ? { left: getFrozenLeft(columnIndex) } : undefined}
                       >
                         {editing ? (
@@ -606,7 +625,17 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                             {renderCell(row, column)}
                           </div>
                         )}
-                      </td>
+                        {active && editable && !editing && rowIndex < rows.length - 1 && (
+                          <button
+                            type="button"
+                            aria-label="Drag down to copy this cell"
+                            title="Drag down to copy this cell"
+                            tabIndex={-1}
+                            className="absolute bottom-0 right-0 z-20 size-2 cursor-crosshair touch-none border border-background bg-primary"
+                            {...copyDown.getHandleProps(rowIndex, columnIndex)}
+                          />
+                        )}
+                      </TableCopyDownCell>
                     )
                   })}
                 </tr>

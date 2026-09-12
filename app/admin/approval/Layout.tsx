@@ -587,6 +587,7 @@ export default function Layout({ mode = 'inbox' }: { mode?: ApprovalLayoutMode }
             </div>
 
             <DynamicTable
+              actionsFirst
               title="Approval Requests"
               description="Review pending document approvals and legacy admin approvals."
               columns={approvalRequestColumns}
@@ -686,7 +687,7 @@ export default function Layout({ mode = 'inbox' }: { mode?: ApprovalLayoutMode }
 
             <SetupTable
               title="Templates"
-              headers={['Name', 'Document Type', 'Priority', 'Status', '']}
+              headers={['', 'Name', 'Document Type', 'Priority', 'Status']}
               empty="No approval templates found."
               rows={templates.map((template) => ({
                 id: template.id,
@@ -1075,13 +1076,6 @@ function SetupTable({
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-stone-200 hover:bg-stone-50/70">
-                {row.cells.map((cell, index) => (
-                  <td key={`${row.id}-${index}`} className="px-3 py-2 text-stone-700">
-                    {index === row.cells.length - 1 && (cell === 'Active' || cell === 'Inactive')
-                      ? <StatusBadge active={cell === 'Active'} label={cell} />
-                      : cell || '-'}
-                  </td>
-                ))}
                 <td className="px-3 py-2 text-right">
                   <Button
                     type="button"
@@ -1095,6 +1089,13 @@ function SetupTable({
                     <span className="sr-only">Void</span>
                   </Button>
                 </td>
+                {row.cells.map((cell, index) => (
+                  <td key={`${row.id}-${index}`} className="px-3 py-2 text-stone-700">
+                    {index === row.cells.length - 1 && (cell === 'Active' || cell === 'Inactive')
+                      ? <StatusBadge active={cell === 'Active'} label={cell} />
+                      : cell || '-'}
+                  </td>
+                ))}
               </tr>
             ))}
             {rows.length === 0 && (

@@ -29,7 +29,7 @@ export const getSessionUser = async () => {
 };
 
 export function useGlobalDefaults() {
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
   const [loading, setLoading] = useState(false);
 
   /* -------------------------------------------------------
@@ -142,6 +142,7 @@ export function useGlobalDefaults() {
         return;
       }
 
+      const previousDefaultFarm = getValue("UserInfoAuthSession")?.[0]?.default_farm;
       const [, , , , farms, , userInfo] = await Promise.all([
         setUserPermissions(),
         setWhse(),
@@ -153,7 +154,7 @@ export function useGlobalDefaults() {
         setGoodsReceiptReferences(),
       ]);
 
-      if (autoSelectSingleFarm) {
+      if (autoSelectSingleFarm || previousDefaultFarm !== userInfo?.[0]?.default_farm || !getValue("DefaultFarmId")) {
         const assignedFarmCodes = new Set(
           (userInfo?.[0]?.users_farms ?? [])
             .map((farmCode: unknown) => String(farmCode ?? "").trim())
@@ -163,7 +164,11 @@ export function useGlobalDefaults() {
           assignedFarmCodes.has(String(farm.code ?? "").trim()),
         );
 
-        if (assignedFarms.length === 1) {
+        const savedDefaultCode = String(userInfo?.[0]?.default_farm ?? '').trim();
+        const savedDefaultFarm = assignedFarms.find(farm => String(farm.code ?? '').trim() === savedDefaultCode);
+        if (savedDefaultFarm) {
+          setValue("DefaultFarmId", savedDefaultFarm.id);
+        } else if (autoSelectSingleFarm && assignedFarms.length === 1) {
           setValue("DefaultFarmId", assignedFarms[0].id);
         }
       }

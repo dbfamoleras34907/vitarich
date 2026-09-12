@@ -1,4 +1,5 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
+import { isServiceUnavailableError } from "@/lib/networkError"
 import { FMS_TYPES, USER_TYPES } from "@/lib/notifications/types"
 import type {
   FmsType,
@@ -29,7 +30,11 @@ export async function hasNotificationSetupPermission(authId: string, action: "vi
 
 export async function getNotificationActorByToken(token: string) {
   const { data: authData, error: authError } = await admin_db.auth.getUser(token)
-  if (authError || !authData.user?.id) return null
+  if (authError) {
+    if (isServiceUnavailableError(authError) || !authError.status) throw new Error("SERVICE_UNAVAILABLE")
+    return null
+  }
+  if (!authData.user?.id) return null
 
   const { data, error } = await admin_db
     .from("users")
@@ -37,7 +42,8 @@ export async function getNotificationActorByToken(token: string) {
     .eq("auth_id", authData.user.id)
     .maybeSingle()
 
-  if (error || !data || String(data.isactive ?? "").trim() !== "1") return null
+  if (error) throw error
+  if (!data || String(data.isactive ?? "").trim() !== "1") return null
 
   return {
     id: Number(data.id),

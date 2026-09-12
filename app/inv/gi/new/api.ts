@@ -1,5 +1,6 @@
 'use client'
 
+import { getHarvestEmptiedCleanupBatches } from '@/lib/data/repositories/brCleanup'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
@@ -58,6 +59,7 @@ export type GoodsIssuePlacementBatch = {
   expiryDate: string
   warehouseCode: string
   onHandQty: number
+  harvestEmptied?: boolean
 }
 
 export type CleanupCycleSummary = {
@@ -647,6 +649,8 @@ export async function getBrCleanupAgeShortage(params: {
       buildingCode: building.fromWarehouseCode,
     })
 
+    if (flock && (await getHarvestEmptiedCleanupBatches(flock.id)).length > 0) continue
+
     if (!flock || flock.age === null || flock.age < targetAge) {
       return {
         targetAge,
@@ -663,6 +667,7 @@ export async function getBrCleanupAgeShortage(params: {
 export async function getAvailableDeliveryFlockCards(params: {
   farmId: number
   targetAge: number
+  allowHarvestEmptied?: boolean
 }): Promise<GoodsIssueFlockCardInfo[]> {
   const farmId = Number(params.farmId)
   const targetAge = Math.max(0, Number(params.targetAge) || 0)
@@ -691,7 +696,7 @@ export async function getAvailableDeliveryFlockCards(params: {
 
   const eligibleCards = (await Promise.all(
     Array.from(latestByBuilding.values()).map(row => toFlockCardInfoWithBodyWeight(row)),
-  )).filter(card => card.age !== null && card.age >= targetAge)
+  )).filter(card => params.allowHarvestEmptied || (card.age !== null && card.age >= targetAge))
 
   const cardsWithAvailableBatches = await Promise.all(
     eligibleCards.map(async card => {
@@ -701,8 +706,11 @@ export async function getAvailableDeliveryFlockCards(params: {
         buildingWarehouseId: card.buildingWarehouseId,
         buildingCode: card.buildingCode,
         cycleNumber: card.cycleNumber,
+        allowHarvestEmptied: params.allowHarvestEmptied,
       })
-      return batches.some(batch => batch.onHandQty > 0) ? card : null
+      const harvestEmptied = params.allowHarvestEmptied && batches.some(batch => batch.harvestEmptied)
+      const ageEligible = card.age !== null && card.age >= targetAge
+      return harvestEmptied || (ageEligible && batches.some(batch => batch.onHandQty > 0)) ? card : null
     }),
   )
 
@@ -723,10 +731,21 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
   buildingWarehouseId?: number | null
   buildingCode: string
   cycleNumber?: string | null
+  allowHarvestEmptied?: boolean
 }): Promise<GoodsIssuePlacementBatch[]> {
   const flockCardId = Number(params.flockCardId ?? 0)
   const destinationWarehouseCode = params.buildingCode.trim()
   if (!Number.isFinite(flockCardId) || flockCardId <= 0) return []
+
+  if (params.allowHarvestEmptied) {
+    const emptied = await getHarvestEmptiedCleanupBatches(flockCardId)
+    if (emptied.length > 0) return emptied.map(batch => ({
+      id: getPlacementBatchId(batch.item_code, batch.batch_number, batch.warehouse_code),
+      itemCode: batch.item_code, itemName: batch.item_name,
+      batchNumber: batch.batch_number, warehouseCode: batch.warehouse_code,
+      manufacturingDate: '', expiryDate: '', onHandQty: 0, harvestEmptied: true,
+    }))
+  }
 
   const { data, error } = await db
     .from('flock_card_origin')

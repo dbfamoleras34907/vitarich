@@ -1,4 +1,6 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
+import { isServiceUnavailableError } from "@/lib/networkError"
+import { getAccountAccessByAuthId } from "@/lib/data/repositories/registration.server"
 
 export const USER_TYPE = {
   SUPER_ADMIN: 1,
@@ -24,15 +26,22 @@ export async function requireAdminActor(request: Request) {
   if (!token) throw new Error("UNAUTHENTICATED")
 
   const { data: authData, error: authError } = await admin_db.auth.getUser(token)
-  if (authError || !authData.user?.id) throw new Error("UNAUTHENTICATED")
+  if (authError) {
+    if (isServiceUnavailableError(authError) || !authError.status) throw new Error("SERVICE_UNAVAILABLE")
+    throw new Error("UNAUTHENTICATED")
+  }
+  if (!authData.user?.id) throw new Error("UNAUTHENTICATED")
+  const access = await getAccountAccessByAuthId(authData.user.id)
+  if (access.approvalStatus !== "activated" || (access.registrationReady !== false && !access.profileComplete)) throw new Error("FORBIDDEN")
 
   const { data, error } = await admin_db
     .from("users")
     .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
     .eq("auth_id", authData.user.id)
-    .single()
+    .maybeSingle()
 
-  if (error || !data) throw new Error("FORBIDDEN")
+  if (error) throw error
+  if (!data) throw new Error("FORBIDDEN")
 
   const actor = {
     ...data,
@@ -58,5 +67,8 @@ export function adminAccessError(error: unknown) {
   const message = error instanceof Error ? error.message : ""
   if (message === "UNAUTHENTICATED") return { status: 401, message: "Authentication required." }
   if (message === "FORBIDDEN") return { status: 403, message: "You are not allowed to perform this action." }
+  if (message === "SERVICE_UNAVAILABLE" || isServiceUnavailableError(error)) {
+    return { status: 503, message: "The authentication or database service is temporarily unavailable. Please try again." }
+  }
   return { status: 500, message: "Internal Server Error" }
 }

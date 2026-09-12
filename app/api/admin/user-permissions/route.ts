@@ -36,9 +36,10 @@ async function getTarget(authId: string) {
     .from("users")
     .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
     .eq("auth_id", authId)
-    .single()
+    .maybeSingle()
 
-  if (error || !data) return null
+  if (error) throw error
+  if (!data) return null
   return { ...data, user_type: Number(data.user_type ?? USER_TYPE.USER) } as ManagedUserProfile
 }
 

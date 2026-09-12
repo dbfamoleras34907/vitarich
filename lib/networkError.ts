@@ -8,26 +8,39 @@ let hasPendingInternetError = false
 const INTERNET_ERROR_NOTICE_GAP_MS = 3000
 
 export function isInternetError(error: unknown) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
+  const record = typeof error === 'object' && error !== null ? error as Record<string, unknown> : null
+  // An HTTP response or a deliberate cancellation is not proof of lost internet.
+  if (record?.name === 'AbortError' || record?.code === 'ERR_CANCELED') return false
+  const status = Number(record?.status ?? record?.statusCode)
+  if (status >= 400 && status <= 599) return false
+  const message = record
+    ? [record.message, record.name, record.code, record.details].filter(value => typeof value === 'string').join(' ')
+    : String(error ?? '')
 
-  const message = error instanceof Error
-    ? error.message
-    : typeof error === 'object' && error !== null
-      ? JSON.stringify(error)
-      : String(error ?? '')
-
-  if (message === INTERNET_ERROR_MESSAGE) return true
+  if (message === INTERNET_ERROR_MESSAGE || record?.message === INTERNET_ERROR_MESSAGE) return true
 
   return [
     'failed to fetch',
     'fetch failed',
     'networkerror',
     'network request failed',
+    'network error',
+    'err_network',
+    'econnreset',
+    'econnrefused',
+    'enotfound',
+    'eai_again',
     'load failed',
     'err_internet_disconnected',
     'err_network_changed',
     'err_connection',
   ].some(pattern => message.toLowerCase().includes(pattern))
+}
+
+export function isServiceUnavailableError(error: unknown) {
+  const record = typeof error === 'object' && error !== null ? error as Record<string, unknown> : null
+  const status = Number(record?.status ?? record?.statusCode)
+  return isInternetError(error) || status >= 500 || record?.name === 'AuthRetryableFetchError'
 }
 
 export function getInternetErrorMessage(error: unknown, fallbackMessage: string) {

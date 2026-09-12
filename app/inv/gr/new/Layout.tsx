@@ -1,11 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightCircle,
-  CalendarDays,
   FileSpreadsheet,
   FileUp,
   Hash,
@@ -58,7 +56,7 @@ import {
 import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
 import BatchDetailsDialog from './BatchDetailsDialog'
 import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
-import { parseGoodsReceiptLinesImport } from './goodsReceiptLinesImport'
+import { GOODS_RECEIPT_LINE_HEADERS, parseGoodsReceiptLinesImport, parseGoodsReceiptLinesText } from './goodsReceiptLinesImport'
 import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
 import {
   FMS_TYPE_OPTIONS,
@@ -117,6 +115,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [pasteLinesOpen, setPasteLinesOpen] = useState(false)
+  const [pastedLinesText, setPastedLinesText] = useState('')
   const [importingGoodsReceiptLines, setImportingGoodsReceiptLines] = useState(false)
   const [goodsReceiptLinesImportIssues, setGoodsReceiptLinesImportIssues] = useState<string[]>([])
 
@@ -369,64 +369,47 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const batchTrailItemCode = batchLineForLookup?.itemCode.trim() ?? ''
   const batchTrailNumber = batchLineForLookup?.batchNumber.trim() ?? ''
 
+  const batchLookupLines = JSON.stringify((receipt?.lines ?? []).map(line => ({
+    id: line.id,
+    itemCode: line.itemCode,
+    manufacturingDate: line.manufacturingDate,
+    expiryDate: line.expiryDate,
+  })))
+
   useEffect(() => {
-    const lineId = batchLineForLookup?.id
-    const lineKey = lineId == null ? '' : String(lineId)
-
-    if (!lineId || !batchLineForLookup?.itemCode || !batchLineForLookup.manufacturingDate) {
-      if (lineKey) {
-        setBatchMatches(current => ({
-          ...current,
-          [lineKey]: null,
-        }))
-      }
-      return
-    }
-
+    const lines: Pick<GoodsReceiptLine, 'id' | 'itemCode' | 'manufacturingDate' | 'expiryDate'>[] = JSON.parse(batchLookupLines)
     let cancelled = false
-    findExistingItemBatch(
-      batchLineForLookup.itemCode,
-      batchLineForLookup.manufacturingDate,
-      batchLineForLookup.expiryDate,
-    )
-      .then(existingBatch => {
+    setBatchMatches({})
+
+    const lookups = new Map<string, ReturnType<typeof findExistingItemBatch>>()
+    for (const line of lines) {
+      if (!line.itemCode || !line.manufacturingDate) continue
+      const key = JSON.stringify([line.itemCode, line.manufacturingDate, line.expiryDate])
+      let lookup = lookups.get(key)
+      if (!lookup) {
+        lookup = findExistingItemBatch(line.itemCode, line.manufacturingDate, line.expiryDate)
+        lookups.set(key, lookup)
+      }
+      void lookup.then(existingBatch => {
         if (cancelled) return
-
-        setBatchMatches(current => ({
-          ...current,
-          [lineKey]: existingBatch,
-        }))
-
+        setBatchMatches(current => ({ ...current, [String(line.id)]: existingBatch }))
         if (existingBatch?.batch_number) {
           setReceipt(current => current ? {
             ...current,
-            lines: current.lines.map(line =>
-              line.id === lineId && line.batchNumber !== existingBatch.batch_number
-                ? { ...line, batchNumber: existingBatch.batch_number }
-                : line
+            lines: current.lines.map(candidate =>
+              candidate.id === line.id && candidate.batchNumber !== existingBatch.batch_number
+                ? { ...candidate, batchNumber: existingBatch.batch_number }
+                : candidate
             ),
           } : current)
         }
-      })
-      .catch(error => {
+      }).catch(error => {
         console.error(error)
-        if (!cancelled) {
-          setBatchMatches(current => ({
-            ...current,
-            [lineKey]: null,
-          }))
-        }
       })
-
-    return () => {
-      cancelled = true
     }
-  }, [
-    batchLineForLookup?.id,
-    batchLineForLookup?.itemCode,
-    batchLineForLookup?.manufacturingDate,
-    batchLineForLookup?.expiryDate,
-  ])
+
+    return () => { cancelled = true }
+  }, [batchLookupLines])
 
   useEffect(() => {
     if (!activeBatchLineId || !batchTrailItemCode || !batchTrailNumber) {
@@ -469,6 +452,34 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       ? { ...current, lines: current.lines.map(line => line.id === id ? { ...line, ...changes } : line) }
       : current,
     )
+  }
+
+  const pasteDrReferences = (event: ClipboardEvent<HTMLInputElement>, lineId: GoodsReceiptLine['id']) => {
+    const text = event.clipboardData.getData('text/plain')
+    if (!/[\r\n\t]/.test(text)) return
+    event.preventDefault()
+    if (receipt.status !== 'Draft' || saving) return
+
+    const references = text.replace(/\r\n?/g, '\n').split('\n')
+    // Excel ends copied ranges with a newline; it is not another row.
+    if (references[references.length - 1] === '') references.pop()
+    if (references.some(value => value.includes('\t'))) {
+      toast.error('Copy a single column of DR references, then paste into the first DR Reference cell.')
+      return
+    }
+    if (!references.length) return
+
+    setReceipt(current => {
+      if (!current || current.status !== 'Draft') return current
+      const startIndex = current.lines.findIndex(line => line.id === lineId)
+      if (startIndex < 0) return current
+      const lines = [...current.lines]
+      references.forEach((reference, offset) => {
+        const index = startIndex + offset
+        lines[index] = { ...(lines[index] ?? newLine()), drReference: reference.trim() }
+      })
+      return { ...current, lines }
+    })
   }
 
   const calculateBaseQty = (
@@ -603,7 +614,125 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
+  const applyGoodsReceiptLinesImport = (parsed: ReturnType<typeof parseGoodsReceiptLinesImport>) => {
+    if (!canEditDraft || saving) return false
+    setGoodsReceiptLinesImportIssues([])
+    if (!receipt.farmId) {
+      setGoodsReceiptLinesImportIssues(['Select a Farm before importing Goods Receipt item lines.'])
+      return false
+    }
+    const resolvedLines = parsed.rows.map(row => {
+      const rowNumber = row.rowNumber
+      const normalizedItemCode = row.itemCode.toUpperCase()
+      const item = availableItems.find(candidate =>
+        String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
+      )
+      if (!item) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
+        return null
+      }
+      if (item.id == null) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
+        return null
+      }
+
+      const inventoryUom = item.inventory_uom || ''
+      const unitMeasure = item.unit_measure || ''
+      const selectedGroup = uomGroups.find(group =>
+        group.code.toUpperCase() === inventoryUom.toUpperCase(),
+      )
+      const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
+        option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
+      )?.groupCode ?? ''
+      const requestedAltUom = row.altUom.toUpperCase()
+      const selectedConversion = conversions.find(option =>
+        option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
+        option.uomCode.toUpperCase() === requestedAltUom,
+      )
+      const altUom = row.altUom
+        ? selectedConversion?.uomCode ?? ''
+        : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+
+      if (!selectedGroupCode) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
+      } else if (row.altUom && !selectedConversion) {
+        parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
+      } else if (!altUom) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
+      }
+
+      const warehouseKey = row.warehouse.trim().toLowerCase()
+      const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
+      const warehouse = warehouseKey
+        ? farmWarehouses.find(candidate => [
+            candidate.whse_code,
+            candidate.whse_name,
+            `${candidate.whse_code} - ${candidate.whse_name}`,
+          ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
+        : defaultWarehouse
+
+      if (row.warehouse && !warehouse) {
+        parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
+      }
+
+      const altQty = Number(row.altQty)
+      const expiryDate = row.expiryDate || (
+        row.manufacturingDate && typeof item.default_expiration_months === 'number'
+          ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
+          : ''
+      )
+      const line: GoodsReceiptLine = {
+        ...newLine(),
+        itemId: item.id,
+        itemCode: item.item_code || '',
+        description: getItemDescription(item),
+        batchNumber: row.batchNumber,
+        supplierBatchNumber: row.supplierBatchNumber,
+        manufacturingDate: row.manufacturingDate,
+        expiryDate,
+        altQty,
+        altUom,
+        baseUom: selectedGroupCode,
+        baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
+        warehouseId: warehouse?.id ?? null,
+        warehouseCode: warehouse?.whse_code ?? '',
+        warehouseName: warehouse?.whse_name ?? '',
+      }
+      const batchRequirement = getBatchRequirement(line)
+      line.batchRuleId = batchRequirement?.rule?.id ?? null
+
+      if (line.baseQty <= 0) {
+        parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
+      }
+      if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
+        parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
+      }
+      if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
+        parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
+      }
+      if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
+        parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
+      }
+      if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
+        parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
+      }
+
+      return line
+    })
+
+    if (parsed.issues.length > 0) {
+      setGoodsReceiptLinesImportIssues(parsed.issues)
+      return false
+    }
+
+    const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
+    setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
+    toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+    return true
+  }
+
   const handleGoodsReceiptLinesImport = async (file: File) => {
+    if (!canEditDraft || importingGoodsReceiptLines || saving) return
     setGoodsReceiptLinesImportIssues([])
 
     if (!receipt.farmId) {
@@ -621,114 +750,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         return
       }
 
-      const parsed = parseGoodsReceiptLinesImport(itemLinesSheet.data)
-      const resolvedLines = parsed.rows.map((row, index) => {
-        const rowNumber = index + 2
-        const normalizedItemCode = row.itemCode.toUpperCase()
-        const item = availableItems.find(candidate =>
-          String(candidate.item_code ?? '').trim().toUpperCase() === normalizedItemCode,
-        )
-        if (!item) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" is not available for the selected Farm and FMS Type.`)
-          return null
-        }
-        if (item.id == null) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid Item Master ID.`)
-          return null
-        }
-
-        const inventoryUom = item.inventory_uom || ''
-        const unitMeasure = item.unit_measure || ''
-        const selectedGroup = uomGroups.find(group =>
-          group.code.toUpperCase() === inventoryUom.toUpperCase(),
-        )
-        const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
-          option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
-        )?.groupCode ?? ''
-        const requestedAltUom = row.altUom.toUpperCase()
-        const selectedConversion = conversions.find(option =>
-          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
-          option.uomCode.toUpperCase() === requestedAltUom,
-        )
-        const altUom = row.altUom
-          ? selectedConversion?.uomCode ?? ''
-          : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
-
-        if (!selectedGroupCode) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
-        } else if (row.altUom && !selectedConversion) {
-          parsed.issues.push(`Row ${rowNumber}: Alt UoM "${row.altUom}" is not valid for Item Code "${row.itemCode}".`)
-        } else if (!altUom) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no default Alt UoM.`)
-        }
-
-        const warehouseKey = row.warehouse.trim().toLowerCase()
-        const defaultWarehouse = farmWarehouses.find(candidate => candidate.id === receipt.defaultWarehouseId)
-        const warehouse = warehouseKey
-          ? farmWarehouses.find(candidate => [
-              candidate.whse_code,
-              candidate.whse_name,
-              `${candidate.whse_code} - ${candidate.whse_name}`,
-            ].some(value => String(value ?? '').trim().toLowerCase() === warehouseKey))
-          : defaultWarehouse
-
-        if (row.warehouse && !warehouse) {
-          parsed.issues.push(`Row ${rowNumber}: Warehouse "${row.warehouse}" was not found under the selected Farm.`)
-        }
-
-        const altQty = Number(row.altQty)
-        const expiryDate = row.expiryDate || (
-          row.manufacturingDate && typeof item.default_expiration_months === 'number'
-            ? addMonthsToDate(row.manufacturingDate, item.default_expiration_months)
-            : ''
-        )
-        const line: GoodsReceiptLine = {
-          ...newLine(),
-          itemId: item.id,
-          itemCode: item.item_code || '',
-          description: getItemDescription(item),
-          batchNumber: row.batchNumber,
-          supplierBatchNumber: row.supplierBatchNumber,
-          manufacturingDate: row.manufacturingDate,
-          expiryDate,
-          altQty,
-          altUom,
-          baseUom: selectedGroupCode,
-          baseQty: calculateBaseQty(altQty, altUom, selectedGroupCode),
-          warehouseId: warehouse?.id ?? null,
-          warehouseCode: warehouse?.whse_code ?? '',
-          warehouseName: warehouse?.whse_name ?? '',
-        }
-        const batchRequirement = getBatchRequirement(line)
-        line.batchRuleId = batchRequirement?.rule?.id ?? null
-
-        if (line.baseQty <= 0) {
-          parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no valid conversion for Alt UoM "${altUom}".`)
-        }
-        if (batchRequirement?.needsSupplierBatch && !line.supplierBatchNumber) {
-          parsed.issues.push(`Row ${rowNumber}: Supplier Batch Number is required for Item Code "${row.itemCode}".`)
-        }
-        if (batchRequirement?.needsManufacturingDate && !line.manufacturingDate) {
-          parsed.issues.push(`Row ${rowNumber}: Manufacturing Date is required for Item Code "${row.itemCode}".`)
-        }
-        if (batchRequirement?.needsExpiryDate && !line.expiryDate) {
-          parsed.issues.push(`Row ${rowNumber}: Expiry Date is required for Item Code "${row.itemCode}".`)
-        }
-        if (line.batchNumber && batchRequirement?.rule && !batchRequirement.rule.manual_entry) {
-          parsed.issues.push(`Row ${rowNumber}: Batch Number must be blank because Item Code "${row.itemCode}" uses automatic batch numbering.`)
-        }
-
-        return line
-      })
-
-      if (parsed.issues.length > 0) {
-        setGoodsReceiptLinesImportIssues(parsed.issues)
-        return
-      }
-
-      const importedLines = resolvedLines.filter((line): line is GoodsReceiptLine => Boolean(line))
-      setReceipt(current => current ? { ...current, lines: [...current.lines, ...importedLines] } : current)
-      toast.success(`${importedLines.length} Goods Receipt item ${importedLines.length === 1 ? 'line' : 'lines'} imported.`)
+      applyGoodsReceiptLinesImport(parseGoodsReceiptLinesImport(itemLinesSheet.data))
     } catch (error) {
       console.error(error)
       setGoodsReceiptLinesImportIssues(['The Excel file could not be read. Use the exported Goods Receipt item-lines template.'])
@@ -860,14 +882,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : ''
     const nextChanges = {
       ...changes,
-      ...(defaultExpiryDate ? { expiryDate: defaultExpiryDate } : {}),
+      ...(shouldDefaultExpiry ? { expiryDate: defaultExpiryDate } : {}),
     }
     const nextLine = { ...line, ...nextChanges }
     const generatedBatchNumber = getGeneratedBatchNumber(nextLine)
 
     updateLine(line.id, {
       ...nextChanges,
-      ...(generatedBatchNumber ? { batchNumber: generatedBatchNumber } : {}),
+      batchNumber: generatedBatchNumber,
     })
   }
 
@@ -897,7 +919,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         batchRuleId: null,
         batchNumber: '',
         supplierBatchNumber: '',
-        manufacturingDate: '',
         expiryDate: '',
         altUom: '',
         baseUom: '',
@@ -919,7 +940,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       batchRuleId: null,
       batchNumber: '',
       supplierBatchNumber: '',
-      manufacturingDate: '',
+      manufacturingDate: line.manufacturingDate,
       expiryDate: '',
       altUom: uom,
       baseUom: selectedGroupCode,
@@ -933,23 +954,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    flushSync(() => {
-      updateLine(line.id, {
-        ...nextLineChanges,
-        batchRuleId: batchRequirement.rule?.id ?? null,
-      })
-      setActiveBatchLineId(line.id)
+    updateBatchLine(nextLine, {
+      ...nextLineChanges,
+      batchRuleId: batchRequirement.rule?.id ?? null,
+      ...(batchRequirement.needsExpiryDate && typeof item.default_expiration_months === 'number'
+        ? { expiryDate: addMonthsToDate(line.manufacturingDate, item.default_expiration_months) }
+        : {}),
     })
-
-    const dateInput = manufacturingDateInputRef.current
-    if (!dateInput) return
-
-    dateInput.focus()
-    try {
-      dateInput.showPicker()
-    } catch {
-      dateInput.focus()
-    }
   }
 
   const selectWarehouse = (lineId: GoodsReceiptLine['id'], warehouseCode: string) => {
@@ -1031,8 +1042,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast('Please enter a vendor.')
       return
     }
-    if (posting && !receipt.drReference.trim()) {
-      toast('Please enter a DR Reference.')
+    if (posting && completedLines.some(line => !line.drReference.trim() || !line.receiveDate)) {
+      toast('Each item needs a DR Reference and Received Date.')
       return
     }
     if (posting && !receipt.fmsType) {
@@ -1180,19 +1191,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">
-              DR Reference <span className="text-destructive" aria-hidden="true">*</span>
-            </label>
-            <Input
-              value={receipt.drReference}
-              onChange={event => setReceipt(current => current ? { ...current, drReference: event.target.value } : current)}
-              placeholder="Enter DR reference"
-              required
-              aria-required="true"
-            />
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
             <label className="text-sm font-semibold">FMS Type</label>
             <select
               value={receipt.fmsType}
@@ -1206,19 +1204,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Receive Date</label>
-            <label className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
-              <Input
-                type="date"
-                value={receipt.receiveDate}
-                onChange={event => setReceipt(current => current ? { ...current, receiveDate: event.target.value } : current)}
-                className="pl-9"
-              />
-            </label>
           </div>
 
           <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
@@ -1312,6 +1297,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   {importingGoodsReceiptLines ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
                   {importingGoodsReceiptLines ? 'Importing...' : 'Import Excel'}
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEditDraft || importingGoodsReceiptLines || saving}
+                  aria-expanded={pasteLinesOpen}
+                  aria-controls="goods-receipt-paste-lines"
+                  onClick={() => setPasteLinesOpen(open => !open)}
+                >
+                  Paste Text
+                </Button>
               </div>
             )}
             emptyState={receipt.lines.length === 0 && (
@@ -1345,10 +1340,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               </FormTableFooter>
             )}
           >
-              <table className="w-full min-w-[1480px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
+              <table className="w-full min-w-[1800px] table-fixed border-collapse text-xs [&_[data-slot=searchable-dropdown-trigger]]:h-7 [&_[data-slot=searchable-dropdown-trigger]]:rounded-none [&_[data-slot=searchable-dropdown-trigger]]:border-0 [&_[data-slot=searchable-dropdown-trigger]]:px-1.5 [&_[data-slot=searchable-dropdown-trigger]]:text-xs">
                 <thead>
                   <tr>
                     <th className="w-9 border border-border bg-muted px-1 py-1 text-center font-medium text-foreground">#</th>
+                    <th className="w-44 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">DR Reference</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Received Date</th>
+                    <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Mnf Date</th>
                     <th className="w-64 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Item Code &amp; Description</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Group</th>
                     <th className="w-36 border border-border bg-muted px-1.5 py-1 text-left font-medium text-foreground">Sub Group</th>
@@ -1368,6 +1366,35 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     return (
                       <tr key={line.id} className="even:bg-card odd:bg-muted/50">
                         <td className="border border-border bg-muted p-1 text-center align-middle text-muted-foreground">{index + 1}</td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            value={line.drReference}
+                            onChange={event => updateLine(line.id, { drReference: event.target.value })}
+                            onPaste={event => pasteDrReferences(event, line.id)}
+                            aria-label={`DR Reference row ${index + 1}`}
+                            placeholder="DR reference"
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            type="date"
+                            value={line.receiveDate}
+                            onChange={event => updateLine(line.id, { receiveDate: event.target.value })}
+                            aria-label={`Received Date row ${index + 1}`}
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
+                        <td className="border border-border p-1 align-middle">
+                          <Input
+                            type="date"
+                            value={line.manufacturingDate}
+                            required={Boolean(batchRequirement?.needsManufacturingDate)}
+                            onChange={event => updateBatchLine(line, { manufacturingDate: event.target.value })}
+                            aria-label={`Manufacturing Date row ${index + 1}`}
+                            className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none"
+                          />
+                        </td>
                         <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
                             list={itemDropdownOptions}
@@ -1546,6 +1573,41 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </tbody>
               </table>
           </FormTable>
+          {pasteLinesOpen && canEditDraft && (
+            <div id="goods-receipt-paste-lines" className="mx-4 mt-3 space-y-2 rounded-md border border-border bg-muted/30 p-3">
+              <Label htmlFor="goods-receipt-paste-text">Paste item lines from Excel or tab-delimited text</Label>
+              <p id="goods-receipt-paste-help" className="text-xs text-muted-foreground">
+                Use template headers, or paste without headers in this order: {GOODS_RECEIPT_LINE_HEADERS.join(' | ')}.
+                Separate columns with tabs and rows with new lines. Blank Alt UoM and Warehouse use existing defaults.
+                Dates: YYYY-MM-DD or M/D/YYYY. Valid rows are appended only after the entire paste passes validation.
+              </p>
+              <textarea
+                id="goods-receipt-paste-text"
+                aria-describedby="goods-receipt-paste-help"
+                value={pastedLinesText}
+                onChange={event => setPastedLinesText(event.target.value)}
+                placeholder={'ITEM001\t10\tBAG'}
+                rows={5}
+                spellCheck={false}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPasteLinesOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  disabled={!pastedLinesText.trim() || importingGoodsReceiptLines || saving}
+                  onClick={() => {
+                    if (applyGoodsReceiptLinesImport(parseGoodsReceiptLinesText(pastedLinesText))) {
+                      setPastedLinesText('')
+                      setPasteLinesOpen(false)
+                    }
+                  }}
+                >
+                  Add Pasted Lines
+                </Button>
+              </div>
+            </div>
+          )}
           {goodsReceiptLinesImportIssues.length > 0 && (
             <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <p className="font-semibold">Goods Receipt item-lines import was not applied.</p>

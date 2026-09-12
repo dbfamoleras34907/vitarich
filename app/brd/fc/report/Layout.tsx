@@ -19,6 +19,7 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { getBroilerDepletionSummary } from "@/lib/broiler/performance";
 import { getUserFarms } from "@/app/admin/user/new/api";
 import {
   getFarmBuildingsForFlockCard,
@@ -219,12 +220,8 @@ export default function Layout() {
 
   const summary = useMemo(() => {
     const startingPopulation = report?.startingPopulation ?? 0;
-    const totalMortality = report?.lines.reduce((sum, line) => sum + line.mortalityTotal, 0) ?? 0;
-    const totalThinning = report?.lines.reduce((sum, line) => sum + line.thinningTotal, 0) ?? 0;
-    const totalDepletion = totalMortality + totalThinning;
-    const cumulativeMortality = startingPopulation > 0 ? (totalMortality / startingPopulation) * 100 : 0;
-    const cumulativeDepletion = startingPopulation > 0 ? (totalDepletion / startingPopulation) * 100 : 0;
-    const livability = Math.max(0, 100 - cumulativeDepletion);
+    const { totalMortality, totalThinning, totalDepletion, cumulativeMortality,
+      cumulativeDepletion, livability } = getBroilerDepletionSummary(startingPopulation, report?.lines ?? []);
     const standardDepletion = report?.standardDepletionRate ?? 1.05;
     const variance = cumulativeDepletion - standardDepletion;
 

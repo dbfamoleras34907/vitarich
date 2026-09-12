@@ -57,33 +57,39 @@ begin
     raise exception 'Unable to save feed intake: flock card % was not found', v_line.fc_id;
   end if;
 
-  if p_feed_type_id is null or not exists (
-    select 1
-    from public.brd_fc_settings settings
-    join public.item_groups feed_type
-      on feed_type.id = p_feed_type_id
-     and feed_type.father = settings.feed_group_id
-     and btrim(coalesce(feed_type.void::text, '0')) = '1'
-    where settings.farm_id = v_card.farm_id
-      and settings.void = '1'
+  if not exists (
+    select 1 from public.farms farm
+    cross join lateral jsonb_array_elements(
+      case when jsonb_typeof(to_jsonb(farm.associated_warehouses)) = 'array'
+        then to_jsonb(farm.associated_warehouses) else '[]'::jsonb end
+    ) warehouse
+    where farm.id = v_card.farm_id
+      and warehouse->>'is_default_feed' = 'true'
+      and nullif(btrim(warehouse->>'whse_code'), '') = nullif(btrim(v_card.feed_whse_code), '')
   ) then
-    raise exception 'Unable to save feed intake: select a valid Feed Type for the farm Feed Group';
+    raise exception 'Unable to save feed intake: warehouse must be the farm feed warehouse';
   end if;
 
-  select string_agg(format('item %s, batch %s (item Feed Type: %s)',
-    allocation->>'itemCode', allocation->>'batchNumber',
-    coalesce(coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id)::text, 'missing')),
-    '; ')
+  -- Keep the RPC argument name for compatibility; its value is now public.items.id.
+  if p_feed_type_id is null or not exists (
+    select 1 from public.items item
+    where item.id = p_feed_type_id and btrim(coalesce(item.void::text, '0')) = '1'
+  ) then
+    raise exception 'Unable to save feed intake: select an active feed item';
+  end if;
+
+  select string_agg(format('item %s, batch %s',
+    allocation->>'itemCode', allocation->>'batchNumber'), '; ')
   into v_invalid_feed_items
   from jsonb_array_elements(p_allocations) allocation
   left join public.items item
     on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
-  where item.id is null
-     or coalesce(item.sub_item_group_level_1_id, item.sub_item_group_id) is distinct from p_feed_type_id
-     or btrim(coalesce(item.void::text, '0')) <> '1';
+  where item.id is distinct from p_feed_type_id
+     or btrim(coalesce(item.void::text, '0')) <> '1'
+     or nullif(btrim(allocation->>'warehouseCode'), '') is distinct from nullif(btrim(v_card.feed_whse_code), '');
 
   if v_invalid_feed_items is not null then
-    raise exception 'Unable to save feed intake: selected Feed Type % does not match an active batch item: %',
+    raise exception 'Unable to save feed intake: selected item % must match batches in the document feed warehouse: %',
       p_feed_type_id, v_invalid_feed_items;
   end if;
 
@@ -154,7 +160,7 @@ begin
     feed_bird = p_feed_bird,
     feed_guideline = p_feed_guideline,
     feed_batch_text = nullif(btrim(coalesce(p_feed_batch_text, '')), ''),
-    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || jsonb_build_object('feedTypeId', p_feed_type_id),
+    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || (select jsonb_build_object('feedItemId', item.id, 'feedItemCode', item.item_code, 'feedItemName', coalesce(item.item_name, item.description, item.item_code)) from public.items item where item.id = p_feed_type_id),
     is_locked = true,
     updated_by = v_user,
     reversed_at = null,
@@ -466,6 +472,39 @@ end;
 $$;
 revoke all on function public.save_brd_fc_transaction(uuid, jsonb) from public;
 grant execute on function public.save_brd_fc_transaction(uuid, jsonb) to authenticated;
+
+-- Wait for an ambiguous/disconnected save request to finish before reporting
+-- its outcome. The lock is the same lock used by save_brd_fc_transaction, so a
+-- client cannot mistake an in-flight commit for a rolled-back request.
+create or replace function public.get_brd_fc_save_request_status(p_request_id uuid)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_request public.brd_fc_save_requests%rowtype;
+begin
+  if v_user is null or p_request_id is null then
+    raise exception 'A signed-in user and save request ID are required.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_request_id::text, 0));
+  select * into v_request
+  from public.brd_fc_save_requests request
+  where request.request_id = p_request_id
+    and request.actor_auth_id = v_user;
+
+  if found then
+    return jsonb_build_object('committed', true, 'result', v_request.result);
+  end if;
+  return jsonb_build_object('committed', false);
+end;
+$$;
+revoke all on function public.get_brd_fc_save_request_status(uuid) from public;
+grant execute on function public.get_brd_fc_save_request_status(uuid) to authenticated;
+
 -- The receipt is written once, after every mutation succeeds. This trigger
 -- enqueues in that same transaction; it never resolves recipients itself.
 create or replace function public.enqueue_brd_fc_save_event()
@@ -507,6 +546,9 @@ declare
   v_changed text[] := array[]::text[];
 begin
   if new.reversed_at is null then return new; end if;
+  if to_regprocedure('public.brd_fc_is_full_reversal(bigint)') is not null then
+    if public.brd_fc_is_full_reversal(new.fc_id) then return new; end if;
+  end if;
   if old.feed_kg is not null and new.feed_kg is null then
     v_changed := array_append(v_changed, 'feedIntake');
   end if;

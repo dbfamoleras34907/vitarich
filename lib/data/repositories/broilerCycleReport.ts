@@ -1,4 +1,5 @@
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getDocReceivingSettings } from '@/app/a_dean/doc-receiving-settings/api'
 
 export type BroilerCycleStage = 'placement' | 'growing' | 'delivery' | 'cleanup'
 
@@ -20,6 +21,7 @@ export type CyclePlacementRecord = {
   shortCount: number
   doaQuantity: number
   rejectCount: number
+  isGoodBirdItem?: boolean
   isVoided: boolean
 }
 
@@ -46,10 +48,15 @@ export type CycleGrowingLine = {
   actualAdg: number
   standardAdg: number
   isVoided: boolean
+  hasMortality: boolean
+  hasFeed: boolean
+  hasWater: boolean
+  hasWeight: boolean
 }
 
 export type CycleMovementRecord = {
   id: number
+  documentId: number
   documentNo: string
   date: string
   status: string
@@ -59,6 +66,8 @@ export type CycleMovementRecord = {
   batchNumber: string
   quantity: number
   uom: string
+  baseQuantity: number
+  baseUom: string
   varianceQuantity: number
   lineRemarks: string
   isVoided: boolean
@@ -66,6 +75,7 @@ export type CycleMovementRecord = {
 
 export type BroilerCycleBuilding = {
   flockCardId: number
+  cycleLabel: string
   cardNo: string
   flockCode: string
   buildingWarehouseId: number | null
@@ -107,10 +117,24 @@ const numberValue = (value: unknown) => {
 const textValue = (value: unknown) => String(value ?? '').trim()
 const normalized = (value: unknown) => textValue(value).toUpperCase()
 
+export type BroilerCycleReportOptions = {
+  postedOnly?: boolean
+  openBuildingsOnly?: boolean
+}
+
 function throwQueryError(error: unknown, context: string): never {
   if (error instanceof Error) throw new Error(`${context}: ${error.message}`)
   const row = error && typeof error === 'object' ? error as UnknownRow : {}
   throw new Error(`${context}: ${textValue(row.message) || 'Unknown database error'}`)
+}
+
+function isMissingColumnError(error: unknown, table: string, column: string) {
+  if (!error || typeof error !== 'object') return false
+  const row = error as UnknownRow
+  const message = textValue(row.message).toLowerCase()
+  return textValue(row.code) === '42703'
+    && message.includes(table.toLowerCase())
+    && message.includes(column.toLowerCase())
 }
 
 function movementMatchesCard(
@@ -138,7 +162,10 @@ function movementMatchesCard(
   return warehouseMatches && batchMatches
 }
 
-export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCycleReport | null> {
+export async function getBroilerCycleReport(
+  cycleId: number,
+  options: BroilerCycleReportOptions = {},
+): Promise<BroilerCycleReport | null> {
   if (!Number.isFinite(cycleId) || cycleId <= 0) return null
 
   const cycleResult = await db
@@ -150,20 +177,100 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
   if (!cycleResult.data) return null
 
   const cycle = cycleResult.data as UnknownRow
+  return loadBroilerCycleReport(cycleId, cycle, options)
+}
+
+async function loadCycleGrowingLines(growingIds: number[]): Promise<UnknownRow[]> {
+  const rows: UnknownRow[] = []
+  for (let offset = 0; growingIds.length; offset += 500) {
+    const result = await db.from('brd_fc_line')
+      .select('id, fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, extra, void')
+      .in('fc_id', growingIds).order('age').order('id').range(offset, offset + 499)
+    if (result.error) throwQueryError(result.error, 'Unable to load Growing lines')
+    rows.push(...(result.data ?? []) as UnknownRow[])
+    if ((result.data?.length ?? 0) < 500) break
+  }
+  return rows
+}
+
+/** Read both Broiler movement types without silently truncating farm history. */
+async function loadCycleMovements(farmId: number, stage: 'delivery' | 'cleanup', postedOnly: boolean) {
+  const cleanup = stage === 'cleanup'
+  const label = cleanup ? 'Clean Up' : 'Harvest & Delivery'
+  const headers: UnknownRow[] = []
+  const lines: UnknownRow[] = []
+  for (let offset = 0; ; offset += 500) {
+    let query = db.from(cleanup ? 'br_cleanup' : 'br_delivery')
+      .select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks')
+      .eq('farm_id', farmId).order('id').range(offset, offset + 499)
+    if (postedOnly) query = query.eq('status', 'Posted')
+    const result = await query
+    if (result.error) throwQueryError(result.error, `Unable to load ${label} headers`)
+    headers.push(...(result.data ?? []) as UnknownRow[])
+    if ((result.data?.length ?? 0) < 500) break
+  }
+  // Bound the ID list as well as the response size for farms with long histories.
+  for (let index = 0; index < headers.length; index += 100) {
+    const ids = headers.slice(index, index + 100).map(header => numberValue(header.id))
+    for (let offset = 0; ; offset += 500) {
+      const initialResult = cleanup
+        ? await db.from('br_cleanup_lines')
+          .select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, variance_qty, remarks, from_warehouse_id, from_warehouse_code, void')
+          .in('br_cleanup_id', ids).order('id').range(offset, offset + 499)
+        : await db.from('br_delivery_lines')
+          .select('id, br_delivery_id, delivered_date, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
+          .in('br_delivery_id', ids).order('id').range(offset, offset + 499)
+      // Older databases predate per-line Delivery Date. Their historical value is
+      // the header issue_date, which is already used below as the read fallback.
+      const result = !cleanup && isMissingColumnError(
+        initialResult.error, 'br_delivery_lines', 'delivered_date',
+      )
+        ? await db.from('br_delivery_lines')
+          .select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, base_qty, base_uom, from_warehouse_id, from_warehouse_code, void')
+          .in('br_delivery_id', ids).order('id').range(offset, offset + 499)
+        : initialResult
+      if (result.error) throwQueryError(result.error, `Unable to load ${label} lines`)
+      lines.push(...(result.data ?? []) as UnknownRow[])
+      if ((result.data?.length ?? 0) < 500) break
+    }
+  }
+  return { headers, lines }
+}
+
+/** Excluded Buildings own an open placement cycle without doc_farm_cycles. */
+export async function getBroilerOpenBuildingCycleReport(farmId: number, flockCardId: number) {
+  return getBroilerBuildingCycleReport(farmId, flockCardId, { openBuildingsOnly: true })
+}
+
+export async function getBroilerBuildingCycleReport(
+  farmId: number, flockCardId: number, options: { openBuildingsOnly?: boolean } = {},
+) {
+  if (!Number.isInteger(farmId) || farmId <= 0 || !Number.isInteger(flockCardId) || flockCardId <= 0) return null
+  const report = await loadBroilerCycleReport(0, { farm_id: farmId, status: 'Saved' },
+    { postedOnly: true, openBuildingsOnly: options.openBuildingsOnly }, flockCardId)
+  if (report.buildings.length) report.status = report.buildings[0].status
+  return report.buildings.length ? report : null
+}
+
+async function loadBroilerCycleReport(
+  cycleId: number, cycle: UnknownRow, options: BroilerCycleReportOptions, standaloneCardId?: number,
+): Promise<BroilerCycleReport> {
   const farmId = numberValue(cycle.farm_id)
+  let cardQuery = db.from('flock_card')
+    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, start_date, breed, animal_qty, status, remarks, void')
+  if (options.postedOnly || standaloneCardId) cardQuery = cardQuery.eq('farm_id', farmId)
+  cardQuery = standaloneCardId
+    ? cardQuery.eq('id', standaloneCardId).is('farm_cycle_id', null)
+    : cardQuery.eq('farm_cycle_id', cycleId)
   const [farmResult, cardResult] = await Promise.all([
     db.from('farms').select('id, code, name').eq('id', farmId).maybeSingle(),
-    db
-      .from('flock_card')
-      .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, start_date, breed, animal_qty, status, remarks, void')
-      .eq('farm_cycle_id', cycleId)
-      .order('building_name')
-      .order('start_date'),
+    cardQuery.order('building_name').order('start_date'),
   ])
   if (farmResult.error) throwQueryError(farmResult.error, 'Unable to load the cycle farm')
   if (cardResult.error) throwQueryError(cardResult.error, 'Unable to load participating Buildings')
 
-  const cards = (cardResult.data ?? []) as UnknownRow[]
+  const cards = ((cardResult.data ?? []) as UnknownRow[]).filter(card =>
+    !options.openBuildingsOnly || (textValue(card.void) === '1' && card.status === 'Saved'))
   const cardIds = cards.map(card => numberValue(card.id)).filter(Boolean)
   if (cardIds.length === 0) {
     const farm = (farmResult.data ?? {}) as UnknownRow
@@ -202,56 +309,32 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
 
   const origins = (originResult.data ?? []) as UnknownRow[]
   const placements = (placementResult.data ?? []) as UnknownRow[]
-  const growingHeaders = (growingHeaderResult.data ?? []) as UnknownRow[]
+  // Growing saves commit daily measurements and inventory in one RPC. Its
+  // header may remain Draft; it has no separate document Post operation.
+  const growingHeaders = ((growingHeaderResult.data ?? []) as UnknownRow[]).filter(row =>
+    !options.postedOnly || (textValue(row.void) === '1' && row.status !== 'Cancelled'))
   const receiptIds = Array.from(new Set(placements.map(row => numberValue(row.goods_reciept_id)).filter(Boolean)))
   const growingIds = growingHeaders.map(row => numberValue(row.id)).filter(Boolean)
 
-  const [receiptHeaderResult, receiptItemResult, growingLineResult] = await Promise.all([
+  const [receiptHeaderResult, receiptItemResult, growingLines, deliveryData, cleanupData, docSettings] = await Promise.all([
     receiptIds.length
       ? db.from('goods_receipt').select('id, gr_no, vendor, status').in('id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
     receiptIds.length
-      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_code, description, batch_number, void').in('goods_reciept_id', receiptIds)
+      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_id, item_code, description, batch_number, void').in('goods_reciept_id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
-    growingIds.length
-      ? db
-        .from('brd_fc_line')
-        .select('id, fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, extra, void')
-        .in('fc_id', growingIds)
-        .order('age')
-      : Promise.resolve({ data: [], error: null }),
+    loadCycleGrowingLines(growingIds),
+    loadCycleMovements(farmId, 'delivery', options.postedOnly === true),
+    loadCycleMovements(farmId, 'cleanup', options.postedOnly === true),
+    getDocReceivingSettings(farmId),
   ])
   if (receiptHeaderResult.error) throwQueryError(receiptHeaderResult.error, 'Unable to load DOC Placement headers')
   if (receiptItemResult.error) throwQueryError(receiptItemResult.error, 'Unable to load DOC Placement items')
-  if (growingLineResult.error) throwQueryError(growingLineResult.error, 'Unable to load Growing lines')
 
   const receiptHeaders = (receiptHeaderResult.data ?? []) as UnknownRow[]
   const receiptItems = (receiptItemResult.data ?? []) as UnknownRow[]
-  const growingLines = (growingLineResult.data ?? []) as UnknownRow[]
-  const [deliveryHeaderResult, cleanupHeaderResult] = await Promise.all([
-    db.from('br_delivery').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId),
-    db.from('br_cleanup').select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks').eq('farm_id', farmId),
-  ])
-  if (deliveryHeaderResult.error) throwQueryError(deliveryHeaderResult.error, 'Unable to load Harvest & Delivery headers')
-  if (cleanupHeaderResult.error) throwQueryError(cleanupHeaderResult.error, 'Unable to load Clean Up headers')
-
-  const deliveryHeaders = (deliveryHeaderResult.data ?? []) as UnknownRow[]
-  const cleanupHeaders = (cleanupHeaderResult.data ?? []) as UnknownRow[]
-  const deliveryIds = deliveryHeaders.map(row => numberValue(row.id)).filter(Boolean)
-  const cleanupIds = cleanupHeaders.map(row => numberValue(row.id)).filter(Boolean)
-  const [deliveryLineResult, cleanupLineResult] = await Promise.all([
-    deliveryIds.length
-      ? db.from('br_delivery_lines').select('id, br_delivery_id, item_code, description, batch_number, alt_qty, alt_uom, from_warehouse_id, from_warehouse_code, void').in('br_delivery_id', deliveryIds)
-      : Promise.resolve({ data: [], error: null }),
-    cleanupIds.length
-      ? db.from('br_cleanup_lines').select('id, br_cleanup_id, item_code, description, batch_number, alt_qty, alt_uom, variance_qty, remarks, from_warehouse_id, from_warehouse_code, void').in('br_cleanup_id', cleanupIds)
-      : Promise.resolve({ data: [], error: null }),
-  ])
-  if (deliveryLineResult.error) throwQueryError(deliveryLineResult.error, 'Unable to load Harvest & Delivery lines')
-  if (cleanupLineResult.error) throwQueryError(cleanupLineResult.error, 'Unable to load Clean Up lines')
-
-  const deliveryLines = (deliveryLineResult.data ?? []) as UnknownRow[]
-  const cleanupLines = (cleanupLineResult.data ?? []) as UnknownRow[]
+  const { headers: deliveryHeaders, lines: deliveryLines } = deliveryData
+  const { headers: cleanupHeaders, lines: cleanupLines } = cleanupData
   const farm = (farmResult.data ?? {}) as UnknownRow
 
   const buildings = cards.map(card => {
@@ -288,6 +371,10 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
           hatcheryReference: textValue(row.transfer_slip),
           itemCode: textValue(item.item_code),
           itemName: textValue(item.description),
+          // Preserve historical good-bird batch identity; settings cover receipts
+          // whose flock origin link is missing.
+          isGoodBirdItem: originKeys.has(`${normalized(item.item_code)}|${normalized(item.batch_number)}`)
+            || Boolean(docSettings?.good_doc && numberValue(item.item_id) === docSettings.good_doc),
           batchNumber: textValue(item.batch_number),
           quantityReceived: numberValue(row.quantity_received),
           actualReceived: numberValue(row.actual_received),
@@ -297,6 +384,7 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
           isVoided: textValue(row.void) !== '1' || textValue(header.status) === 'Cancelled' || textValue(item.void) === '0',
         }))
       })
+      .filter(row => !options.postedOnly || (!row.isVoided && row.status === 'Posted'))
 
     const toMovementRecords = (headers: UnknownRow[], lines: UnknownRow[], foreignKey: string, cleanup = false) =>
       headers.flatMap(header => lines
@@ -304,8 +392,9 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
         .filter(line => movementMatchesCard(header, line, card, originKeys, consolidatedBatchNumber))
         .map(line => ({
           id: numberValue(line.id),
+          documentId: numberValue(header.id),
           documentNo: textValue(header.gi_no),
-          date: textValue(header.issue_date),
+          date: textValue(cleanup ? header.issue_date : line.delivered_date ?? header.issue_date),
           status: textValue(header.status),
           remarks: textValue(header.remarks),
           itemCode: textValue(line.item_code),
@@ -313,13 +402,17 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
           batchNumber: textValue(line.batch_number),
           quantity: numberValue(line.alt_qty),
           uom: textValue(line.alt_uom),
+          baseQuantity: numberValue(line.base_qty),
+          baseUom: textValue(line.base_uom),
           varianceQuantity: cleanup ? numberValue(line.variance_qty) : 0,
           lineRemarks: textValue(line.remarks),
           isVoided: textValue(line.void) !== '1' || textValue(header.status) === 'Cancelled',
         })))
+        .filter(row => !options.postedOnly || !row.isVoided)
 
     return {
       flockCardId,
+      cycleLabel: textValue(card.cycle_no) || textValue(cycle.cycle_no),
       cardNo,
       flockCode: textValue(card.flock_code),
       buildingWarehouseId: numberValue(card.building_whse_id) || null,
@@ -338,6 +431,7 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
       growingStatus: textValue(activeGrowingHeader?.status),
       growingLines: growingLines
         .filter(row => numberValue(row.fc_id) === growingId)
+        .filter(row => !options.postedOnly || textValue(row.void) === '1')
         .map(row => {
           const extra = row.extra && typeof row.extra === 'object' ? row.extra as UnknownRow : {}
           return {
@@ -352,7 +446,7 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
             docBatch: cardOrigins.map(origin => textValue(origin.batch_no)).filter(Boolean).join(', '),
             cumulative: numberValue(row.cum_total),
             feedActual: numberValue(row.feed_kg),
-            feedType: textValue(extra.feedTypeName ?? extra.feedTypeCode ?? extra.feedTypeId),
+            feedType: textValue(extra.feedItemName ?? extra.feedItemCode ?? extra.feedTypeName ?? extra.feedTypeCode ?? extra.feedTypeId),
             feedStandard: numberValue(row.feed_guideline),
             feedBatch: textValue(row.feed_batch_text),
             waterLiters: numberValue(row.water_l),
@@ -363,6 +457,10 @@ export async function getBroilerCycleReport(cycleId: number): Promise<BroilerCyc
             actualAdg: numberValue(extra.actualAdg ?? extra.addAlw),
             standardAdg: numberValue(extra.standardAdg),
             isVoided: textValue(row.void) !== '1',
+            hasMortality: [row.mort_am, row.mort_pm, row.mort_total, row.thin_am, row.thin_pm].some(value => value != null),
+            hasFeed: row.feed_kg != null,
+            hasWater: row.water_l != null,
+            hasWeight: row.body_wt != null,
           }
         }),
       deliveries: toMovementRecords(deliveryHeaders, deliveryLines, 'br_delivery_id'),

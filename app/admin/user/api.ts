@@ -1,3 +1,4 @@
+import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 
 
 
@@ -154,10 +155,11 @@ export async function updateUserProfile(
   userProfileData: UserInsert,
   defaultFarms: string[] = []
 ) {
-  const { data: sessionData } = await db.auth.getSession()
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
   const token = sessionData.session?.access_token
   if (!token) throw new Error('Authentication required.')
-  const response = await fetch('/api/admin/updateUserProfile', {
+  const response = await fetchWithInternetErrorNotice('/api/admin/updateUserProfile', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
@@ -166,10 +168,10 @@ export async function updateUserProfile(
     }),
   })
 
-  const result = await response.json() as {
+  const result = await readJsonResponse<{
     activeFarmCodes?: string[]
     error?: string
-  }
+  }>(response)
 
   if (!response.ok) {
     throw new Error(result.error || 'Unable to update user profile.')
@@ -305,14 +307,15 @@ export async function getUserInfoAuthSession() {
 
 
 export async function GetUserList() {
-  const { data: sessionData } = await db.auth.getSession()
+  const { data: sessionData, error: sessionError } = await db.auth.getSession()
+  if (sessionError) throw sessionError
   const token = sessionData.session?.access_token
   if (!token) throw new Error('Authentication required.')
 
-  const response = await fetch('/api/admin/getUser', {
+  const response = await fetchWithInternetErrorNotice('/api/admin/getUser', {
     headers: { Authorization: `Bearer ${token}` },
   })
-  const result = await response.json() as { user?: UserRow[]; error?: string }
+  const result = await readJsonResponse<{ user?: UserRow[]; error?: string }>(response)
   if (!response.ok) throw new Error(result.error || 'Unable to load users.')
   return result.user ?? []
 }

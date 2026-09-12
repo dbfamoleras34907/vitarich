@@ -32,6 +32,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { addDays, format, startOfWeek } from 'date-fns'
+import TimelineSqlDialog from '../TimelineSqlDialog'
 
 type TimesheetEmailContext = Awaited<ReturnType<typeof getTimesheetEmailContext>>
 
@@ -48,8 +49,8 @@ const formatEmailDate = (value: string) => {
   return format(new Date(year, month - 1, day), 'MMMM d, yyyy')
 }
 
-const currentWorkWeek = () => {
-  const monday = startOfWeek(new Date(), { weekStartsOn: 1 })
+const previousWorkWeek = () => {
+  const monday = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), -7)
   return {
     from: format(monday, 'yyyy-MM-dd'),
     to: format(addDays(monday, 4), 'yyyy-MM-dd'),
@@ -71,8 +72,8 @@ export default function Layout() {
   const [filteredRows, setFilteredRows] = useState<RowDataKey[]>([])
 
   // DATE RANGE
-  const [dateFrom, setDateFrom] = useState(() => currentWorkWeek().from)
-  const [dateTo, setDateTo] = useState(() => currentWorkWeek().to)
+  const [dateFrom, setDateFrom] = useState(() => previousWorkWeek().from)
+  const [dateTo, setDateTo] = useState(() => previousWorkWeek().to)
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
@@ -584,7 +585,8 @@ export default function Layout() {
           FirstPreviewsPageName="Workspace"
         />
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          <TimelineSqlDialog />
           <Button
             size="sm"
             variant="outline"

@@ -110,6 +110,7 @@ export interface SuperUsers {
   name: string | null;
 }
 export interface UserRow {
+  default_farm?: string | null;
   id: number;
   created_at: string; // ISO timestamp string
   created_by: UUID | null;

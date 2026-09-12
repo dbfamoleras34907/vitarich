@@ -6,6 +6,17 @@ Related diagram: [Notification System Flow](./notification-system-flow.md)
 
 ## Current implementation status
 
+### Signup approval and profile completion
+
+- Module `USER_REGISTRATION` uses `USER_REGISTRATION_POSTED` for signup, `USER_REGISTRATION_EDITED` for activation or first profile completion, and `USER_REGISTRATION_VOIDED` for rejection. All events explicitly use `farmRouting: none`; registration does not assign farms.
+- `register_pending_auth_account` handles both Auth INSERT and the subsequent application-metadata UPDATE, inserting the pending profile and signup event inside the same Auth transaction. Repeated metadata updates do not reset an existing profile. The targeted `repair_registration_auth_metadata.sql` script recovers approval-first accounts missed by the former INSERT-only trigger. `decide_registration` commits the admin decision, Auth login eligibility, event and applicant email together. `complete_registration_profile` only updates the authenticated applicant's personal fields after activation; it does not change farms, permissions or approval.
+- Deterministic event keys are `<POSTED>:<auth_id>`, `<EDITED>:<auth_id>:activated`, `<EDITED>:<auth_id>:profile`, and `<VOIDED>:<auth_id>:rejected`. Row locks serialize decisions/completion. Failed transactions emit nothing; retries reuse the event and recipient-delivery unique identities.
+- The central dispatcher verifies persisted submission, decision or completion timestamps, actor, entity and dedupe identity. Required farm IDs are not applicable to this account-level module; non-null farm routing is rejected. Farm-targeted business modules keep their existing canonical farm validation.
+- Administrator alerts remain configuration-driven. The seeded Super Admin signup rule is not overwritten on reruns; no active matching rule produces no delivery and leaves signup/approval successful. Unassigned public applicants can initially be reviewed by Super Admins; scoped Admins retain their existing FMS management boundary.
+- Applicant activation/rejection emails are mandatory transactional account correspondence, separate from optional notification rules and per-user notification inboxes. The reusable `transactional_email_outbox` is inserted by the authoritative decision RPC with `ACCOUNT_DECISION:<auth_id>` deduplication. It reuses the shared mail transport and existing process/retry controls. Failed sends remain queued with backoff and expiring worker leases. SMTP/Graph cannot guarantee exactly-once receipt after an ambiguous transport failure.
+- Deployment order: apply `app/admin/notifications/notification_system.sql`, then `app/signup_update/registration_profile.sql`, then deploy the app. Set `NEXT_PUBLIC_SITE_URL` (or Netlify's `URL`) for activation login links. The migration configures a PostgREST pre-request gate and adds restrictive policies to existing RLS-enabled public tables and Storage objects; existing permissive policies remain intact. Review any existing pre-request hook before composing it.
+- Local PostgreSQL assertions and mocked application checks are documented in `scripts/database/tests/registration/README.md`. Target Auth/PostgREST configuration and real email delivery need separate deployment verification.
+
 Implemented in source:
 
 - Central DOC Placement and Hatchery DOC Dispatch module/event catalog
@@ -221,8 +232,8 @@ These modules must not be connected to farm-targeted notification rules until th
 | Item Stock In | `goods_receipt.farm_id` is nullable in checked-in SQL | Make it required for farm-scoped posting or mark missing-farm events Invalid; verify the foreign key live |
 | Item Stock Out | `goods_issue.farm_id` is nullable in checked-in SQL | Make it required for farm-scoped posting or mark missing-farm events Invalid; verify the foreign key live |
 | DOC Placement | Uses `goods_receipt.farm_id` and now copies it to `recipient_farm_id`, but the source column remains nullable in checked-in SQL | Make the farm required for the business Post; missing farm events are now marked Invalid and cannot become global |
-| Growing & Farm Condition | `save_brd_fc_transaction` requires a canonical Broiler `farms.id`; save/reversal events use persisted `brd_fc.farm_id`. Legacy rows still allow null. | `BRD_FC_POSTED` / `BRD_FC_EDITED` registered but rule activation hidden until SQL deployment and live farm/FK verification. No document Void action is supported by this Growing editor. |
-| Harvest & Delivery | Carries `farm_id`, but checked-in SQL allows null | Require it for Post and read it from the committed header |
+| Growing & Farm Condition | `save_brd_fc_transaction` and `reverse_brd_fc_transaction` require a canonical Broiler `farms.id`; events use persisted `brd_fc.farm_id`. Legacy rows still allow null. | `BRD_FC_POSTED` / `BRD_FC_EDITED` / `BRD_FC_VOIDED` registered; full reversal retains cycle and placement. Rule activation remains hidden until SQL deployment and live farm/FK verification. See [Growing reversal verification](growing-reversal.md). |
+| Harvest & Delivery | Source RPC resolves canonical farm; new weight migration requires non-null farm on new/updated headers, with existing FK to `farms(id)` | Post/Edit transactional outbox prepared; activation disabled pending target deployment and verification. See `docs/harvest-weight.md` |
 | Broiler Clean Up | Carries `farm_id`, but checked-in transaction header SQL allows null | Require it for Post and read it from the committed header |
 | Egg Laying Production | Carries nullable `farm_id` and still supports farm-name fallback queries | Require the numeric ID and remove farm-name notification routing fallback |
 | Disposal | Sends numeric `farm_id`, but no checked-in table constraint proves the relationship | Verify/add the foreign key and Post-time requirement in Supabase |
@@ -611,6 +622,8 @@ Vaccination and Meds registers `VACCINATION_MEDS_POSTED`, `VACCINATION_MEDS_EDIT
 Every event copies the committed `vnm_documents.farm_id` to both `farm_id` and `recipient_farm_id`. The dispatcher requires a matching source document, FMS type, farm, action/version, and lifecycle state before recipient resolution; missing or mismatched data marks the event Invalid. Retry identity is `document ID + edit/post version` for Edit/Post and the document ID for the one-time Void transition. An unmatched or inactive rule safely produces no deliveries and does not change the saved document or its inventory result.
 
 ## Planned implementation order
+
+Broiler Clean Up now has prepared `BR_CLEANUP_POSTED` and `BR_CLEANUP_EDITED` events through `save_br_cleanup_transaction` and its transactional revision/outbox trigger. Both use `document` routing from canonical `br_cleanup.farm_id`; the dispatcher rejects a missing or mismatched persisted farm before matching recipients. Identical saves reuse their request fingerprint; outbox dedupe is `event key:document ID:revision`. There is no supported Void action. Rule activation remains disabled until target SQL deployment and verification. See [Clean Up after harvest](broiler-cleanup-zero.md) for the deployment order and local test evidence.
 
 1. Create notification database tables, constraints, indexes, policies, and secured processing functions.
 2. Create the central module/event catalog and TypeScript contracts.

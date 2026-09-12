@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Customer, usersColumn } from '@/lib/types'
 import { ClipboardSignature, Plus, RefreshCw } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
-import { GETAuthUsers, GetUserList, GetUsers, insertUser } from './api'
+import { GetUserList, GetUsers, insertUser } from './api'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Label } from '@/components/ui/label'
@@ -58,7 +58,6 @@ export default function Layout() {
 
 
   const handleReset = async () => {
-    console.log("xx")
     setForm({
       firstname: '',
       middlename: '',
@@ -68,48 +67,19 @@ export default function Layout() {
     setLoading(true)
     try {
       const res = await GetUserList()
-      console.log("xx")
-      console.log({ res })
       setData(res)
       setTotalCount(res.length)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-
-  const getAuthUsersList = async () => {
-    setLoading(true)
-    try {
-      const res = await GETAuthUsers()
-      console.log({ res })
-      // setData(res)
-      // setTotalCount(res.length)
-    } finally {
-      setLoading(false)
-    }
-  }
-  const getUsers = async () => {
-    try {
-      const res = await fetch('/api/admin/getUser', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      })
-
-      const data = await res.json()
-      console.log({ data })
-
-      setData(data.user)
-      setTotalCount(data.user.length)
     } catch (error) {
-
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to load users. Please try again.')
+    } finally {
+      setLoading(false)
     }
-
   }
+
 
   useEffect(() => {
     handleReset()
-    // getUsers()
     route.prefetch('/admin/user/new')
   }, [])
 
@@ -134,6 +104,7 @@ export default function Layout() {
       </div>
       <div className="px-4 mt-2">
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]} // show all records
           columns={tableColumnsx.map((col) => ({

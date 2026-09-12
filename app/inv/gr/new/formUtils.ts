@@ -27,6 +27,8 @@ export type GoodsReceiveFormMode = 'draft' | 'post'
 
 export const newLine = (): GoodsReceiptLine => ({
   id: crypto.randomUUID(),
+  drReference: '',
+  receiveDate: format(new Date(), 'yyyy-MM-dd'),
   itemId: null,
   itemCode: '',
   description: '',
@@ -70,6 +72,7 @@ export const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsRecei
   lines: source.lines.map(line => ({
     ...line,
     id: crypto.randomUUID(),
+    drReference: '',
     returnedQty: 0,
   })),
   createdAt: new Date().toISOString(),

@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
-import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { farmFmsType, listApprovedFarmAccessOptions } from "@/lib/data/repositories/farms";
 import { NavFolders } from "@/lib/Defaults/DefaultValues";
 import { USER_TYPE, adminAccessError, canManageUser, requireAdminActor } from "@/lib/auth/adminAccess";
 
@@ -81,7 +81,24 @@ export async function POST(req: Request) {
 
     const isSuperAdmin = actor.user_type === USER_TYPE.SUPER_ADMIN;
     const userType = isSuperAdmin ? Number(userProfileData.user_type ?? target.user_type) : target.user_type;
-    const fmsType = isSuperAdmin ? normalizeText(userProfileData.fms_type) : target.fms_type;
+    // Validate every farm before making any profile or assignment changes.
+    const farms = await listApprovedFarmAccessOptions(admin_db, assignedFarmCodes);
+    const foundFarmCodes = new Set(farms.map(farm => farm.code));
+    const missingFarmCodes = assignedFarmCodes.filter(code => !foundFarmCodes.has(code));
+    if (missingFarmCodes.length) {
+      return NextResponse.json({ error: `Farm code not found or not approved: ${missingFarmCodes.join(", ")}` }, { status: 400 });
+    }
+    const defaultFarm = farms.find(farm => farm.code === normalizeText(userProfileData.default_farm));
+    if (!defaultFarm) {
+      return NextResponse.json({ error: "Select a default farm from Assigned Farms." }, { status: 400 });
+    }
+    const fmsType = farmFmsType(defaultFarm.farm_type);
+    if (!fmsType) {
+      return NextResponse.json({ error: "The selected default farm has no supported FMS Type." }, { status: 400 });
+    }
+    if (!isSuperAdmin && fmsType !== actor.fms_type) {
+      return NextResponse.json({ error: "Select a default farm within your FMS Type." }, { status: 403 });
+    }
 
     if (![1, 2, 3].includes(userType)) {
       return NextResponse.json({ error: "Invalid user type." }, { status: 400 });
@@ -104,7 +121,7 @@ export async function POST(req: Request) {
       birthdate: normalizeText(userProfileData.birthdate),
       location: normalizeText(userProfileData.location),
       remarks: normalizeText(userProfileData.remarks),
-      default_farm: normalizeText(userProfileData.default_farm),
+      default_farm: defaultFarm.code,
       supervisor: normalizeNumber(userProfileData.supervisor),
       issuper: userType === USER_TYPE.USER ? "0" : "1",
       archipelago: normalizeText(userProfileData.archipelago),
@@ -170,23 +187,6 @@ export async function POST(req: Request) {
     }
 
     if (assignedFarmCodes.length > 0) {
-      const { data: farms, error: farmsError } = await activeApprovedFarmsQuery(admin_db.from("farms").select("id, code"))
-        .in("code", assignedFarmCodes);
-
-      if (farmsError) {
-        return NextResponse.json({ error: farmsError.message }, { status: 400 });
-      }
-
-      const foundFarmCodes = new Set((farms ?? []).map((farm) => farm.code));
-      const missingFarmCodes = assignedFarmCodes.filter((code) => !foundFarmCodes.has(code));
-
-      if (missingFarmCodes.length > 0) {
-        return NextResponse.json(
-          { error: `Farm code not found: ${missingFarmCodes.join(", ")}` },
-          { status: 400 }
-        );
-      }
-
       const { data: existingUserFarms, error: existingUserFarmsError } = await admin_db
         .from("users_farms")
         .select("farm_code")

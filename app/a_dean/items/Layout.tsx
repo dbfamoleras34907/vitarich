@@ -243,6 +243,7 @@ export default function Layout() {
       {/* 🔹 Table */}
       {!loading && (
         <DynamicTable
+        actionsFirst
         loading={loading}
           columns={columns.map((col) => ({
             key: col.key,

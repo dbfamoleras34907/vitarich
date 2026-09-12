@@ -88,46 +88,51 @@ begin
     from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb))
     where coalesce(value->>'warehouse_type', '') <> 'Pen'
   loop
-    insert into public.i_warehouse (
-      whse_name,
-      fms_type,
-      warehouse_type,
-      capacity,
-      full_location_code,
-      addr1,
-      addr2,
-      city,
-      province,
-      address,
-      phone,
-      mobile,
-      remarks,
-      is_active,
-      is_default_feed_warehouse,
-      is_default_receiving_warehouse,
-      is_default_disposal_warehouse
-    )
-    values (
-      warehouse_item->>'whse_name',
-      warehouse_item->>'fms_type',
-      warehouse_item->>'warehouse_type',
-      nullif(warehouse_item->>'capacity', '')::numeric,
-      warehouse_item->>'full_location_code',
-      warehouse_item->>'addr1',
-      warehouse_item->>'addr2',
-      warehouse_item->>'city',
-      warehouse_item->>'province',
-      warehouse_item->>'address',
-      warehouse_item->>'phone',
-      warehouse_item->>'mobile',
-      warehouse_item->>'remarks',
-      coalesce((warehouse_item->>'is_active')::boolean, true),
-      coalesce((warehouse_item->>'is_default_feed')::boolean, false),
-      coalesce((warehouse_item->>'is_default_receiving')::boolean, false),
-      coalesce((warehouse_item->>'is_default_disposal')::boolean, false)
-    )
-    returning id, whse_code, whse_name
-    into new_warehouse_id, new_warehouse_code, new_warehouse_name;
+    -- A stale ID sequence may hit imported rows. Retry with the next generated ID.
+    loop
+      insert into public.i_warehouse (
+        whse_name,
+        fms_type,
+        warehouse_type,
+        capacity,
+        full_location_code,
+        addr1,
+        addr2,
+        city,
+        province,
+        address,
+        phone,
+        mobile,
+        remarks,
+        is_active,
+        is_default_feed_warehouse,
+        is_default_receiving_warehouse,
+        is_default_disposal_warehouse
+      )
+      values (
+        warehouse_item->>'whse_name',
+        warehouse_item->>'fms_type',
+        warehouse_item->>'warehouse_type',
+        nullif(warehouse_item->>'capacity', '')::numeric,
+        warehouse_item->>'full_location_code',
+        warehouse_item->>'addr1',
+        warehouse_item->>'addr2',
+        warehouse_item->>'city',
+        warehouse_item->>'province',
+        warehouse_item->>'address',
+        warehouse_item->>'phone',
+        warehouse_item->>'mobile',
+        warehouse_item->>'remarks',
+        coalesce((warehouse_item->>'is_active')::boolean, true),
+        coalesce((warehouse_item->>'is_default_feed')::boolean, false),
+        coalesce((warehouse_item->>'is_default_receiving')::boolean, false),
+        coalesce((warehouse_item->>'is_default_disposal')::boolean, false)
+      )
+      on conflict on constraint i_warehouse_pkey do nothing
+      returning id, whse_code, whse_name
+      into new_warehouse_id, new_warehouse_code, new_warehouse_name;
+      exit when found;
+    end loop;
 
     warehouse_ids := array_append(warehouse_ids, new_warehouse_id);
     warehouse_id_by_client_key := warehouse_id_by_client_key || jsonb_build_object(
@@ -161,30 +166,35 @@ begin
       raise exception 'Pen % does not reference a Building in this setup.', warehouse_item->>'whse_name';
     end if;
 
-    insert into public.i_warehouse (
-      whse_name,
-      fms_type,
-      warehouse_type,
-      capacity,
-      father_id,
-      is_active,
-      is_default_feed_warehouse,
-      is_default_receiving_warehouse,
-      is_default_disposal_warehouse
-    )
-    values (
-      warehouse_item->>'whse_name',
-      warehouse_item->>'fms_type',
-      'Pen',
-      nullif(warehouse_item->>'capacity', '')::numeric,
-      father_warehouse_id,
-      coalesce((warehouse_item->>'is_active')::boolean, true),
-      false,
-      false,
-      false
-    )
-    returning id, whse_code, whse_name
-    into new_warehouse_id, new_warehouse_code, new_warehouse_name;
+    -- A stale ID sequence may hit imported rows. Retry with the next generated ID.
+    loop
+      insert into public.i_warehouse (
+        whse_name,
+        fms_type,
+        warehouse_type,
+        capacity,
+        father_id,
+        is_active,
+        is_default_feed_warehouse,
+        is_default_receiving_warehouse,
+        is_default_disposal_warehouse
+      )
+      values (
+        warehouse_item->>'whse_name',
+        warehouse_item->>'fms_type',
+        'Pen',
+        nullif(warehouse_item->>'capacity', '')::numeric,
+        father_warehouse_id,
+        coalesce((warehouse_item->>'is_active')::boolean, true),
+        false,
+        false,
+        false
+      )
+      on conflict on constraint i_warehouse_pkey do nothing
+      returning id, whse_code, whse_name
+      into new_warehouse_id, new_warehouse_code, new_warehouse_name;
+      exit when found;
+    end loop;
 
     warehouse_ids := array_append(warehouse_ids, new_warehouse_id);
     associated_warehouse_items := array_append(
@@ -209,6 +219,9 @@ begin
     contact_person,
     contact_number,
     farm_type,
+    production_model,
+    island,
+    administrative_region,
     address,
     region,
     associated_warehouses,
@@ -223,6 +236,9 @@ begin
     payload->'farm'->>'contact_person',
     payload->'farm'->>'contact_number',
     payload->'farm'->>'farm_type',
+    nullif(payload->'farm'->>'production_model', ''),
+    nullif(payload->'farm'->>'island', ''),
+    nullif(payload->'farm'->>'administrative_region', ''),
     farm_address,
     farm_region,
     case

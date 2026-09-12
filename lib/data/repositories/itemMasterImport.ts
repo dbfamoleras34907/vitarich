@@ -1,3 +1,4 @@
+import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 import { db } from '@/lib/Supabase/supabaseClient'
 
 export type AtomicItemMasterImportRow<TPayload extends object> = {
@@ -22,7 +23,7 @@ export async function importItemMasterRows<TPayload extends object>(
   const accessToken = sessionData.session?.access_token
   if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  const response = await fetch('/api/a_dean/items/import', {
+  const response = await fetchWithInternetErrorNotice('/api/a_dean/items/import', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -35,7 +36,7 @@ export async function importItemMasterRows<TPayload extends object>(
     }),
   })
 
-  const result = await response.json() as Partial<AtomicItemMasterImportResult> & { error?: string }
+  const result = await readJsonResponse<Partial<AtomicItemMasterImportResult> & { error?: string }>(response)
   if (
     !response.ok ||
     !Number.isInteger(result.importedCount) ||

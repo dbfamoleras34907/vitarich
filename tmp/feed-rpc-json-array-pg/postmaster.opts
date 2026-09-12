@@ -1,0 +1,1 @@
+C:/Users/DEANMARK/scoop/apps/postgresql/current/bin/postgres.exe "-D" "C:/Dev/repo/fms/vitarich/tmp/feed-rpc-json-array-pg" "-p" "55439" "-h" "127.0.0.1"

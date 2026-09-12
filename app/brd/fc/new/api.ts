@@ -222,7 +222,7 @@ function parseNumberOrNull(value: string | number | null | undefined) {
 }
 
 function formatDbValue(value: string | number | null | undefined) {
-  if (value == null) return "";
+  if (value == null || String(value).trim() === "") return "";
 
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return String(value);
@@ -269,7 +269,7 @@ function getLineExtra(line: FlockCardLinePayload) {
       }
       : {}),
     ...(actualAdg ? { actualAdg } : {}),
-    ...(Number.isFinite(feedTypeId) && feedTypeId > 0 ? { feedTypeId } : {}),
+    ...(Number.isFinite(feedTypeId) && feedTypeId > 0 ? { feedItemId: feedTypeId } : {}),
   };
 }
 
@@ -720,7 +720,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           line.skin_l,
           String(rawExtra.actualAdg ?? rawExtra.addAlw ?? ""),
           null,
-          String(rawExtra.feedTypeId ?? ""),
+          String(rawExtra.feedItemId ?? (rawExtra.feedTypeId ? `legacy:${rawExtra.feedTypeId}` : "")),
           null,
         ].map((value, columnIndex) =>
           columnIndex === actualAdgColumnIndex

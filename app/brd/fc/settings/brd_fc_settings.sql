@@ -7,7 +7,7 @@ create table if not exists public.brd_fc_settings (
   farm_id integer not null,
   farm_code text null,
   farm_name text null,
-  feed_group_id bigint not null references public.item_groups(id),
+  feed_group_id bigint null references public.item_groups(id),
   allow_advance_posting boolean not null default false,
   auto_feed_batch_selection boolean not null default false,
   auto_feed_batch_selection_mode text not null default 'USER_SELECTED',
@@ -38,6 +38,8 @@ alter table public.brd_fc_settings
   foreign key (feed_group_id)
   references public.item_groups (id);
 
+alter table public.brd_fc_settings alter column feed_group_id drop not null;
+
 create or replace function public.validate_brd_fc_settings_feed_group()
 returns trigger
 language plpgsql
@@ -48,7 +50,7 @@ declare
   v_void text;
 begin
   if new.feed_group_id is null then
-    raise exception 'Feed Group is required.';
+    return new;
   end if;
 
   select item_group.father, item_group.void::text

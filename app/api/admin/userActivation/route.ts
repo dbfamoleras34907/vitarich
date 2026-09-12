@@ -1,62 +1,38 @@
-export const runtime = "nodejs";
+export const runtime = "nodejs"
 
-import { admin_db } from "@/lib/Supabase/supabaseAdmin";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server"
+import { requireAdminActor, adminAccessError } from "@/lib/auth/adminAccess"
+import { RegistrationError } from "@/lib/data/repositories/registration.server"
+import { listPendingActivations, decideRegistration } from "@/lib/data/repositories/userActivation.server"
+import { processPendingNotificationEvents } from "@/lib/data/repositories/notifications.server"
+import { processPendingNotificationEmails } from "@/lib/notifications/processEmailDeliveries.server"
+import { processTransactionalEmails } from "@/lib/email/processTransactionalEmails.server"
 
-function isInactive(value: unknown) {
-  return value === null || value === undefined || String(value).trim() !== "1";
+function failure(error: unknown) {
+  const result = error instanceof RegistrationError ? { status: error.status, message: error.message } : adminAccessError(error)
+  return NextResponse.json({ error: result.message }, { status: result.status })
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { data, error } = await admin_db
-      .from("users")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({
-      users: (data ?? []).filter((user) => isInactive(user.isactive)),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal Server Error";
-    console.error("User activation GET error:", err);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+    const actor = await requireAdminActor(request)
+    return NextResponse.json({ users: await listPendingActivations(actor) }, { headers: { "Cache-Control": "no-store" } })
+  } catch (error) { return failure(error) }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const { userId, approvedBy } = await req.json();
-    const numericUserId = Number(userId);
-
-    if (!Number.isFinite(numericUserId)) {
-      return NextResponse.json({ error: "Invalid user id." }, { status: 400 });
-    }
-
-    const { data, error } = await admin_db
-      .from("users")
-      .update({
-        isactive: 1,
-        docStatus: "Active",
-        updated_by: approvedBy || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", numericUserId)
-      .select("*")
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ user: data });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal Server Error";
-    console.error("User activation POST error:", err);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+    const actor = await requireAdminActor(request)
+    const input = await request.json()
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new RegistrationError("Invalid decision.")
+    const user = await decideRegistration(actor, input)
+    after(async () => {
+      const results = await Promise.allSettled([
+        processTransactionalEmails(20),
+        processPendingNotificationEvents(50).then(() => processPendingNotificationEmails(20)),
+      ])
+      for (const result of results) if (result.status === "rejected") console.error("Account notification processing failed:", result.reason)
+    })
+    return NextResponse.json({ user })
+  } catch (error) { return failure(error) }
 }

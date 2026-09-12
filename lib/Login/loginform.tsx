@@ -13,6 +13,16 @@ import { useGlobalDefaults } from "../Defaults/GlobalDefaults";
 import { Modal } from "../Moda";
 import { encryptValue } from "../encrypt";
 import { createApprovalRequest } from "./api";
+import { getRegistrationStatus } from "@/lib/data/repositories/registration";
+
+function normalizeLoginEmail(value: string): string {
+  const trimmed = value.trim()
+  const completeEmail = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
+  if (completeEmail.test(trimmed) || !/^[^\s@]+(?:@[^\s@]*)?$/.test(trimmed)) {
+    return trimmed
+  }
+  return `${trimmed.split("@")[0]}@vitarich.com`
+}
 
 export function LoginForm({
   className,
@@ -34,23 +44,43 @@ export function LoginForm({
     e.preventDefault();
     setloading(true)
     try {
+      const loginEmail = normalizeLoginEmail(email)
+      setEmail(loginEmail)
       const { error } = await db.auth.signInWithPassword({
-        email,
+        email: loginEmail,
         password,
       });
 
       if (error) {
-        toast(error.message)
+        toast.error(error.code === "user_banned" ? "Your account is awaiting activation or has been rejected. Please check your email." : error.message)
         setloading(false)
       } else {
+        // Resume registration if the user left before saving personal information.
+        const status = await getRegistrationStatus()
+        if (status.approvalStatus !== "activated") {
+          await db.auth.signOut()
+          toast.error(status.approvalStatus === "rejected" ? "Your registration was rejected. Please check your email." : "Your account is awaiting administrator activation.")
+          return
+        }
+        if (status.registrationReady !== false && !status.profileComplete) {
+          router.push("/signup_update")
+          return
+        }
         await setGlobals({ autoSelectSingleFarm: true })
+        setValue('openDefaultfarmModal', true)
         setValue('loading_g', true)
         router.push("/init");
         setloading(false)
         setValue('loading_g', false)
       }
     } catch (error) {
-      alert("An error occurred during login. Please try again.")
+      toast.error(
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "An error occurred during login. Please try again."
+      )
+    } finally {
+      setloading(false)
     }
   }
 
@@ -87,9 +117,14 @@ export function LoginForm({
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmail(normalizeLoginEmail(email))}
               className="h-11 pl-9"
               placeholder="name@vitarich.com"
               required

@@ -30,6 +30,7 @@ import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
 import {
   getBroilerCycleReport,
+  getBroilerBuildingCycleReport,
   type BroilerCycleBuilding,
   type BroilerCycleReport,
   type BroilerCycleStage,
@@ -220,9 +221,9 @@ const EXPORT_HEADERS: Record<BroilerCycleStage, string[]> = {
   cleanup: ['Building', 'Flock Card', 'Document No.', 'Status', 'Date', 'Item Code', 'Item Name', 'Batch', 'Quantity', 'Variance', 'UoM', 'Remarks', 'Record State'],
 }
 
-export default function CycleReportLayout() {
+export default function CycleReportLayout({ requestedCycleId, requestedFarmId, cycleKind = 'farm', embedded = false }: { requestedCycleId?: number; requestedFarmId?: number; cycleKind?: 'farm' | 'building'; embedded?: boolean } = {}) {
   const params = useParams<{ cycleId: string }>()
-  const cycleId = useMemo(() => parseCycleId(params.cycleId), [params.cycleId])
+  const cycleId = useMemo(() => requestedCycleId ?? parseCycleId(params.cycleId), [params.cycleId, requestedCycleId])
   const viewBlocked = usePermission('/brd/cycle-master/report/view')
   const [report, setReport] = useState<BroilerCycleReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -238,8 +239,14 @@ export default function CycleReportLayout() {
     }
     setLoading(true)
     try {
-      const result = await getBroilerCycleReport(cycleId)
-      setReport(result)
+      const result = cycleKind === 'building' && requestedFarmId
+        ? await getBroilerBuildingCycleReport(requestedFarmId, cycleId)
+        : await getBroilerCycleReport(cycleId)
+      setReport(result && embedded ? { ...result, buildings: result.buildings.map(building => ({
+        ...building,
+        placements: [...new Map(building.placements.filter(row => row.isGoodBirdItem !== false)
+          .map(row => [`${row.documentId}:${row.id}`, row])).values()],
+      })) } : result)
       setSelectedBuildingId(current => result?.buildings.some(row => row.flockCardId === current)
         ? current
         : result?.buildings[0]?.flockCardId ?? null)
@@ -249,11 +256,12 @@ export default function CycleReportLayout() {
     } finally {
       setLoading(false)
     }
-  }, [cycleId, viewBlocked])
+  }, [cycleId, cycleKind, requestedFarmId, viewBlocked, embedded])
 
   useEffect(() => { void load() }, [load])
 
   const building = report?.buildings.find(row => row.flockCardId === selectedBuildingId) ?? report?.buildings[0] ?? null
+  const cycleLabel = cycleKind === 'building' ? building?.cycleLabel || 'Standalone' : report?.cycleNumber
 
   async function exportExcel() {
     if (!report) return
@@ -262,7 +270,7 @@ export default function CycleReportLayout() {
       const rows: Array<Array<string | number>> = [
         ['Cycle Master Report'],
         ['Farm', report.farmName || report.farmCode],
-        ['Cycle Count', report.cycleNumber],
+        ['Cycle Count', cycleLabel ?? ''],
         ['Status', report.status],
         ['Created', formatDate(report.createdAt)],
         ['Closed', formatDate(report.closedAt)],
@@ -282,7 +290,7 @@ export default function CycleReportLayout() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `cycle-${report.cycleNumber}-report.xls`
+      link.download = `cycle-${cycleLabel}-report.xls`
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -301,11 +309,11 @@ export default function CycleReportLayout() {
 
   if (!cycleId) return <main className="p-4"><div className="rounded-md border p-6 text-center text-sm text-muted-foreground">The encrypted Cycle reference is invalid.</div></main>
 
-  return <main className="min-h-[calc(100vh-4rem)] space-y-4 p-3 sm:p-4 print:p-0">
+  return <main className={cn('space-y-4 print:p-0', !embedded && 'min-h-[calc(100vh-4rem)] p-3 sm:p-4')}>
     <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-      <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Report" />
+      {!embedded && <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Report" />}
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={() => history.back()}><ArrowLeft className="size-4" />Back</Button>
+        {!embedded && <Button type="button" size="sm" variant="outline" onClick={() => history.back()}><ArrowLeft className="size-4" />Back</Button>}
         <Button type="button" size="sm" variant="outline" disabled={!report} onClick={() => window.print()}><Printer className="size-4" />Print</Button>
         <Button type="button" size="sm" variant="outline" disabled={!report || exporting} onClick={() => void exportExcel()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}Excel
@@ -319,13 +327,13 @@ export default function CycleReportLayout() {
           <section className="rounded-lg border bg-card p-3 shadow-sm print:shadow-none">
             <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
               <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cycle Master Report</div>
-                <h1 className="text-xl font-semibold">Cycle {report.cycleNumber}</h1>
+                <h1 className="text-xl font-semibold">{cycleKind === 'building' ? cycleLabel : `Cycle ${cycleLabel}`}</h1>
                 <p className="text-sm text-muted-foreground">DOC Placement through Clean Up</p></div>
               <Badge variant={report.status === 'Saved' ? 'default' : 'secondary'}>{report.status === 'Saved' ? 'Active' : report.status}</Badge>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
               <HeaderMetric label="Farm" value={report.farmName || report.farmCode || '-'} />
-              <HeaderMetric label="Cycle Count" value={report.cycleNumber} />
+              <HeaderMetric label="Cycle Count" value={cycleLabel} />
               <HeaderMetric label="Participating Buildings" value={report.buildings.length} />
               <HeaderMetric label="Created" value={formatDate(report.createdAt)} />
               <HeaderMetric label="Closed" value={formatDate(report.closedAt)} />

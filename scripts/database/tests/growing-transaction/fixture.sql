@@ -4,10 +4,10 @@ create schema auth;
 create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select '11111111-1111-1111-1111-111111111111'::uuid$$;
 insert into auth.users values(auth.uid());
-create table farms(id bigint primary key, code text, name text, farm_type text);
+create table farms(id bigint primary key, code text, name text, farm_type text, associated_warehouses jsonb[]);
 create table farm_buildings(id bigint primary key);
 create table i_warehouse(id bigint primary key);
-create table items(id bigint primary key, item_code text, sub_item_group_level_1_id bigint, sub_item_group_id bigint, void text);
+create table items(id bigint primary key, item_code text, item_name text, description text, sub_item_group_level_1_id bigint, sub_item_group_id bigint, void text);
 create table item_groups(id bigint primary key, father bigint, void text);
 create table brd_fc_settings(farm_id bigint, feed_group_id bigint, void text);
 create table inventory_postings(id bigint generated always as identity primary key, source_doc_type text,source_docentry bigint,item_code text,warehouse_code text,bin_code text,qty numeric,created_by uuid,ref_type text,ref text,transfer_type text,ref_type2 text,ref2 text);
@@ -155,10 +155,10 @@ create table if not exists public.brd_fc_ba (
 
 
 create unique index on brd_fc_line(fc_id,age) where void='1';
-insert into farms values(61,'FRM000062','Test farm','BR');
+insert into farms values(61,'FRM000062', 'Test farm','BR',array['{"whse_code":"FEEDS","is_default_feed":true}'::jsonb]);
 insert into item_groups values(29,20,'1');
-insert into brd_fc_settings values(61,20,'1');
-insert into items values(1,'FEED',29,99,'1'),(2,'WRONG',30,100,'1');
+insert into brd_fc_settings values(61,null,'1');
+insert into items values(1,'FEED','Feed item',null,29,99,'1'),(2,'WRONG','Other item',null,29,99,'1');
 insert into inventory_postings(item_code,warehouse_code,qty,ref,transfer_type) values('FEED','FEEDS',100,'FD-2609-2709-002','IN');
 -- Probe trigger models a mortality side effect before feed validation.
 create function probe_mortality() returns trigger language plpgsql as $$begin

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { addDays, format } from 'date-fns'
 import {
   Copy,
@@ -64,6 +65,9 @@ export default function GoodsReceiveHistory() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       }))
+    } catch (error) {
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to load DOC Placement records. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -232,6 +236,7 @@ export default function GoodsReceiveHistory() {
         </div>
 
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]}
           title="DOC Placement"

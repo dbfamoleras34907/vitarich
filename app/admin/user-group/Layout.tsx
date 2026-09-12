@@ -9,13 +9,20 @@ import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { getUsersGroups, UsersGroup } from './api'
+import NewUserGroupDialog from './new/Layout'
 
-export default function UserGroupLayout() {
+export default function UserGroupLayout({ initialCreateOpen = false }: { initialCreateOpen?: boolean }) {
   const router = useRouter()
   const cannotInsert = usePermission('/admin/user-group/insert')
   const cannotEdit = usePermission('/admin/user-group/edit')
   const [rows, setRows] = useState<UsersGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [createOpen, setCreateOpen] = useState(initialCreateOpen)
+
+  const handleCreateOpenChange = (open: boolean) => {
+    setCreateOpen(open)
+    if (!open && initialCreateOpen) router.replace('/admin/user-group')
+  }
 
   const columns: Column<UsersGroup>[] = [
     { key: 'code', label: 'Code' },
@@ -56,7 +63,6 @@ export default function UserGroupLayout() {
 
   useEffect(() => {
     fetchData()
-    router.prefetch('/admin/user-group/new')
     router.prefetch('/admin/user-group/edit')
   }, [fetchData, router])
 
@@ -68,14 +74,21 @@ export default function UserGroupLayout() {
           <Button variant="secondary" onClick={fetchData} disabled={loading}>
             <RefreshCcw className={loading ? 'animate-spin' : ''} />
           </Button>
-          <Button onClick={() => router.push('/admin/user-group/new')} disabled={cannotInsert}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Group
-          </Button>
+          <NewUserGroupDialog
+            open={createOpen}
+            onOpenChange={handleCreateOpenChange}
+            onCreated={fetchData}
+          >
+            <Button disabled={cannotInsert}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Group
+            </Button>
+          </NewUserGroupDialog>
         </div>
       </div>
       <div className="mx-4">
         <DynamicTable
+          actionsFirst
           loading={loading}
           columns={columns}
           data={rows}

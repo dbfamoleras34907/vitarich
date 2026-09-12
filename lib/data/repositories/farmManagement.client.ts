@@ -1,3 +1,4 @@
+import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { ACTIVE_FARM_VOID } from '@/lib/data/repositories/farms'
 
@@ -6,6 +7,9 @@ export type FarmRecord = {
   code: string | null
   name: string | null
   farm_type: string | null
+  production_model: string | null
+  island: string | null
+  administrative_region: string | null
   approval_status: string | null
   contact_person: string | null
   contact_number: string | null
@@ -44,7 +48,7 @@ export async function voidFarm(id: number) {
   const accessToken = sessionData.session?.access_token
   if (!accessToken) throw new Error('Your session has expired. Please sign in again.')
 
-  const response = await fetch('/api/a_dean/farms/void', {
+  const response = await fetchWithInternetErrorNotice('/api/a_dean/farms/void', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -53,7 +57,7 @@ export async function voidFarm(id: number) {
     body: JSON.stringify({ id }),
   })
 
-  const result = await response.json() as { data?: FarmRecord; error?: string }
+  const result = await readJsonResponse<{ data?: FarmRecord; error?: string }>(response)
   if (!response.ok || !result.data) {
     throw new Error(result.error || 'Unable to void farm.')
   }

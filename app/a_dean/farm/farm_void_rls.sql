@@ -186,6 +186,9 @@ begin
   if new.farm_type is distinct from old.farm_type then v_changed_fields := array_append(v_changed_fields, 'farm_type'); end if;
   if new.address is distinct from old.address then v_changed_fields := array_append(v_changed_fields, 'address'); end if;
   if new.region is distinct from old.region then v_changed_fields := array_append(v_changed_fields, 'region'); end if;
+  if new.production_model is distinct from old.production_model then v_changed_fields := array_append(v_changed_fields, 'production_model'); end if;
+  if new.island is distinct from old.island then v_changed_fields := array_append(v_changed_fields, 'island'); end if;
+  if new.administrative_region is distinct from old.administrative_region then v_changed_fields := array_append(v_changed_fields, 'administrative_region'); end if;
   if new.contact_person is distinct from old.contact_person then v_changed_fields := array_append(v_changed_fields, 'contact_person'); end if;
   if new.contact_number is distinct from old.contact_number then v_changed_fields := array_append(v_changed_fields, 'contact_number'); end if;
   if new.remarks is distinct from old.remarks then v_changed_fields := array_append(v_changed_fields, 'remarks'); end if;
@@ -221,7 +224,7 @@ $$;
 
 drop trigger if exists farms_enqueue_event on public.farms;
 create trigger farms_enqueue_event
-after insert or update of code, name, farm_type, address, region, contact_person,
+after insert or update of code, name, farm_type, production_model, island, administrative_region, address, region, contact_person,
   contact_number, remarks, approval_status, void, updated_at
 on public.farms
 for each row

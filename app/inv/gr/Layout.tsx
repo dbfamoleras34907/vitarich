@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { addDays, format } from 'date-fns'
 import {
   Copy,
@@ -36,6 +37,7 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
   vendor: string
   farmName: string
   receiveDate: string
+  createdDate: string
   returnedQty: number
   balanceQty: number
   status: string
@@ -60,6 +62,9 @@ export default function GoodsReceiveHistory() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       }))
+    } catch (error) {
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to load Goods Receipt records. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -86,6 +91,7 @@ export default function GoodsReceiveHistory() {
           vendor: receipt.vendor || '-',
           farmName: receipt.farmName || '-',
           receiveDate: receipt.receiveDate,
+          createdDate: receipt.createdAt ? format(new Date(receipt.createdAt), 'yyyy-MM-dd') : '-',
           returnedQty,
           balanceQty: receivedQty - returnedQty,
           status: receipt.status,
@@ -109,6 +115,7 @@ export default function GoodsReceiveHistory() {
       { key: 'vendor', label: 'Vendor' },
       { key: 'farmName', label: 'Farm' },
       { key: 'receiveDate', label: 'Date Received' },
+      { key: 'createdDate', label: 'Created Date' },
       // { key: 'returnedQty', label: 'Returned Qty', align: 'right' },
       { key: 'balanceQty', label: 'Balance Qty', align: 'center' },
       {
@@ -209,7 +216,7 @@ export default function GoodsReceiveHistory() {
           />
 
           <div className="space-y-2">
-            <Label htmlFor="gr-date-from">From Date</Label>
+            <Label htmlFor="gr-date-from">Created Date From</Label>
             <Input
               id="gr-date-from"
               type="date"
@@ -220,7 +227,7 @@ export default function GoodsReceiveHistory() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="gr-date-to">To Date</Label>
+            <Label htmlFor="gr-date-to">Created Date To</Label>
             <Input
               id="gr-date-to"
               type="date"
@@ -232,6 +239,7 @@ export default function GoodsReceiveHistory() {
         </div>
 
         <DynamicTable
+          actionsFirst
           loading={loading}
           initialFilters={[]}
           title="Item Stock In"

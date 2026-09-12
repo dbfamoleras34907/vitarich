@@ -1,3 +1,4 @@
+-- Apply notification_system.sql and alter_br_delivery_lines_add_net_live_weight.sql first.
 begin;
 
 create or replace function public.save_br_delivery_transaction(p_document jsonb)
@@ -19,6 +20,8 @@ declare
   v_line_no integer := 0;
   v_header jsonb;
   v_lines jsonb;
+  v_fingerprint text;
+  v_previous_fingerprint text;
 begin
   if v_actor is null then
     raise exception 'An authenticated user is required to save Harvest & Delivery.';
@@ -62,7 +65,7 @@ begin
     update public.br_delivery
     set
       gi_no = trim(p_document->>'giNo'),
-      issue_date = (p_document->>'issueDate')::date,
+      issue_date = (now() at time zone 'Asia/Manila')::date,
       farm_id = v_farm_id,
       farm_code = nullif(trim(v_farm_code), ''),
       farm_name = nullif(trim(v_farm_name), ''),
@@ -90,7 +93,7 @@ begin
       created_by
     ) values (
       trim(p_document->>'giNo'),
-      (p_document->>'issueDate')::date,
+      (now() at time zone 'Asia/Manila')::date,
       v_farm_id,
       nullif(trim(v_farm_code), ''),
       nullif(trim(v_farm_name), ''),
@@ -131,7 +134,9 @@ begin
       set
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
+        net_live_weight = nullif(v_line->>'netLiveWeight', '')::numeric,
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
+        delivered_date = nullif(v_line->>'deliveredDate', '')::date,
         hauler_name = nullif(trim(v_line->>'haulerName'), ''),
         plate_number = nullif(trim(v_line->>'plateNumber'), ''),
         destination = nullif(trim(v_line->>'destination'), ''),
@@ -159,7 +164,9 @@ begin
         br_delivery_id,
         line_no,
         allocation_group_key,
+        net_live_weight,
         ts_dr_no,
+        delivered_date,
         hauler_name,
         plate_number,
         destination,
@@ -185,7 +192,9 @@ begin
         v_document_id,
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
+        nullif(v_line->>'netLiveWeight', '')::numeric,
         nullif(trim(v_line->>'tsDrNo'), ''),
+        nullif(v_line->>'deliveredDate', '')::date,
         nullif(trim(v_line->>'haulerName'), ''),
         nullif(trim(v_line->>'plateNumber'), ''),
         nullif(trim(v_line->>'destination'), ''),
@@ -230,6 +239,25 @@ begin
   where line.br_delivery_id = v_document_id
     and line.void = '1';
 
+  -- Compare persisted business content, ignoring audit fields and row identities.
+  -- An identical retry produces no new revision/event; A -> B -> A remains two edits.
+  select md5(jsonb_build_object(
+    'header', v_header - array['created_at', 'updated_at', 'created_by', 'updated_by',
+      'notification_revision', 'notification_fingerprint'],
+    'lines', coalesce(jsonb_agg(value - array['id', 'created_at', 'updated_at', 'created_by', 'updated_by']
+      order by (value->>'line_no')::bigint), '[]'::jsonb)
+  )::text) into v_fingerprint
+  from jsonb_array_elements(v_lines);
+  v_previous_fingerprint := v_header->>'notification_fingerprint';
+
+  if v_fingerprint is distinct from v_previous_fingerprint then
+    update public.br_delivery
+    set notification_fingerprint = v_fingerprint,
+        notification_revision = notification_revision +
+          case when v_target_status = 'Posted' or v_existing_status is not null then 1 else 0 end
+    where id = v_document_id;
+  end if;
+
   return jsonb_build_object('header', v_header, 'lines', v_lines);
 end;
 $$;
@@ -237,6 +265,36 @@ $$;
 revoke all on function public.save_br_delivery_transaction(jsonb) from public;
 revoke all on function public.save_br_delivery_transaction(jsonb) from anon;
 grant execute on function public.save_br_delivery_transaction(jsonb) to authenticated;
+
+-- Only the outbox trigger elevates privileges; the business RPC remains SECURITY INVOKER.
+create or replace function public.enqueue_br_delivery_event()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare
+  v_event_key text := case when new.status = 'Posted' then 'BR_DELIVERY_POSTED' else 'BR_DELIVERY_EDITED' end;
+begin
+  insert into public.notification_outbox (
+    module_key, event_key, entity_type, entity_id, document_no, fms_type,
+    farm_id, recipient_farm_id, actor_auth_id, target_url,
+    permission_group, permission_title, title, message, priority,
+    metadata, dedupe_key, occurred_at
+  ) values (
+    'BR_DELIVERY', v_event_key, 'br_delivery', new.id::text, new.gi_no, 'Broiler',
+    new.farm_id, new.farm_id, auth.uid(), '/brd/dr/post?id=' || new.id,
+    'Menus', 'Harvest & Delivery/view',
+    case when new.status = 'Posted' then 'Harvest & Delivery posted' else 'Harvest & Delivery edited' end,
+    'Harvest & Delivery {document_no} was saved by {initiator_name}.', 'normal',
+    jsonb_build_object('revision', new.notification_revision),
+    v_event_key || ':' || new.id || ':' || new.notification_revision, now()
+  ) on conflict (dedupe_key) do nothing;
+  return new;
+end;
+$$;
+revoke all on function public.enqueue_br_delivery_event() from public, anon, authenticated;
+drop trigger if exists br_delivery_enqueue_event on public.br_delivery;
+create trigger br_delivery_enqueue_event after update of notification_revision on public.br_delivery
+for each row when (new.notification_revision > old.notification_revision)
+execute function public.enqueue_br_delivery_event();
 
 notify pgrst, 'reload schema';
 
