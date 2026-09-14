@@ -401,7 +401,7 @@ function averageDailyFeedRows(sourceRows: EditableRow[], throughDate: string) {
 }
 
 function headerClass(groupEnd = false) {
-  return `fc-grid-header fc-grid-header-border sticky z-30 px-2 py-0 text-center text-xs font-semibold ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"}`;
+  return `fc-grid-header fc-grid-header-border sticky z-30 px-1 py-0 text-center text-xs leading-tight font-semibold ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"}`;
 }
 
 export default function CardForm() {
@@ -1854,15 +1854,15 @@ export default function CardForm() {
         <div className="relative flex-1 overflow-auto">
           <table
             ref={gridRef}
-            className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm"
-            style={{ minWidth: 3224 }}
+            className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-xs [&_input]:px-1 [&_input]:text-xs"
+            style={{ width: 2430, minWidth: 2430 }}
           >
             <colgroup>
               <col style={{ width: 132 }} />
               <col style={{ width: 52 }} />
               {[
-                92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 120,
-                100, 100, 100, 100, 220, 180, 180, 100, 100, 100, 100, 100, 100,
+                68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 84,
+                76, 76, 76, 76, 150, 150, 150, 76, 76, 76, 76, 76, 76,
               ].map((width, index) => (
                 <col key={index} style={{ width }} />
               ))}
@@ -1926,6 +1926,7 @@ export default function CardForm() {
                       key={`${groupIndex}-${label}`}
                       className={headerClass(columnIndex === labels.length - 1)}
                       style={{ top: 28 }}
+                      style={{ top: 36 }}
                     >
                       {label}
                     </th>
@@ -1984,7 +1985,7 @@ export default function CardForm() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 text-xs"
+                        className="h-8 gap-1 px-1 text-xs"
                         disabled={row.daterec > localDate()}
                         onClick={() => void openTransferModal(row)}
                       >

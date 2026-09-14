@@ -99,6 +99,10 @@ export type BreederWeeklyBodyWeight = {
 };
 
 export type BreederDashboardSummary = {
+  depletionRates: {
+    growing: { openingPopulation: number | null; ratePercent: number | null };
+    laying: { openingPopulation: number | null; ratePercent: number | null };
+  };
   activePlacements: { id: number; placementDate: string; farmName: string; buildingName: string; penName: string }[];
   latestUniformity: { male: { value: number; date: string } | null; female: { value: number; date: string } | null };
   latestFeed: { date: string; ageDays: number | null; gramsPerBird: number | null } | null;
@@ -324,6 +328,10 @@ export async function getBreederDashboard(
   }
   if (!placements.length) {
     return {
+      depletionRates: {
+        growing: { openingPopulation: null, ratePercent: null },
+        laying: { openingPopulation: null, ratePercent: null },
+      },
       activePlacements: [],
       latestUniformity: { male: null, female: null },
       latestFlockAge: null,
@@ -354,6 +362,12 @@ export async function getBreederDashboard(
   const placementById = new Map(placements.map((row) => [Number(row.id), row]));
   const performance = await performanceForPlacements([...placementById.keys()], filter, true);
   const latestByPlacement = new Map<number, PerformanceRow>();
+  // Same opening-inventory basis as Breeder Reports, split by age period.
+  // Take each placement's first eligible record once, never sum daily inventories.
+  const openingByAgePeriod = {
+    growingMortality: new Map<number, number | null>(),
+    layingMortality: new Map<number, number | null>(),
+  };
 
   type Accumulator = BuildingDashboardRow & {
     maleWeightBasis: number;
@@ -409,7 +423,17 @@ export async function getBreederDashboard(
     row.condemn += numeric(record.condem_male) + numeric(record.condem_female);
     row.mortalityMale += numeric(record.mc_male);
     row.mortalityFemale += numeric(record.mc_female);
-    row[mortalityAgeBucket(placement.placement_date, record.daterec)] += numeric(record.mc_male) + numeric(record.mc_female);
+    const agePeriod = mortalityAgeBucket(placement.placement_date, record.daterec);
+    row[agePeriod] += numeric(record.mc_male) + numeric(record.mc_female);
+    if (agePeriod !== "otherAgeMortality") {
+      const openings = openingByAgePeriod[agePeriod];
+      const placementId = numeric(record.placement_id);
+      if (!openings.has(placementId)) {
+        const inventory = [record.inv_male, record.inv_female];
+        const valid = inventory.every(value => value != null && Number.isFinite(Number(value)) && Number(value) >= 0);
+        openings.set(placementId, valid ? numeric(record.inv_male) + numeric(record.inv_female) : null);
+      }
+    }
     row.feedMaleKg += numeric(record.feed_consumption_male);
     row.feedFemaleKg += numeric(record.feed_consumption_female);
     row.birdDays += numeric(record.inv_male) + numeric(record.inv_female);
@@ -560,7 +584,20 @@ export async function getBreederDashboard(
     .map(row => ({ id: row.id, placementDate: row.placement_date,
       farmName: row.farm_name || "Unspecified farm", buildingName: row.building_no || "Unspecified building",
       penName: row.pen_no || "Unspecified pen" }));
-  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements };
+  const depletionRate = (openings: Map<number, number | null>, deaths: number) => {
+    const populations = [...openings.values()];
+    const openingPopulation = populations.length && populations.every(value => value != null)
+      ? populations.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null;
+    return {
+      openingPopulation,
+      ratePercent: openingPopulation != null && openingPopulation > 0 ? deaths / openingPopulation * 100 : null,
+    };
+  };
+  const depletionRates = {
+    growing: depletionRate(openingByAgePeriod.growingMortality, totals.growingMortality),
+    laying: depletionRate(openingByAgePeriod.layingMortality, totals.layingMortality),
+  };
+  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates };
 }
 
 export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {

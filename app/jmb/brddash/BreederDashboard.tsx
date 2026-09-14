@@ -60,16 +60,16 @@ function StatCard({
     "text-amber-500": "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
   };
   return (
-    <Card className={`overflow-hidden ${accent}`}>
+    <Card className={`overflow-hidden gap-0 py-0 ${accent}`}>
       <CardContent className="p-0">
         <div className="h-1 w-full bg-current opacity-80" />
-        <div className="flex items-start justify-between gap-4 p-5">
-          <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3 p-4">
+          <div className="min-w-0 space-y-2">
             <p className={`inline-block rounded-md px-3 py-1.5 text-xs font-bold uppercase ${titleColors[accent] ?? "bg-muted text-foreground"}`}>{title}</p>
             <p className="text-3xl font-bold text-foreground">{value}</p>
             <div className="text-sm text-muted-foreground">{helper}</div>
           </div>
-          <div className="rounded-md bg-current/10 p-3">{icon}</div>
+          <div className="shrink-0 rounded-md bg-current/10 p-2">{icon}</div>
         </div>
       </CardContent>
     </Card>
@@ -168,6 +168,17 @@ export default function BreederDashboard() {
   const mortality = (totals?.mortalityMale ?? 0) + (totals?.mortalityFemale ?? 0);
   const depletion = mortality + (totals?.soldCulls ?? 0) + (totals?.transferOut ?? 0)
     + (totals?.kitchen ?? 0) + (totals?.condemn ?? 0);
+  const depletionRows = [
+    { label: "Mortality / Dead", value: mortality },
+    { label: "Growing Mortality (0.1–25.0)", value: totals?.growingMortality ?? 0, period: "growing" as const },
+    { label: "Laying Mortality (25.1–65.0)", value: totals?.layingMortality ?? 0, period: "laying" as const },
+    { label: "Other Age Mortality", value: totals?.otherAgeMortality ?? 0 },
+    { label: "Sold / Culls", value: totals?.soldCulls ?? 0 },
+    { label: "Transfer Out", value: totals?.transferOut ?? 0 },
+    { label: "Kitchen", value: totals?.kitchen ?? 0 },
+    { label: "Condemn", value: totals?.condemn ?? 0 },
+    { label: "Total Depletion", value: depletion },
+  ];
   const combinedAlw = population
     ? (((totals?.alwMale ?? 0) * (totals?.populationMale ?? 0)) +
         ((totals?.alwFemale ?? 0) * (totals?.populationFemale ?? 0))) /
@@ -213,7 +224,7 @@ export default function BreederDashboard() {
             {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-48 w-full" />)}
           </div>
         ) : (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading}>
+          <div className="grid auto-rows-fr items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading}>
             <StatCard
             title="Population"
             value={loading ? "Loading..." : integer.format(population)}
@@ -254,21 +265,19 @@ export default function BreederDashboard() {
             helper={<div className="space-y-2">
               <p>Total depletion in the selected date range.</p>
               <dl className="space-y-1">
-                {[
-                  ["Mortality / Dead", mortality],
-                  ["Growing Mortality (0.1–25.0)", totals?.growingMortality ?? 0],
-                  ["Laying Mortality (25.1–65.0)", totals?.layingMortality ?? 0],
-                  ["Other Age Mortality", totals?.otherAgeMortality ?? 0],
-                  ["Sold / Culls", totals?.soldCulls ?? 0],
-                  ["Transfer Out", totals?.transferOut ?? 0],
-                  ["Kitchen", totals?.kitchen ?? 0],
-                  ["Condemn", totals?.condemn ?? 0],
-                  ["Total Depletion", depletion],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4">
-                    <dt className={label === "Growing Mortality (0.1–25.0)" || label === "Laying Mortality (25.1–65.0)" ? "font-bold text-foreground" : undefined}>{label}</dt><dd className="font-semibold tabular-nums text-foreground">{loading ? "—" : integer.format(Number(value))}</dd>
-                  </div>
-                ))}
+                {depletionRows.map(({ label, value, period }) => {
+                  const rate = period ? summary?.depletionRates[period] : undefined;
+                  return (
+                    <div key={label} className="flex justify-between gap-4">
+                      <dt className={period ? "font-bold text-foreground" : undefined}>{label}</dt>
+                      <dd className="whitespace-nowrap text-right font-semibold tabular-nums text-foreground"
+                        title={period ? (rate?.openingPopulation != null
+                          ? `Opening population: ${integer.format(rate.openingPopulation)} birds` : "Opening population unavailable") : undefined}>
+                        {loading ? "—" : `${integer.format(value)}${period ? `-${rate?.ratePercent == null ? "N/A" : `${decimal.format(rate.ratePercent)}%`}` : ""}`}
+                      </dd>
+                    </div>
+                  );
+                })}
               </dl>
             </div>}
             icon={<HeartCrack className="size-6 text-rose-700" />}
