@@ -28,6 +28,7 @@ export const notificationCatalog: NotificationCatalog = [
       },
     ],
   },
+  // 
   {
     key: NOTIFICATION_MODULE_KEYS.BR_DELIVERY,
     ruleActivationReady: false, // Enable only after target SQL deployment and verification.
