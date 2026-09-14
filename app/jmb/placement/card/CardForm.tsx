@@ -1868,7 +1868,7 @@ export default function CardForm() {
               ))}
             </colgroup>
             <thead>
-              <tr style={{ height: 28 }}>
+              <tr style={{ height: 36 }}>
                 <th
                   rowSpan={2}
                   className="fc-grid-header fc-grid-header-border sticky left-0 top-0 z-40 text-center text-xs"
@@ -1925,7 +1925,6 @@ export default function CardForm() {
                     <th
                       key={`${groupIndex}-${label}`}
                       className={headerClass(columnIndex === labels.length - 1)}
-                      style={{ top: 28 }}
                       style={{ top: 36 }}
                     >
                       {label}
