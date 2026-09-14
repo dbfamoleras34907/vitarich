@@ -382,6 +382,24 @@ function summarizeDailyRows(sourceRows: EditableRow[]) {
   );
 }
 
+function averageDailyFeedRows(sourceRows: EditableRow[], throughDate: string) {
+  const recordedRows = sourceRows.filter(
+    (row) => row.daterec <= throughDate && hasDailyRecord(row),
+  );
+  const fields = [
+    "feed_consumption_male",
+    "feed_consumption_female",
+    "avg_body_weight_male",
+    "avg_body_weight_female",
+  ] as const;
+  return fields.map((field) =>
+    recordedRows.length
+      ? recordedRows.reduce((sum, row) => sum + row[field], 0) /
+        recordedRows.length
+      : null,
+  );
+}
+
 function headerClass(groupEnd = false) {
   return `fc-grid-header fc-grid-header-border sticky z-30 px-2 py-0 text-center text-xs font-semibold ${groupEnd ? "fc-grid-group-divider" : "fc-grid-border-r"}`;
 }
@@ -754,6 +772,7 @@ export default function CardForm() {
     () => summarizeDailyRows(visibleRows),
     [visibleRows],
   );
+  const periodFeedAverages = averageDailyFeedRows(visibleRows, localDate());
   const exportRows = useMemo(() => {
     const feedTypeById = new Map(
       feedTypes.map((feedType) => [feedType.id, feedType.description ?? ""]),
@@ -2030,14 +2049,14 @@ export default function CardForm() {
             <tfoot>
               <tr>
                 <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">
-                  Total
+                  Summary
                 </td>
                 <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-[132px] z-40 text-center font-semibold">
                   {visibleRows.length} days
                 </td>
                 {[
-                  periodFirstRow?.inv_male ?? 0,
-                  periodFirstRow?.inv_female ?? 0,
+                  null,
+                  null,
                   periodTotals.mcMale,
                   periodTotals.mcFemale,
                   periodTotals.condemMale,
@@ -2062,10 +2081,7 @@ export default function CardForm() {
                   periodEndCumulative.male,
                   periodEndCumulative.female,
                   null,
-                  periodTotals.feedMale,
-                  periodTotals.feedFemale,
-                  periodLatestRecord?.avg_body_weight_male,
-                  periodLatestRecord?.avg_body_weight_female,
+                  ...periodFeedAverages,
                   periodLatestRecord?.m_body_weight,
                   periodLatestRecord?.f_body_weight,
                   periodLatestRecord?.m_uniformity,
@@ -2074,6 +2090,13 @@ export default function CardForm() {
                   <td
                     key={index}
                     className="fc-grid-footer-cell sticky bottom-0 text-center font-semibold"
+                    title={
+                      index === 17 || index === 18
+                        ? "Cumulative depletion at the end of this period"
+                        : index >= 20 && index <= 23
+                          ? "Daily average for recorded days in this period; excludes future dates and unused blank rows"
+                          : undefined
+                    }
                   >
                     {value == null ? "" : count(value)}
                   </td>
