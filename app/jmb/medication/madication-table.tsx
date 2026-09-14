@@ -156,11 +156,12 @@ export default function MedicationTable() {
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
         <Table>
-          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Medication</TableHead><TableHead>Dosage</TableHead><TableHead>Period</TableHead><TableHead>Route</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Medication</TableHead><TableHead>Dosage</TableHead><TableHead>Period</TableHead><TableHead>Route</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow> : null}
-            {!loading && filtered.map((row) => (
+            {loading ? <TableRow><TableCell colSpan={10} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow> : null}
+            {!loading && filtered.map((row, index) => (
               <TableRow key={row.id} className={row.status === "Cancelled" ? "opacity-60" : ""}>
+                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
                 <TableCell className="whitespace-nowrap">{formatDate(row.medication_date)}</TableCell>
                 <TableCell className="font-mono text-xs">{row.document_no}</TableCell>
                 <TableCell><div className="font-medium">{row.farm_name}</div><div className="max-w-72 truncate text-xs text-muted-foreground" title={row.target_names ?? ""}>{row.scope}: {row.target_names || row.building_name || row.farm_name}</div></TableCell>
@@ -172,7 +173,7 @@ export default function MedicationTable() {
                 <TableCell><div className="flex justify-end gap-2"><Button type="button" size="sm" variant="outline" onClick={() => router.push(`/jmb/medication/new?id=${row.id}`)} className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"><Pencil className="size-4" />Edit/View</Button>{row.status === "Posted" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelRecord(row); setCancelReason(""); }}><Ban className="size-4" />Cancel</Button> : null}</div></TableCell>
               </TableRow>
             ))}
-            {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
+            {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
         <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} records</div>

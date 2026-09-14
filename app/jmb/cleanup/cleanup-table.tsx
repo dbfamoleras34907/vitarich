@@ -60,7 +60,7 @@ export default function CleanupTable() {
       setRecords(await listBreederCleanups());
     } catch (loadError) {
       console.error(loadError);
-      setError("Unable to load breeder clean-ups from tbl_breeder_cleanup.");
+      setError("Unable to load breeder Terminal Culling records from tbl_breeder_cleanup.");
     } finally {
       setLoading(false);
     }
@@ -102,8 +102,13 @@ export default function CleanupTable() {
           record.cycle_no,
           record.farm_name,
           record.building_name,
-          record.pen_name,
-          record.reason,
+          record.age,
+          record.date_of_culling,
+          record.body_weight,
+          record.buyer_name,
+          record.hauler_name,
+          record.hauler_plate_number,
+          record.remarks,
         ].some((value) =>
           String(value ?? "")
             .toLowerCase()
@@ -116,7 +121,7 @@ export default function CleanupTable() {
   async function remove(record: BreederCleanupRecord) {
     if (
       !window.confirm(
-        `Delete the clean-up record for cycle ${record.cycle_no ?? record.cycle_id}?`,
+        `Delete the Terminal Culling record for cycle ${record.cycle_no ?? record.cycle_id}?`,
       )
     )
       return;
@@ -129,7 +134,7 @@ export default function CleanupTable() {
       setError(
         deleteError instanceof Error
           ? deleteError.message
-          : "Unable to delete clean-up.",
+          : "Unable to delete Terminal Culling.",
       );
     } finally {
       setWorking(false);
@@ -150,7 +155,7 @@ export default function CleanupTable() {
       <div className="mt-4 px-4">
         <Breadcrumb
           SecondPreviewPageName="Breeder"
-          CurrentPageName="Clean-Up"
+          CurrentPageName="Terminal Culling"
         />
       </div>
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -161,19 +166,19 @@ export default function CleanupTable() {
                 <ClipboardCheck className="size-5" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold">Breeder clean-up</h1>
+                <h1 className="text-xl font-semibold">Breeder Terminal Culling</h1>
                 <p className="text-sm text-muted-foreground">
-                  Cycle clean-up quantities and captured flock-card balances
+                  Cycle Terminal Culling quantities and captured flock-card balances
                 </p>
               </div>
             </div>
             <Button onClick={() => router.push("/jmb/cleanup/new")}>
               <Plus className="size-4" />
-              New clean-up
+              New Terminal Culling
             </Button>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Clean-up records" value={records.length} />
+            <Stat label="Terminal Culling records" value={records.length} />
             <Stat label="Female cleaned up" value={femaleTotal} />
             <Stat label="Male cleaned up" value={maleTotal} />
           </div>
@@ -184,7 +189,7 @@ export default function CleanupTable() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search cycle, farm, location, or reason..."
+              placeholder="Search building, cycle, buyer, hauler, or remarks..."
               className="pl-9"
             />
           </div>
@@ -212,32 +217,31 @@ export default function CleanupTable() {
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <Table className="min-w-275">
+          <Table className="w-full text-xs [&_th]:px-1 [&_th]:whitespace-normal [&_th]:leading-tight [&_td]:px-1 [&_td]:py-1">
             <TableHeader>
               <TableRow>
-                <TableHead>Created</TableHead>
-                <TableHead>Cycle</TableHead>
-                <TableHead>Farm</TableHead>
-                <TableHead>Building / pen</TableHead>
-                <TableHead className="text-right">Female system</TableHead>
-                <TableHead className="text-right">Female clean-up</TableHead>
-                <TableHead className="text-right">Male system</TableHead>
-                <TableHead className="text-right">Male clean-up</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead scope="col" rowSpan={2} className="w-12 text-center">#</TableHead>
+                {["Created", "Cycle", "Farm", "Building", "Age", "Date of Culling"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
+                <TableHead scope="colgroup" colSpan={3} className="bg-pink-100 text-center text-pink-900">Female</TableHead>
+                <TableHead scope="colgroup" colSpan={3} className="bg-sky-100 text-center text-sky-900">Male</TableHead>
+                {["Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
+              </TableRow>
+              <TableRow>
+                {["Female", "Male"].flatMap(sex => ["Balance", "Culling Qty", "Condemn Variance"].map(label => <TableHead key={sex + label} scope="col" className={`min-w-24 text-right ${sex === "Female" ? "bg-pink-100 text-pink-900" : "bg-sky-100 text-sky-900"}`}>{label}</TableHead>))}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-32 text-center">
+                  <TableCell colSpan={19} className="h-32 text-center">
                     <Loader2 className="mx-auto size-5 animate-spin" />
                   </TableCell>
                 </TableRow>
               ) : null}
               {!loading &&
-                filtered.map((record) => (
+                filtered.map((record, index) => (
                   <TableRow key={record.id}>
+                    <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatDate(record.created_at)}
                     </TableCell>
@@ -257,24 +261,29 @@ export default function CleanupTable() {
                     </TableCell>
                     <TableCell>
                       <div>{record.building_name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {record.pen_name}
-                      </div>
+
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">{record.age ?? "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">{record.date_of_culling ?? "-"}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {record.female_system_balance.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {record.female_cleanup_qty.toLocaleString()}
                     </TableCell>
+                    <TableCell className="text-right tabular-nums">{(record.female_condemn_variance ?? record.female_system_balance - record.female_cleanup_qty).toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {record.male_system_balance.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {record.male_cleanup_qty.toLocaleString()}
                     </TableCell>
+                    <TableCell className="text-right tabular-nums">{(record.male_condemn_variance ?? record.male_system_balance - record.male_cleanup_qty).toLocaleString()}</TableCell>
+                    <TableCell>{record.body_weight || "-"}</TableCell>
+                    <TableCell>{record.buyer_name || "-"}</TableCell>
+                    <TableCell>{record.hauler_name || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">{record.hauler_plate_number || "-"}</TableCell>
                     <TableCell>
-                      <div>{record.reason}</div>
                       {record.remarks ? (
                         <div className="max-w-64 truncate text-xs text-muted-foreground">
                           {record.remarks}
@@ -309,10 +318,10 @@ export default function CleanupTable() {
               {!loading && !filtered.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={19}
                     className="h-32 text-center text-muted-foreground"
                   >
-                    No breeder clean-up records found.
+                    No breeder Terminal Culling records found.
                   </TableCell>
                 </TableRow>
               ) : null}

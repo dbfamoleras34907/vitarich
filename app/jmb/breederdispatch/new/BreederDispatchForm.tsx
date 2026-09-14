@@ -155,6 +155,7 @@ export default function BreederDispatchForm() {
 
   function payload(): BreederDispatchInput {
     if (!selectedFarm) throw new Error("Select a breeder farm.");
+    const destinationFarm = hatcheryFarms.find((farm) => farm.farm_name === form.destination);
     const allocatedLines = selectedGroups.flatMap((group) => {
       let remaining = number(quantities[group.key]?.quantity);
       return [...group.items].sort((a, b) => a.source_date.localeCompare(b.source_date) || a.source_record_id - b.source_record_id).flatMap((item) => {
@@ -164,7 +165,7 @@ export default function BreederDispatchForm() {
         return [{ source_type: item.source_type, source_record_id: item.source_record_id, source_date: item.source_date, category: item.category, category_label: item.category_label, placement_id: item.placement_id, placement_date: item.placement_date, building_id: item.building_id, building_name: item.building_name, pen_id: item.pen_id, pen_name: item.pen_name, dr_no: item.dr_no, source_available: item.source_available, dispatch_qty: dispatchQuantity, remarks: quantities[group.key]?.remarks.trim() || null }];
       });
     });
-    return { dispatch_date: form.dispatch_date, farm_id: selectedFarm.farm_id, farm_code: selectedFarm.farm_code, farm_name: selectedFarm.farm_name, destination: form.destination.trim(), hauler_name: form.hauler_name.trim() || null, plate_number: form.plate_number.trim() || null, truck_seal: form.truck_seal.trim() || null, remarks: form.remarks.trim() || null,
+    return { dispatch_date: form.dispatch_date, farm_id: selectedFarm.farm_id, farm_code: selectedFarm.farm_code, farm_name: selectedFarm.farm_name, destination: form.destination.trim(), farm_destination_id: destinationFarm?.farm_id ?? null, hauler_name: form.hauler_name.trim() || null, plate_number: form.plate_number.trim() || null, truck_seal: form.truck_seal.trim() || null, remarks: form.remarks.trim() || null,
       lines: allocatedLines.map((line, index) => ({ ...line, line_no: index + 1 })) };
   }
 

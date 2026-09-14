@@ -26,7 +26,7 @@ export type HatcheryFarmLookup = {
 
 export type BreederDispatchRecord = {
   id: number; document_no: string; dispatch_date: string; farm_id: number; farm_code: string | null;
-  farm_name: string; destination: string; hauler_name: string | null; plate_number: string | null;
+  farm_name: string; destination: string; farm_destination_id: number | null; hauler_name: string | null; plate_number: string | null;
   truck_seal: string | null; status: DispatchStatus; remarks: string | null; line_count: number;
   population_qty: number; egg_qty: number; total_qty: number; created_at: string;
 };
@@ -49,7 +49,7 @@ export type AvailableBreederFlock = Placement & {
 };
 export type BreederDispatchInput = {
   dispatch_date: string; farm_id: number; farm_code: string | null; farm_name: string;
-  destination: string; hauler_name: string | null; plate_number: string | null; truck_seal: string | null;
+  destination: string; farm_destination_id: number | null; hauler_name: string | null; plate_number: string | null; truck_seal: string | null;
   remarks: string | null; lines: Omit<BreederDispatchLine, "id" | "dispatch_id">[];
 };
 
@@ -197,6 +197,13 @@ async function validateInput(input: BreederDispatchInput) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dispatch_date)) throw new Error("Dispatch date is required.");
   if (!Number.isInteger(input.farm_id) || input.farm_id <= 0) throw new Error("Breeder farm is required.");
   if (!input.destination.trim()) throw new Error("Destination is required.");
+  const walkInCustomer = input.destination.startsWith("Walk-in Customer - ");
+  if (walkInCustomer && input.farm_destination_id !== null) throw new Error("Walk-in customers cannot have a destination farm ID.");
+  if (!walkInCustomer) {
+    if (!Number.isInteger(input.farm_destination_id) || Number(input.farm_destination_id) <= 0) throw new Error("Destination Hatchery farm is required.");
+    const destinationFarm = (await listHatcheryFarms()).find((farm) => farm.farm_id === input.farm_destination_id);
+    if (!destinationFarm || destinationFarm.farm_name !== input.destination) throw new Error("The selected destination does not match an active Hatchery farm.");
+  }
   if (!input.lines.length) throw new Error("Add at least one dispatch category.");
   const keys = input.lines.map((line) => dispatchItemKey(line.source_type, line.source_record_id, line.category));
   if (new Set(keys).size !== keys.length) throw new Error("A source category can only appear once.");

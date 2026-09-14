@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
+import { STANDARD_FEED_BY_WEEK } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { getUserInfo, listBreederCycles, listBreederFarms, listFarmLocationLookup, type BreederCycle, type BreederFarm, type FarmLocationLookup } from "@/app/jmb/placement/new/api";
@@ -37,7 +38,6 @@ const REPORT_OPTIONS: Array<{ value: ReportType; label: string; scope: string }>
   { value: "medication", label: "Medication Report", scope: "per Farm" },
   { value: "regrading", label: "Regrading Report", scope: "per Farm" },
 ];
-const STANDARD_FEED_BY_WEEK: Record<number, number> = { 21: 118, 22: 121, 23: 124, 24: 127, 25: 130 };
 
 function localDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;

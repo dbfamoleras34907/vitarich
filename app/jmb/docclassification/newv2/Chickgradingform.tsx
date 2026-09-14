@@ -11,7 +11,7 @@
  * - Automatically loads the current logged-in user's information and populates the grading personnel field
  * - Fetches available egg references from the database for selection
  * - Generates batch codes automatically when a new egg reference is selected
- * - Retrieves remaining inventory from the egg reference
+ * - Retrieves setter quantity from the egg reference
  * - Validates that the sum of all quality grades equals the total chicks before saving
  * - Calculates quality grade rate and cull rate percentages in real-time
  * - Supports keyboard input with number formatting (comma-separated thousands)
@@ -30,7 +30,7 @@
  */
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,14 +39,13 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
 import {
-  ChickGradingProcess,
   ChickGradingProcessCreate,
   createChickGradingProcess,
   getChickGradingProcessById,
   listEggReferences,
   updateChickGradingProcess,
   generateNextBatchCode,
-  getRemainingDocClassificationInventory,
+  getDocClassificationTotalEggSet,
 } from "./api";
 
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -128,6 +127,12 @@ const initialForm: FormState = {
   cull_rate: null,
 };
 
+function errorMessage(error: unknown, fallback: string) {
+  return error && typeof error === "object" && "message" in error
+    ? String(error.message ?? fallback)
+    : fallback;
+}
+
 function n(v: unknown) {
   const x = Number(v);
   return Number.isFinite(x) ? Math.max(0, x) : 0;
@@ -201,12 +206,13 @@ export default function Chickgradingform() {
   const [eggRefsLoading, setEggRefsLoading] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
   const [totalLoading, setTotalLoading] = useState(false);
+  const createRequestKey = useRef<string | null>(null);
 
-  const [loggedInUser, setLoggedInUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserRow | null>(null);
+  const [, setLoggedInUser] = useState<User | null>(null);
+  const [, setUserProfile] = useState<UserRow | null>(null);
 
   const [eggRefs, setEggRefs] = useState<EggRefOption[]>([]);
-  const [remainingInventory, setRemainingInventory] = useState(0);
+  const [totalEggSet, setTotalEggSet] = useState(0);
   const [form, setForm] = useState<FormState>({
     ...initialForm,
     egg_ref_no: !isEdit ? copiedEggRef : "",
@@ -347,20 +353,20 @@ export default function Chickgradingform() {
           quality_grade_rate: rec.quality_grade_rate ?? null,
           cull_rate: rec.cull_rate ?? null,
         });
-      } catch (e: any) {
-        alert(e?.message ?? "Failed to load record.");
+      } catch (e: unknown) {
+        alert(errorMessage(e, "Failed to load record."));
       } finally {
         setLoading(false);
       }
     })();
   }, [editId]);
 
-  // remaining inventory + batch code on egg ref change
+  // setter quantity + batch code on egg ref change
   useEffect(() => {
     const egg = form.egg_ref_no.trim();
 
     if (!egg) {
-      setRemainingInventory(0);
+      setTotalEggSet(0);
       setForm((prev) => ({
         ...prev,
         total_chicks: null,
@@ -375,13 +381,13 @@ export default function Chickgradingform() {
       try {
         setTotalLoading(true);
 
-        const remaining = await getRemainingDocClassificationInventory(egg);
+        const quantitySet = await getDocClassificationTotalEggSet(egg);
         if (!alive) return;
 
-        setRemainingInventory(remaining);
+        setTotalEggSet(quantitySet);
         setForm((prev) => ({
           ...prev,
-          total_chicks: remaining,
+          total_chicks: quantitySet,
         }));
 
         if (!isEdit) {
@@ -394,14 +400,14 @@ export default function Chickgradingform() {
             batch_code: code,
           }));
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error(e);
 
         if (!alive) return;
 
-        alert(e?.message ?? "Failed to load remaining inventory / batch code.");
+        alert(errorMessage(e, "Failed to load setter quantity / batch code."));
 
-        setRemainingInventory(0);
+        setTotalEggSet(0);
         setForm((prev) => ({
           ...prev,
           total_chicks: null,
@@ -480,6 +486,7 @@ export default function Chickgradingform() {
   }, [form.cull_chicks, totalChicksPreview]);
 
   async function onSave() {
+    if (saving || loading || totalLoading) return;
     if (!form.egg_ref_no.trim()) {
       alert("Egg Reference No. is required.");
       return;
@@ -495,14 +502,14 @@ export default function Chickgradingform() {
 
     if (totalChicks <= 0) {
       alert(
-        "Total chicks is empty or 0. Please select a valid Egg Reference No.",
+        "Total Egg Set is empty or 0. Please select a valid Egg Reference No.",
       );
       return;
     }
 
     if (Math.round(totalInputs) !== Math.round(totalChicks)) {
       alert(
-        `Cannot save.\n\nTotal of Class A to Rotten = ${totalInputs}\nTotal Chicks = ${totalChicks}\n\nPlease make them equal before saving.`,
+        `Cannot save.\n\nTotal of Class A to Rotten = ${totalInputs}\nTotal Egg Set = ${totalChicks}\n\nPlease make them equal before saving.`,
       );
       return;
     }
@@ -545,15 +552,16 @@ export default function Chickgradingform() {
         await updateChickGradingProcess(editId, payload);
         alert("Updated successfully.");
       } else {
-        await createChickGradingProcess(payload);
+        createRequestKey.current ??= crypto.randomUUID();
+        await createChickGradingProcess(payload, createRequestKey.current);
         alert("Saved successfully.");
       }
 
       router.push("/jmb/docclassification");
       router.refresh();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert(e?.message ?? "Failed to save.");
+      alert(errorMessage(e, "Failed to save."));
     } finally {
       setSaving(false);
     }
@@ -610,7 +618,7 @@ export default function Chickgradingform() {
                       value={
                         totalLoading
                           ? "Loading..."
-                          : formatNumber(remainingInventory)
+                          : formatNumber(totalEggSet)
                       }
                       disabled
                     />

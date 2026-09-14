@@ -1,5 +1,5 @@
-import { NOTIFICATION_EVENT_KEYS, NOTIFICATION_MODULE_KEYS } from "./eventKeys"
-import type { NotificationCatalog } from "./types"
+import { NOTIFICATION_EVENT_KEYS, NOTIFICATION_MODULE_KEYS } from "./eventKeys";
+import type { NotificationCatalog } from "./types";
 
 export const notificationCatalog: NotificationCatalog = [
   {
@@ -12,9 +12,20 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Clean up/view",
     baseUrl: "/brd/cu",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.POSTED, label: "Clean Up Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.EDITED, label: "Clean Up Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.VOIDED, label: "Clean Up Reversed", description: "Successful reversal of a posted cleanup.", action: "voided", farmRouting: "document" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.POSTED,
+        label: "Clean Up Posted",
+        description: "Successful inventory post.",
+        action: "posted",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.EDITED,
+        label: "Clean Up Edited",
+        description: "Persisted edit of an existing draft.",
+        action: "edited",
+        farmRouting: "document",
+      },
     ],
   },
   {
@@ -27,15 +38,27 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Harvest & Delivery/view",
     baseUrl: "/brd/dr",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.POSTED, label: "Harvest Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.EDITED, label: "Harvest Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.VOIDED, label: "Harvest Reversed", description: "Successful reversal of a posted harvest.", action: "voided", farmRouting: "document" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.POSTED,
+        label: "Harvest Posted",
+        description: "Successful inventory post.",
+        action: "posted",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.EDITED,
+        label: "Harvest Edited",
+        description: "Persisted edit of an existing draft.",
+        action: "edited",
+        farmRouting: "document",
+      },
     ],
   },
   {
     key: NOTIFICATION_MODULE_KEYS.USER_REGISTRATION,
     label: "User Registration",
-    description: "Account signup, activation, rejection and first profile completion.",
+    description:
+      "Account signup, activation, rejection and first profile completion.",
     fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     permissionGroup: "Modules",
     permissionTitle: "User Management/view",
@@ -44,12 +67,26 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.POSTED,
         label: "Registration Submitted",
-        description: "Emitted after the Auth account and pending registration are saved together.",
+        description:
+          "Emitted after the Auth account and pending registration are saved together.",
         action: "posted",
         farmRouting: "none",
       },
-      { key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.EDITED, label: "Registration Updated", description: "Account activation or first successful personal information completion.", action: "edited", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.VOIDED, label: "Registration Rejected", description: "Successful transition from pending to rejected.", action: "voided", farmRouting: "none" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.EDITED,
+        label: "Registration Updated",
+        description:
+          "Account activation or first successful personal information completion.",
+        action: "edited",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.USER_REGISTRATION.VOIDED,
+        label: "Registration Rejected",
+        description: "Successful transition from pending to rejected.",
+        action: "voided",
+        farmRouting: "none",
+      },
     ],
   },
   {
@@ -63,9 +100,28 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Growing & Farm Condition/view",
     baseUrl: "/brd/fc",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.POSTED, label: "Growing Saved", description: "First successful save of a Growing record.", action: "posted", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.EDITED, label: "Growing Edited", description: "Successful save of an existing Growing record.", action: "edited", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.BRD_FC.VOIDED, label: "Growing Reversed", description: "Successful full Growing reversal; cycle and DOC placement retained.", action: "voided", farmRouting: "document" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BRD_FC.POSTED,
+        label: "Growing Saved",
+        description: "First successful save of a Growing record.",
+        action: "posted",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BRD_FC.EDITED,
+        label: "Growing Edited",
+        description: "Successful save of an existing Growing record.",
+        action: "edited",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.BRD_FC.VOIDED,
+        label: "Growing Reversed",
+        description:
+          "Successful full Growing reversal; cycle and DOC placement retained.",
+        action: "voided",
+        farmRouting: "document",
+      },
     ],
   },
   {
@@ -81,7 +137,8 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.DOC_RECEIVING.POSTED,
         label: "Document Posted",
-        description: "Triggered only after a DOC Placement document reaches Posted status.",
+        description:
+          "Triggered only after a DOC Placement document reaches Posted status.",
         action: "posted",
         farmRouting: "document",
       },
@@ -90,7 +147,8 @@ export const notificationCatalog: NotificationCatalog = [
   {
     key: NOTIFICATION_MODULE_KEYS.HATCHERY_DOC_DISPATCH,
     label: "Hatchery DOC Dispatch",
-    description: "Posted Hatchery DOC dispatches sent to a Broiler destination farm.",
+    description:
+      "Posted Hatchery DOC dispatches sent to a Broiler destination farm.",
     fmsTypes: ["Hatchery"],
     defaultRecipientFmsTypes: ["Broiler"],
     permissionGroup: "Menus",
@@ -100,7 +158,8 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.HATCHERY_DOC_DISPATCH.POSTED,
         label: "Dispatch Posted",
-        description: "Triggered only after a Hatchery DOC Dispatch successfully reaches Posted status.",
+        description:
+          "Triggered only after a Hatchery DOC Dispatch successfully reaches Posted status.",
         action: "posted",
         farmRouting: "destination",
       },
@@ -109,7 +168,8 @@ export const notificationCatalog: NotificationCatalog = [
   {
     key: NOTIFICATION_MODULE_KEYS.FARM,
     label: "Farm Management",
-    description: "Farm master records created and maintained through the Farm Setup Wizard.",
+    description:
+      "Farm master records created and maintained through the Farm Setup Wizard.",
     fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     defaultRecipientFmsTypes: ["Broiler", "Breeder", "Hatchery"],
     permissionGroup: "Modules",
@@ -119,7 +179,8 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.FARM.POSTED,
         label: "Farm Posted",
-        description: "Triggered after a farm is created or its required approval is completed.",
+        description:
+          "Triggered after a farm is created or its required approval is completed.",
         action: "posted",
         farmRouting: "document",
       },
@@ -152,21 +213,24 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.ITEM_GROUP.POSTED,
         label: "Item Group Posted",
-        description: "Triggered after an Item Group or Sub Item Group is created.",
+        description:
+          "Triggered after an Item Group or Sub Item Group is created.",
         action: "posted",
         farmRouting: "none",
       },
       {
         key: NOTIFICATION_EVENT_KEYS.ITEM_GROUP.EDITED,
         label: "Item Group Edited",
-        description: "Triggered after an existing Item Group or Sub Item Group is edited.",
+        description:
+          "Triggered after an existing Item Group or Sub Item Group is edited.",
         action: "edited",
         farmRouting: "none",
       },
       {
         key: NOTIFICATION_EVENT_KEYS.ITEM_GROUP.VOIDED,
         label: "Item Group Voided",
-        description: "Triggered once when an Item Group or Sub Item Group becomes void.",
+        description:
+          "Triggered once when an Item Group or Sub Item Group becomes void.",
         action: "voided",
         farmRouting: "none",
       },
@@ -192,7 +256,8 @@ export const notificationCatalog: NotificationCatalog = [
       {
         key: NOTIFICATION_EVENT_KEYS.ITEM_MASTER.EDITED,
         label: "Item Edited",
-        description: "Triggered after an existing Item Master record is edited.",
+        description:
+          "Triggered after an existing Item Master record is edited.",
         action: "edited",
         farmRouting: "none",
       },
@@ -208,9 +273,30 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Vaccination and Meds/view",
     baseUrl: "/vnm",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.POSTED, label: "Document Posted", description: "Triggered after inventory is successfully issued for a Vaccination and Meds document.", action: "posted", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.EDITED, label: "Draft Edited", description: "Triggered after an existing Vaccination and Meds draft is saved.", action: "edited", farmRouting: "document" },
-      { key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.VOIDED, label: "Document Voided", description: "Triggered once after a posted Vaccination and Meds document is voided and inventory is restored.", action: "voided", farmRouting: "document" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.POSTED,
+        label: "Document Posted",
+        description:
+          "Triggered after inventory is successfully issued for a Vaccination and Meds document.",
+        action: "posted",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.EDITED,
+        label: "Draft Edited",
+        description:
+          "Triggered after an existing Vaccination and Meds draft is saved.",
+        action: "edited",
+        farmRouting: "document",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.VACCINATION_MEDS.VOIDED,
+        label: "Document Voided",
+        description:
+          "Triggered once after a posted Vaccination and Meds document is voided and inventory is restored.",
+        action: "voided",
+        farmRouting: "document",
+      },
     ],
   },
   {
@@ -223,9 +309,27 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Projects/view",
     baseUrl: "/wks/projects",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.POSTED, label: "Project Posted", description: "Triggered after a project is created.", action: "posted", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.EDITED, label: "Project Edited", description: "Triggered after an existing project is edited.", action: "edited", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.VOIDED, label: "Project Voided", description: "Triggered once when a project becomes void.", action: "voided", farmRouting: "none" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.POSTED,
+        label: "Project Posted",
+        description: "Triggered after a project is created.",
+        action: "posted",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.EDITED,
+        label: "Project Edited",
+        description: "Triggered after an existing project is edited.",
+        action: "edited",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_PROJECT.VOIDED,
+        label: "Project Voided",
+        description: "Triggered once when a project becomes void.",
+        action: "voided",
+        farmRouting: "none",
+      },
     ],
   },
   {
@@ -238,31 +342,65 @@ export const notificationCatalog: NotificationCatalog = [
     permissionTitle: "Task/view",
     baseUrl: "/wks/tasks",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.POSTED, label: "Task Posted", description: "Triggered after a task is created.", action: "posted", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.EDITED, label: "Task Edited", description: "Triggered after an existing task is edited.", action: "edited", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.VOIDED, label: "Task Voided", description: "Triggered once when a task becomes void.", action: "voided", farmRouting: "none" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.POSTED,
+        label: "Task Posted",
+        description: "Triggered after a task is created.",
+        action: "posted",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.EDITED,
+        label: "Task Edited",
+        description: "Triggered after an existing task is edited.",
+        action: "edited",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TASK.VOIDED,
+        label: "Task Voided",
+        description: "Triggered once when a task becomes void.",
+        action: "voided",
+        farmRouting: "none",
+      },
     ],
   },
   {
     key: NOTIFICATION_MODULE_KEYS.WORKSPACE_TIMESHEET,
     label: "Workspace Timesheet",
-    description: "Cross-FMS workspace timesheets submitted against projects and tasks.",
+    description:
+      "Cross-FMS workspace timesheets submitted against projects and tasks.",
     fmsTypes: ["Broiler", "Breeder", "Hatchery"],
     defaultRecipientFmsTypes: ["Broiler", "Breeder", "Hatchery"],
     permissionGroup: "Projects",
     permissionTitle: "Timesheet/view",
     baseUrl: "/wks/timelines",
     events: [
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TIMESHEET.POSTED, label: "Timesheet Submitted", description: "Triggered when a timesheet reaches Submitted status.", action: "posted", farmRouting: "none" },
-      { key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TIMESHEET.EDITED, label: "Timesheet Edited", description: "Triggered after an existing timesheet is edited without a submission transition.", action: "edited", farmRouting: "none" },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TIMESHEET.POSTED,
+        label: "Timesheet Submitted",
+        description: "Triggered when a timesheet reaches Submitted status.",
+        action: "posted",
+        farmRouting: "none",
+      },
+      {
+        key: NOTIFICATION_EVENT_KEYS.WORKSPACE_TIMESHEET.EDITED,
+        label: "Timesheet Edited",
+        description:
+          "Triggered after an existing timesheet is edited without a submission transition.",
+        action: "edited",
+        farmRouting: "none",
+      },
     ],
   },
-]
+];
 
 export function getNotificationModule(moduleKey: string) {
-  return notificationCatalog.find(module => module.key === moduleKey)
+  return notificationCatalog.find((module) => module.key === moduleKey);
 }
 
 export function getNotificationEvent(moduleKey: string, eventKey: string) {
-  return getNotificationModule(moduleKey)?.events.find(event => event.key === eventKey)
+  return getNotificationModule(moduleKey)?.events.find(
+    (event) => event.key === eventKey,
+  );
 }

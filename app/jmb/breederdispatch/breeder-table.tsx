@@ -151,11 +151,12 @@ export default function BreederDispatchTable() {
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table>
-          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={8} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
-            {!loading && filtered.map((record) => (
+            {loading ? <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
+            {!loading && filtered.map((record, index) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
+                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
                 <TableCell>{formatDate(record.dispatch_date)}</TableCell>
                 <TableCell><div className="font-mono text-xs">{record.document_no}</div><div className="text-xs text-muted-foreground">{record.line_count} categor{record.line_count === 1 ? "y" : "ies"}</div></TableCell>
                 <TableCell><div className="font-medium">{record.farm_name}</div><div className="text-xs text-muted-foreground">{record.farm_code || "-"}</div></TableCell>
@@ -177,7 +178,7 @@ export default function BreederDispatchTable() {
                 </TableCell>
               </TableRow>
             ))}
-            {!loading && !filtered.length ? <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
+            {!loading && !filtered.length ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
         <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} dispatches</div>
