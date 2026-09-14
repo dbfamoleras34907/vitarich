@@ -7,7 +7,7 @@ export const DELIVERY_COLUMNS = [
   ['Delivered Date', 'deliveredDate'],
   ['Building', 'fromWarehouseCode'],
   ['Flock Card', null],
-  ['Cycle Count', null],
+  ['Cycle #', null],
   ['Age', null],
   ['ALW g', null],
   ['Item', 'itemCode'],

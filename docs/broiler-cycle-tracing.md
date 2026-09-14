@@ -1,0 +1,11 @@
+# Harvest and Clean Up cycle references
+
+Canonical consolidated batches take precedence over origin rows and closeout metadata. A newer cycle can reference an older consolidated batch in its origins; that does not change the older document's cycle. Legacy origin matching is used only for noncanonical batches. Regression coverage includes this cross-cycle reference, which previously made older documents show an ambiguous cycle.
+
+Both modules show **Cycle #** in history lists, line tables, Harvest exports and receipts. Cycle # is the building flock-card cycle (`flock_card.cycle_no`) used by Growing, for example `1`. History entries pair each cycle reference with its building; multi-building documents retain every distinct building/cycle pair.
+
+The shared `broilerIssueCycles` repository extends document loading using the saved line's farm, numeric building relationship and batch. Canonical batches (`DOC:F<farm>:B<building>:<cycle>`) resolve the original flock card even when DOC Receiving did not create origin rows. Legacy batches require a unique matching item/batch origin. Cleanup's recorded closing document ID provides an additional historical identity.
+
+These are read-only derived references, not new database snapshots. Existing saved batches and cycle relationships remain authoritative. Missing or ambiguous historical matches display an em dash; they never borrow the latest active cycle number. When reopening a posted or voided document, line information requests the matched flock card ID, and its cache distinguishes cycles in the same building. Unselected editable draft lines continue to use active-cycle information. Changing a line's building clears the derived cycle reference.
+
+No business mutation, Post/Edit/Void event, quantity, status or permission contract is changed. No additional SQL migration is required. Tests cover old documents after a newer cycle, reversed Harvest/Clean Up, origin-less and legacy batches, wrong farm/building, ambiguous history, missing references and multiple buildings. TypeScript, focused ESLint, and existing allocation/eligibility/spreadsheet regressions provide static/local evidence; browser and live authenticated data verification are separate.

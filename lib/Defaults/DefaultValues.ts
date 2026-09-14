@@ -1122,6 +1122,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            void: true,
             approval: false,
           },
 
@@ -1134,6 +1135,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            void: true,
             approval: false,
           },
 

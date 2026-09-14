@@ -24,13 +24,16 @@ export async function POST(request: Request) {
     : undefined
 
   try {
-    const result = await getWorkspaceTimelineSql(token, password)
+    const month = typeof body === 'object' && body !== null && 'month' in body ? body.month : undefined
+    const weekStart = typeof body === 'object' && body !== null && 'weekStart' in body ? body.weekStart : undefined
+    const result = await getWorkspaceTimelineSql(token, password, month, weekStart)
     return NextResponse.json(result, { headers })
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
-    const status = code === 'UNAUTHENTICATED' ? 401 : code === 'INVALID_PASSWORD' ? 403 : 500
+    const status = code === 'UNAUTHENTICATED' ? 401 : code === 'INVALID_PASSWORD' ? 403 : code === 'INVALID_PERIOD' ? 400 : 500
     const message = status === 401 ? 'Please sign in again.'
       : status === 403 ? 'Incorrect password.'
+        : status === 400 ? 'Choose a valid month and workweek.'
         : 'Unable to load the timeline SQL. Please try again.'
     return NextResponse.json({ error: message }, { status, headers })
   }

@@ -340,6 +340,11 @@ export default function Layout() {
   }
 
   async function handleSave() {
+    if (routePayload?.cardId && !editingCardId) {
+      toast("Wait for the existing flock to load before saving.");
+      return;
+    }
+
     if (!routePayload?.farmId || !routePayload.buildingKey) {
       toast("Unable to read selected building.");
       return;
@@ -388,7 +393,9 @@ export default function Layout() {
           ...form.extra,
           cycleAsOfDate: form.cycleAsOfDate,
         },
-        origins: placementRows.map((row, index) => ({
+        // Flock information edits must preserve the saved placement lines.
+        // Current building inventory is for display, not an edit payload.
+        origins: editingCardId ? undefined : placementRows.map((row, index) => ({
           lineNo: index + 1,
           itemCode: row.itemCode,
           itemName: row.itemName,
@@ -727,7 +734,7 @@ export default function Layout() {
           <Button type="button" variant="outline" onClick={() => router.push("/brd/fc")}>
             Cancel
           </Button>
-          <Button type="button" onClick={handleSave} disabled={saving}>
+          <Button type="button" onClick={handleSave} disabled={saving || loadingFlockCard || Boolean(routePayload?.cardId && !editingCardId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

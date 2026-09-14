@@ -252,7 +252,7 @@ create or replace function public.enqueue_br_cleanup_event()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 declare
-  v_event_key text := case when new.status = 'Posted' then 'BR_CLEANUP_POSTED' else 'BR_CLEANUP_EDITED' end;
+  v_event_key text := case when new.status = 'Cancelled' and to_jsonb(new)->>'reversed_at' is not null then 'BR_CLEANUP_VOIDED' when new.status = 'Posted' then 'BR_CLEANUP_POSTED' else 'BR_CLEANUP_EDITED' end;
 begin
   insert into public.notification_outbox (
     module_key, event_key, entity_type, entity_id, document_no, fms_type,
@@ -263,7 +263,7 @@ begin
     'BR_CLEANUP', v_event_key, 'br_cleanup', new.id::text, new.gi_no, 'Broiler',
     new.farm_id, new.farm_id, auth.uid(), '/brd/cu/post?id=' || new.id,
     'Menus', 'Clean up/view',
-    case when new.status = 'Posted' then 'Clean Up posted' else 'Clean Up edited' end,
+    case when new.status = 'Cancelled' then 'Clean Up reversed' when new.status = 'Posted' then 'Clean Up posted' else 'Clean Up edited' end,
     'Clean Up {document_no} was saved by {initiator_name}.', 'normal',
     jsonb_build_object('revision', new.notification_revision),
     v_event_key || ':' || new.id || ':' || new.notification_revision, now()
@@ -288,7 +288,7 @@ begin
     end if;
     v_definition := replace(v_definition, '      elsif v_event.module_key = ''BR_DELIVERY''',
       $branch$      elsif v_event.module_key = 'BR_CLEANUP'
-            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED') then
+            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED', 'BR_CLEANUP_VOIDED') then
         select exists (
           select 1 from public.br_cleanup delivery
           join public.farms farm on farm.id = delivery.farm_id
@@ -299,6 +299,7 @@ begin
             and v_event.fms_type = 'Broiler'
             and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
             and (v_event.event_key <> 'BR_CLEANUP_POSTED' or delivery.status = 'Posted')
+            and (v_event.event_key <> 'BR_CLEANUP_VOIDED' or (delivery.status = 'Cancelled' and to_jsonb(delivery)->>'reversed_at' is not null))
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox

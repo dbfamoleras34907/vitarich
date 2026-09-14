@@ -143,6 +143,7 @@ export async function getCleanupReport(params: {
         'BRD_FC_MORT_THIN_TRANSFER_OUT',
         'BRD_FC_MORT_THIN_REVERSAL',
         'BR_DELIVERY',
+        'BR_DELIVERY_REVERSAL',
         'BR_CLEANUP',
         'BR_CLEANUP_VARIANCE',
       ])
@@ -181,7 +182,7 @@ export async function getCleanupReport(params: {
       age: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ''))?.actualAge ?? null,
       totalPlacement: postedPlacement > 0 ? postedPlacement : Math.max(savedPlacement, 0),
       totalMortality: Math.max(-movementTotal(['BRD_FC_MORT_THIN_USAGE', 'BRD_FC_MORT_THIN_TRANSFER_OUT', 'BRD_FC_MORT_THIN_REVERSAL']), 0),
-      totalDelivered: Math.max(-movementTotal(['BR_DELIVERY']), 0),
+      totalDelivered: Math.max(-movementTotal(['BR_DELIVERY', 'BR_DELIVERY_REVERSAL']), 0),
       totalCleaned: Math.max(-movementTotal(['BR_CLEANUP']), 0),
       totalVariance: Math.max(-movementTotal(['BR_CLEANUP_VARIANCE']), 0),
     }

@@ -164,8 +164,11 @@ export async function getCleanupCycleSummaries(params: {
         'BRD_FC_MORT_THIN_TRANSFER_OUT',
         'BRD_FC_MORT_THIN_REVERSAL',
         'BR_DELIVERY',
+        'BR_DELIVERY_REVERSAL',
         'BR_CLEANUP',
         'BR_CLEANUP_VARIANCE',
+        'BR_CLEANUP_REVERSAL',
+        'BR_CLEANUP_VARIANCE_REVERSAL',
       ])
 
     if (postingResult.error) throwReferenceError('Clean up inventory summary', postingResult.error)
@@ -191,7 +194,7 @@ export async function getCleanupCycleSummaries(params: {
     const cleanupId = Number(card.extra?.closed_by_docentry ?? 0)
     const cardPostings = postings.filter(posting => {
       const sourceType = String(posting.source_doc_type ?? '').toUpperCase()
-      if ((sourceType === 'BR_CLEANUP' || sourceType === 'BR_CLEANUP_VARIANCE') && cleanupId > 0 && Number(posting.source_docentry) !== cleanupId) return false
+      if (sourceType.startsWith('BR_CLEANUP') && cleanupId > 0 && Number(posting.source_docentry) !== cleanupId) return false
       const postingBatchNumber = String(posting.batch_number ?? posting.ref ?? '').trim().toUpperCase()
       const key = `${String(posting.item_code ?? '').trim().toUpperCase()}|${postingBatchNumber}`
       return String(posting.warehouse_code ?? '').trim().toUpperCase() === buildingCode.toUpperCase() && (
@@ -215,9 +218,9 @@ export async function getCleanupCycleSummaries(params: {
       'BRD_FC_MORT_THIN_TRANSFER_OUT',
       'BRD_FC_MORT_THIN_REVERSAL',
     ]), 0)
-    const totalDelivered = Math.max(-movementTotal(['BR_DELIVERY']), 0)
-    const postedCleaned = Math.max(-movementTotal(['BR_CLEANUP']), 0)
-    const totalVariance = Math.max(-movementTotal(['BR_CLEANUP_VARIANCE']), 0)
+    const totalDelivered = Math.max(-movementTotal(['BR_DELIVERY', 'BR_DELIVERY_REVERSAL']), 0)
+    const postedCleaned = Math.max(-movementTotal(['BR_CLEANUP', 'BR_CLEANUP_REVERSAL']), 0)
+    const totalVariance = Math.max(-movementTotal(['BR_CLEANUP_VARIANCE', 'BR_CLEANUP_VARIANCE_REVERSAL']), 0)
 
     return {
       flockCardId: Number(card.id),
@@ -506,7 +509,9 @@ export async function getDeliveryFlockCardInfo(params: {
   buildingWarehouseId: number | null
   buildingCode: string
   cleanupDocumentId?: number | null
+  flockCardId?: number | null
 }): Promise<GoodsIssueFlockCardInfo | null> {
+  if (params.flockCardId === null) return null
   const farmId = Number(params.farmId ?? 0)
   const buildingWarehouseId = Number(params.buildingWarehouseId ?? 0)
   const buildingCode = params.buildingCode.trim()
@@ -517,6 +522,7 @@ export async function getDeliveryFlockCardInfo(params: {
   const cleanupDocumentId = Number(params.cleanupDocumentId ?? 0)
   const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status, extra'
   const selectCard = (rows: FlockCardInfoRow[]) => {
+    if (params.flockCardId) return rows.find(row => Number(row.id) === params.flockCardId) ?? null
     if (Number.isFinite(cleanupDocumentId) && cleanupDocumentId > 0) {
       const closedCard = rows.find(row =>
         Number(row.extra?.closed_by_docentry ?? 0) === cleanupDocumentId,

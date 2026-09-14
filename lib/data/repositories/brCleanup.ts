@@ -56,3 +56,11 @@ export async function saveBroilerCleanup(issue: GoodsIssue) {
   if (error) throw cleanupDatabaseError(error)
   return data as { header: unknown; lines: unknown[] } | null
 }
+
+export async function reverseBroilerCleanup(documentId: number, reason: string): Promise<void> {
+  const { error } = await db.rpc('reverse_br_cleanup_transaction', {
+    p_cleanup_id: documentId,
+    p_reason: reason.trim(),
+  })
+  if (error) throw cleanupDatabaseError(error)
+}

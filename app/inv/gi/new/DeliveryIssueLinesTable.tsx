@@ -1,6 +1,7 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { PackageCheck, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Button } from '@/components/ui/button'
@@ -217,7 +218,7 @@ export default function DeliveryIssueLinesTable({
           const rows = Array.from(groups.values()).map((lines, index) => {
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
-            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, info?.cardNo ?? '', info?.cycleNumber ?? '', info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
+            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleNumber ? line : info ?? {}), info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
               lines.filter(entry => entry.batchNumber).map(entry => `${entry.batchNumber} (${entry.altQty})`).join('; '),
@@ -293,7 +294,7 @@ export default function DeliveryIssueLinesTable({
             {spreadsheetEnabled && <th className="border-r px-3 py-2">Delivered Date {requiredMark}</th>}
             <th className="w-[240px] border-r px-3 py-2">{warehouseLabel} {requiredMark}</th>
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
-            <th className="w-[10%] border-r px-3 py-2">Cycle Count</th>
+            <th className="w-[10%] border-r px-3 py-2">Cycle #</th>
             <th className="w-[7%] border-r px-3 py-2">Age</th>
             <th className="w-[8%] border-r px-3 py-2">{bodyWeightLabel}</th>
             <th className="w-[16%] border-r px-3 py-2">Item {requiredMark}</th>
@@ -397,13 +398,13 @@ export default function DeliveryIssueLinesTable({
                 <td className="border-r p-1 align-middle">
                   <Input
                     value={
-                      flockState?.loading
+                      line.flockCardNo || (flockState?.loading
                         ? 'Loading...'
                         : flockState?.info
                           ? flockState.info.cardNo || '-'
                           : line.fromWarehouseCode
-                            ? 'No saved flock card'
-                            : ''
+                            ? issue.status === 'Draft' ? 'No saved flock card' : 'Cycle unavailable'
+                            : '')
                     }
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
@@ -411,7 +412,8 @@ export default function DeliveryIssueLinesTable({
                 </td>
                 <td className="border-r p-1 align-middle">
                   <Input
-                    value={flockState?.info?.cycleNumber || ''}
+                    value={formatBroilerCycleNumbers(line.cycleNumber ? line : flockState?.info ?? {})}
+                    title={formatBroilerCycleNumbers(line.cycleNumber ? line : flockState?.info ?? {})}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
                   />

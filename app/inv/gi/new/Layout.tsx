@@ -63,6 +63,7 @@ import {
 } from '@/app/inv/gr/new/api'
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
+import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -188,13 +189,13 @@ const canSearchLineInventory = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWar
 
 const getLineFlockCardLookupKey = (
   farmId: number | null | undefined,
-  line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode'>,
+  line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode' | 'flockCardId'>,
 ) => {
   const normalizedFarmId = Number(farmId ?? 0)
   const buildingCode = line.fromWarehouseCode.trim().toUpperCase()
   if (!Number.isFinite(normalizedFarmId) || normalizedFarmId <= 0 || !buildingCode) return ''
 
-  return `${normalizedFarmId}|${line.fromWarehouseId ?? ''}|${buildingCode}`
+  return `${normalizedFarmId}|${line.fromWarehouseId ?? ''}|${buildingCode}|${line.flockCardId ?? ''}`
 }
 
 const getFarmWarehouseCodes = (farm?: GoodsReceiptFarm | null) => {
@@ -249,6 +250,9 @@ const clearWarehouseSensitiveLineData = (
   warehouse: Pick<WarehouseData, 'id' | 'whse_code' | 'whse_name'> | null,
 ): GoodsIssueLine => ({
   ...line,
+  flockCardId: undefined,
+  flockCardNo: undefined,
+  cycleNumber: undefined,
   fromWarehouseId: warehouse?.id ?? null,
   fromWarehouseCode: warehouse?.whse_code ?? '',
   fromWarehouseName: warehouse?.whse_name ?? '',
@@ -665,26 +669,13 @@ export default function NewGoodsIssue({
   ])
 
   const lineWarehouseSignature = useMemo(
-    () => issue?.lines
-      .map(line => `${line.id}:${line.fromWarehouseId ?? ''}:${line.fromWarehouseCode}`)
-      .join('|') ?? '',
+    () => JSON.stringify(issue?.lines.map(line => ({ id: String(line.id), fromWarehouseId: line.fromWarehouseId,
+      fromWarehouseCode: line.fromWarehouseCode, flockCardId: line.flockCardId })) ?? []),
     [issue?.lines],
   )
 
   const lineWarehouseLookups = useMemo(
-    () => lineWarehouseSignature
-      .split('|')
-      .filter(Boolean)
-      .map(value => {
-        const [id, rawWarehouseId, ...warehouseCodeParts] = value.split(':')
-        const warehouseId = Number(rawWarehouseId)
-
-        return {
-          id,
-          fromWarehouseId: Number.isFinite(warehouseId) && warehouseId > 0 ? warehouseId : null,
-          fromWarehouseCode: warehouseCodeParts.join(':'),
-        }
-      }),
+    () => JSON.parse(lineWarehouseSignature) as Array<Pick<GoodsIssueLine, 'id' | 'fromWarehouseId' | 'fromWarehouseCode' | 'flockCardId'>>,
     [lineWarehouseSignature],
   )
 
@@ -774,8 +765,8 @@ export default function NewGoodsIssue({
   }, [issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
 
   useEffect(() => {
-    if (isCleanup) lineFlockCardCacheRef.current = {}
-  }, [isCleanup, issue?.id])
+    if (isBroilerCycleIssue) lineFlockCardCacheRef.current = {}
+  }, [isBroilerCycleIssue, issue?.id, issue?.status])
 
   useEffect(() => {
     let cancelled = false
@@ -795,6 +786,7 @@ export default function NewGoodsIssue({
         farmId: number
         buildingWarehouseId: number | null
         buildingCode: string
+        flockCardId?: number | null
       }>()
 
       lineWarehouseLookups.forEach(line => {
@@ -806,6 +798,7 @@ export default function NewGoodsIssue({
             farmId: Number(issue.farmId),
             buildingWarehouseId: line.fromWarehouseId,
             buildingCode: line.fromWarehouseCode,
+            flockCardId: line.flockCardId ?? (issue.status === 'Draft' ? undefined : null),
           })
         }
       })
@@ -872,6 +865,7 @@ export default function NewGoodsIssue({
               buildingWarehouseId: params.buildingWarehouseId,
               buildingCode: params.buildingCode,
               cleanupDocumentId: isCleanup ? issue.id : null,
+              flockCardId: params.flockCardId,
             })
             return { lookupKey, info }
           } catch (error) {
@@ -968,7 +962,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
+  }, [isCleanup, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -1336,7 +1330,8 @@ export default function NewGoodsIssue({
     const availableAltQty = baseQtyPerAltQty > 0 ? Number(batch?.onHandQty || 0) / baseQtyPerAltQty : 0
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
-    if (altQty <= 0 && !(isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied)) {
+    const zeroCleanup = isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied && altQty === 0
+    if (altQty <= 0 && !zeroCleanup) {
       toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
     }
@@ -1349,6 +1344,7 @@ export default function NewGoodsIssue({
       batchNumber: batch?.batchNumber ?? '',
       manufacturingDate: batch?.manufacturingDate ?? '',
       expiryDate: batch?.expiryDate ?? '',
+      ...(zeroCleanup ? { requestedAltQty: 0 } : {}),
       altQty,
       altUom,
       baseQty: calculateBaseQty(altQty, altUom, baseUom),
@@ -1519,6 +1515,16 @@ export default function NewGoodsIssue({
 
     const processedGroups = new Set<string>()
     issue.lines.forEach(line => {
+      // Reconcile drafts that selected an empty harvest batch before the requested
+      // quantity was reset, including a line selected while batches were loading.
+      if (line.batchNumber && line.altQty === 0 && line.baseQty === 0 && line.requestedAltQty !== 0 &&
+        linePlacementBatches[String(line.id)]?.some(batch => batch.harvestEmptied &&
+          batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber)) {
+        setIssue(current => current ? { ...current, lines: current.lines.map(candidate =>
+          candidate.id === line.id ? { ...candidate, requestedAltQty: 0 } : candidate),
+        } : current)
+        return
+      }
       if (!line.fromWarehouseCode || !line.itemCode || line.batchNumber) return
       const groupKey = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
       if (processedGroups.has(groupKey)) return
@@ -1967,8 +1973,9 @@ export default function NewGoodsIssue({
           <div className='flex items-center gap-1'>
             <Input value={issue.giNo} readOnly className="bg-stone-50" />
             <span className={getInventoryStatusBadgeClass(issue.status)}>
-              {issue.status}
+              {isBroilerCycleIssue && issue.status === 'Cancelled' ? 'Void' : issue.status}
             </span>
+            {isCleanup && <CleanupReversalButton documentId={issue.id} documentNo={issue.giNo} status={issue.status} onReversed={() => router.push('/brd/cu')} />}
           </div>
 
         )

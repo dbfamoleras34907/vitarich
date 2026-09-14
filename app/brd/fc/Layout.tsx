@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { reverseBroilerGrowing } from "@/lib/data/repositories/broilerGrowing";
+import { getGrowingHarvestBlocker, reverseBroilerGrowing } from "@/lib/data/repositories/broilerGrowing";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -145,6 +145,8 @@ export default function Layout() {
   const [reverseReason, setReverseReason] = useState("");
   const [reversing, setReversing] = useState(false);
   const [reverseError, setReverseError] = useState("");
+  const [checkingReverseHarvest, setCheckingReverseHarvest] = useState(false);
+  const [reverseHarvestBlocker, setReverseHarvestBlocker] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   const farmMaster = useMemo(() => {
@@ -277,8 +279,32 @@ export default function Layout() {
     };
   }, [selectedFarm, refreshVersion]);
 
+  useEffect(() => {
+    if (!reverseTarget) return;
+    let cancelled = false;
+
+    async function checkHarvest() {
+      try {
+        if (!selectedFarm?.id || !reverseTarget?.flockCard?.cardNo) {
+          throw new Error("Unable to identify the farm and flock cycle. Refresh the building list.");
+        }
+        const documentNo = await getGrowingHarvestBlocker(selectedFarm.id, reverseTarget.flockCard.cardNo);
+        if (!cancelled) setReverseHarvestBlocker(documentNo
+          ? `Reverse Growing is blocked by posted Harvest & Delivery ${documentNo}. Reverse all posted harvests for this building and cycle first.`
+          : "");
+      } catch (error) {
+        if (!cancelled) setReverseHarvestBlocker(`Unable to verify harvests. ${error instanceof Error ? error.message : "Close and try again."}`);
+      } finally {
+        if (!cancelled) setCheckingReverseHarvest(false);
+      }
+    }
+
+    void checkHarvest();
+    return () => { cancelled = true; };
+  }, [reverseTarget, selectedFarm?.id]);
+
   async function confirmReverseGrowing() {
-    if (reversing || !reverseTarget?.flockCard?.growingId || !reverseReason.trim()) return;
+    if (reversing || checkingReverseHarvest || reverseHarvestBlocker || !reverseTarget?.flockCard?.growingId || !reverseReason.trim()) return;
     setReversing(true);
     setReverseError("");
     try {
@@ -483,7 +509,13 @@ export default function Layout() {
                           {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
                             <Button type="button" size="sm" variant="outline"
                               className="text-destructive" disabled={openingAction !== null || reversing}
-                              onClick={() => { setReverseTarget(building); setReverseReason(""); setReverseError(""); }}>
+                              onClick={() => {
+                                setCheckingReverseHarvest(true);
+                                setReverseHarvestBlocker("");
+                                setReverseTarget(building);
+                                setReverseReason("");
+                                setReverseError("");
+                              }}>
                               Reverse Growing
                             </Button>
                           ) : null}
@@ -581,12 +613,14 @@ export default function Layout() {
             </DialogDescription>
           </DialogHeader>
           <label htmlFor="reverse-growing-reason" className="text-sm font-medium">Reason</label>
-          <Textarea id="reverse-growing-reason" value={reverseReason} disabled={reversing} maxLength={1000}
+          {checkingReverseHarvest && <p role="status" className="text-sm text-muted-foreground">Checking harvests for this building and cycle…</p>}
+          {reverseHarvestBlocker && <p role="alert" className="text-sm text-destructive">{reverseHarvestBlocker}</p>}
+          <Textarea id="reverse-growing-reason" value={reverseReason} disabled={reversing || checkingReverseHarvest || Boolean(reverseHarvestBlocker)} maxLength={1000}
             onChange={event => setReverseReason(event.target.value)} placeholder="Enter the reason for reversal" />
           {reverseError && <p role="alert" className="text-sm text-destructive">{reverseError}</p>}
           <DialogFooter>
             <Button variant="outline" disabled={reversing} onClick={() => setReverseTarget(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={reversing || !reverseReason.trim()} onClick={() => void confirmReverseGrowing()}>
+            <Button variant="destructive" disabled={reversing || checkingReverseHarvest || Boolean(reverseHarvestBlocker) || !reverseReason.trim()} onClick={() => void confirmReverseGrowing()}>
               {reversing ? "Reversing..." : "Confirm Reverse Growing"}
             </Button>
           </DialogFooter>

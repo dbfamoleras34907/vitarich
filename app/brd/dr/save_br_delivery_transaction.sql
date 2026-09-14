@@ -271,7 +271,7 @@ create or replace function public.enqueue_br_delivery_event()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 declare
-  v_event_key text := case when new.status = 'Posted' then 'BR_DELIVERY_POSTED' else 'BR_DELIVERY_EDITED' end;
+  v_event_key text := case when new.status = 'Cancelled' and to_jsonb(new)->>'reversed_at' is not null then 'BR_DELIVERY_VOIDED' when new.status = 'Posted' then 'BR_DELIVERY_POSTED' else 'BR_DELIVERY_EDITED' end;
 begin
   insert into public.notification_outbox (
     module_key, event_key, entity_type, entity_id, document_no, fms_type,
@@ -282,7 +282,7 @@ begin
     'BR_DELIVERY', v_event_key, 'br_delivery', new.id::text, new.gi_no, 'Broiler',
     new.farm_id, new.farm_id, auth.uid(), '/brd/dr/post?id=' || new.id,
     'Menus', 'Harvest & Delivery/view',
-    case when new.status = 'Posted' then 'Harvest & Delivery posted' else 'Harvest & Delivery edited' end,
+    case when new.status = 'Cancelled' then 'Harvest & Delivery reversed' when new.status = 'Posted' then 'Harvest & Delivery posted' else 'Harvest & Delivery edited' end,
     'Harvest & Delivery {document_no} was saved by {initiator_name}.', 'normal',
     jsonb_build_object('revision', new.notification_revision),
     v_event_key || ':' || new.id || ':' || new.notification_revision, now()

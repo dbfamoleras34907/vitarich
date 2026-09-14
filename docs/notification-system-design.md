@@ -623,7 +623,7 @@ Every event copies the committed `vnm_documents.farm_id` to both `farm_id` and `
 
 ## Planned implementation order
 
-Broiler Clean Up now has prepared `BR_CLEANUP_POSTED` and `BR_CLEANUP_EDITED` events through `save_br_cleanup_transaction` and its transactional revision/outbox trigger. Both use `document` routing from canonical `br_cleanup.farm_id`; the dispatcher rejects a missing or mismatched persisted farm before matching recipients. Identical saves reuse their request fingerprint; outbox dedupe is `event key:document ID:revision`. There is no supported Void action. Rule activation remains disabled until target SQL deployment and verification. See [Clean Up after harvest](broiler-cleanup-zero.md) for the deployment order and local test evidence.
+Broiler Clean Up now has prepared `BR_CLEANUP_POSTED`, `BR_CLEANUP_EDITED`, and `BR_CLEANUP_VOIDED` events through `save_br_cleanup_transaction` and its transactional revision/outbox trigger. All three use `document` routing from canonical `br_cleanup.farm_id`; the dispatcher rejects a missing or mismatched persisted farm before matching recipients. Identical saves reuse their request fingerprint; outbox dedupe is `event key:document ID:revision`. Posted reversal uses `reverse_br_cleanup_transaction`, restores inventory and reopens cycles atomically, then increments the same revision to enqueue one Void event. Repeated reversal calls return the saved result without another event. Rule activation remains disabled until target SQL deployment and verification. See [Clean Up after harvest](broiler-cleanup-zero.md) for the deployment order and local test evidence.
 
 1. Create notification database tables, constraints, indexes, policies, and secured processing functions.
 2. Create the central module/event catalog and TypeScript contracts.
@@ -660,3 +660,6 @@ Broiler Clean Up now has prepared `BR_CLEANUP_POSTED` and `BR_CLEANUP_EDITED` ev
 - Recipient matching follows Source FMS, Recipient FMS, the catalog-selected document/destination farm, User Type, User Group, active-user, and current View-permission rules. Super Admin retains the confirmed farm-assignment bypass.
 - Clicking a notification rechecks route authorization.
 - Static checks, applied SQL, authenticated role tests, browser behavior, retry recovery, and live Supabase behavior are reported separately.
+
+
+Broiler Harvest & Delivery now prepares `BR_DELIVERY_VOIDED` alongside its existing Post/Edit events. `reverse_br_delivery_transaction` restores the original harvested inventory for the current active cycle and increments the revision in the same transaction. Posted cleanup blocks reversal; draft/voided cleanup does not. The shared dispatcher validates the persisted `br_delivery.farm_id` and reversed state before matching rules. No-rule dispatch and request/recipient deduplication are verified locally. Activation remains disabled pending target deployment and verification. See [Harvest reversal](broiler-harvest-reversal.md).

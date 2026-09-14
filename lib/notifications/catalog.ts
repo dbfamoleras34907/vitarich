@@ -14,6 +14,7 @@ export const notificationCatalog: NotificationCatalog = [
     events: [
       { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.POSTED, label: "Clean Up Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
       { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.EDITED, label: "Clean Up Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BR_CLEANUP.VOIDED, label: "Clean Up Reversed", description: "Successful reversal of a posted cleanup.", action: "voided", farmRouting: "document" },
     ],
   },
   {
@@ -28,6 +29,7 @@ export const notificationCatalog: NotificationCatalog = [
     events: [
       { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.POSTED, label: "Harvest Posted", description: "Successful inventory post.", action: "posted", farmRouting: "document" },
       { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.EDITED, label: "Harvest Edited", description: "Persisted edit of an existing draft.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BR_DELIVERY.VOIDED, label: "Harvest Reversed", description: "Successful reversal of a posted harvest.", action: "voided", farmRouting: "document" },
     ],
   },
   {

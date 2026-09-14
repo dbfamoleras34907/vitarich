@@ -1,12 +1,16 @@
 'use client'
 
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
+import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
 export type GoodsIssueLine = {
+  flockCardId?: number | null
+  flockCardNo?: string | null
+  cycleNumber?: string | null
   id: number | string
   allocationGroupKey?: string
   netLiveWeight?: number | null
@@ -482,6 +486,12 @@ export async function getGoodsIssues(
 
   if (itemError) throw itemError
 
+  if (usesDedicatedIssueTables(triggeredBy)) {
+    const items = (itemRows ?? []) as GoodsIssueItemRow[]
+    return loadBroilerIssueCycles(issues.map(issue =>
+      toIssue(issue, items.filter(item => Number(item.br_delivery_id ?? item.br_cleanup_id) === issue.id)),
+    ))
+  }
   const items = (itemRows ?? []) as GoodsIssueListItemRow[]
   return issues.map(issue =>
     toIssueListItem(issue, items.filter(item => getListLineHeaderId(item) === issue.id)),
@@ -508,7 +518,8 @@ export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise
 
   if (itemError) throw itemError
 
-  return toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  const issue = toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  return usesDedicatedIssueTables(triggeredBy) ? (await loadBroilerIssueCycles([issue]))[0] : issue
 }
 
 async function validateOnHand(lines: GoodsIssueLine[]) {

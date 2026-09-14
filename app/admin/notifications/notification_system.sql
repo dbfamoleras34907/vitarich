@@ -467,7 +467,7 @@ begin
           continue;
         end if;
       elsif v_event.module_key = 'BR_CLEANUP'
-            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED') then
+            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED', 'BR_CLEANUP_VOIDED') then
         select exists (
           select 1 from public.br_cleanup delivery
           join public.farms farm on farm.id = delivery.farm_id
@@ -478,6 +478,7 @@ begin
             and v_event.fms_type = 'Broiler'
             and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
             and (v_event.event_key <> 'BR_CLEANUP_POSTED' or delivery.status = 'Posted')
+            and (v_event.event_key <> 'BR_CLEANUP_VOIDED' or (delivery.status = 'Cancelled' and to_jsonb(delivery)->>'reversed_at' is not null))
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox
@@ -487,7 +488,7 @@ begin
           continue;
         end if;
       elsif v_event.module_key = 'BR_DELIVERY'
-            and v_event.event_key in ('BR_DELIVERY_POSTED', 'BR_DELIVERY_EDITED') then
+            and v_event.event_key in ('BR_DELIVERY_POSTED', 'BR_DELIVERY_EDITED', 'BR_DELIVERY_VOIDED') then
         select exists (
           select 1 from public.br_delivery delivery
           join public.farms farm on farm.id = delivery.farm_id
@@ -498,6 +499,7 @@ begin
             and v_event.fms_type = 'Broiler'
             and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
             and (v_event.event_key <> 'BR_DELIVERY_POSTED' or delivery.status = 'Posted')
+            and (v_event.event_key <> 'BR_DELIVERY_VOIDED' or (delivery.status = 'Cancelled' and to_jsonb(delivery)->>'reversed_at' is not null))
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox

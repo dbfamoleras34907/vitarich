@@ -3,7 +3,7 @@ import { db } from '@/lib/Supabase/supabaseClient'
 
 export type WorkspaceTimelineSql = { filename: string; sql: string }
 
-export async function requestWorkspaceTimelineSql(password: string, signal?: AbortSignal): Promise<WorkspaceTimelineSql> {
+export async function requestWorkspaceTimelineSql(password: string, period: { month: string; weekStart: string }, signal?: AbortSignal): Promise<WorkspaceTimelineSql> {
   const { data, error } = await db.auth.getSession()
   if (error) throw error
   const token = data.session?.access_token
@@ -12,7 +12,7 @@ export async function requestWorkspaceTimelineSql(password: string, signal?: Abo
   const response = await fetchWithInternetErrorNotice('/api/wks/timelines/sql', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password, ...period }),
     cache: 'no-store',
     signal,
   })

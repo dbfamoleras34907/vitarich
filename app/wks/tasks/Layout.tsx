@@ -29,12 +29,13 @@ export default function Layout() {
   const [statuses, setStatuses] = useState<Record<string, WorkspaceTaskStatus>>({})
   const [statusOptions, setStatusOptions] = useState<WorkspaceTaskStatus[]>([])
   const [updatingTaskIds, setUpdatingTaskIds] = useState<Set<number>>(new Set())
+  const doneStatus = statusOptions.find(status => status.code === 'DONE')
 
   const tableColumnsx: ColumnConfig[] = useMemo(
     () => [
       { key: 'action', label: 'Action', type: 'button' },
       { key: 'subject', label: 'Subject', type: 'text' },
-      { key: 'status_id', label: 'Status', type: 'text' },
+      { key: 'status_id', label: 'Status', type: 'text'  },
       { key: 'task_type', label: 'Type', type: 'text' },
       { key: 'assigned_to', label: 'Assigned To', type: 'text' },
       { key: 'created_at', label: 'Created At', type: 'text' },
@@ -81,7 +82,7 @@ export default function Layout() {
   const updateTaskStatus = async (row: RowDataKey, statusId: number) => {
     const taskId = Number(row.id)
     const previousStatusId = row.status_id == null ? null : Number(row.status_id)
-    if (!taskId || previousStatusId === statusId || editDenied) return
+    if (!taskId || previousStatusId === statusId || editDenied || updatingTaskIds.has(taskId)) return
 
     setinitialRows(current => current.map(task =>
       Number(task.id) === taskId ? { ...task, status_id: statusId } : task
@@ -157,12 +158,13 @@ export default function Layout() {
             if (col.key === 'status_id') {
               const taskId = Number(row.id)
               return (
+                <div className="grid w-64 grid-cols-2 gap-2">
                 <Select
                   value={value == null ? undefined : String(value)}
                   disabled={editDenied || updatingTaskIds.has(taskId)}
                   onValueChange={statusId => void updateTaskStatus(row, Number(statusId))}
                 >
-                  <SelectTrigger size="sm" className="h-7 min-w-32 px-2 text-xs">
+                  <SelectTrigger size="sm" className="data-[size=sm]:h-7 w-full min-w-0 px-2 text-xs">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -174,6 +176,17 @@ export default function Layout() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 w-full px-2 text-xs"
+                  disabled={editDenied || updatingTaskIds.has(taskId) || !doneStatus || Number(value) === doneStatus.id}
+                  title={!doneStatus ? 'Activate the Done status in Task Workflow settings.' : 'Mark task as Done'}
+                  onClick={() => { if (doneStatus) void updateTaskStatus(row, doneStatus.id) }}
+                >
+                  Done
+                </Button>
+                </div>
               )
             }
 

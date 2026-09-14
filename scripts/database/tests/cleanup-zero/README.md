@@ -11,4 +11,8 @@ To verify the SQL Editor deployment bundle, replace steps 4 and 5 with `app/brd/
 
 The fixture simplifies authentication and business tables; it does not reproduce production RLS. See `docs/broiler-cleanup-zero.md` for behavior, coverage and deployment order.
 
+For reversal, apply `reversal-fixture.sql` after the base setup, then `app/brd/cu/reverse_br_cleanup_transaction.sql` twice (to check reapplication), then `reversal-assertions.sql`. This suite rolls back its scenarios and also exercises the RPC as the `authenticated` database role. The fixture's `auth.uid()` is fixed; production JWT and RLS are not emulated.
+
 Run `node scripts/database/tests/cleanup-zero/selection.test.cjs` for the application eligibility regression: harvested zero stock without mortality age must appear in Clean Up, while Harvest retains its positive-stock and age filters.
+
+Run `node scripts/database/tests/cleanup-zero/allocation.test.cjs` for the form's actual batch-selection handler: selecting a harvest-emptied batch resets the default requested quantity of 1 to 0, while partial positive allocations and rejection of unqualified empty batches stay intact.
