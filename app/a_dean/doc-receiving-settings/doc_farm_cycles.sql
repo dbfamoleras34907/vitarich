@@ -67,7 +67,17 @@ begin
     raise exception 'Building % still has an active flock. Complete Clean up before changing its cycle exclusion.', v_changed_building;
   end if;
 
-  delete from public.doc_cycle_excluded_buildings where farm_id = p_farm_id;
+  delete from public.doc_cycle_excluded_buildings
+  where farm_id = p_farm_id
+    and not (building_whse_id = any(coalesce(p_building_whse_ids, '{}'::bigint[])));
+
+  if exists (
+    select 1 from public.doc_cycle_excluded_buildings
+    where farm_id = p_farm_id
+      and not (building_whse_id = any(coalesce(p_building_whse_ids, '{}'::bigint[])))
+  ) then
+    raise exception 'Unable to remove cycle exclusions. Check the DELETE policy for doc_cycle_excluded_buildings.';
+  end if;
   insert into public.doc_cycle_excluded_buildings(farm_id, building_whse_id, created_by)
   select p_farm_id, building_id, auth.uid()
   from unnest(coalesce(p_building_whse_ids, '{}'::bigint[])) building_id
