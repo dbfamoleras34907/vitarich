@@ -396,6 +396,7 @@ export default function CardForm() {
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<number | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -895,7 +896,7 @@ export default function CardForm() {
   }
 
   async function save() {
-    if (!placement || !rows.length) return;
+    if (!placement || !rows.length || saving || savingDraft) return;
     const inventoryError = negativeInventoryMessage(rows);
     if (inventoryError) {
       toast.error(inventoryError);
@@ -905,11 +906,23 @@ export default function CardForm() {
       toast.error("Each record date must be unique on this placement card.");
       return;
     }
+    setSaveProgress(0);
     setSaving(true);
+    let trackingProgress = true;
     try {
       const eligibleRows = rows.filter((row) => row.daterec <= localDate());
+      let completedRows = 0;
       const saved = await Promise.all(
-        eligibleRows.map((row) => saveDailyPerformance(row)),
+        eligibleRows.map(async (row) => {
+          const savedRow = await saveDailyPerformance(row);
+          completedRows += 1;
+          if (trackingProgress) {
+            setSaveProgress(
+              Math.min(99, Math.floor((completedRows / eligibleRows.length) * 100)),
+            );
+          }
+          return savedRow;
+        }),
       );
       setRows(buildDailyRows(placement, saved));
       toast.success("Population Record posted.");
@@ -921,13 +934,16 @@ export default function CardForm() {
           "Record posted, but the old draft could not be removed. Please save an updated draft before leaving.",
         );
       }
+      setSaveProgress(100);
     } catch (error) {
+      setSaveProgress(null);
       toast.error(
         error instanceof Error
           ? error.message
           : "Unable to save breeder pen card.",
       );
     } finally {
+      trackingProgress = false;
       setSaving(false);
     }
   }
@@ -1513,6 +1529,11 @@ export default function CardForm() {
   const canShowNextPeriod =
     periodEndIndex < rows.length ||
     addDays(placement.placement_date, periodEndIndex) <= localDate();
+  const savingStatus = saveProgress !== null ? (
+    <span role="status" aria-live="polite" className="text-center text-xs tabular-nums text-muted-foreground">
+      {saving ? "Saving" : "Saved"}: {saveProgress}%
+    </span>
+  ) : null;
 
   return (
     <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
@@ -1611,18 +1632,21 @@ export default function CardForm() {
                     )}{" "}
                     Save as Draft
                   </Button>
-                  <Button
-                    type="button"
-                    onClick={save}
-                    disabled={saving || savingDraft}
-                  >
-                    {saving ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Send className="size-4" />
-                    )}{" "}
-                    Post
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      type="button"
+                      onClick={save}
+                      disabled={saving || savingDraft}
+                    >
+                      {saving ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Send className="size-4" />
+                      )}{" "}
+                      Post
+                    </Button>
+                    {savingStatus}
+                  </div>
                 </div>
               </div>
 
@@ -1745,19 +1769,22 @@ export default function CardForm() {
                 )}{" "}
                 Save as Draft
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={save}
-                disabled={saving || savingDraft}
-              >
-                {saving ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" />
-                )}{" "}
-                Post
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={save}
+                  disabled={saving || savingDraft}
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}{" "}
+                  Post
+                </Button>
+                {savingStatus}
+              </div>
               <Button
                 type="button"
                 variant="outline"

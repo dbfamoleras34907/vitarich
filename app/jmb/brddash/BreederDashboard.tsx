@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Bird, CalendarDays, Percent, Scale, Skull, Wheat } from "lucide-react";
+import { Bird, CalendarDays, HeartCrack, Percent, Scale, Wheat } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
@@ -271,7 +271,7 @@ export default function BreederDashboard() {
                 ))}
               </dl>
             </div>}
-            icon={<Skull className="size-6 text-rose-700" />}
+            icon={<HeartCrack className="size-6 text-rose-700" />}
             accent="text-rose-500"
           />
             <StatCard

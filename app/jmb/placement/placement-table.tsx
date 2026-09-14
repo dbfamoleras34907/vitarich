@@ -509,42 +509,42 @@ export default function PlacementTable() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <Table className="min-w-532.5">
+              <Table className="w-full text-xs [&_th]:h-auto [&_th]:max-w-24 [&_th]:whitespace-normal [&_th]:px-1.5 [&_th]:py-2 [&_th]:leading-tight [&_td]:px-1.5 [&_td]:py-1.5">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Building Name</TableHead>
-                    <TableHead className="w-32.5">Placement Date</TableHead>
-                    <TableHead className="w-22.5">Cycle #</TableHead>
-                    <TableHead className="w-35 text-right">
+                    <TableHead>Placement Date</TableHead>
+                    <TableHead>Cycle #</TableHead>
+                    <TableHead className="text-right">
                       Total Placement
                     </TableHead>
-                    <TableHead className="w-25 text-right">DOA</TableHead>
-                    <TableHead className="w-27.5 text-right">Rejects</TableHead>
-                    <TableHead className="w-32.5 text-right">
+                    <TableHead className="text-right">DOA</TableHead>
+                    <TableHead className="text-right">Rejects</TableHead>
+                    <TableHead className="text-right">
                       Short Count
                     </TableHead>
-                    <TableHead className="w-32.5 text-right">
+                    <TableHead className="text-right">
                       Total Birds
                     </TableHead>
-                    <TableHead className="w-42.5 text-right">
+                    <TableHead className="text-right">
                       Total Egg Production
                     </TableHead>
-                    <TableHead className="w-35 text-right">
+                    <TableHead className="text-right">
                       Total Mortality
                     </TableHead>
-                    <TableHead className="w-27.5 text-right">Culls</TableHead>
-                    <TableHead className="w-27.5 text-right">Kitchen</TableHead>
-                    <TableHead className="w-27.5 text-right">Condem</TableHead>
-                    <TableHead className="w-35 text-right">
+                    <TableHead className="text-right">Culls</TableHead>
+                    <TableHead className="text-right">Kitchen</TableHead>
+                    <TableHead className="text-right">Condem</TableHead>
+                    <TableHead className="text-right">
                       Total Terminal Culling
                     </TableHead>
-                    <TableHead className="w-37.5 text-right">Action</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {selectedFarmHistory.map((record) => (
                     <TableRow key={record.key}>
-                      <TableCell className="font-semibold">
+                      <TableCell className="max-w-28 whitespace-normal font-semibold">
                         {record.building_name || "-"}
                       </TableCell>
                       <TableCell className="tabular-nums">
@@ -589,7 +589,7 @@ export default function PlacementTable() {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button type="button" size="sm" variant="outline">
+                            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs">
                               View <ChevronDown className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
