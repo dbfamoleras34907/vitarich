@@ -1,3 +1,4 @@
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask';
 import { db } from "@/lib/Supabase/supabaseClient";
 
 export const flockCardBreedComboOptions = [
@@ -77,6 +78,7 @@ export type FlockCardPlacementPayload = {
   flockCode?: string | null;
   trialCode?: string | null;
   cycleNumber?: string | null;
+  cycleMask?: string | null;
   farmCycleId?: number | null;
   animalQty: number;
   feedMill?: string | null;
@@ -134,6 +136,8 @@ type FlockCardHeaderRow = {
   flock_code: string | null;
   trial_code: string | null;
   cycle_no: string | null;
+  cycle_mask?: string | null;
+  doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null;
   farm_cycle_id: number | null;
   animal_qty: number | null;
   feedmill: string | null;
@@ -508,7 +512,7 @@ export async function getFlockCardPlacement(
   const [headerResult, originResult] = await Promise.all([
     db
       .from("flock_card")
-      .select("id, card_no, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, age, start_date, broiler_type, breed, guideline, cocci_prg_id, other_prg_id, vacc_prg_id, flock_code, trial_code, cycle_no, farm_cycle_id, animal_qty, feedmill, stock_density, stock_density_wt, sex, remarks, extra")
+      .select("id, card_no, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, age, start_date, broiler_type, breed, guideline, cocci_prg_id, other_prg_id, vacc_prg_id, flock_code, trial_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), farm_cycle_id, animal_qty, feedmill, stock_density, stock_density_wt, sex, remarks, extra")
       .eq("id", id)
       .eq("void", "1")
       .single(),
@@ -566,6 +570,7 @@ export async function getFlockCardPlacement(
     flockCode: header.flock_code,
     trialCode: header.trial_code,
     cycleNumber: header.cycle_no,
+    cycleMask: getBroilerCycleDisplay(header),
     farmCycleId: header.farm_cycle_id,
     animalQty: Number(header.animal_qty ?? 0),
     feedMill: header.feedmill,

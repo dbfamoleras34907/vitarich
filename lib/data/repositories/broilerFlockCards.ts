@@ -1,3 +1,4 @@
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask';
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from "@/lib/data/repositories/broilerGrowing";
@@ -45,6 +46,7 @@ export type FarmOriginDocDetail = {
 export type FlockCardListInfo = {
   id: number;
   cardNo: string;
+  cycleMask?: string;
   age: number;
   actualAge?: number | null;
   growingId?: number | null;
@@ -101,6 +103,8 @@ type WarehouseMasterRow = {
 type FlockCardListRow = {
   id: number;
   card_no: string | null;
+  cycle_mask?: string | null;
+  doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null;
   building_id: number | null;
   building_whse_id: number | null;
   building_key: string | null;
@@ -380,7 +384,7 @@ export async function getFarmBuildingsForFlockCard(
       : Promise.resolve({ data: [], error: null }),
     db
       .from("flock_card")
-      .select("id, card_no, building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
+      .select("id, card_no, cycle_mask, doc_farm_cycles(cycle_mask), building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
       .eq("farm_id", farmId)
       .eq("void", "1")
       .eq("status", "Saved")
@@ -492,6 +496,7 @@ export async function getFarmBuildingsForFlockCard(
     return {
       id: cardId,
       cardNo: String(card.card_no ?? "").trim(),
+      cycleMask: getBroilerCycleDisplay(card),
       age: startDate ? calculateFlockAgeFromStartDate(startDate) : Number(card.age ?? 0),
       actualAge: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.actualAge ?? null,
       growingId: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.id ?? null,

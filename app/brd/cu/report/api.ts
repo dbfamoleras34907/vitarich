@@ -1,5 +1,7 @@
 'use client'
 
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask'
+
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from '@/lib/data/repositories/broilerGrowing'
 
@@ -29,6 +31,8 @@ type CardRow = {
   building_code: string | null
   building_name: string | null
   cycle_no: string | null
+  cycle_mask: string | null
+  doc_farm_cycles: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null
   start_date: string | null
   extra: Record<string, unknown> | null
 }
@@ -84,7 +88,7 @@ export async function getCleanupReport(params: {
 
   let cardQuery = db
     .from('flock_card')
-    .select('id, card_no, building_code, building_name, cycle_no, start_date, extra')
+    .select('id, card_no, building_code, building_name, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), start_date, extra')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .eq('status', 'Closed')
@@ -178,7 +182,7 @@ export async function getCleanupReport(params: {
       buildingCode,
       buildingName: String(card.building_name ?? '').trim(),
       flockCard: String(card.card_no ?? '').trim(),
-      growingNumber: String(card.cycle_no ?? '').trim(),
+      growingNumber: getBroilerCycleDisplay(card),
       age: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ''))?.actualAge ?? null,
       totalPlacement: postedPlacement > 0 ? postedPlacement : Math.max(savedPlacement, 0),
       totalMortality: Math.max(-movementTotal(['BRD_FC_MORT_THIN_USAGE', 'BRD_FC_MORT_THIN_TRANSFER_OUT', 'BRD_FC_MORT_THIN_REVERSAL']), 0),

@@ -218,7 +218,7 @@ export default function DeliveryIssueLinesTable({
           const rows = Array.from(groups.values()).map((lines, index) => {
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
-            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleNumber ? line : info ?? {}), info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
+            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
               lines.filter(entry => entry.batchNumber).map(entry => `${entry.batchNumber} (${entry.altQty})`).join('; '),
@@ -412,8 +412,8 @@ export default function DeliveryIssueLinesTable({
                 </td>
                 <td className="border-r p-1 align-middle">
                   <Input
-                    value={formatBroilerCycleNumbers(line.cycleNumber ? line : flockState?.info ?? {})}
-                    title={formatBroilerCycleNumbers(line.cycleNumber ? line : flockState?.info ?? {})}
+                    value={formatBroilerCycleNumbers(line.cycleMask ? line : flockState?.info ?? {})}
+                    title={formatBroilerCycleNumbers(line.cycleMask ? line : flockState?.info ?? {})}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
                   />

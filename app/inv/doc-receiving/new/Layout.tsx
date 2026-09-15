@@ -94,6 +94,7 @@ import {
 import CycleInformationModal, {
   type CycleInformationForm,
 } from './CycleInformationModal'
+import { getFarmCycleMasterRows } from '@/lib/data/repositories/broilerFarmCycles'
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Date Receive' },
@@ -1043,28 +1044,35 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       0,
     )
   const receivingSummary = [
+    ...[
+      {
+        key: 'good',
+        label: 'Good Chick',
+        itemId: docReceivingSettings?.good_doc,
+      },
+      {
+        key: 'doa',
+        label: 'DOA',
+        itemId: docReceivingSettings?.bad_doc,
+      },
+      {
+        key: 'reject',
+        label: 'Reject',
+        itemId: docReceivingSettings?.reject_doc,
+      },
+    ].map(group => {
+      const lines = displayReceiptLines.filter(line => line.itemId === group.itemId)
+      return {
+        ...group,
+        quantity: lines.reduce((total, line) => total + Number(line.baseQty || 0), 0),
+      }
+    }),
     {
-      key: 'good',
-      label: 'Good Chick',
-      itemId: docReceivingSettings?.good_doc,
+      key: 'short',
+      label: 'Short Count',
+      quantity: docDetailRows.reduce((total, row) => total + numberValue(row.short_count), 0),
     },
-    {
-      key: 'doa',
-      label: 'DOA',
-      itemId: docReceivingSettings?.bad_doc,
-    },
-    {
-      key: 'reject',
-      label: 'Reject',
-      itemId: docReceivingSettings?.reject_doc,
-    },
-  ].map(group => {
-    const lines = displayReceiptLines.filter(line => line.itemId === group.itemId)
-    return {
-      ...group,
-      quantity: lines.reduce((total, line) => total + Number(line.baseQty || 0), 0),
-    }
-  })
+  ]
 
   useEffect(() => {
     if (!receipt || !shouldDeriveReceiptLines) return
@@ -1273,6 +1281,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       cancelled = true
     }
   }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber])
+
+  useEffect(() => {
+    if (loadingReferences || !receipt?.farmId || receipt.status === 'Posted' || docDetailRows.length > 0) return
+
+    setDocDetailRows(current => current.length === 0
+      ? [newDocDetailRow(receipt.receiveDate)]
+      : current)
+  }, [docDetailRows.length, loadingReferences, receipt?.farmId, receipt?.receiveDate, receipt?.status])
 
   if (!receipt) return <GoodsReceiveLoadingShell />
 
@@ -1718,8 +1734,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       if (excluded) {
         setCycleForm(current => ({ ...current, cycleNumber: '' }))
       } else {
-        const farmCycle = await previewDocFarmCycle(receipt.farmId)
-        setCycleForm(current => ({ ...current, cycleNumber: farmCycle.cycleNumber }))
+        const [farmCycle, activeCycles] = await Promise.all([
+          previewDocFarmCycle(receipt.farmId),
+          getFarmCycleMasterRows(receipt.farmId, { status: 'Saved' }),
+        ])
+        setCycleForm(current => ({ ...current, cycleNumber: farmCycle.cycleNumber,
+          farmCycleStartDate: activeCycles.find(cycle => cycle.id === farmCycle.id)?.startDate ?? null }))
       }
     } catch (error) {
       toast.error(`Unable to calculate Cycle Count: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -3011,13 +3031,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </Dialog>
 
           <div className="mx-2 mb-4 mt-auto flex flex-col items-stretch gap-3 pt-4 sm:mx-4">
-            <div className="w-full rounded-lg border bg-card text-card-foreground">
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div>
+            <div className="ml-auto w-full rounded-lg border bg-card text-card-foreground sm:w-auto">
+              <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
+                <div className="text-right">
                   <h3 className="text-sm font-semibold">Receiving Summary</h3>
                   <p className="mt-1 text-xs text-muted-foreground">Quantity by condition</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
                   <div className="rounded-md border px-3 py-2">
                     <div className="text-muted-foreground">Total</div>
                     <div className="font-semibold tabular-nums">

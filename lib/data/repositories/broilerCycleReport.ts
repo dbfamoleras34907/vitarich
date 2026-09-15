@@ -98,6 +98,7 @@ export type BroilerCycleBuilding = {
 export type BroilerCycleReport = {
   id: number
   cycleNumber: number
+  cycleMask: string
   status: string
   farmId: number
   farmCode: string
@@ -170,7 +171,7 @@ export async function getBroilerCycleReport(
 
   const cycleResult = await db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, status, created_at, closed_at')
+    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at')
     .eq('id', cycleId)
     .maybeSingle()
   if (cycleResult.error) throwQueryError(cycleResult.error, 'Unable to load the farm cycle')
@@ -257,7 +258,7 @@ async function loadBroilerCycleReport(
 ): Promise<BroilerCycleReport> {
   const farmId = numberValue(cycle.farm_id)
   let cardQuery = db.from('flock_card')
-    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, start_date, breed, animal_qty, status, remarks, void')
+    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, cycle_mask, start_date, breed, animal_qty, status, remarks, void')
   if (options.postedOnly || standaloneCardId) cardQuery = cardQuery.eq('farm_id', farmId)
   cardQuery = standaloneCardId
     ? cardQuery.eq('id', standaloneCardId).is('farm_cycle_id', null)
@@ -277,6 +278,7 @@ async function loadBroilerCycleReport(
     return {
       id: cycleId,
       cycleNumber: numberValue(cycle.cycle_no),
+      cycleMask: textValue(cycle.cycle_mask),
       status: textValue(cycle.status),
       farmId,
       farmCode: textValue(farm.code),
@@ -412,7 +414,7 @@ async function loadBroilerCycleReport(
 
     return {
       flockCardId,
-      cycleLabel: textValue(card.cycle_no) || textValue(cycle.cycle_no),
+      cycleLabel: textValue(cycle.cycle_mask) || textValue(card.cycle_mask),
       cardNo,
       flockCode: textValue(card.flock_code),
       buildingWarehouseId: numberValue(card.building_whse_id) || null,
@@ -471,6 +473,7 @@ async function loadBroilerCycleReport(
   return {
     id: cycleId,
     cycleNumber: numberValue(cycle.cycle_no),
+    cycleMask: textValue(cycle.cycle_mask),
     status: textValue(cycle.status),
     farmId,
     farmCode: textValue(farm.code),

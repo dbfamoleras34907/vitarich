@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { FarmBuildingListRow } from '@/app/brd/fc/api'
 import { flockCardBreedComboOptions } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import { Modal } from '@/lib/Moda'
+import { formatCycleMask } from '@/lib/broiler/cycleMask'
 
 const expectedCycleEndDate = (startDate: string) => {
   const [year, month, day] = startDate.split('-').map(Number)
@@ -24,6 +25,7 @@ export type CycleInformationForm = {
   startDate: string
   breed: string
   cycleNumber: string
+  farmCycleStartDate?: string | null
 }
 
 type CycleInformationModalProps = {
@@ -60,7 +62,7 @@ export default function CycleInformationModal({
       title={farmCycle ? 'Create Farm Cycle' : 'Create Building Cycle'}
       description={
         building
-          ? `${building.code} - ${building.name} does not have an active cycle${farmCycle ? ' and will copy the active farm Cycle Count.' : '.'}`
+          ? `${building.code} - ${building.name} does not have an active cycle${farmCycle ? ' and will use the active farm cycle.' : '.'}`
           : 'Complete the cycle information for the selected building.'
       }
       className="max-w-2xl"
@@ -81,7 +83,7 @@ export default function CycleInformationModal({
                   className="bg-stone-50"
                 />
               </div>
-              <div className="space-y-2">
+              {!farmCycle && <div className="space-y-2">
                 <Label>Cycle Count</Label>
                 <Input
                   type={cycleNumberEditable ? 'text' : 'number'}
@@ -89,6 +91,14 @@ export default function CycleInformationModal({
                   readOnly={!cycleNumberEditable}
                   className={!cycleNumberEditable ? 'bg-stone-50' : undefined}
                   onChange={event => onFormChange({ cycleNumber: event.target.value })}
+                />
+              </div>}
+              <div className="space-y-2">
+                <Label>Cycle Number</Label>
+                <Input
+                  value={formatCycleMask(form.cycleNumber, form.farmCycleStartDate && form.farmCycleStartDate < form.startDate ? form.farmCycleStartDate : form.startDate)}
+                  readOnly
+                  className="bg-stone-50"
                 />
               </div>
               <div className="space-y-2">

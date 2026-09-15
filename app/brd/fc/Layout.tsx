@@ -479,14 +479,15 @@ export default function Layout() {
             <Table className="min-w-[1120px] bg-white dark:bg-card">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[260px] text-right">Action</TableHead>
-                  <TableHead className="w-[220px]">Building</TableHead>
-                  <TableHead className="w-[100px]">Cycle Age</TableHead>
-                  <TableHead className="w-[90px]">Age</TableHead>
-                  <TableHead className="w-[140px]">Start date</TableHead>
+                  <TableHead className="">Action</TableHead>
+                  <TableHead className="]">Building</TableHead>
+                  <TableHead>Cycle Number</TableHead>
+                  <TableHead className="]">Cycle Age</TableHead>
+                  <TableHead className="]">Age</TableHead>
+                  <TableHead className="">Start date</TableHead>
                   <TableHead>Code</TableHead>
-                  <TableHead className="w-[130px] text-right">Count</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
+                  <TableHead className=" text-right">Count</TableHead>
+                  <TableHead className="">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -505,7 +506,7 @@ export default function Layout() {
                       key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
                       <TableCell>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex  gap-2">
                           {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
                             <Button type="button" size="sm" variant="outline"
                               className="text-destructive" disabled={openingAction !== null || reversing}
@@ -567,9 +568,10 @@ export default function Layout() {
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
-                        <div className="truncate text-base font-semibold">{building.code || index + 1}</div>
-                        <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
+                        <div className="truncate text-base font-semibold">{building.name || "-"}</div>
+                        <div className="truncate text-xs text-muted-foreground" >{building.code || index + 1}</div>
                       </TableCell>
+                      <TableCell>{flockCard?.cycleMask || "-"}</TableCell>
                       <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
                       <TableCell className="font-medium">
                         {flockCard?.actualAge !== null && flockCard?.actualAge !== undefined

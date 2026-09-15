@@ -1,5 +1,7 @@
 'use client'
 
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask'
+
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getItemGroupDescendants, type ItemGroup } from '@/lib/data/repositories/itemGroups'
 
@@ -32,6 +34,7 @@ export type VnmWarehouse = {
 export type VnmCycle = {
   id: number
   cycle_no: number
+  cycle_mask: string | null
   status: 'Saved' | 'Closed' | 'Cancelled'
 }
 
@@ -112,6 +115,7 @@ export type VnmDocument = {
   fmsType: VnmFmsType
   farmCycleId: number | null
   cycleNo: number | null
+  cycleMask?: string | null
   storageWarehouseId: number | null
   storageWarehouseCode: string
   storageWarehouseName: string
@@ -143,6 +147,7 @@ type DbDocument = {
   fms_type: VnmFmsType
   farm_cycle_id: number | null
   cycle_no: number | null
+  doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null
   storage_warehouse_id: number
   storage_warehouse_code: string | null
   storage_warehouse_name: string | null
@@ -241,7 +246,7 @@ export async function getVnmReferences(farmId: number | null, fmsType: VnmFmsTyp
     db.from('item_groups').select('id, code, name, father, root_item_group_id, subgroup_level, void').eq('void', '1').order('code'),
     db.from('items').select('id, item_code, item_name, inventory_uom, uom_group_code, item_group, sub_item_group_id, sub_item_group_level_1_id, sub_item_group_level_2_id, sub_item_group_level_3_id, fms_group, manage_batch_numbers').eq('void', 1).eq('is_inventory_item', true).eq('fms_group', normalizedFms).order('item_code'),
     farmId ? db.from('i_warehouse').select('id, whse_code, whse_name, warehouse_type, farm_id, father_id').eq('farm_id', farmId).eq('is_active', true).order('whse_code') : Promise.resolve({ data: [], error: null }),
-    farmId && fmsType === 'Broiler' ? db.from('doc_farm_cycles').select('id, cycle_no, status').eq('farm_id', farmId).neq('status', 'Cancelled').order('cycle_no', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    farmId && fmsType === 'Broiler' ? db.from('doc_farm_cycles').select('id, cycle_no, cycle_mask, status').eq('farm_id', farmId).neq('status', 'Cancelled').order('cycle_no', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     farmId && fmsType === 'Broiler' ? db.from('flock_card').select('farm_cycle_id, building_whse_id').eq('farm_id', farmId).eq('void', '1').not('farm_cycle_id', 'is', null) : Promise.resolve({ data: [], error: null }),
     db.from('vnm_indications').select('id, name, void').eq('void', '1').order('name'),
     db.from('vnm_routes').select('id, name, void').eq('void', '1').order('name'),
@@ -328,6 +333,7 @@ function mapDocument(row: DbDocument, lines: DbLine[], allocations: DbAllocation
     fmsType: row.fms_type,
     farmCycleId: row.farm_cycle_id,
     cycleNo: row.cycle_no,
+    cycleMask: getBroilerCycleDisplay(row) || null,
     storageWarehouseId: row.storage_warehouse_id,
     storageWarehouseCode: text(row.storage_warehouse_code),
     storageWarehouseName: text(row.storage_warehouse_name),
@@ -370,7 +376,7 @@ function mapDocument(row: DbDocument, lines: DbLine[], allocations: DbAllocation
 }
 
 export async function getVnmDocuments(limit = 100) {
-  const { data: headers, error } = await db.from('vnm_documents').select('*').order('created_at', { ascending: false }).limit(limit)
+  const { data: headers, error } = await db.from('vnm_documents').select('*, doc_farm_cycles(cycle_mask)').order('created_at', { ascending: false }).limit(limit)
   if (error) throw error
   const ids = (headers ?? []).map(header => Number(header.id))
   if (!ids.length) return []
@@ -380,7 +386,7 @@ export async function getVnmDocuments(limit = 100) {
 }
 
 export async function getVnmDocument(id: number) {
-  const { data: header, error } = await db.from('vnm_documents').select('*').eq('id', id).maybeSingle()
+  const { data: header, error } = await db.from('vnm_documents').select('*, doc_farm_cycles(cycle_mask)').eq('id', id).maybeSingle()
   if (error) throw error
   if (!header) return null
   const { data: lines, error: lineError } = await db.from('vnm_lines').select('*').eq('vnm_document_id', id).eq('void', '1').order('line_no')

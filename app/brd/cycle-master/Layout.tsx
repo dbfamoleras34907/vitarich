@@ -117,7 +117,7 @@ export default function CycleMasterLayout() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cycle Count</TableHead>
+                <TableHead>Cycle Number</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Participating Buildings</TableHead>
                 <TableHead className="text-right">Open Buildings</TableHead>
@@ -147,7 +147,10 @@ export default function CycleMasterLayout() {
                     }
                   }}
                 >
-                  <TableCell className="font-medium">{row.cycleNumber}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{row.cycleMask || '-'}</div>
+                    {row.kind === 'building' && <div className="text-xs text-muted-foreground">{row.buildingName}</div>}
+                  </TableCell>
                   <TableCell><Badge variant={row.status === 'Saved' ? 'default' : 'secondary'}>{row.status === 'Saved' ? 'Active' : row.status}</Badge></TableCell>
                   <TableCell className="text-right">{row.participatingBuildings}</TableCell>
                   <TableCell className="text-right">{row.openBuildings}</TableCell>

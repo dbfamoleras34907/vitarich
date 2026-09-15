@@ -4,6 +4,8 @@ export type FarmCycleMasterRow = {
   id: number
   farmId: number
   cycleNumber: number
+  cycleMask: string | null
+  startDate: string | null
   status: 'Saved' | 'Closed' | 'Cancelled'
   createdAt: string
   closedAt: string | null
@@ -15,12 +17,14 @@ type FarmCycleDbRow = {
   id: number
   farm_id: number
   cycle_no: number
+  cycle_mask: string | null
   status: 'Saved' | 'Closed' | 'Cancelled'
   created_at: string
   closed_at: string | null
 }
 
 type FlockCardCycleRow = {
+  start_date: string | null
   farm_cycle_id: number | null
   building_whse_id: number | null
   status: string | null
@@ -29,6 +33,7 @@ type FlockCardCycleRow = {
 export type StandaloneBuildingCycleOption = {
   id: number
   cycleLabel: string
+  cycleMask: string | null
   buildingName: string
   status: string
   createdAt: string | null
@@ -37,12 +42,13 @@ export type StandaloneBuildingCycleOption = {
 export async function getStandaloneBuildingCycleOptions(farmId: number): Promise<StandaloneBuildingCycleOption[]> {
   if (!Number.isInteger(farmId) || farmId <= 0) return []
   const { data, error } = await db.from('flock_card')
-    .select('id, cycle_no, building_name, building_code, status, created_at')
+    .select('id, cycle_no, cycle_mask, building_name, building_code, status, created_at')
     .eq('farm_id', farmId).is('farm_cycle_id', null).eq('void', '1')
     .order('start_date', { ascending: false }).order('id', { ascending: false })
   if (error) throw error
   return (data ?? []).map(row => ({
     id: Number(row.id), cycleLabel: String(row.cycle_no ?? ''),
+    cycleMask: row.cycle_mask ?? null,
     buildingName: String(row.building_name || row.building_code || ''), status: String(row.status ?? ''),
     createdAt: row.created_at ?? null,
   }))
@@ -50,6 +56,7 @@ export async function getStandaloneBuildingCycleOptions(farmId: number): Promise
 
 export type CycleMasterListRow = Omit<FarmCycleMasterRow, 'cycleNumber' | 'status' | 'createdAt'> & {
   kind: 'farm' | 'building'
+  buildingName?: string
   cycleNumber: number | string
   status: string
   createdAt: string | null
@@ -65,8 +72,11 @@ export async function getCycleMasterListRows(farmId: number): Promise<CycleMaste
     ...standaloneCycles.map(cycle => ({
       id: cycle.id,
       kind: 'building' as const,
+      buildingName: cycle.buildingName,
       farmId,
       cycleNumber: `${cycle.cycleLabel} - ${cycle.buildingName}`,
+      cycleMask: cycle.cycleMask,
+      startDate: null,
       status: cycle.status,
       createdAt: cycle.createdAt,
       closedAt: null,
@@ -84,7 +94,7 @@ export async function getFarmCycleMasterRows(
 
   let cycleQuery = db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, status, created_at, closed_at')
+    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at')
     .eq('farm_id', farmId)
     .order('cycle_no', { ascending: false })
 
@@ -97,7 +107,7 @@ export async function getFarmCycleMasterRows(
 
   const cardResult = await db
     .from('flock_card')
-    .select('farm_cycle_id, building_whse_id, status')
+    .select('farm_cycle_id, building_whse_id, status, start_date')
     .in('farm_cycle_id', cycles.map(cycle => cycle.id))
     .eq('void', '1')
 
@@ -120,6 +130,8 @@ export async function getFarmCycleMasterRows(
       id: Number(cycle.id),
       farmId: Number(cycle.farm_id),
       cycleNumber: Number(cycle.cycle_no),
+      cycleMask: cycle.cycle_mask ?? null,
+      startDate: cycleCards.map(card => card.start_date).filter((date): date is string => !!date).sort()[0] ?? null,
       status: cycle.status,
       createdAt: cycle.created_at,
       closedAt: cycle.closed_at,

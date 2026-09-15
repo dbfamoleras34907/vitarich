@@ -152,8 +152,8 @@ export const topHeaderCells: HeaderCellConfig[] = [
   { label: "Batch", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Feeds Consumption", colSpan: 4, groupEnd: true, className: groupHeaderClass },
   { label: "Water Intake", colSpan: 3, groupEnd: true, className: groupHeaderClass },
-  { label: "Average Live Weight", colSpan: 2, groupEnd: true, className: groupHeaderClass },
-  { label: "Average Daily Gain", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Average Live Weight (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Average Daily Gain (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { ariaLabel: "Spacer", colSpan: 1, groupEnd: true, className: groupHeaderClass },
 ];
 

@@ -764,9 +764,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         ? feedBatchColumnWidth
         : colIndex === feedTypeColumnIndex
           ? feedTypeColumnWidth
-        : colIndex === mortalityBatchColumnIndex
-          ? mortalityBatchColumnWidth
-          : dataColumnWidth
+          : colIndex === mortalityBatchColumnIndex
+            ? mortalityBatchColumnWidth
+            : dataColumnWidth
     ),
     [feedBatchColumnWidth, mortalityBatchColumnWidth]
   );
@@ -3035,6 +3035,22 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   <Button
                     type="button"
                     size="default"
+                    variant={"secondary"}
+                    onClick={handleSave}
+                    disabled={saving || harvestLocked}
+                  >
+                    {saving ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Save className="size-4" />
+                    )}
+                    Save as Draft
+                  </Button>
+
+
+                  <Button
+                    type="button"
+                    size="default"
                     onClick={handleSave}
                     disabled={saving || harvestLocked}
                   >
@@ -3170,6 +3186,22 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 batchSummary={feedBatchMetricLabel}
                 rows={exportRows}
               />
+
+
+              <Button
+              variant={"secondary"}
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || harvestLocked}
+              >
+                {saving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                Save as Draft
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -4157,8 +4189,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   mortalityThinningCellLocked
                                     ? "Saved mortality/thinning. Open to view batches or reverse mortality/thinning before editing."
                                     : rowAgeLocked
-                                    ? `Flock age is ${currentFlockAge}. Enable advance posting to edit this age.`
-                                    : gridValues[rowIndex]?.[mortalityBatchColumnIndex] || "Select mortality/thinning batch"
+                                      ? `Flock age is ${currentFlockAge}. Enable advance posting to edit this age.`
+                                      : gridValues[rowIndex]?.[mortalityBatchColumnIndex] || "Select mortality/thinning batch"
                                 }
                               >
                                 <span className="min-w-0 break-words">
@@ -4232,9 +4264,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                       ? `Flock age is ${currentFlockAge}. Enable advance posting to edit this age.`
                                       : !hasActualFc
                                         ? "Feed batch is not required without Actual FC."
-                                      : getFeedTypeIdForRow(rowIndex) == null
-                                        ? "Select a Feed Type first."
-                                        : gridValues[rowIndex]?.[feedBatchColumnIndex] || "Select feed batch"
+                                        : getFeedTypeIdForRow(rowIndex) == null
+                                          ? "Select a Feed Type first."
+                                          : gridValues[rowIndex]?.[feedBatchColumnIndex] || "Select feed batch"
                                 }
                               >
                                 <span className="min-w-0 break-words">

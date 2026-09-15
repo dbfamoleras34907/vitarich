@@ -11,6 +11,7 @@ export type GoodsIssueLine = {
   flockCardId?: number | null
   flockCardNo?: string | null
   cycleNumber?: string | null
+  cycleMask?: string | null
   id: number | string
   allocationGroupKey?: string
   netLiveWeight?: number | null

@@ -253,6 +253,7 @@ const clearWarehouseSensitiveLineData = (
   flockCardId: undefined,
   flockCardNo: undefined,
   cycleNumber: undefined,
+  cycleMask: undefined,
   fromWarehouseId: warehouse?.id ?? null,
   fromWarehouseCode: warehouse?.whse_code ?? '',
   fromWarehouseName: warehouse?.whse_name ?? '',
@@ -2458,7 +2459,7 @@ export default function NewGoodsIssue({
                             <tr key={row.flockCardId} className="border-t odd:bg-white even:bg-stone-50/70">
                               <td className="border-r px-3 py-3 font-medium">{row.buildingName || row.buildingCode}</td>
                               <td className="border-r px-3 py-3">{row.flockCard || '-'}</td>
-                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleCount || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleMask || '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{row.age ?? '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalPlacement)}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalMortality)}</td>

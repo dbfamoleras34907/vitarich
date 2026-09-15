@@ -261,7 +261,7 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
   useEffect(() => { void load() }, [load])
 
   const building = report?.buildings.find(row => row.flockCardId === selectedBuildingId) ?? report?.buildings[0] ?? null
-  const cycleLabel = cycleKind === 'building' ? building?.cycleLabel || 'Standalone' : report?.cycleNumber
+  const cycleLabel = cycleKind === 'building' ? building?.cycleLabel || 'Standalone' : report?.cycleMask
 
   async function exportExcel() {
     if (!report) return
@@ -270,7 +270,7 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
       const rows: Array<Array<string | number>> = [
         ['Cycle Master Report'],
         ['Farm', report.farmName || report.farmCode],
-        ['Cycle Count', cycleLabel ?? ''],
+        ['Cycle Number', cycleLabel ?? ''],
         ['Status', report.status],
         ['Created', formatDate(report.createdAt)],
         ['Closed', formatDate(report.closedAt)],
@@ -333,7 +333,7 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
               <HeaderMetric label="Farm" value={report.farmName || report.farmCode || '-'} />
-              <HeaderMetric label="Cycle Count" value={cycleLabel} />
+              <HeaderMetric label="Cycle Number" value={cycleLabel} />
               <HeaderMetric label="Participating Buildings" value={report.buildings.length} />
               <HeaderMetric label="Created" value={formatDate(report.createdAt)} />
               <HeaderMetric label="Closed" value={formatDate(report.closedAt)} />

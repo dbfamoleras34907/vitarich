@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCycleMask } from '@/lib/broiler/cycleMask';
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Minus, Plus } from "lucide-react";
@@ -63,6 +64,7 @@ type AddFlockForm = {
   vaccinationProgramId: string;
   trialCode: string;
   cycleNumber: string;
+  cycleMask?: string;
   nofAnimals: string;
   feedMill: string;
   stockingDensity: string;
@@ -269,6 +271,7 @@ export default function Layout() {
           vaccinationProgramId: card.vaccinationProgramId ?? "",
           trialCode: card.trialCode ?? "",
           cycleNumber: card.cycleNumber?.trim() || "1",
+          cycleMask: card.cycleMask || "",
           nofAnimals: optionalNumberToInputValue(card.animalQty),
           feedMill: card.feedMill ?? "",
           stockingDensity: optionalNumberToInputValue(card.stockingDensity),
@@ -631,11 +634,10 @@ export default function Layout() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Cycle Count</label>
+                <label className="text-sm font-medium">Cycle Number</label>
                 <Input
-                  type="number"
-                  min={1}
-                  value={form.cycleNumber || "1"}
+                  type="text"
+                  value={form.cycleMask || formatCycleMask(form.cycleNumber, form.flockStartDate)}
                   placeholder="Calculated automatically"
                   readOnly
                   className="bg-stone-50"

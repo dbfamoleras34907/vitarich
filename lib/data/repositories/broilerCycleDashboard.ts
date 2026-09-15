@@ -53,7 +53,7 @@ export async function getBroilerCycleDashboard(
   const cycleOptions: DashboardCycleOption[] = [
     ...[...farmCycles].sort((a, b) => b.cycleNumber - a.cycleNumber || b.id - a.id).map(cycle => ({
       key: `farm:${cycle.id}`, kind: 'farm' as const, id: cycle.id,
-      label: `Cycle ${cycle.cycleNumber}`, status: cycle.status,
+      label: `Cycle ${cycle.cycleMask || "-"}`, status: cycle.status,
     })),
   ]
   const selectCycle = () => (options.cycleKey
@@ -73,7 +73,7 @@ export async function getBroilerCycleDashboard(
   const standaloneCycles = standaloneResult.status === 'fulfilled' ? standaloneResult.value : []
   cycleOptions.push(...standaloneCycles.map(cycle => ({
       key: `building:${cycle.id}`, kind: 'building' as const, id: cycle.id,
-      label: `${cycle.cycleLabel} - ${cycle.buildingName}`, status: cycle.status,
+      label: `${cycle.cycleMask || "-"} - ${cycle.buildingName}`, status: cycle.status,
     })))
   let selectedCycle = selectCycle()
   options.onCatalogLoaded?.({ farmId, cycleOptions: [...cycleOptions], selectedCycle })
@@ -105,7 +105,7 @@ export async function getBroilerCycleDashboard(
       : [...tabs.values()].find(tab => tab.code === building.buildingCode)?.key ?? `card:${building.flockCardId}`
     const tab = tabs.get(key) ?? { key, code: building.buildingCode, name: building.buildingName, cycles: [] }
     tab.cycles.push({ ...building, cycleId: report?.id || null,
-      cycleNumber: building.cycleLabel || report?.cycleNumber || '', cycleClosedAt: report?.closedAt })
+      cycleNumber: building.cycleLabel || report?.cycleMask || '', cycleClosedAt: report?.closedAt })
     tabs.set(key, tab)
   }
   return { farmId, cycleOptions, selectedCycle, warnings,

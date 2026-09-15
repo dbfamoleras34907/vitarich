@@ -1,5 +1,6 @@
 'use client'
 
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask'
 import { getHarvestEmptiedCleanupBatches } from '@/lib/data/repositories/brCleanup'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
@@ -45,6 +46,7 @@ export type GoodsIssueFlockCardInfo = {
   breed: string
   flockCode: string
   cycleNumber: string
+  cycleMask?: string
   animalQty: number
   bodyWeight: number | null
   status: string
@@ -68,6 +70,7 @@ export type CleanupCycleSummary = {
   buildingName: string
   flockCard: string
   cycleCount: string
+  cycleMask: string
   age: number | null
   totalPlacement: number
   totalMortality: number
@@ -101,7 +104,7 @@ export async function getCleanupCycleSummaries(params: {
 
   const cardResult = await db
     .from('flock_card')
-    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status, extra')
+    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .in('status', ['Saved', 'Closed'])
@@ -228,6 +231,7 @@ export async function getCleanupCycleSummaries(params: {
       buildingName: String(card.building_name ?? '').trim(),
       flockCard: String(card.card_no ?? '').trim(),
       cycleCount: String(card.cycle_no ?? '').trim(),
+      cycleMask: getBroilerCycleDisplay(card),
       age: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ''))?.actualAge ?? null,
       totalPlacement,
       totalMortality,
@@ -411,6 +415,8 @@ type FlockCardInfoRow = {
   breed: string | null
   flock_code: string | null
   cycle_no: string | null
+  cycle_mask?: string | null
+  doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null
   animal_qty: number | null
   status: string | null
   extra?: Record<string, unknown> | null
@@ -439,6 +445,7 @@ const toFlockCardInfo = (
   breed: row.breed ?? '',
   flockCode: row.flock_code ?? '',
   cycleNumber: row.cycle_no ?? '',
+  cycleMask: getBroilerCycleDisplay(row),
   animalQty: Number(row.animal_qty ?? 0),
   bodyWeight,
   status: row.status ?? '',
@@ -520,7 +527,7 @@ export async function getDeliveryFlockCardInfo(params: {
   if ((!Number.isFinite(buildingWarehouseId) || buildingWarehouseId <= 0) && !buildingCode) return null
 
   const cleanupDocumentId = Number(params.cleanupDocumentId ?? 0)
-  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status, extra'
+  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra'
   const selectCard = (rows: FlockCardInfoRow[]) => {
     if (params.flockCardId) return rows.find(row => Number(row.id) === params.flockCardId) ?? null
     if (Number.isFinite(cleanupDocumentId) && cleanupDocumentId > 0) {
@@ -681,7 +688,7 @@ export async function getAvailableDeliveryFlockCards(params: {
 
   const { data, error } = await db
     .from('flock_card')
-    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, animal_qty, status')
+    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .eq('status', 'Saved')
