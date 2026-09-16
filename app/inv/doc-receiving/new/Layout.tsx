@@ -63,7 +63,6 @@ import {
   GoodsReceiptBatchRule,
   GoodsReceiptBatchSeries,
   GoodsReceiptExistingBatch,
-  GoodsReceiptPrefetchReferences,
   getGoodsReceiptReferences,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
@@ -95,6 +94,8 @@ import CycleInformationModal, {
   type CycleInformationForm,
 } from './CycleInformationModal'
 import { getFarmCycleMasterRows } from '@/lib/data/repositories/broilerFarmCycles'
+import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
+import { allocationTotals, linkReceivingSource } from '@/lib/data/repositories/receivingSources'
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Date Receive' },
@@ -249,6 +250,7 @@ const normalizeDocDetailRow = (
     0,
   )
   const normalized = {
+    source_allocations: row.source_allocations ?? [],
     id: row.id ?? createClientId(),
     receive_date: row.receive_date || receiveDate,
     receive_time: row.receive_time ?? '',
@@ -391,11 +393,15 @@ const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => (
   status: 'Draft',
   lines: source.lines.map(line => ({
     ...line,
+    sourceDispatchLineId: null,
+    sourceRef2: null,
+    batchNumber: '',
     id: createClientId(),
     returnedQty: 0,
   })),
   docDetails: source.docDetails.map(row => normalizeDocDetailRow({
     ...row,
+    source_allocations: [],
     id: createClientId(),
   }, source.receiveDate)),
   createdAt: new Date().toISOString(),
@@ -404,18 +410,6 @@ const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsReceipt => (
 const numberValue = (value: string) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
-}
-
-const asArray = <T,>(value: unknown): T[] =>
-  Array.isArray(value) ? value as T[] : []
-
-const getCachedWarehouses = (value: unknown): WarehouseData[] => {
-  if (Array.isArray(value)) return value as WarehouseData[]
-  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
-    return (value as { data: WarehouseData[] }).data
-  }
-
-  return []
 }
 
 const formatBatchDatePart = (
@@ -599,6 +593,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const canInsert = usePermission('/inv/doc-receiving/insert')
+  const cannotLinkSource = usePermission('/inv/doc-receiving/edit')
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
   const notificationFarmId = searchParams.get('farmId')
@@ -702,32 +697,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           return
         }
 
-        const cachedItems = asArray<Items>(getValue('itemmaster'))
-          .filter(item => item.void === 1 || item.void == null)
-        const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
-          .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
-        const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
-        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
-          farm => typeof farm.farm_type !== 'undefined',
-        )
-        const canUseCachedReferences = cachedItems.length > 0 &&
-          cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups && cachedGrReferences.openFlockBuildings) &&
-          cachedReferencesHaveFarmMetadata
-
-        const referencesPromise = canUseCachedReferences
-          ? Promise.resolve({
-              items: cachedItems,
-              warehouses: cachedWarehouses,
-              farms: cachedGrReferences?.farms ?? [],
-              openFlockBuildings: cachedGrReferences?.openFlockBuildings ?? [],
-              uomGroups: cachedGrReferences?.uomGroups ?? [],
-              conversions: cachedGrReferences?.conversions ?? [],
-              itemGroups: cachedGrReferences?.itemGroups ?? [],
-              batchRules: cachedGrReferences?.batchRules ?? [],
-              batchSeries: cachedGrReferences?.batchSeries ?? [],
-            })
-          : getGoodsReceiptReferences()
+        // UoM defaults are editable master data. The persisted global cache
+        // can outlive an edit (or deployment), so load current references here.
+        const referencesPromise = getGoodsReceiptReferences()
 
         const [references, savedReceipt, grNo] = await Promise.all([
           referencesPromise,
@@ -773,7 +745,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [canInsert, duplicateId, getValue, isPostMode, receiptId, router])
+  }, [canInsert, duplicateId, isPostMode, receiptId, router])
 
   useEffect(() => {
     const farmId = Number(receipt?.farmId ?? 0)
@@ -912,6 +884,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     })
 
     const quantities = new Map<string, {
+      sourceDispatchLineId?: number
       itemId: number
       manufacturingDate: string
       referenceValue: string
@@ -929,10 +902,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       quantity: number,
       buildingWarehouseId: number | null,
       docLineNo: number,
+      sourceDispatchLineId?: number,
     ) => {
       if (!itemId || !manufacturingDate || quantity <= 0) return
 
-      const referenceKey = separateBatchByReference
+      const referenceKey = sourceDispatchLineId ? `${sourceRowId}|SOURCE:${sourceDispatchLineId}` : separateBatchByReference
         ? `${referenceValue || 'NO_REFERENCE'}|${String(sourceRowId)}`
         : ''
       const key = `${itemId}|${manufacturingDate}|${referenceKey}|${buildingWarehouseId ?? ''}`
@@ -945,11 +919,21 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         quantity: (current?.quantity ?? 0) + quantity,
         buildingWarehouseId,
         docLineNo,
+        sourceDispatchLineId,
       })
     }
 
     docDetailRows.forEach((row, index) => {
       const manufacturingDate = row.mnf_date
+      if (row.source_allocations?.length) {
+        for (const source of row.source_allocations) {
+          const ref = source.sourceReference || String(source.sourceLineId)
+          addQuantity(docReceivingSettings.good_doc, manufacturingDate, ref, row.id, source.quantity - source.shortage - source.doa - source.rejects, row.building_warehouse_id, index + 1, source.sourceLineId)
+          addQuantity(docReceivingSettings.bad_doc, manufacturingDate, ref, row.id, source.doa, row.building_warehouse_id, index + 1, source.sourceLineId)
+          addQuantity(docReceivingSettings.reject_doc, manufacturingDate, ref, row.id, source.rejects, row.building_warehouse_id, index + 1, source.sourceLineId)
+        }
+        return
+      }
       const referenceValue = getDocDetailReferenceValue(row, batchReferenceColumn) || String(row.id)
       const actualReceived = numberValue(row.actual_received)
       const daoQuantity = numberValue(row.doa_quantity)
@@ -961,7 +945,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       addQuantity(docReceivingSettings.reject_doc, manufacturingDate, referenceValue, row.id, rejectCount, row.building_warehouse_id, index + 1)
     })
 
-    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, referenceValue, referenceKey, quantity, buildingWarehouseId, docLineNo }) => {
+    return Array.from(quantities.values()).flatMap(({ itemId, manufacturingDate, referenceValue, referenceKey, quantity, buildingWarehouseId, docLineNo, sourceDispatchLineId }) => {
       const item = itemById.get(itemId)
       if (!item) return []
 
@@ -971,15 +955,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const selectedGroupCode = selectedGroup?.code ?? conversions.find(
         option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
       )?.groupCode ?? ''
-      const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
-      const conversion = conversions.find(
-        option =>
-          option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
-          option.uomCode.toUpperCase() === uom.toUpperCase(),
-      )
-      const baseQty = selectedGroupCode && uom
-        ? quantity * (conversion?.baseQty ?? 0)
-        : 0
       const rowBuilding = farmOpenFlockBuildings.find(
         building => building.warehouseId === buildingWarehouseId,
       )
@@ -993,14 +968,31 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             }
           : null
         : defaultDisposalWarehouse
-      const existingLine = existingLineByKey.get(
+      const existingLine = (sourceDispatchLineId ? receipt.lines.find(line => line.sourceDispatchLineId === sourceDispatchLineId && line.itemId === itemId && line.docLineNo === docLineNo) : undefined) ?? existingLineByKey.get(
         `${itemId}|${manufacturingDate}|${referenceKey}|${destination?.id ?? ''}`,
       )
+      const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
+      const savedUom = existingLine?.altUom
+      const savedUomIsAvailable = savedUom && conversions.some(option =>
+        option.groupCode === selectedGroupCode && option.uomCode.toUpperCase() === savedUom.toUpperCase(),
+      )
+      const uom = savedUomIsAvailable ? savedUom
+        : resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
+      const conversion = conversions.find(option =>
+        option.groupCode === selectedGroupCode && option.uomCode.toUpperCase() === uom.toUpperCase(),
+      )
+      // DOC detail quantities are chick counts in the base unit. Choosing a
+      // packaging UoM changes the displayed quantity, never the placement count.
+      const factor = conversion?.baseQty ?? 0
+      const altQty = factor > 0 ? quantity / factor : 0
+      const baseQty = quantity
       const expiryDate = typeof item.default_expiration_months === 'number'
         ? addMonthsToDate(manufacturingDate, item.default_expiration_months)
         : ''
 
       return [{
+        sourceDispatchLineId,
+        sourceRef2: sourceDispatchLineId ? referenceValue : null,
         id: existingLine?.id ?? createClientId(),
         itemId,
         itemCode: item.item_code || '',
@@ -1010,7 +1002,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         supplierBatchNumber: existingLine?.supplierBatchNumber ?? '',
         manufacturingDate,
         expiryDate,
-        altQty: quantity,
+        altQty,
         altUom: uom,
         baseQty,
         baseUom: selectedGroupCode,
@@ -1029,6 +1021,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
   const shouldDeriveReceiptLines = Boolean(
     receipt &&
+    receipt.status === 'Draft' &&
     hasDocReceivingSettings(docReceivingSettings) &&
     (!receipt.id || hasDocDetailValues(docDetailRows)),
   )
@@ -1667,7 +1660,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const selectedGroupCode = selectedGroup?.code ?? conversions.find(
       option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
-    const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+    const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
+    const uom = resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
     updateLine(line.id, {
       itemId: item.id,
       itemCode: item.item_code || '',
@@ -2130,6 +2124,28 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           <List className="size-4" />
           DOC Placement List
         </Button>
+        <ReceivingSourcePicker kind="broiler" farmId={receipt.farmId} receiptId={receipt.id}
+          historical={!canEditDraft} disabled={saving || receipt.status === 'Cancelled' || (!canEditDraft && cannotLinkSource)}
+          targets={docDetailRows.map((row, index) => ({ key: String(row.id), label: `Line ${index + 1} · ${row.transfer_slip || row.doc_source || 'DOC'} · ${row.quantity_received}`, allocations: row.source_allocations ?? [] }))}
+          onApply={async (key, allocations, sources) => {
+            if (!canEditDraft) {
+              await linkReceivingSource('broiler', Number(key), allocations)
+              const refreshed = receipt.id ? await getGoodsReceiptById(receipt.id) : null
+              if (refreshed) { setReceipt(refreshed); setDocDetailRows(refreshed.docDetails.map(row => normalizeDocDetailRow(row, refreshed.receiveDate))) }
+              toast.success('Source linked. Inventory is unchanged.')
+              return
+            }
+            const totals = allocationTotals(allocations)
+            const first = sources.find(source => source.sourceLineId === allocations[0]?.sourceLineId)
+            const current = docDetailRows.find(row => String(row.id) === key)
+            const next = normalizeDocDetailRow({ ...current, source_allocations: allocations,
+              doc_source: current?.doc_source || first?.originFarmName || 'Hatchery',
+              transfer_slip: [...new Set(allocations.map(row => row.documentNo).filter(Boolean))].join(', '),
+              quantity_received: String(totals.quantity), actual_received: String(totals.actual), short_count: String(totals.shortage),
+              doa_quantity: String(totals.doa), reject_count: String(totals.rejects),
+            }, receipt.receiveDate)
+            setDocDetailRows(rows => current ? rows.map(row => row.id === current.id ? next : row) : [...rows, next])
+          }} />
       </div>
 
       <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -2636,7 +2652,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 conversion.groupCode === groupCode &&
                                 conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
                             )
-                            const altUom = altUomIsAvailable ? line.altUom : ''
+                            const altUom = getSelectedGroup(groupCode)?.defaultUomCode || (altUomIsAvailable ? line.altUom : '')
 
                             updateLine(line.id, {
                               baseUom: groupCode,

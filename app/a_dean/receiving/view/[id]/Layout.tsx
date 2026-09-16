@@ -25,12 +25,16 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
+import { linkReceivingSource } from '@/lib/data/repositories/receivingSources'
+import { toast } from 'sonner'
 
 export default function Layout() {
     const params = useParams()
     const router = useRouter()
 
     const canInsert = usePermission('/a_dean/receiving/view')
+    const cannotLinkSource = usePermission('/a_dean/receiving/insert')
     useEffect(() => {
         if (canInsert)
             router.push("/a_dean/receiving/")
@@ -163,6 +167,13 @@ export default function Layout() {
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Back
                         </Button>
+                        <ReceivingSourcePicker kind="hatchery" historical disabled={cannotLinkSource || Number(header.void) === 0} farmId={Number(header.farm_id || header.delivered_to) || null} receiptId={Number(header.id)}
+                            targets={items.map((item, index) => ({ key: String(item.id), label: `Line ${index + 1} · ${item.sku} · ${item.actual_count}`, allocations: item.source_allocations ?? [] }))}
+                            onApply={async (key, allocations) => {
+                                await linkReceivingSource('hatchery', Number(key), allocations)
+                                await loadData()
+                                toast.success('Source linked. Inventory is unchanged.')
+                            }} />
                     </div>
 
 

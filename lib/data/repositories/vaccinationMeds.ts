@@ -59,6 +59,7 @@ export type VnmItem = {
 }
 
 export type VnmUomConversion = {
+  isDefault?: boolean
   groupCode: string
   uomCode: string
   baseUomCode: string
@@ -250,7 +251,7 @@ export async function getVnmReferences(farmId: number | null, fmsType: VnmFmsTyp
     farmId && fmsType === 'Broiler' ? db.from('flock_card').select('farm_cycle_id, building_whse_id').eq('farm_id', farmId).eq('void', '1').not('farm_cycle_id', 'is', null) : Promise.resolve({ data: [], error: null }),
     db.from('vnm_indications').select('id, name, void').eq('void', '1').order('name'),
     db.from('vnm_routes').select('id, name, void').eq('void', '1').order('name'),
-    db.from('uom_groups').select('code, base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code), conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(base_qty, void, uom:uom_master_data!uom_group_conversions_uom_id_fkey(code))').eq('void', '1').eq('conversions.void', '1'),
+    db.from('uom_groups').select('code, default_uom:uom_master_data!uom_groups_default_uom_id_fkey(code), base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code), conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(base_qty, void, uom:uom_master_data!uom_group_conversions_uom_id_fkey(code))').eq('void', '1').eq('conversions.void', '1'),
   ])
 
   const results = [settingsResult, groupsResult, itemsResult, warehousesResult, cyclesResult, cycleBuildingsResult, indicationsResult, routesResult, conversionsResult]
@@ -258,11 +259,12 @@ export async function getVnmReferences(farmId: number | null, fmsType: VnmFmsTyp
   if (failed?.error) throw failed.error
 
   const conversions = (conversionsResult.data ?? []).flatMap(group => {
+    const defaultUom = Array.isArray(group.default_uom) ? group.default_uom[0] : group.default_uom
     const base = Array.isArray(group.base_uom) ? group.base_uom[0] : group.base_uom
     return (group.conversions ?? []).flatMap(conversion => {
       const uom = Array.isArray(conversion.uom) ? conversion.uom[0] : conversion.uom
       if (!base?.code || !uom?.code) return []
-      return [{ groupCode: group.code, uomCode: uom.code, baseUomCode: base.code, baseQty: Number(conversion.base_qty) }]
+      return [{ isDefault: uom.code === (defaultUom?.code ?? base.code), groupCode: group.code, uomCode: uom.code, baseUomCode: base.code, baseQty: Number(conversion.base_qty) }]
     })
   })
 
@@ -283,9 +285,9 @@ export function getItemUomOptions(item: VnmItem, conversions: VnmUomConversion[]
   const options = conversions.filter(conversion => conversion.groupCode === item.uom_group_code)
   const base = text(item.inventory_uom)
   if (base && !options.some(option => option.uomCode === base)) {
-    return [{ groupCode: item.uom_group_code ?? '', uomCode: base, baseUomCode: base, baseQty: 1 }, ...options]
+    options.push({ groupCode: item.uom_group_code ?? '', uomCode: base, baseUomCode: base, baseQty: 1 })
   }
-  return options
+  return options.sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)))
 }
 
 export async function getVnmOnHandBatches(itemCode: string, warehouseCode: string): Promise<VnmBatch[]> {

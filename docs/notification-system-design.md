@@ -649,6 +649,8 @@ Broiler Clean Up now has prepared `BR_CLEANUP_POSTED`, `BR_CLEANUP_EDITED`, and 
 
 ## Acceptance criteria
 
+Breeder Dispatch, Hatchery Receiving, Hatchery DOC Dispatch and DOC Placement now prepare Post/Edit/Void events through transactional receiving-flow capture. Their activation remains disabled pending target deployment and canonical-farm/session verification. See [Receiving source integration](receiving-source-integration.md) for routing, deduplication, deployment order and local verification limits.
+
 Terminal Culling (`BREEDER_CLEANUP`) has prepared Save/Edit events with document
 farm routing, but remains activation-blocked until its migration and authenticated
 checks pass. See [Terminal Culling schema and readiness audit](breeder-terminal-culling.md).

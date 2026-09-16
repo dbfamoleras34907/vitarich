@@ -402,6 +402,7 @@ export type DisposalPrintRow = {
 }
 
 export type DraftItem = {
+  source_allocations?: import('@/lib/data/repositories/receivingSources').ReceivingAllocation[]
   id: number
   brdr_ref_no: string
   brdr_ref_noVx: string

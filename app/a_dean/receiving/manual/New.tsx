@@ -31,6 +31,8 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { VerticalRuler2 } from '@/components/VerticalRuler2'
 import { usePermission } from '@/hooks/usePermission'
+import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
+import { allocationTotals } from '@/lib/data/repositories/receivingSources'
 
 type ItemMasterType = {
     id: number
@@ -78,6 +80,7 @@ export default function ApprovalDecisionForm() {
     const [items, setItems] = useState<DraftItem[]>([])
     const [ItemMaster, setItemMaster] = useState<ItemMasterType[]>([])
     const [selectedRows, setSelectedRows] = useState<number[]>([])
+    const [clientRequestKey] = useState(() => crypto.randomUUID())
 
     const [postingDate, setPostingDate] = useState(today)
     const [temperature, setTemperature] = useState('')
@@ -308,11 +311,13 @@ export default function ApprovalDecisionForm() {
             prod_date_to: i.prod_date_to ?? "",
             age: i.age ?? "",
             total_api: i.total ?? 0,
+            expected_count: i.total ?? i.actual_total ?? 0,
             actual_count: i.actual_total ?? 0,
         }))
         console.log({ transformedItems })
 
         const payload = {
+            clientRequestKey,
             doc_date: header?.doc_date ?? "",
             temperature: Number(temperature) || 0,
             humidity: Number(humidity) || 0,
@@ -492,6 +497,30 @@ export default function ApprovalDecisionForm() {
                             />
                         </div>
                         <div className="flex gap-2">
+                            <ReceivingSourcePicker kind="hatchery" farmId={Number(header.delivered_to) || null} disabled={loading || canInsert}
+                                targets={items.map((item, index) => ({ key: String(item.id), label: `Line ${index + 1} · ${item.sku || 'Select item'} · ${item.actual_total ?? 0}`, allocations: item.source_allocations ?? [] }))}
+                                onApply={(key, allocations, sources) => {
+                                    const selected = sources.filter(source => allocations.some(row => row.sourceLineId === source.sourceLineId))
+                                    const first = selected[0]
+                                    if (new Set(selected.map(source => source.originFarmCode)).size > 1) throw new Error('Use one breeder source farm per receiving document. Batches can be combined during processing.')
+                                    if (items.some(item => item.source_allocations?.length) && header.soldTo && header.soldTo !== first.originFarmCode) throw new Error('Select dispatches from the same breeder farm as the existing receiving lines.')
+                                    const totals = allocationTotals(allocations)
+                                    const current = items.find(item => String(item.id) === key)
+                                    const next: DraftItem = { ...(current ?? { id: Date.now(), brdr_ref_no: '', brdr_ref_noVx: '', sku: '', UoM: 'PCS', isNew: true }),
+                                        source_allocations: allocations, total: totals.quantity, actual_total: totals.actual,
+                                        prod_date: current?.prod_date || first.productionDate,
+                                        brdr_ref_no: current?.brdr_ref_no || first.documentNo,
+                                        lot_no: current?.lot_no || first.placementDate || '',
+                                        house_no: current?.house_no || [...new Set(selected.map(source => source.buildingName))].join(', '),
+                                        age: current?.age || selected.map(source => {
+                                            const days = Math.max(0, Math.floor((Date.parse(source.productionDate) - Date.parse(source.placementDate || source.productionDate)) / 86400000))
+                                            return `${Math.floor(days / 7)} Weeks, ${days % 7} Day(s)`
+                                        }).join(', '),
+                                    }
+                                    setItems(rows => current ? rows.map(row => row.id === current.id ? next : row) : [...rows, next])
+                                    setHeader(value => ({ ...value, soldTo: first.originFarmCode, dr_num: [...new Set(selected.map(source => source.documentNo))].join(', ') }))
+                                    if (!brdr_ref_no) setbrdr_ref_no(first.documentNo)
+                                }} />
                             <Button type="submit" disabled={loading}>
                                 <Save className="mr-2 h-4 w-4" /> Save Record
                             </Button>

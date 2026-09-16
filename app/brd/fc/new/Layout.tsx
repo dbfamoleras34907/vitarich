@@ -16,6 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { TableCopyDownCell } from "@/components/ui/TableCopyDownCell";
+import { useTableCopyDown } from "@/hooks/useTableCopyDown";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -287,6 +289,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const autoSelectFeedBatchRef = useRef<() => void>(() => undefined);
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
+  const pendingCopyFeedBatchRowsRef = useRef<number[]>([]);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
 
@@ -1891,6 +1894,15 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     event.preventDefault();
 
     const pastedRows = parseClipboardGrid(text);
+    applyGridRows(pastedRows, startRowIndex, startColIndex);
+  }
+
+  function applyGridRows(
+    pastedRows: string[][],
+    startRowIndex: number,
+    startColIndex: number,
+    action: "Pasted" | "Copied" = "Pasted",
+  ) {
     if (pastedRows.length === 0) return;
 
     const nextGridValues = gridValues.map(row => [...row]);
@@ -1901,6 +1913,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       ...mortalityBatchAllocationsByRow,
     };
     const unresolvedBatchNumbers = new Set<string>();
+    const copiedFeedRows = new Set<number>();
     let changedCellCount = 0;
     let skippedLockedCellCount = 0;
     let pasteBlockingError = "";
@@ -1948,6 +1961,21 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           targetRow[targetColIndex] = formatFeedBatchAllocationCell(allocations);
           changedCellCount += 1;
           return;
+        }
+
+        if (action === "Copied" && targetColIndex === feedTypeColumnIndex) {
+          if (targetRow[targetColIndex] !== value) {
+            targetRow[targetColIndex] = value;
+            targetRow[feedBatchColumnIndex] = "";
+            nextFeedBatchAllocationsByRow[targetRowIndex] = [];
+          }
+          copiedFeedRows.add(targetRowIndex);
+          changedCellCount += 1;
+          return;
+        }
+
+        if (action === "Copied" && targetColIndex === feedDailyKgColumnIndex) {
+          copiedFeedRows.add(targetRowIndex);
         }
 
         const currentFeedQuantityValue = targetRow[feedDailyKgColumnIndex] ?? "";
@@ -2007,8 +2035,41 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     }
 
     if (changedCellCount === 0) {
-      toast(skippedLockedCellCount > 0 ? "Pasted cells are locked." : "No editable cells found in pasted data.");
+      toast(skippedLockedCellCount > 0 ? "Selected cells are locked." : "No cells to update.");
       return;
+    }
+
+    const manualFeedRows: number[] = [];
+    let feedBatchShortage = false;
+    if (autoFeedBatchSelection && copiedFeedRows.size > 0) {
+      const allocationRows = [...copiedFeedRows].filter(rowIndex => {
+        const row = nextGridValues[rowIndex];
+        const feedTypeId = Number(row[feedTypeColumnIndex] ?? 0);
+        return getNumericValue(row[feedDailyKgColumnIndex] ?? "") > 0
+          && Number.isFinite(feedTypeId) && feedTypeId > 0;
+      });
+      // Release all copied targets first, then reserve stock in age order.
+      // Allocations on untouched rows still count against available stock.
+      allocationRows.forEach(rowIndex => {
+        nextFeedBatchAllocationsByRow[rowIndex] = [];
+        nextGridValues[rowIndex][feedBatchColumnIndex] = "";
+      });
+      allocationRows.forEach(rowIndex => {
+        if (autoFeedBatchSelectionMode !== "FIFO") {
+          manualFeedRows.push(rowIndex);
+          return;
+        }
+        const row = nextGridValues[rowIndex];
+        const requiredQty = getNumericValue(row[feedDailyKgColumnIndex] ?? "");
+        const allocations = getFifoFeedBatchAllocations(
+          rowIndex, requiredQty, Number(row[feedTypeColumnIndex]), nextFeedBatchAllocationsByRow,
+        );
+        nextFeedBatchAllocationsByRow[rowIndex] = allocations;
+        row[feedBatchColumnIndex] = formatFeedBatchAllocationCell(allocations);
+        if (allocations.reduce((total, allocation) => total + allocation.selectedQty, 0) < requiredQty) {
+          feedBatchShortage = true;
+        }
+      });
     }
 
     startGridTransition(() => {
@@ -2017,13 +2078,58 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setFeedBatchAllocationsByRow(nextFeedBatchAllocationsByRow);
     setMortalityBatchAllocationsByRow(nextMortalityBatchAllocationsByRow);
 
+    if (manualFeedRows.length > 0) {
+      pendingCopyFeedBatchRowsRef.current = manualFeedRows.slice(1);
+      setFeedBatchDialogMode("cell");
+      setFeedBatchSelectionRowIndex(manualFeedRows[0]);
+      setReviewFeedBatch(null);
+      setFeedBatchDialogOpen(true);
+    }
+
+    if (feedBatchShortage) {
+      toast(`Copied ${changedCellCount} cells. Available feed batches could not cover every feed quantity. Review the batch allocations before saving.`);
+      return;
+    }
+
     if (unresolvedBatchNumbers.size > 0) {
       toast(`Pasted ${changedCellCount} cells. Some feed batches were not found: ${Array.from(unresolvedBatchNumbers).slice(0, 3).join(", ")}.`);
       return;
     }
 
-    toast(`Pasted ${changedCellCount} cells.`);
+    toast(`${action} ${changedCellCount} cells.`);
   }
+
+  // Include the current values in the snapshot so edits invalidate a pending copy.
+  const copyRows = useMemo(() => gridValues.map((values, rowIndex) => ({
+    values, rowIndex,
+  })).filter(({ rowIndex }) => rows[rowIndex]?.age !== 0), [gridValues]);
+  const copyColumns = useMemo(() => visibleColumnIndexes.map(index => ({ index })), []);
+  const copyDisabled = saving || isDatabaseLoading || harvestLocked
+    || loadingFeedBatches || loadingMortalityBatches;
+  const canCopyGrowingCell = (colIndex: number, rowIndex: number) => {
+    if (copyDisabled || isRowAgeLocked(rowIndex) || columnDisabledFlags[colIndex]) return false;
+    // Allocations are selected and validated separately for each age.
+    if (colIndex === feedBatchColumnIndex || colIndex === mortalityBatchColumnIndex) return false;
+    if (isFeedIntakeLocked(rowIndex) && feedIntakeColumnIndexes.has(colIndex)) return false;
+    if (isMortalityThinningLocked(rowIndex) && [0, 1, 3, 4].includes(colIndex)) return false;
+    return colIndex !== feedTypeColumnIndex
+      || getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
+  };
+  const copyDown = useTableCopyDown({
+    rows: copyRows,
+    columns: copyColumns,
+    disabled: copyDisabled,
+    isEditable: (column, row) => canCopyGrowingCell(column.index, row.rowIndex),
+    getValue: (column, row) => row.values[column.index],
+    onCopy: (column, targets, value) => {
+      const firstRow = targets[0].rowIndex;
+      const lastRow = targets[targets.length - 1].rowIndex;
+      const selected = new Set(targets.map(row => row.rowIndex));
+      applyGridRows(Array.from({ length: lastRow - firstRow + 1 }, (_, offset) =>
+        selected.has(firstRow + offset) ? [String(value ?? "")] : []
+      ), firstRow, column.index, "Copied");
+    },
+  });
 
   function getFeedBatchAllocationsForSave(rowIndex: number) {
     const existingAllocations = feedBatchAllocationsByRow[rowIndex] ?? [];
@@ -2285,6 +2391,12 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     if (feedBatchSelectionRowIndex == null) return;
 
     autoSelectedFeedBatchFromShortcutRef.current = false;
+    const nextRowIndex = pendingCopyFeedBatchRowsRef.current.shift();
+    if (nextRowIndex != null) {
+      setFeedBatchSelectionRowIndex(nextRowIndex);
+      setReviewFeedBatch(null);
+      return;
+    }
     setFeedBatchSelectionRowIndex(null);
     setFeedBatchDialogOpen(false);
     focusCell(feedBatchSelectionRowIndex, feedBatchColumnIndex);
@@ -3431,6 +3543,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           onOpenChange={(open) => {
             setFeedBatchDialogOpen(open);
             if (!open) {
+              pendingCopyFeedBatchRowsRef.current = [];
               setFeedBatchDialogMode("onHand");
               setFeedBatchSelectionRowIndex(null);
               setReviewFeedBatch(null);
@@ -4037,6 +4150,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           </DialogContent>
         </Dialog>
 
+        <p className="px-3 py-1 text-xs text-muted-foreground">
+          Right-click an editable cell and choose Copy down to fill the unlocked rows below. Batch selection follows the farm settings.
+        </p>
         <div className="relative flex-1 overflow-auto">
           <table
             className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm"
@@ -4167,8 +4283,13 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                         activeCell.colIndex === colIndex;
 
                       return (
-                        <TableCell
+                        <TableCopyDownCell
                           key={colIndex}
+                          canCopyDown={canCopyGrowingCell(colIndex, rowIndex) && copyRows.some(row => row.rowIndex > rowIndex && canCopyGrowingCell(colIndex, row.rowIndex))}
+                          onCopyDown={() => copyDown.copyToBottom(
+                            copyRows.findIndex(row => row.rowIndex === rowIndex),
+                            copyColumns.findIndex(column => column.index === colIndex),
+                          )}
                           className={`fc-grid-cell ${disabled ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} ${bodyEmphasisClasses[colIndex]} ${active ? "fc-grid-cell-active" : ""} p-0 ${bodyBorderClasses[colIndex]}`}
                         >
                           {colIndex === mortalityBatchColumnIndex ? (
@@ -4322,7 +4443,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               onPaste={(event) => handleGridPaste(event, rowIndex, colIndex)}
                             />
                           )}
-                        </TableCell>
+                        </TableCopyDownCell>
                       );
                     })}
                   </TableRow>

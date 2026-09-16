@@ -3,6 +3,31 @@ import type { NotificationCatalog } from "./types";
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BREEDER_DISPATCH,
+    ruleActivationReady: false,
+    label: "Breeder Dispatch",
+    description: "Persisted receiving-flow actions with canonical farm routing.",
+    fmsTypes: ["Breeder"], permissionGroup: "Breeder Masters", permissionTitle: "Breeder Dispatch/view", baseUrl: "/jmb/breederdispatch",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_DISPATCH.POSTED, label: "Posted", description: "Successful persisted posted action.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_DISPATCH.EDITED, label: "Edited", description: "Successful persisted edited action.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_DISPATCH.VOIDED, label: "Voided", description: "Successful persisted voided action.", action: "voided", farmRouting: "document" },
+    ],
+  },
+  {
+    key: NOTIFICATION_MODULE_KEYS.HATCHERY_RECEIVING,
+    ruleActivationReady: false,
+    label: "Hatchery Receiving",
+    description: "Persisted receiving-flow actions with canonical farm routing.",
+    fmsTypes: ["Hatchery"], permissionGroup: "Hatchery Masters", permissionTitle: "Receiving/view", baseUrl: "/a_dean/receiving",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.HATCHERY_RECEIVING.POSTED, label: "Posted", description: "Successful persisted posted action.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.HATCHERY_RECEIVING.EDITED, label: "Edited", description: "Successful persisted edited action.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.HATCHERY_RECEIVING.VOIDED, label: "Voided", description: "Successful persisted voided action.", action: "voided", farmRouting: "document" },
+    ],
+  },
+
+  {
     key: NOTIFICATION_MODULE_KEYS.BR_CLEANUP,
     ruleActivationReady: false, // Enable only after target SQL deployment and verification.
     label: "Clean up",
@@ -127,6 +152,7 @@ export const notificationCatalog: NotificationCatalog = [
   },
   {
     key: NOTIFICATION_MODULE_KEYS.DOC_RECEIVING,
+    ruleActivationReady: false, // Enable after receiving-flow SQL deployment and verification.
     label: "DOC Placement",
     description: "DOC receiving and placement documents for Broiler farms.",
     fmsTypes: ["Broiler"],
@@ -143,10 +169,13 @@ export const notificationCatalog: NotificationCatalog = [
         action: "posted",
         farmRouting: "document",
       },
+      { key: NOTIFICATION_EVENT_KEYS.DOC_RECEIVING.EDITED, label: "Edited", description: "Successful persisted edited action.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.DOC_RECEIVING.VOIDED, label: "Voided", description: "Successful persisted voided action.", action: "voided", farmRouting: "document" },
     ],
   },
   {
     key: NOTIFICATION_MODULE_KEYS.HATCHERY_DOC_DISPATCH,
+    ruleActivationReady: false, // Enable after receiving-flow SQL deployment and verification.
     label: "Hatchery DOC Dispatch",
     description:
       "Posted Hatchery DOC dispatches sent to a Broiler destination farm.",
@@ -164,6 +193,8 @@ export const notificationCatalog: NotificationCatalog = [
         action: "posted",
         farmRouting: "destination",
       },
+      { key: NOTIFICATION_EVENT_KEYS.HATCHERY_DOC_DISPATCH.EDITED, label: "Edited", description: "Successful persisted edited action.", action: "edited", farmRouting: "destination" },
+      { key: NOTIFICATION_EVENT_KEYS.HATCHERY_DOC_DISPATCH.VOIDED, label: "Voided", description: "Successful persisted voided action.", action: "voided", farmRouting: "destination" },
     ],
   },
   {
@@ -199,6 +230,21 @@ export const notificationCatalog: NotificationCatalog = [
         action: "voided",
         farmRouting: "document",
       },
+    ],
+  },
+  {
+    key: NOTIFICATION_MODULE_KEYS.UOM_GROUP,
+    label: "UoM Conversions",
+    description: "Shared UoM conversion groups and their default units.",
+    fmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    defaultRecipientFmsTypes: ["Broiler", "Breeder", "Hatchery"],
+    permissionGroup: "Menus",
+    permissionTitle: "UoM Conversions/view",
+    baseUrl: "/a_dean/uom-conversions",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.UOM_GROUP.POSTED, label: "UoM Group Created", description: "A conversion group was saved.", action: "posted", farmRouting: "none" },
+      { key: NOTIFICATION_EVENT_KEYS.UOM_GROUP.EDITED, label: "UoM Group Edited", description: "An existing conversion group was saved.", action: "edited", farmRouting: "none" },
+      { key: NOTIFICATION_EVENT_KEYS.UOM_GROUP.VOIDED, label: "UoM Group Voided", description: "An active conversion group became void.", action: "voided", farmRouting: "none" },
     ],
   },
   {

@@ -77,6 +77,7 @@ export type GoodsReceiptExistingBatch = {
 }
 
 export type UomGroupOption = {
+  defaultUomCode: string
   id: number
   code: string
   name: string
@@ -160,6 +161,7 @@ type ConversionGroupRecord = {
   id: number
   code: string
   name: string
+  default_uom: { code: string } | { code: string }[] | null
   base_uom: { code: string } | { code: string }[] | null
   conversions: Array<{
     base_qty: number
@@ -204,6 +206,7 @@ const buildUomOptions = (data: unknown) => {
       id: group.id,
       code: group.code,
       name: group.name,
+      defaultUomCode: singleRelation(group.default_uom)?.code ?? baseUom.code,
       baseUomCode: baseUom.code,
     }]
   })
@@ -287,6 +290,7 @@ export async function getGoodsReceiptReferences() {
         id,
         code,
         name,
+        default_uom:uom_master_data!uom_groups_default_uom_id_fkey(code),
         base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
         conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
           base_qty,
@@ -359,6 +363,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
         id,
         code,
         name,
+        default_uom:uom_master_data!uom_groups_default_uom_id_fkey(code),
         base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
         conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
           base_qty,

@@ -1,5 +1,6 @@
 
 import { db } from '@/lib/Supabase/supabaseClient'
+import { createHatcheryReceiving } from '@/lib/data/repositories/receivingSources'
 import { DefaultFarm, DocumentApproval, Farms, Users } from '@/lib/types'
 
 
@@ -83,79 +84,12 @@ export async function getUserInfo() {
  * @returns {Promise<Object>} An object containing the success status and either the document entry ID or an error message.
  */
 
-export async function createReceiving(payload: any) {
+export async function createReceiving(payload: Record<string, unknown>) {
   try {
-    const {
-      doc_date,
-      temperature,
-      humidity,
-
-      soldTo,
-      Attention,
-      po_no,
-      voyage_no,
-      shipped_via,
-      dr_num,
-
-      no_of_crates,
-      no_of_tray,
-      plate_no,
-      driver,
-      serial_no,
-      delivered_to,
-      brdr_ref_no,
-
-      items,
-    } = payload
-    console.log({ payload, items })
-    const { data, error } = await db.rpc('insert_receiving', {
-      p_doc_date: doc_date,
-      p_temperature: temperature,
-      p_humidity: humidity,
-      p_soldto: soldTo,
-      p_attention: Attention,
-      p_po_no: po_no,
-      p_voyage_no: voyage_no,
-      p_shipped_via: shipped_via,
-      p_dr_num: dr_num,
-
-      p_no_of_crates: no_of_crates,
-      p_no_of_tray: no_of_tray,
-      p_plate_no: plate_no,
-      p_driver: driver,
-      p_serial_no: serial_no,
-
-      p_delivered_to: delivered_to,
-      p_brdr_ref_no: brdr_ref_no,
-
-      p_items: items,
-    })
-
-    if (error) throw error
-
-    const { data: approvalData, error: approvalError } = await db.rpc('submit_for_approval', {
-      p_document_type: 'receiving',
-      p_document_id: data,
-      p_document_no: dr_num,
-      p_payload: {
-        ...payload,
-        docentry: data,
-      },
-      p_remarks: 'Receiving document submitted for approval.',
-    })
-
-    if (approvalError) throw approvalError
-
-    return {
-      success: true,
-      docentry: data,
-      approval: approvalData,
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error.message ?? 'Failed to create receiving document.',
-    }
+    const result = await createHatcheryReceiving(payload)
+    return { success: true as const, ...result }
+  } catch (error: unknown) {
+    return { success: false as const, error: error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Failed to create receiving document.' }
   }
 }
 // export async function createReceiving(payload: any) {

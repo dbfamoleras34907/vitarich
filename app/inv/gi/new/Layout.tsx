@@ -1082,7 +1082,8 @@ export default function NewGoodsIssue({
     )
 
   const getDefaultAltUom = useCallback((groupCode: string) =>
-    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms])
+    uomGroups.find(group => group.code === groupCode)?.defaultUomCode ??
+    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms, uomGroups])
 
   const refreshLineOnHand = async (line: GoodsIssueLine) => {
     if (!canSearchLineInventory(line)) return

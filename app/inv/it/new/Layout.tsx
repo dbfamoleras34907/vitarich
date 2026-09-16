@@ -576,9 +576,9 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
     const item = items.find(candidate => candidate.item_code === value)
     const baseUom = item?.inventory_uom || item?.unit_measure || ''
     const groupUoms = getGroupUoms(baseUom)
-    const altUom = groupUoms.some(option => option.uomCode === baseUom)
+    const altUom = getSelectedGroup(baseUom)?.defaultUomCode || (groupUoms.some(option => option.uomCode === baseUom)
       ? baseUom
-      : groupUoms[0]?.uomCode ?? ''
+      : groupUoms[0]?.uomCode ?? '')
     const updatedLine = {
       ...line,
       itemId: item?.id ?? null,

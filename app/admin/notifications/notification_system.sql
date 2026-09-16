@@ -359,7 +359,25 @@ begin
       -- Each module integration must provide an authoritative verifier. The
       -- first integration accepts only the same DOC Placement posting version
       -- that was atomically stamped by the source-table trigger.
-      if v_event.module_key = 'USER_REGISTRATION' then
+      if v_event.dedupe_key like 'RECEIVING_FLOW:%' then
+        if not public.receiving_flow_event_valid(v_event) then
+          update public.notification_outbox set status='invalid',processed_at=now(),processing_started_at=null,
+            last_error='Receiving flow event does not match its persisted revision and canonical farm.' where id=v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'UOM_GROUP' then
+        select exists (
+          select 1 from public.uom_groups g where g.id::text = v_event.entity_id
+            and v_event.entity_type = 'uom_groups'
+            and v_event.event_key in ('UOM_GROUP_POSTED', 'UOM_GROUP_EDITED', 'UOM_GROUP_VOIDED')
+            and v_event.farm_id is null and v_event.recipient_farm_id is null
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox set status = 'invalid', processed_at = now(), processing_started_at = null,
+            last_error = 'UoM group event does not match its shared master source.' where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'USER_REGISTRATION' then
         select exists (
           select 1 from public.users registered
           where registered.id::text = v_event.entity_id
@@ -728,7 +746,7 @@ begin
               left join public.farms farm on farm.code = recipient_farm.farm_code
               where recipient_farm.users_id = recipient.id
                 and btrim(coalesce(recipient_farm.void::text, '0')) = '1'
-                and case when v_event.module_key in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP')
+                and case when v_event.dedupe_key like 'RECEIVING_FLOW:%' or v_event.module_key in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP')
                   then recipient_farm.farm_id
                   else coalesce(recipient_farm.farm_id, farm.id) end = v_event.recipient_farm_id
             )
@@ -738,7 +756,7 @@ begin
             or recipient.auth_id is distinct from v_event.actor_auth_id
           )
           and (
-            (not rule.require_view_permission and v_event.module_key not in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP'))
+            (not rule.require_view_permission and v_event.dedupe_key not like 'RECEIVING_FLOW:%' and v_event.module_key not in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP', 'UOM_GROUP'))
             or coalesce(recipient.user_type, 3) = 1
             or exists (
               select 1
@@ -993,6 +1011,7 @@ as $$
 declare
   v_fms_type text;
 begin
+  if to_regclass('public.receiving_flow_event_state') is not null then return new; end if;
   if lower(btrim(coalesce(new.status, ''))) in ('posted', 'received')
      and lower(btrim(coalesce(old.status, ''))) not in ('posted', 'received') then
     v_fms_type := case lower(btrim(coalesce(new.fms_type, '')))
@@ -1136,6 +1155,7 @@ security definer
 set search_path = public
 as $$
 begin
+  if to_regclass('public.receiving_flow_event_state') is not null then return new; end if;
   if new.status = 'Posted' and old.status is distinct from 'Posted' then
     insert into public.notification_outbox (
       module_key,

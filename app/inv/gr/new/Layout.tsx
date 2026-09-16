@@ -42,7 +42,6 @@ import {
   GoodsReceiptBatchRule,
   GoodsReceiptBatchSeries,
   GoodsReceiptExistingBatch,
-  GoodsReceiptPrefetchReferences,
   getGoodsReceiptReferences,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
@@ -61,14 +60,12 @@ import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
 import {
   FMS_TYPE_OPTIONS,
   addMonthsToDate,
-  asArray,
   buildBatchNumber,
   duplicateReceipt,
   emptyReceipt,
   formatBatchDatePart,
   formatDateTime,
   formatQuantity,
-  getCachedWarehouses,
   getAssociatedWarehouseCode,
   getDefaultReceivingWarehouse,
   getFarmFmsType,
@@ -135,31 +132,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           return
         }
 
-        const cachedItems = asArray<Items>(getValue('itemmaster'))
-          .filter(item => item.void === 1 || item.void == null)
-        const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
-          .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
-        const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
-        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
-          farm => typeof farm.farm_type !== 'undefined',
-        )
-        const canUseCachedReferences = cachedItems.length > 0 &&
-          cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
-          cachedReferencesHaveFarmMetadata
-
-        const referencesPromise = canUseCachedReferences
-          ? Promise.resolve({
-              items: cachedItems,
-              warehouses: cachedWarehouses,
-              farms: cachedGrReferences?.farms ?? [],
-              uomGroups: cachedGrReferences?.uomGroups ?? [],
-              conversions: cachedGrReferences?.conversions ?? [],
-              itemGroups: cachedGrReferences?.itemGroups ?? [],
-              batchRules: cachedGrReferences?.batchRules ?? [],
-              batchSeries: cachedGrReferences?.batchSeries ?? [],
-            })
-          : getGoodsReceiptReferences()
+        // UoM defaults are editable master data. The persisted global cache
+        // can outlive an edit (or deployment), so load current references here.
+        const referencesPromise = getGoodsReceiptReferences()
 
         const [references, savedReceipt, grNo] = await Promise.all([
           referencesPromise,
@@ -197,7 +172,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [duplicateId, getValue, isPostMode, receiptId, router])
+  }, [duplicateId, isPostMode, receiptId, router])
 
   const totalQuantity = useMemo(
     () => receipt?.lines.reduce(
@@ -644,6 +619,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
         option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
       )?.groupCode ?? ''
+      const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
       const requestedAltUom = row.altUom.toUpperCase()
       const selectedConversion = conversions.find(option =>
         option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
@@ -651,7 +627,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       )
       const altUom = row.altUom
         ? selectedConversion?.uomCode ?? ''
-        : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+        : resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
 
       if (!selectedGroupCode) {
         parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
@@ -932,7 +908,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const selectedGroupCode = selectedGroup?.code ?? conversions.find(
       option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
-    const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+    const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
+    const uom = resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
     const nextLineChanges: Partial<GoodsReceiptLine> = {
       itemId: item.id,
       itemCode: item.item_code || '',
@@ -1455,7 +1432,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 conversion.groupCode === groupCode &&
                                 conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
                             )
-                            const altUom = altUomIsAvailable ? line.altUom : ''
+                            const altUom = getSelectedGroup(groupCode)?.defaultUomCode || (altUomIsAvailable ? line.altUom : '')
 
                             updateLine(line.id, {
                               baseUom: groupCode,

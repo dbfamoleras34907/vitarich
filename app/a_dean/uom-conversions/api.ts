@@ -8,9 +8,11 @@ export type UomConversionInput = {
 }
 
 export type UomGroupInput = {
+  request_id: string
   code: string
   name: string
   base_uom_id: number
+  default_uom_id: number
   remarks?: string
   conversions: UomConversionInput[]
 }
@@ -93,48 +95,11 @@ export async function getUomConversionRows(): Promise<UomConversionRow[]> {
   })
 }
 
-export async function addUomGroup(payload: UomGroupInput) {
-  const { data: authData } = await db.auth.getUser()
-  const userId = authData.user?.id || null
-  const { data: group, error: groupError } = await db
-    .from('uom_groups')
-    .insert({
-      code: payload.code.trim().toUpperCase(),
-      name: payload.name.trim(),
-      base_uom_id: payload.base_uom_id,
-      remarks: payload.remarks?.trim() || null,
-      created_by: userId,
-      void: '1',
-    })
-    .select()
-    .single()
-
-  if (groupError) throw groupError
-
-  const { error: conversionError } = await db
-    .from('uom_group_conversions')
-    .insert(payload.conversions.map(conversion => ({
-      uom_group_id: group.id,
-      uom_id: conversion.uom_id,
-      base_qty: conversion.base_qty,
-      remarks: conversion.remarks?.trim() || null,
-      created_by: userId,
-      void: '1',
-    })))
-
-  if (conversionError) {
-    await db.from('uom_groups').delete().eq('id', group.id)
-    throw conversionError
-  }
-
-  return group
-}
-
 export async function getUomGroupById(id: number) {
   const { data, error } = await db
     .from('uom_groups')
     .select(`
-      id, code, name, base_uom_id, remarks,
+      id, code, name, base_uom_id, default_uom_id, remarks,
       conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
         id, uom_id, base_qty, remarks, void
       )
@@ -146,68 +111,4 @@ export async function getUomGroupById(id: number) {
   return data
 }
 
-export async function updateUomGroup(id: number, payload: UomGroupInput) {
-  const { data: authData } = await db.auth.getUser()
-  const userId = authData.user?.id || null
-  const updatedAt = new Date().toISOString()
-
-  const { error: groupError } = await db
-    .from('uom_groups')
-    .update({
-      code: payload.code.trim().toUpperCase(),
-      name: payload.name.trim(),
-      base_uom_id: payload.base_uom_id,
-      remarks: payload.remarks?.trim() || null,
-      updated_by: userId,
-      updated_at: updatedAt,
-    })
-    .eq('id', id)
-
-  if (groupError) throw groupError
-
-  const { error: voidRowsError } = await db
-    .from('uom_group_conversions')
-    .update({ void: '0', updated_by: userId, updated_at: updatedAt })
-    .eq('uom_group_id', id)
-    .eq('void', '1')
-
-  if (voidRowsError) throw voidRowsError
-
-  const { error: insertError } = await db
-    .from('uom_group_conversions')
-    .upsert(
-      payload.conversions.map(conversion => ({
-        uom_group_id: id,
-        uom_id: conversion.uom_id,
-        base_qty: conversion.base_qty,
-        remarks: conversion.remarks?.trim() || null,
-        created_by: userId,
-        updated_by: userId,
-        updated_at: updatedAt,
-        void: '1',
-      })),
-      { onConflict: 'uom_group_id,uom_id' }
-    )
-
-  if (insertError) throw insertError
-}
-
-export async function voidUomGroup(id: number) {
-  const { data: authData } = await db.auth.getUser()
-  const userId = authData.user?.id || null
-  const updatedAt = new Date().toISOString()
-
-  const { error: rowsError } = await db
-    .from('uom_group_conversions')
-    .update({ void: '0', updated_by: userId, updated_at: updatedAt })
-    .eq('uom_group_id', id)
-
-  if (rowsError) throw rowsError
-
-  const { error: groupError } = await db
-    .from('uom_groups')
-    .update({ void: '0', updated_by: userId, updated_at: updatedAt })
-    .eq('id', id)
-
-  if (groupError) throw groupError
-}
+export { addUomGroup, updateUomGroup, voidUomGroup } from '@/lib/data/mutations/uomGroups'
