@@ -72,6 +72,7 @@ export type GoodsReceiptDocLine = {
   receive_time: string
   mnf_date: string
   doc_source: string
+  hatchery: string
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string
@@ -152,6 +153,7 @@ type GoodsReceiptDocRow = {
   receive_time: string | null
   mnf_date: string | null
   doc_source: string | null
+  hatchery: string | null
   building_warehouse_id: number | null
   flock_card_id: number | null
   transfer_slip: string | null
@@ -211,6 +213,7 @@ const toReceiptDocLine = (row: GoodsReceiptDocRow): GoodsReceiptDocLine => ({
   receive_time: row.receive_time ?? '',
   mnf_date: row.mnf_date ?? '',
   doc_source: row.doc_source ?? '',
+  hatchery: row.hatchery ?? '',
   building_warehouse_id: row.building_warehouse_id ?? null,
   flock_card_id: row.flock_card_id ?? null,
   transfer_slip: row.transfer_slip ?? '',

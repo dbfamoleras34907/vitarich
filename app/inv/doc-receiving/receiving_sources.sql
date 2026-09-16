@@ -1,3 +1,5 @@
+alter table if exists public.goods_receipt_doc add column if not exists hatchery text;
+
 -- Apply notification_system.sql and the existing receiving/GR schema first.
 -- This migration never rewrites historical stock or infers historical sources.
 begin;
@@ -408,8 +410,8 @@ begin
     v_line:=v_line+1;
     if (d->>'receive_date')::date>current_date then raise exception 'Receiving date cannot be in the future'; end if;
     if nullif(btrim(d->>'doc_source'),'') is null then raise exception 'DOC Source is required'; end if;
-    insert into public.goods_receipt_doc(goods_reciept_id,line_no,receive_date,receive_time,mnf_date,doc_source,building_warehouse_id,flock_card_id,transfer_slip,average_doc_weight,quantity_received,actual_received,short_count_remarks,doa_quantity,doa_count_remarks,reject_count,reject_count_remarks,void,created_by)
-      values(v_id,v_line,(d->>'receive_date')::date,nullif(d->>'receive_time','')::time,(d->>'mnf_date')::date,d->>'doc_source',(d->>'building_warehouse_id')::bigint,(d->>'flock_card_id')::bigint,d->>'transfer_slip',coalesce((d->>'average_doc_weight')::numeric,0),(d->>'quantity_received')::numeric,(d->>'actual_received')::numeric,d->>'short_count_remarks',coalesce((d->>'doa_quantity')::numeric,0),d->>'doa_count_remarks',coalesce((d->>'reject_count')::numeric,0),d->>'reject_count_remarks','1',auth.uid()) returning id into v_doc_id;
+    insert into public.goods_receipt_doc(goods_reciept_id,line_no,receive_date,receive_time,mnf_date,doc_source,hatchery,building_warehouse_id,flock_card_id,transfer_slip,average_doc_weight,quantity_received,actual_received,short_count_remarks,doa_quantity,doa_count_remarks,reject_count,reject_count_remarks,void,created_by)
+      values(v_id,v_line,(d->>'receive_date')::date,nullif(d->>'receive_time','')::time,(d->>'mnf_date')::date,d->>'doc_source',nullif(btrim(d->>'hatchery'),'') ,(d->>'building_warehouse_id')::bigint,(d->>'flock_card_id')::bigint,d->>'transfer_slip',coalesce((d->>'average_doc_weight')::numeric,0),(d->>'quantity_received')::numeric,(d->>'actual_received')::numeric,d->>'short_count_remarks',coalesce((d->>'doa_quantity')::numeric,0),d->>'doa_count_remarks',coalesce((d->>'reject_count')::numeric,0),d->>'reject_count_remarks','1',auth.uid()) returning id into v_doc_id;
     if jsonb_array_length(coalesce(d->'source_allocations','[]'))>0 then perform public.set_receiving_source_links('broiler',v_doc_id,d->'source_allocations',false); end if;
   end loop;
   for i in select value from jsonb_array_elements(p_payload->'lines') loop
