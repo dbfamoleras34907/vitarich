@@ -12,6 +12,7 @@ import {
   Loader2,
   PackageCheck,
   Plus,
+  Undo2,
   Save,
   Trash2,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { FormTable } from '@/components/ui/form-table'
+import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -55,6 +57,7 @@ import {
   GoodsReceipt,
   GoodsReceiptDocLine,
   GoodsReceiptLine,
+  reverseGoodsReceipt,
   saveGoodsReceipt,
 } from '../api'
 import {
@@ -96,6 +99,7 @@ import CycleInformationModal, {
 import { getFarmCycleMasterRows } from '@/lib/data/repositories/broilerFarmCycles'
 import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
 import { allocationTotals, linkReceivingSource } from '@/lib/data/repositories/receivingSources'
+import { useTableCopyDown } from '@/hooks/useTableCopyDown'
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Date Receive' },
@@ -598,6 +602,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const { setCollapsed } = useSidebar()
   const canInsert = usePermission('/inv/doc-receiving/insert')
   const cannotLinkSource = usePermission('/inv/doc-receiving/edit')
+  const canVoid = !usePermission('/inv/doc-receiving/void')
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
   const notificationFarmId = searchParams.get('farmId')
@@ -621,6 +626,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
+  const [reverseConfirmOpen, setReverseConfirmOpen] = useState(false)
   const [docDetailRows, setDocDetailRows] = useState<DocDetailRow[]>([])
   const docDetailsImportInputRef = useRef<HTMLInputElement>(null)
   const [importingDocDetails, setImportingDocDetails] = useState(false)
@@ -755,6 +761,27 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       cancelled = true
     }
   }, [canInsert, duplicateId, isPostMode, receiptId, router])
+
+  const docDetailsCopyDown = useTableCopyDown({
+    rows: docDetailRows,
+    columns: DOC_RECEIVING_DETAIL_COLUMNS,
+    disabled: saving || receipt?.status !== 'Draft',
+    isEditable: (column) => column.code !== 'building' && column.code !== 'actual_received',
+    getValue: (column, row) => column.code === 'actual_received'
+      ? String(calculateActualReceived(row))
+      : String(row[column.code as keyof DocDetailRow] ?? ''),
+    onCopy: (column, targets, value) => {
+      const copiedValue = String(value ?? '')
+      setDocDetailRows(current => current.map(row => {
+        if (!targets.some(target => target.id === row.id)) return row
+
+        const nextRow = { ...row, [column.code]: copiedValue }
+        return DOC_RECEIVING_NUMERIC_DETAIL_CODES.has(column.code) && column.code !== 'actual_received'
+          ? { ...nextRow, actual_received: String(calculateActualReceived(nextRow)) }
+          : nextRow
+      }))
+    },
+  })
 
   useEffect(() => {
     const farmId = Number(receipt?.farmId ?? 0)
@@ -2125,6 +2152,22 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
+  const handleReverse = async () => {
+    if (!receipt?.id || receipt.status !== 'Posted' || !canVoid) return
+
+    setSaving(true)
+    try {
+      await reverseGoodsReceipt(receipt.id)
+      toast('DOC Placement reversed successfully.')
+      router.push('/inv/doc-receiving')
+    } catch (error) {
+      toast.error(getSaveErrorMessage(error), { duration: 10000 })
+    } finally {
+      setSaving(false)
+      setReverseConfirmOpen(false)
+    }
+  }
+
   const activeBatchLine = displayReceiptLines.find(line => line.id === activeBatchLineId) ?? null
   const activeBatchRequirement = activeBatchLine ? getBatchRequirement(activeBatchLine) : null
   const activeBatchSeries = getBatchSeriesForRule(activeBatchRequirement?.rule)
@@ -2386,7 +2429,24 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       const inputValue = getDocDetailValue(row, column.code)
 
                       return (
-                        <td key={column.code} className="px-1 py-1 align-top">
+                        <TableCopyDownCell
+                          key={column.code}
+                          className="px-1 py-1 align-top"
+                          canCopyDown={
+                            docDetailsCopyDown &&
+                            column.code !== 'building' &&
+                            column.code !== 'actual_received' &&
+                            docDetailRows.some((candidate, candidateIndex) =>
+                              candidateIndex > docDetailRows.findIndex(candidateRow => candidateRow.id === row.id) &&
+                              column.code !== 'building' &&
+                              column.code !== 'actual_received',
+                            )
+                          }
+                          onCopyDown={() => docDetailsCopyDown.copyToBottom(
+                            docDetailRows.findIndex(candidate => candidate.id === row.id),
+                            DOC_RECEIVING_DETAIL_COLUMNS.findIndex(candidate => candidate.code === column.code),
+                          )}
+                        >
                           {column.code === 'building' ? (
                             <div className="min-w-80">
                               <select
@@ -2501,7 +2561,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               />
                             </div>
                           )}
-                        </td>
+                        </TableCopyDownCell>
                       )
                     })}
                   </tr>
@@ -3218,7 +3278,22 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-stone-500">
+                  {receipt.status === 'Reversed' ? 'This document has been reversed.' : 'This document is already posted and cannot be edited.'}
+                </p>
+                {isPostMode && receipt.status === 'Posted' && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setReverseConfirmOpen(true)}
+                    disabled={saving || !canVoid}
+                  >
+                    <Undo2 className="size-4" />
+                    Reverse
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -3285,6 +3360,26 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             >
               <Save className="size-4" />
               {saving ? 'Posting...' : 'Confirm Post'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reverseConfirmOpen} onOpenChange={open => !saving && setReverseConfirmOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse this DOC Placement?</DialogTitle>
+            <DialogDescription>
+              This will create reversal inventory postings and mark {receipt.grNo} as Reversed. The action is blocked if any DOC batch has already been used by Growing.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={saving}>Cancel</Button>
+            </DialogClose>
+            <Button type="button" variant="destructive" onClick={handleReverse} disabled={saving}>
+              <Undo2 className="size-4" />
+              {saving ? 'Reversing...' : 'Confirm Reverse'}
             </Button>
           </DialogFooter>
         </DialogContent>

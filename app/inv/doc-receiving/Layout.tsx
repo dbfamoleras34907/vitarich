@@ -10,9 +10,19 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Undo2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +42,7 @@ import {
   GoodsReceipt,
   getGoodsReceipts,
   getReceiptItemSummary,
+  reverseGoodsReceipt,
 } from './api'
 
 type GoodsReceiptTableRow = Record<string, unknown> & {
@@ -50,11 +61,14 @@ export default function GoodsReceiveHistory() {
   const { setCollapsed } = useSidebar()
   const canView = usePermission('/inv/doc-receiving/view')
   const canInsert = usePermission('/inv/doc-receiving/insert')
+  const canVoid = !usePermission('/inv/doc-receiving/void')
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [loading, setLoading] = useState(true)
   const [farmId, setFarmId] = useState<string | number>('')
   const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [reverseTarget, setReverseTarget] = useState<GoodsReceipt | null>(null)
+  const [reversing, setReversing] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -72,6 +86,23 @@ export default function GoodsReceiveHistory() {
       setLoading(false)
     }
   }, [dateFrom, dateTo, farmId])
+
+  const handleReverse = async () => {
+    if (!reverseTarget?.id || reverseTarget.status !== 'Posted' || !canVoid) return
+
+    setReversing(true)
+    try {
+      await reverseGoodsReceipt(reverseTarget.id)
+      toast('DOC Placement reversed successfully.')
+      setReverseTarget(null)
+      await refresh()
+    } catch (error) {
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to reverse DOC Placement.')
+    } finally {
+      setReversing(false)
+    }
+  }
 
   useEffect(() => {
     router.prefetch('/inv/doc-receiving/new')
@@ -157,6 +188,18 @@ export default function GoodsReceiveHistory() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                disabled={!canVoid || row.receipt.status !== 'Posted' || reversing}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (!canVoid || row.receipt.status !== 'Posted' || reversing) return
+                  setReverseTarget(row.receipt)
+                }}
+              >
+                <Undo2 className="size-4" />
+                Reverse
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
                 disabled={canInsert}
                 onClick={event => {
                   event.stopPropagation()
@@ -172,7 +215,7 @@ export default function GoodsReceiveHistory() {
         ),
       },
     ],
-    [canInsert, canView, router],
+    [canInsert, canView, canVoid, reversing, router],
   )
 
   const openNewGoodsReceipt = () => {
@@ -252,6 +295,26 @@ export default function GoodsReceiveHistory() {
           }}
         />
       </div>
+
+      <Dialog open={reverseTarget !== null} onOpenChange={open => !reversing && !open && setReverseTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse this DOC Placement?</DialogTitle>
+            <DialogDescription>
+              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked if its consolidated batch is already used in Growing inventory.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={reversing}>Cancel</Button>
+            </DialogClose>
+            <Button type="button" variant="destructive" onClick={handleReverse} disabled={reversing || !canVoid}>
+              <Undo2 className="size-4" />
+              {reversing ? 'Reversing...' : 'Confirm Reverse'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

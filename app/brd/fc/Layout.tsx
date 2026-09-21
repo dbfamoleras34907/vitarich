@@ -336,6 +336,7 @@ export default function Layout() {
 
   function openFlockCardSheet(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
+    if (!building.flockCard || Number(building.flockCard.animalQty) <= 0) return;
 
     setOpeningAction(`growing:${building.key}`);
 
@@ -494,6 +495,7 @@ export default function Layout() {
                 {visibleBuildings.map((building, index) => {
                   const flockCard = building.flockCard;
                   const hasFlockCard = Boolean(flockCard);
+                  const hasDocs = Number(flockCard?.animalQty ?? 0) > 0;
                   const displayStatus = flockCard ? "Occupied" : building.status;
                   const canOpenCard = hasFlockCard && !isActiveBuildingStatus(displayStatus);
                   const growingActionKey = `growing:${building.key}`;
@@ -537,7 +539,8 @@ export default function Layout() {
                               size="sm"
                               variant="outline"
                               onClick={() => openFlockCardSheet(building)}
-                              disabled={openingAction !== null}
+                              disabled={openingAction !== null || !hasDocs}
+                              title={!hasDocs ? "Growing is unavailable because the DOC count is zero." : undefined}
                               aria-busy={openingGrowing}
                             >
                               {openingGrowing ? (

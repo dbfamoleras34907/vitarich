@@ -103,6 +103,7 @@ export default function ChickgradingTable() {
         ),
       },
       { accessorKey: "egg_ref_no", header: "Egg Reference No." },
+      { accessorKey: "farm_source", header: "Farm" },
       { accessorKey: "batch_code", header: "Batch code" },
       {
         accessorKey: "grading_datetime",

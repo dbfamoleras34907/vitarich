@@ -3,7 +3,7 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { saveDocReceivingWithSources, type ReceivingAllocation } from '@/lib/data/repositories/receivingSources'
 
-export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Cancelled'
+export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Reversed' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
 const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
@@ -410,6 +410,11 @@ export async function saveGoodsReceipt(receipt: GoodsReceipt) {
     }
   }
   throw new Error('Unable to save DOC Placement.')
+}
+
+export async function reverseGoodsReceipt(id: number) {
+  const { error } = await db.rpc('reverse_doc_receiving', { p_receipt_id: id })
+  if (error) throw error
 }
 
 export async function createGoodsReceiptNumber() {

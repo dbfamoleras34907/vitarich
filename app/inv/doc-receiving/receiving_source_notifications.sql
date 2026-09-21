@@ -34,7 +34,7 @@ begin
     if not exists(select 1 from public.goods_receipt_doc where goods_reciept_id=v_id and void='1') then return null; end if;
     select coalesce(jsonb_agg(to_jsonb(d)-array['id','created_at','updated_at','updated_by'] order by d.line_no),'[]') into v_lines from public.goods_receipt_doc d where goods_reciept_id=v_id and void='1';
     v_lines:=v_lines||(select coalesce(jsonb_agg(to_jsonb(i)-array['id','created_at','updated_at','updated_by'] order by i.line_no),'[]') from public.goods_receipt_items i where goods_reciept_id=v_id and void='1');
-    v_posted:=v_header->>'status' in ('Posted','Received'); v_active:=v_header->>'status'<>'Cancelled';
+    v_posted:=v_header->>'status' in ('Posted','Received'); v_active:=v_header->>'status' not in ('Cancelled','Reversed');
     v_farm:=(v_header->>'farm_id')::bigint; v_type:='goods_receipt'; v_fms:='Broiler'; v_group:='Menus'; v_title:='DOC Placement/view';
     v_url:='/inv/doc-receiving/post?id='||v_id; v_doc:=v_header->>'gr_no';
   elsif v_module='BREEDER_DISPATCH' then

@@ -17,7 +17,7 @@ create table if not exists public.goods_receipt (
   remarks text null,
   constraint goods_reciept_pkey primary key (id),
   constraint goods_reciept_gr_no_key unique (gr_no),
-  constraint goods_reciept_status_check check (status in ('Draft', 'Posted', 'Cancelled')),
+  constraint goods_reciept_status_check check (status in ('Draft', 'Posted', 'Reversed', 'Cancelled')),
   constraint goods_reciept_farm_id_fkey foreign key (farm_id) references public.farms (id),
   constraint goods_reciept_default_warehouse_id_fkey foreign key (default_warehouse_id) references public.i_warehouse (id),
   constraint goods_reciept_created_by_fkey foreign key (created_by) references auth.users (id),
@@ -248,7 +248,7 @@ where status = 'Received';
 update public.goods_receipt
 set status = 'Draft'
 where status is null
-   or status not in ('Draft', 'Posted', 'Cancelled');
+   or status not in ('Draft', 'Posted', 'Reversed', 'Cancelled');
 
 do $$
 begin
@@ -257,7 +257,7 @@ begin
 
   alter table public.goods_receipt
     add constraint goods_reciept_status_check
-    check (status in ('Draft', 'Posted', 'Cancelled'));
+    check (status in ('Draft', 'Posted', 'Reversed', 'Cancelled'));
 end;
 $$;
 

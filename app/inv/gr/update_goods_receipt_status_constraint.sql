@@ -12,7 +12,7 @@ alter table public.goods_receipt
 
 alter table public.goods_receipt
   add constraint goods_reciept_status_check
-  check (status in ('Draft', 'Posted', 'Cancelled'));
+  check (status in ('Draft', 'Posted', 'Reversed', 'Cancelled'));
 
 select
   conname,

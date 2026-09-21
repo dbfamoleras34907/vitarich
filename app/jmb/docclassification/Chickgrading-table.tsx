@@ -173,51 +173,55 @@ export default function ChickgradingTable() {
       const mapped =
         Array.isArray(data)
           ? data.map(
-              (
-                item: ChickGradingProcess,
-              ) => ({
-                id: Number(item.id),
-                [FARM_FILTER_KEY]: item.farm_id == null ? "" : String(item.farm_id),
+            (
+              item: ChickGradingProcess,
+            ) => ({
+              id: Number(item.id),
 
-                egg_ref_no:
-                  item.egg_ref_no || "-",
+              [FARM_FILTER_KEY]:
+                item.farm_source == null
+                  ? ""
+                  : String(item.farm_source),
+                  
+              egg_ref_no:
+                item.egg_ref_no || "-",
 
-                batch_code:
-                  item.batch_code || "-",
+              batch_code:
+                item.batch_code || "-",
 
-                grading_datetime:
-                  fmtDateTime(
-                    item.grading_datetime,
-                  ),
+              grading_datetime:
+                fmtDateTime(
+                  item.grading_datetime,
+                ),
 
-                total_chicks:
-                  Number(
-                    item.total_egg_set || 0,
-                  ),
+              total_chicks:
+                Number(
+                  item.total_egg_set || 0,
+                ),
 
-                good_quality_chicks:
-                  Number(
-                    item.good_quality_chicks ||
-                      0,
-                  ),
+              good_quality_chicks:
+                Number(
+                  item.good_quality_chicks ||
+                  0,
+                ),
 
-                quality_grade_rate:
-                  item.quality_grade_rate === null ||
+              quality_grade_rate:
+                item.quality_grade_rate === null ||
                   item.quality_grade_rate === undefined
-                    ? "-"
-                    : String(item.quality_grade_rate),
+                  ? "-"
+                  : String(item.quality_grade_rate),
 
-                cull_rate:
-                  item.cull_rate === null ||
+              cull_rate:
+                item.cull_rate === null ||
                   item.cull_rate === undefined
-                    ? "-"
-                    : String(item.cull_rate),
+                  ? "-"
+                  : String(item.cull_rate),
 
-                grading_personnel:
-                  item.grading_personnel ||
-                  "-",
-              }),
-            )
+              grading_personnel:
+                item.grading_personnel ||
+                "-",
+            }),
+          )
           : [];
 
       setItems(mapped);
@@ -310,7 +314,7 @@ export default function ChickgradingTable() {
         enableSorting: false,
         cell: ({ row, table }) =>
           table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
+          table.getState().pagination.pageSize +
           row.index +
           1,
       },
@@ -426,11 +430,10 @@ export default function ChickgradingTable() {
             className="flex items-center gap-2"
           >
             <RefreshCw
-              className={`size-4 ${
-                isLoading
-                  ? "animate-spin"
-                  : ""
-              }`}
+              className={`size-4 ${isLoading
+                ? "animate-spin"
+                : ""
+                }`}
             />
 
             {isLoading
@@ -479,13 +482,15 @@ export default function ChickgradingTable() {
               <UserFarmSearchCombobox
                 label="Farm"
                 value={
-                  (table.getColumn(FARM_FILTER_KEY)?.getFilterValue() as string) ??
-                  ""
+                  (table
+                    .getColumn(FARM_FILTER_KEY)
+                    ?.getFilterValue() as string) ?? ""
                 }
-                onValueChange={(farmId) => {
+                onValueChange={(farmName) => {
                   table
                     .getColumn(FARM_FILTER_KEY)
-                    ?.setFilterValue(farmId || undefined);
+                    ?.setFilterValue(farmName || undefined);
+
                   setFarmFilterTouched(true);
                 }}
               />

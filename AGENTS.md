@@ -1,103 +1,334 @@
 # Vitarich Repository Instructions
 
-## Browser Access Rule
+## Core Rule: Reuse First
 
-- Do not attempt to discover, connect to, or use the in-app browser for this repository. It is unavailable in the user's environment.
-- Do not repeat browser availability checks or report that the in-app browser is unavailable on each task.
-- Use source inspection, static checks, and explicitly authorized read-only data verification instead.
-- Only retry the in-app browser when the user explicitly asks for a browser check in that request.
-
-## Data Access Rule
-
-Before creating any Supabase query, SQL statement, API request, fetch call, axios call, server action data loader, or React data-loading hook:
+Before creating any function, component, hook, query, mutation, API handler, or Supabase function:
 
 1. Search the codebase for an existing implementation.
-2. Reuse the existing repository/data-access function if it already fits.
-3. Extend the existing function with typed parameters when the difference is minor.
-4. Create a new query only when the operation has materially different:
-   - authorization rules
-   - selected fields
-   - joins
-   - filters
-   - business behavior
-   - return type
-5. New reusable queries must live in the shared data-access layer, preferably:
-   - `lib/data/repositories`
-   - `lib/data/queries`
-   - `lib/data/mutations`
-   - `lib/data/query-keys`
-6. Route-local `api.ts`, components, hooks, and pages should call shared functions instead of recreating queries.
-7. Do not create generic arbitrary table/query executors.
-8. Preserve Supabase RLS, auth behavior, client/server boundaries, and TypeScript types.
-9. Avoid `jmb` and `_baja` unless explicitly asked.
+2. Reuse it if it already fits.
+3. Extend it with typed parameters when the difference is small.
+4. Create something new only when the behavior is materially different.
+5. New functions must be designed to be reusable, not tied to one page or component.
 
-## Mandatory Notification Event Readiness
+This applies to:
 
-The notification system is configuration-driven. Business modules publish events; they do not decide who receives notifications. An inactive or unmatched notification rule must make event dispatch a safe no-op.
+* TypeScript functions
+* React components
+* Hooks
+* Supabase queries
+* Supabase RPC/database functions
+* Server actions
+* API calls
+* SQL
+* Data transformations
+* Validation helpers
 
-Whenever creating or materially changing a business module, inspect every supported **Post**, **Edit**, and **Void** operation. Before considering the module work complete, prepare each supported operation for notification activation, even when the current request directly changes only one of those operations.
+Avoid duplicate implementations.
 
-### Required event contract
+Prefer shared locations such as:
 
-- Register supported events in the centralized notification event catalog. Never use labels, route names, or ad hoc strings as event identity.
-- Use stable uppercase event keys: `<MODULE_KEY>_POSTED`, `<MODULE_KEY>_EDITED`, and `<MODULE_KEY>_VOIDED`.
-- Reuse an existing module/event key when one already exists. Renaming a module label must not rename its persisted event key.
-- Emit one event for each completed user action, not for every field change, line update, render, autosave, or retry.
-- An Edit event represents a successful persisted edit of an existing document. Include changed-field names when they can be determined safely; do not include secrets or unnecessary before/after values.
-- A Void event represents the successful transition from active to void. Repeated requests against an already-void document must not produce additional events.
+```text
+lib/
+  data/
+    repositories/
+    queries/
+    mutations/
+    query-keys/
+  functions/
+  utils/
+components/
+```
 
-Every emitted event must provide the centralized dispatcher with the available values from this contract:
+Route-local files and UI components should call shared reusable functions instead of recreating logic.
 
-- `moduleKey`
-- `eventKey`
-- `entityType`
-- `entityId`
-- `documentNo`
-- `fmsType`
-- `farmId`
-- `actorAuthId`
-- `targetUrl`
-- `occurredAt`
-- `dedupeKey`
-- optional safe `metadata`
+Do not create generic arbitrary table/query executors.
 
-Use canonical FMS values: `Broiler`, `Breeder`, and `Hatchery`.
+---
 
-### Mandatory farm identity requirements
+## Browser Rule
 
-- `public.farms.id` is the authoritative farm identity. Every farm-scoped business document must persist a numeric `farm_id` that references `public.farms(id)`.
-- Use `farm_id` for relationships, authorization, filtering, notification routing, and recipient matching. `farm_code` and `farm_name` are business/display snapshots only and must not replace the numeric relationship.
-- Resolve any stored `farm_code` from the same canonical `public.farms` row. Never set `farm_code` to `String(farm_id)` and never trust an unverified browser-provided farm ID/code pair.
-- A user's `users.default_farm` may preselect a form, but it must never determine the notification event farm. Read the farm from the successfully persisted business document.
-- Register every event with an explicit farm-routing mode: `document`, `origin`, `destination`, `origin_and_destination`, or `none`. Missing farm data must not implicitly mean a global event.
-- `document` routing requires `farm_id`; `origin` requires `origin_farm_id`; `destination` requires `destination_farm_id`; `origin_and_destination` requires both IDs. Cross-farm modules must not overload one ambiguous `farm_id` for both sides.
-- The dispatcher must mark an event `invalid` when its catalog routing mode requires a farm and the required farm ID is missing, invalid, or does not match the persisted source row. It must never broaden that event to unrestricted delivery.
-- Recipient farm matching must use active `users_farms.farm_id`. A farm-code lookup may be retained only as a documented legacy fallback while old assignments are migrated.
-- Before connecting an existing module, audit its persisted header, shared mutation, Post/Edit/Void paths, and checked-in SQL. A route field, display name, source reference, warehouse, or inherited parent record does not by itself prove that the module persists an authoritative farm ID.
-- Modules listed as noncompliant or partially enforced in `docs/notification-system-design.md` must not expose farm-targeted notification rules as activation-ready until their recorded farm-identity gaps are resolved and verified.
+Do not use or check the in-app browser for this repository unless explicitly requested.
 
-### Transaction and integration rules
+Use:
 
-- Emit or enqueue the event from the authoritative server, RPC, or database mutation path. A React click handler or success toast is not an authoritative notification hook.
-- Never emit before the business mutation succeeds. Prefer writing a transactional notification outbox record in the same transaction as the business change.
-- If the current mutation cannot be made transactional, dispatch only after confirmed persistence and use a deterministic `dedupeKey` so a retry cannot create duplicate recipient notifications.
-- Do not scatter recipient resolution across modules. Modules must not query notification rules, FMS Type, User Type, User Group, or individual recipients to decide delivery.
-- The centralized dispatcher owns active-rule matching, recipient resolution, module View-permission enforcement, delivery creation, and the no-active-rule no-op.
-- Do not insert directly into per-user inbox/delivery tables from a business module.
-- Notification delivery must never announce a failed or rolled-back Post, Edit, or Void operation.
-- Do not change existing Post/Edit/Void calculations, validation, approvals, permissions, persistence, document numbering, or status behavior merely to add notification readiness.
+* source inspection
+* static checks
+* tests
+* explicitly authorized read-only data verification
 
-### Completion checks
+Do not repeatedly report that browser access is unavailable.
 
-For every supported Post/Edit/Void path that was added or materially changed, verify and report:
+---
 
-1. The registered module key and event keys.
-2. The authoritative successful-commit location that emits or enqueues each event.
-3. The deterministic deduplication identity.
-4. That failed operations emit nothing.
-5. That retries do not duplicate the same event or recipient delivery.
-6. That no active matching notification rule results in a safe no-op without changing the business outcome.
-7. The event's declared farm-routing mode and the persisted source columns used for that routing.
-8. That every required farm ID resolves to `public.farms(id)` and a missing required farm cannot become a global delivery.
+## Supabase / Data Access
 
-If the centralized catalog, dispatcher, or outbox does not exist yet, do not create a module-local substitute. State the missing shared dependency and add the reusable centralized infrastructure within the requested scope, or stop and ask before materially expanding the task.
+Before creating a Supabase query, RPC, SQL statement, fetch, axios call, server loader, or React data-loading hook:
+
+1. Search for an existing shared implementation.
+2. Reuse or extend it where possible.
+3. Keep reusable data access in the shared data layer.
+4. Preserve:
+
+   * RLS
+   * authentication behavior
+   * client/server boundaries
+   * TypeScript types
+
+Do not duplicate Supabase queries across pages/components.
+
+When creating a Supabase/PostgreSQL function, design it for reuse with clear typed parameters rather than creating multiple nearly identical functions.
+
+Avoid `jmb` and `_baja` unless explicitly requested.
+
+---
+
+# Notification Readiness
+
+When creating or materially changing a business module, inspect all supported:
+
+* Post
+* Edit
+* Void
+
+operations for notification readiness.
+
+Business modules publish events. They must **not** determine notification recipients.
+
+An inactive or unmatched notification rule must result in a safe no-op.
+
+## Event Keys
+
+Use the centralized notification event catalog.
+
+Use stable keys:
+
+```text
+<MODULE_KEY>_POSTED
+<MODULE_KEY>_EDITED
+<MODULE_KEY>_VOIDED
+```
+
+Reuse existing keys. UI/module label changes must not rename persisted event keys.
+
+Emit only one event per completed user action.
+
+Do not emit events for:
+
+* renders
+* field changes
+* autosaves
+* retries
+* intermediate updates
+
+---
+
+## Event Contract
+
+Provide available values through the centralized dispatcher:
+
+```ts
+{
+  moduleKey
+  eventKey
+  entityType
+  entityId
+  documentNo
+  fmsType
+  farmId
+  actorAuthId
+  targetUrl
+  occurredAt
+  dedupeKey
+  metadata?
+}
+```
+
+Valid FMS types:
+
+```text
+Broiler
+Breeder
+Hatchery
+```
+
+`metadata` must not contain secrets or unnecessary before/after data.
+
+---
+
+# Farm Identity
+
+`public.farms.id` is the authoritative farm identity.
+
+Farm-scoped business documents must persist numeric:
+
+```text
+farm_id -> public.farms(id)
+```
+
+Use `farm_id` for:
+
+* relationships
+* authorization
+* filtering
+* notifications
+* recipient matching
+
+`farm_code` and `farm_name` are display/business snapshots only.
+
+Never:
+
+```ts
+farm_code = String(farm_id)
+```
+
+Never trust an unverified browser-provided farm ID/code pair.
+
+`users.default_farm` may preselect a form but must not determine the notification farm.
+
+Read the farm from the successfully persisted document.
+
+---
+
+## Farm Routing
+
+Every notification event must declare one routing mode:
+
+```text
+document
+origin
+destination
+origin_and_destination
+none
+```
+
+Required fields:
+
+```text
+document               -> farm_id
+origin                 -> origin_farm_id
+destination            -> destination_farm_id
+origin_and_destination -> origin_farm_id + destination_farm_id
+```
+
+Cross-farm modules must not overload one `farm_id` for both sides.
+
+If a required farm ID is missing, invalid, or inconsistent with the persisted record:
+
+```text
+event = invalid
+```
+
+Never convert missing farm information into global notification delivery.
+
+Recipient farm matching should use active:
+
+```text
+users_farms.farm_id
+```
+
+---
+
+# Notification Integration
+
+Emit/enqueue events only from the authoritative:
+
+* server mutation
+* RPC
+* database mutation
+* shared repository/mutation function
+
+Do not use React click handlers or success toasts as notification hooks.
+
+Never emit before persistence succeeds.
+
+Prefer:
+
+```text
+business transaction
+    ↓
+business change
+    +
+notification outbox
+```
+
+inside the same transaction.
+
+If transactional integration is unavailable:
+
+1. confirm persistence first
+2. emit afterward
+3. use a deterministic `dedupeKey`
+
+Retries must not create duplicate events or deliveries.
+
+Business modules must not query notification rules or resolve recipients.
+
+The centralized notification system owns:
+
+* rule matching
+* FMS Type matching
+* User Type matching
+* User Group matching
+* farm matching
+* View permission checks
+* recipient resolution
+* delivery creation
+* no-rule no-op behavior
+
+Do not insert directly into user notification/inbox tables from business modules.
+
+Notification work must not alter existing:
+
+* calculations
+* validations
+* approvals
+* permissions
+* numbering
+* persistence behavior
+* status behavior
+
+---
+
+# Module Audit
+
+Before connecting an existing module to notifications, inspect:
+
+```text
+persisted header
+shared mutations
+Post path
+Edit path
+Void path
+SQL/RPC functions
+farm fields
+```
+
+A route parameter, display farm name, warehouse, source reference, or parent document does not prove authoritative farm ownership.
+
+Modules marked incomplete in:
+
+```text
+docs/notification-system-design.md
+```
+
+must not be treated as farm-notification-ready until their recorded issues are fixed.
+
+---
+
+# Completion Check
+
+For changed Post/Edit/Void operations verify:
+
+1. Module/event keys are registered.
+2. Events originate from the successful persistence path.
+3. `dedupeKey` is deterministic.
+4. Failed operations emit nothing.
+5. Retries do not duplicate events.
+6. No matching rule results in a safe no-op.
+7. Farm routing mode is declared.
+8. Required farm IDs resolve to `public.farms(id)`.
+9. Missing farm IDs never become global delivery.
+
+If shared notification catalog, dispatcher, or outbox infrastructure is missing, do not create a module-local replacement.
+
+Create/reuse centralized reusable infrastructure when it is within scope.
