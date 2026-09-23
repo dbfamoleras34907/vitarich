@@ -20,7 +20,11 @@ export type PermissionUser = {
   auth_id: string
   email: string | null
   firstname: string | null
+  middlename: string | null
   lastname: string | null
+  created_at: string | null
+  updated_at: string | null
+  isactive: string | boolean | null
   fms_type: string | null
   user_type: number
 }
@@ -40,11 +44,22 @@ export type PermissionFolder = {
   rows: PermissionRow[]
 }
 
+export type PermissionMatrixUser = PermissionUser & {
+  permissions: Array<{ group_name: string; title: string }>
+}
+
 export async function getManageableUsers() {
   const response = await fetchWithInternetErrorNotice("/api/admin/user-permissions", { headers: await authHeaders() })
   return parseResponse<{
     actor: { auth_id: string; user_type: number; fms_type: string | null }
     users: PermissionUser[]
+  }>(response)
+}
+
+export async function getPermissionMatrix() {
+  const response = await fetchWithInternetErrorNotice("/api/admin/user-permissions?view=matrix", { headers: await authHeaders() })
+  return parseResponse<{
+    users: PermissionMatrixUser[]
   }>(response)
 }
 

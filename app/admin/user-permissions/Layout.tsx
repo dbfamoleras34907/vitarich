@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ShieldCheck } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import PermissionEditor, { type PermissionEditorHandle } from "./PermissionEditor"
+import PermissionMatrix from "./PermissionMatrix"
 import { getManageableUsers, type PermissionFolder, type PermissionUser } from "./api"
 
 function userLabel(user: PermissionUser) {
@@ -81,32 +83,45 @@ export default function Layout({ permissionFolders, requestedUserId = "" }: { pe
             Your account bypasses module permissions and has access to all FMS types. Permission assignments here apply to the selected user.
           </AlertDescription>
         </Alert>}
-        <div className="mt-4 space-y-1.5">
-          <Label required>User</Label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="w-full max-w-xl">
-              <SearchableDropdown
-                list={users.map(user => ({ code: user.auth_id, name: userLabel(user) }))}
-                codeLabel="code"
-                nameLabel="name"
-                showNameOnly
-                value={selectedId}
-                placeholder="Search user..."
-                onChange={setSelectedId}
-              />
-            </div>
-            <Button variant="secondary" disabled={!selectedUser} onClick={() => editorRef.current?.setAll(true)}>
-              Allow All
-            </Button>
-            <Button variant="destructive" disabled={!selectedUser} onClick={() => editorRef.current?.setAll(false)}>
-              Remove All
-            </Button>
-          </div>
-        </div>
       </div>
-      {selectedUser
-        ? <PermissionEditor ref={editorRef} key={selectedUser.auth_id} user={selectedUser} permissionFolders={permissionFolders} />
-        : <div className="rounded-md border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">Select a user to manage permissions.</div>}
+      <Tabs defaultValue="manage" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="manage">Manage Permissions</TabsTrigger>
+          <TabsTrigger value="matrix">Permission Matrix</TabsTrigger>
+        </TabsList>
+        <TabsContent value="manage" className="space-y-4">
+          <div className="rounded-md border bg-card p-4 shadow-sm">
+            <div className="space-y-1.5">
+              <Label required>User</Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="w-full max-w-xl">
+                  <SearchableDropdown
+                    list={users.map(user => ({ code: user.auth_id, name: userLabel(user) }))}
+                    codeLabel="code"
+                    nameLabel="name"
+                    showNameOnly
+                    value={selectedId}
+                    placeholder="Search user..."
+                    onChange={setSelectedId}
+                  />
+                </div>
+                <Button variant="secondary" disabled={!selectedUser} onClick={() => editorRef.current?.setAll(true)}>
+                  Allow All
+                </Button>
+                <Button variant="destructive" disabled={!selectedUser} onClick={() => editorRef.current?.setAll(false)}>
+                  Remove All
+                </Button>
+              </div>
+            </div>
+          </div>
+          {selectedUser
+            ? <PermissionEditor ref={editorRef} key={selectedUser.auth_id} user={selectedUser} permissionFolders={permissionFolders} />
+            : <div className="rounded-md border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">Select a user to manage permissions.</div>}
+        </TabsContent>
+        <TabsContent value="matrix">
+          <PermissionMatrix permissionFolders={permissionFolders} />
+        </TabsContent>
+      </Tabs>
       </>}
     </div>
   </div>

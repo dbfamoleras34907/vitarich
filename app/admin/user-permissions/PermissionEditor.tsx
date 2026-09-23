@@ -166,7 +166,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
               </tr>
             </thead>
             <tbody>
-              {folderRows.map(row => <tr key={`${row.group}|${row.title}`} className="border-b last:border-0">
+              {folderRows.map((row, index) => <tr key={`${folder.id}|${row.group}|${row.title}|${index}`} className="border-b last:border-0">
                 <td className="px-4 py-2"><span className="font-medium">{row.title}</span><span className="ml-2 text-xs text-muted-foreground">{row.group}</span></td>
                 {(["list", "view", "insert", "edit", "void", "approval"] as PermissionAction[]).map(action => {
                   const key = permissionKey(row, action)

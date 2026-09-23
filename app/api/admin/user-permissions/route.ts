@@ -60,7 +60,7 @@ export async function GET(request: Request) {
     if (!targetAuthId) {
       let query = admin_db
         .from("users")
-        .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
+        .select("id, auth_id, email, firstname, middlename, lastname, created_at, updated_at, isactive, fms_type, user_type, issuper")
         .not("auth_id", "is", null)
         .order("firstname", { ascending: true })
 
@@ -70,6 +70,33 @@ export async function GET(request: Request) {
 
       const { data, error } = await query
       if (error) throw error
+
+      if (url.searchParams.get("view") === "matrix") {
+        const userIds = (data ?? []).map(user => user.auth_id).filter(Boolean)
+        const permissionResult = userIds.length
+          ? await admin_db
+            .from("user_permissions")
+            .select("user_id, group_name, title")
+            .in("user_id", userIds)
+            .eq("is_visible", true)
+          : { data: [], error: null }
+
+        if (permissionResult.error) throw permissionResult.error
+        const permissionsByUser = new Map<string, Array<{ group_name: string; title: string }>>()
+        for (const permission of permissionResult.data ?? []) {
+          const current = permissionsByUser.get(permission.user_id) ?? []
+          current.push({ group_name: permission.group_name, title: permission.title })
+          permissionsByUser.set(permission.user_id, current)
+        }
+
+        return NextResponse.json({
+          users: (data ?? []).map(user => ({
+            ...user,
+            user_type: Number(user.user_type ?? USER_TYPE.USER),
+            permissions: permissionsByUser.get(user.auth_id) ?? [],
+          })),
+        })
+      }
 
       return NextResponse.json({
         actor: { auth_id: actor.auth_id, user_type: actor.user_type, fms_type: actor.fms_type },
