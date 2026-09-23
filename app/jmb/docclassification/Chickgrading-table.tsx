@@ -179,9 +179,9 @@ export default function ChickgradingTable() {
               id: Number(item.id),
 
               [FARM_FILTER_KEY]:
-                item.farm_source == null
+                item.farm_id == null
                   ? ""
-                  : String(item.farm_source),
+                  : String(item.farm_id),
                   
               egg_ref_no:
                 item.egg_ref_no || "-",
