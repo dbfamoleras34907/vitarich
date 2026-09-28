@@ -1,5 +1,6 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getFarmBuildingsForFlockCard } from '@/lib/data/repositories/broilerFlockCards'
+import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
 
 export type FarmCycleMasterRow = {
   id: number
@@ -93,13 +94,14 @@ export type StandaloneBuildingCycleOption = {
   createdAt: string | null
 }
 
-export async function getStandaloneBuildingCycleOptions(farmId: number): Promise<StandaloneBuildingCycleOption[]> {
+export async function getStandaloneBuildingCycleOptions(farmId: number, options: { requireComplete?: boolean } = {}): Promise<StandaloneBuildingCycleOption[]> {
   if (!Number.isInteger(farmId) || farmId <= 0) return []
-  const { data, error } = await db.from('flock_card')
-    .select('id, cycle_no, cycle_mask, building_name, building_code, status, created_at')
+  const { data, error, count } = await db.from('flock_card')
+    .select('id, cycle_no, cycle_mask, building_name, building_code, status, created_at', options.requireComplete ? { count: 'exact' } : undefined)
     .eq('farm_id', farmId).is('farm_cycle_id', null).eq('void', '1')
     .order('start_date', { ascending: false }).order('id', { ascending: false })
   if (error) throw error
+  assertCompleteRead({ data, count }, 'Standalone cycle catalog')
   return (data ?? []).map(row => ({
     id: Number(row.id), cycleLabel: String(row.cycle_no ?? ''),
     cycleMask: row.cycle_mask ?? null,
@@ -116,10 +118,10 @@ export type CycleMasterListRow = Omit<FarmCycleMasterRow, 'cycleNumber' | 'statu
   createdAt: string | null
 }
 
-export async function getCycleMasterListRows(farmId: number): Promise<CycleMasterListRow[]> {
+export async function getCycleMasterListRows(farmId: number, options: { requireComplete?: boolean } = {}): Promise<CycleMasterListRow[]> {
   const [farmCycles, standaloneCycles] = await Promise.all([
-    getFarmCycleMasterRows(farmId),
-    getStandaloneBuildingCycleOptions(farmId),
+    getFarmCycleMasterRows(farmId, options),
+    getStandaloneBuildingCycleOptions(farmId, options),
   ])
   return [
     ...farmCycles.map(cycle => ({ ...cycle, kind: 'farm' as const })),
@@ -147,13 +149,13 @@ export async function getCycleMasterListRows(farmId: number): Promise<CycleMaste
 
 export async function getFarmCycleMasterRows(
   farmId: number,
-  options: { status?: BroilerFarmCycleStatus } = {},
+  options: { status?: BroilerFarmCycleStatus; requireComplete?: boolean } = {},
 ): Promise<FarmCycleMasterRow[]> {
   if (!Number.isFinite(farmId) || farmId <= 0) return []
 
   let cycleQuery = db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at, closed_by, reopened_at, reopened_by')
+    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at, closed_by, reopened_at, reopened_by', options.requireComplete ? { count: 'exact' } : undefined)
     .eq('farm_id', farmId)
     .order('cycle_no', { ascending: false })
 
@@ -161,6 +163,7 @@ export async function getFarmCycleMasterRows(
   const cycleResult = await cycleQuery
 
   if (cycleResult.error) throw cycleResult.error
+  assertCompleteRead(cycleResult, 'Farm cycle catalog')
   const cycles = (cycleResult.data ?? []) as FarmCycleDbRow[]
   if (cycles.length === 0) return []
 

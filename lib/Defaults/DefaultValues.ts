@@ -1164,6 +1164,16 @@ export const NavFolders: NavFolder[] = [
             edit: false,
             approval: false,
           },
+          {
+            id: 83,
+            type: "Report",
+            title: "Data Compliance",
+            url: "/brd/data-compliance",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
         ],
       },
       {

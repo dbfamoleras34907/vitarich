@@ -35,9 +35,10 @@ function database(tables) {
     let rows = structuredClone(tables[table] ?? [])
     let single = false
     let start = 0, end = 999
+    let includeCount = false
     const ordering = []
     const query = {
-      select() { return query },
+      select(_fields, options) { includeCount = options?.count === 'exact'; return query },
       eq(field, value) { rows = rows.filter(row => String(row[field]) === String(value)); return query },
       is(field, value) { rows = rows.filter(row => row[field] === value); return query },
       in(field, values) { rows = rows.filter(row => values.some(value => String(row[field]) === String(value))); return query },
@@ -47,7 +48,7 @@ function database(tables) {
       maybeSingle() { single = true; return query },
       then(resolve, reject) {
         rows.sort((a, b) => { for (const [field, direction] of ordering) { const diff = (a[field] > b[field] ? 1 : a[field] < b[field] ? -1 : 0) * direction; if (diff) return diff } return 0 })
-        return Promise.resolve({ data: single ? rows[0] ?? null : rows.slice(start, end + 1), error: null }).then(resolve, reject)
+        return Promise.resolve({ data: single ? rows[0] ?? null : rows.slice(start, end + 1), error: null, count: includeCount ? rows.length : null }).then(resolve, reject)
       },
     }
     return query
@@ -335,4 +336,5 @@ async function main() {
   assert(withStandaloneFailure.warnings.some(warning => warning.includes('Simulated standalone lookup failure')))
   console.log('Cycle Dashboard tests passed: posting filters, latest/closed cycle recall, cycle isolation, lineage, weighted totals, age at close, access guards, pagination, and report compatibility.')
 }
-main().catch(error => { console.error(error); process.exitCode = 1 })
+module.exports = { loader, database }
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1 })

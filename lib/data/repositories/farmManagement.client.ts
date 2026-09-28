@@ -10,6 +10,7 @@ export type FarmRecord = {
   production_model: string | null
   island: string | null
   administrative_region: string | null
+  region: string | null
   approval_status: string | null
   contact_person: string | null
   contact_number: string | null

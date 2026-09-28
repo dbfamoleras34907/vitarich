@@ -33,7 +33,7 @@ export function growingWaterLiters(line: CycleGrowingLine, population: number) {
   return line.hasWater ? line.waterLiters : null
 }
 
-export function activeGrowingLines(building: DashboardCycleBuilding) {
+export function activeGrowingLines(building: Pick<DashboardCycleBuilding, 'growingLines'>) {
   return building.growingLines.filter(line => !line.isVoided &&
     (line.hasMortality || line.hasFeed || line.hasWater || line.waterPerBird > 0 || line.hasWeight)).sort((a, b) => a.age - b.age)
 }

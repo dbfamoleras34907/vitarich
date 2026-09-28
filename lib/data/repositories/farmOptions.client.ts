@@ -1,5 +1,6 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
+import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
 
 export type BroilerFarmOption = {
   id: number
@@ -18,6 +19,7 @@ export type AssignedFarmOption = {
 
 export async function listAssignedUserFarmOptions(
   farmTypes: string[] = [],
+  options: { requireComplete?: boolean } = {},
 ): Promise<AssignedFarmOption[]> {
   const { data: sessionData, error: sessionError } = await db.auth.getSession()
   if (sessionError) throw sessionError
@@ -34,13 +36,14 @@ export async function listAssignedUserFarmOptions(
   if (userError) throw userError
   if (!user?.id) return []
 
-  const { data: assignments, error: assignmentError } = await db
+  const { data: assignments, error: assignmentError, count: assignmentCount } = await db
     .from('users_farms')
-    .select('farm_id, farm_code')
+    .select('farm_id, farm_code', options.requireComplete ? { count: 'exact' } : undefined)
     .eq('users_id', user.id)
     .eq('void', 1)
 
   if (assignmentError) throw assignmentError
+  assertCompleteRead({ data: assignments, count: assignmentCount }, 'Assigned farm catalog')
 
   const farmIds = Array.from(new Set(
     (assignments ?? [])
@@ -58,7 +61,7 @@ export async function listAssignedUserFarmOptions(
 
   const selectFarms = () => {
     let query = activeApprovedFarmsQuery(
-      db.from('farms').select('id, code, name, farm_type, ref'),
+      db.from('farms').select('id, code, name, farm_type, ref', options.requireComplete ? { count: 'exact' } : undefined),
     )
     if (farmTypes.length) query = query.in('farm_type', farmTypes)
     return query
@@ -71,6 +74,8 @@ export async function listAssignedUserFarmOptions(
 
   if (byId.error) throw byId.error
   if (byLegacyCode.error) throw byLegacyCode.error
+  assertCompleteRead(byId, 'Assigned farms')
+  assertCompleteRead(byLegacyCode, 'Legacy assigned farms')
 
   return Array.from(new Map(
     [...(byId.data ?? []), ...(byLegacyCode.data ?? [])]
