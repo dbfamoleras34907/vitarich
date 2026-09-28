@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { compareNaturalText } from "@/lib/utils/naturalSort";
 
 const GRADING_TABLE = "tbl_grading";
 const PLACEMENT_TABLE = "tbl_placement";
@@ -123,14 +124,18 @@ export async function listGradingPlacements() {
     )
     .not("farm_name", "is", null)
     .not("building_no", "is", null)
-    .order("farm_name", { ascending: true })
-    .order("building_no", { ascending: true })
-    .order("pen_no", { ascending: true })
     .order("placement_date", { ascending: false })
     .order("id", { ascending: false });
 
   throwSupabaseError(error);
-  return (data ?? []) as GradingPlacement[];
+  return ((data ?? []) as GradingPlacement[]).sort(
+    (left, right) =>
+      compareNaturalText(left.farm_name, right.farm_name) ||
+      compareNaturalText(left.building_no, right.building_no) ||
+      compareNaturalText(left.pen_no, right.pen_no) ||
+      right.placement_date.localeCompare(left.placement_date) ||
+      right.id - left.id,
+  );
 }
 
 export async function listGradingHistoryByFarm(params: {

@@ -16,11 +16,11 @@ import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { getUserInfo, listBreederCycles, listBreederFarms, listFarmLocationLookup, type BreederCycle, type BreederFarm, type FarmLocationLookup } from "@/app/jmb/placement/new/api";
 import {
-  listMedicationReport, listMortalityReport, listRegradingReport, listVaccinationReport,
-  type MedicationReportRow, type MortalityReportRow, type RegradingReportRow, type VaccinationReportRow,
+  listBreederPerformanceReport, listMedicationReport, listMortalityReport, listRegradingReport, listVaccinationReport,
+  type BreederPerformanceReportRow, type MedicationReportRow, type MortalityReportRow, type RegradingReportRow, type VaccinationReportRow,
 } from "./api";
 
-type ReportType = "mortality" | "feed" | "liveweight" | "uniformity" | "vaccination" | "medication" | "regrading";
+type ReportType = "performance" | "mortality" | "feed" | "liveweight" | "uniformity" | "vaccination" | "medication" | "regrading";
 type ChartRow = { date: string; male?: number; female?: number; total?: number; old?: number; next?: number; missed?: number; averageFeed?: number; standardFeed?: number };
 type FeedDailyRow = {
   date: string; cycleNumber: number | null; ageWeek: number; totalPopulation: number; malePopulation: number; femalePopulation: number;
@@ -30,6 +30,7 @@ type FeedDailyRow = {
 
 const ALL = "__ALL__";
 const REPORT_OPTIONS: Array<{ value: ReportType; label: string; scope: string }> = [
+  { value: "performance", label: "Performance Report", scope: "per Farm / Week" },
   { value: "mortality", label: "Mortality Report", scope: "per Farm / Building / Pen" },
   { value: "feed", label: "Feeds Consumption Report", scope: "per Building" },
   { value: "liveweight", label: "Average Liveweight Report", scope: "per Building" },
@@ -147,6 +148,39 @@ function ReportChart({ data, type }: { data: ChartRow[]; type: ReportType }) {
   </div>;
 }
 
+function PerformanceTrendCharts({ rows }: { rows: BreederPerformanceReportRow[] }) {
+  if (!rows.length) return null;
+  const data = rows.map((row) => ({
+    ...row,
+    week: `Week ${row.ageWeek}`,
+    averageGramsPerBird: row.averageGramsPerBird ?? undefined,
+    heRecovery: row.heRecovery ?? undefined,
+  }));
+  return <div className="grid gap-5 xl:grid-cols-2">
+    <div className="h-[360px] min-w-0 rounded-lg border bg-background p-4">
+      <h3 className="mb-4 text-center text-sm font-semibold">Weekly Population & Depletion Trend</h3>
+      <ResponsiveContainer width="100%" height="90%"><LineChart data={data} margin={{ left: 4, right: 16, top: 8, bottom: 18 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="week" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} />
+        <Tooltip formatter={(value) => formatNumber(Number(value), 0)} /><Legend />
+        <Line type="monotone" dataKey="malePopulation" name="Male Population" stroke="#2563eb" strokeWidth={2} />
+        <Line type="monotone" dataKey="femalePopulation" name="Female Population" stroke="#db2777" strokeWidth={2} />
+        <Line type="monotone" dataKey="totalDepletion" name="Total Depletion" stroke="#dc2626" strokeWidth={2} />
+      </LineChart></ResponsiveContainer>
+    </div>
+    <div className="h-[360px] min-w-0 rounded-lg border bg-background p-4">
+      <h3 className="mb-4 text-center text-sm font-semibold">Weekly Production & Efficiency Trend</h3>
+      <ResponsiveContainer width="100%" height="90%"><LineChart data={data} margin={{ left: 4, right: 16, top: 8, bottom: 18 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="week" tick={{ fontSize: 11 }} /><YAxis yAxisId="count" tick={{ fontSize: 11 }} />
+        <YAxis yAxisId="rate" orientation="right" tick={{ fontSize: 11 }} unit="%" /><Tooltip formatter={(value, name) => String(name).includes("Recovery") ? formatPercent(Number(value)) : formatNumber(Number(value), String(name).includes("Weight") ? 2 : 0)} /><Legend />
+        <Line yAxisId="count" type="monotone" dataKey="tep" name="TEP" stroke="#15803d" strokeWidth={2} />
+        <Line yAxisId="count" type="monotone" dataKey="hatchingEgg" name="Hatching Egg" stroke="#7c3aed" strokeWidth={2} />
+        <Line yAxisId="rate" type="monotone" dataKey="averageGramsPerBird" name="Avg g/Bird" stroke="#ea580c" strokeWidth={2} connectNulls />
+        <Line yAxisId="rate" type="monotone" dataKey="heRecovery" name="HE Recovery %" stroke="#0891b2" strokeWidth={2} connectNulls />
+      </LineChart></ResponsiveContainer>
+    </div>
+  </div>;
+}
+
 export default function BreederReports() {
   const router = useRouter(); const reportRef = useRef<HTMLDivElement>(null); const { setValue } = useGlobalContext();
   const [reportType, setReportType] = useState<ReportType>("mortality");
@@ -155,6 +189,7 @@ export default function BreederReports() {
   const [dateFrom, setDateFrom] = useState(() => { const date = new Date(); date.setDate(1); return localDate(date); }); const [dateTo, setDateTo] = useState(() => localDate(new Date()));
   const [performanceRows, setPerformanceRows] = useState<MortalityReportRow[]>([]); const [vaccinationRows, setVaccinationRows] = useState<VaccinationReportRow[]>([]);
   const [medicationRows, setMedicationRows] = useState<MedicationReportRow[]>([]); const [regradingRows, setRegradingRows] = useState<RegradingReportRow[]>([]);
+  const [weeklyPerformanceRows, setWeeklyPerformanceRows] = useState<BreederPerformanceReportRow[]>([]);
   const [loadingSetup, setLoadingSetup] = useState(true); const [loading, setLoading] = useState(false); const [generated, setGenerated] = useState(false); const [error, setError] = useState("");
 
   useEffect(() => { refreshSessionx(router); }, [router]);
@@ -191,10 +226,10 @@ export default function BreederReports() {
     }
     return [];
   }, [feedRows, performanceRows, regradingRows, reportType, vaccinationRows]);
-  const totalRows = reportType === "vaccination" ? vaccinationRows.length : reportType === "medication" ? medicationRows.length : reportType === "regrading" ? regradingRows.length : performanceRows.length;
+  const totalRows = reportType === "performance" ? weeklyPerformanceRows.length : reportType === "vaccination" ? vaccinationRows.length : reportType === "medication" ? medicationRows.length : reportType === "regrading" ? regradingRows.length : performanceRows.length;
   const selectedFarm = farms.find((farm) => String(farm.id) === farmId);
 
-  function resetReport() { setPerformanceRows([]); setVaccinationRows([]); setMedicationRows([]); setRegradingRows([]); setGenerated(false); setError(""); }
+  function resetReport() { setPerformanceRows([]); setVaccinationRows([]); setMedicationRows([]); setRegradingRows([]); setWeeklyPerformanceRows([]); setGenerated(false); setError(""); }
   async function generateReport() {
     if (!farmId) return void toast.error("Select a breeder farm."); if (!dateFrom || !dateTo || dateFrom > dateTo) return void toast.error("Enter a valid report date range.");
     if (reportType === "feed" && buildingId === ALL) return void toast.error("Select one building for the Feeds Consumption Report.");
@@ -202,7 +237,8 @@ export default function BreederReports() {
     const filters = { farmId: Number(farmId), cycleNumber: cycleNumber === ALL ? null : Number(cycleNumber), buildingId: usesLocationFilters && buildingId !== ALL ? Number(buildingId) : null, penId: usesLocationFilters && penId !== ALL ? Number(penId) : null, dateFrom, dateTo };
     try {
       resetReport();
-      if (["mortality", "feed", "liveweight"].includes(reportType)) setPerformanceRows(await listMortalityReport(filters));
+      if (reportType === "performance") setWeeklyPerformanceRows(await listBreederPerformanceReport(filters));
+      else if (["mortality", "feed", "liveweight"].includes(reportType)) setPerformanceRows(await listMortalityReport(filters));
       else if (reportType === "vaccination") setVaccinationRows(await listVaccinationReport(filters));
       else if (reportType === "medication") setMedicationRows(await listMedicationReport(filters));
       else if (reportType === "regrading") setRegradingRows(await listRegradingReport(filters));
@@ -237,13 +273,16 @@ export default function BreederReports() {
       </div>
       {error ? <div className="m-5 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div> : null}
       {generated && !error ? <div className="p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">{selectedReport.label}</h2><p className="text-sm text-muted-foreground">{selectedReport.scope} · Cycle {cycleNumber === ALL ? "All" : cycleNumber} · {dateFrom} to {dateTo}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={exportExcel} disabled={!totalRows}><Download className="size-4" /> Excel</Button><Button size="sm" variant="outline" onClick={printReport} disabled={!totalRows}><FileText className="size-4" /> Print / PDF</Button></div></div>
-        {reportType === "uniformity" ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 dark:bg-amber-950/20"><h3 className="font-semibold">Uniformity data is not recorded yet</h3><p className="mt-2 max-w-3xl text-sm text-muted-foreground">This report is available in the selector, but an accurate uniformity percentage requires individual sampled-bird weights or stored Light, Standard, and Heavy bird counts. Average body weight alone cannot calculate weight distribution. Once those fields are captured, this page can show the ±10% uniformity calculation and trend.</p></div> : <div ref={reportRef} className="space-y-5"><ReportChart data={chartData} type={reportType} />{["mortality", "liveweight"].includes(reportType) ? <PerformanceTable type={reportType} rows={groupedPerformance} /> : null}{reportType === "feed" ? <FeedConsumptionTable rows={feedRows} /> : null}{reportType === "vaccination" ? <VaccinationTable rows={vaccinationRows} /> : null}{reportType === "medication" ? <MedicationTable rows={medicationRows} /> : null}{reportType === "regrading" ? <RegradingTable rows={regradingRows} /> : null}</div>}
+        {reportType === "uniformity" ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 dark:bg-amber-950/20"><h3 className="font-semibold">Uniformity data is not recorded yet</h3><p className="mt-2 max-w-3xl text-sm text-muted-foreground">This report is available in the selector, but an accurate uniformity percentage requires individual sampled-bird weights or stored Light, Standard, and Heavy bird counts. Average body weight alone cannot calculate weight distribution. Once those fields are captured, this page can show the ±10% uniformity calculation and trend.</p></div> : <div ref={reportRef} className="space-y-5">{reportType === "performance" ? <><PerformanceTrendCharts rows={weeklyPerformanceRows} /><WeeklyPerformanceTable rows={weeklyPerformanceRows} /></> : <><ReportChart data={chartData} type={reportType} />{["mortality", "liveweight"].includes(reportType) ? <PerformanceTable type={reportType} rows={groupedPerformance} /> : null}{reportType === "feed" ? <FeedConsumptionTable rows={feedRows} /> : null}{reportType === "vaccination" ? <VaccinationTable rows={vaccinationRows} /> : null}{reportType === "medication" ? <MedicationTable rows={medicationRows} /> : null}{reportType === "regrading" ? <RegradingTable rows={regradingRows} /> : null}</>}</div>}
       </div> : !error ? <div className="flex min-h-64 flex-col items-center justify-center gap-2 p-8 text-center"><BarChart3 className="size-10 text-muted-foreground/50" /><p className="font-medium">Choose a report and generate it.</p><p className="text-sm text-muted-foreground">All breeder reports are available from the Select Report dropdown above.</p></div> : null}
     </section>
   </main>;
 }
 
 type PerformanceGroup = ReturnType<typeof groupPerformance>[number];
+function WeeklyPerformanceTable({ rows }: { rows: BreederPerformanceReportRow[] }) {
+  return <><div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:bg-sky-950/20 dark:text-blue-100">Each row groups the selected records by placement age week. Population and body weight use the latest daily record for each placement in that week. Other depletion includes culls, kitchen, and condemned birds; transfers are excluded. HE Recovery is Hatching Egg divided by TEP.</div><div className="overflow-x-auto rounded-md border"><Table className="min-w-[1500px]"><TableHeader><TableRow><TableHead className="text-right">Age (Week)</TableHead><TableHead className="text-right">Male Population</TableHead><TableHead className="text-right">Female Population</TableHead><TableHead className="text-right">Mortality</TableHead><TableHead className="text-right">Other Depletion</TableHead><TableHead className="text-right">Total Depletion</TableHead><TableHead className="text-right">Male Body Weight (g)</TableHead><TableHead className="text-right">Female Body Weight (g)</TableHead><TableHead className="text-right">Avg g/Bird</TableHead><TableHead className="text-right">TEP</TableHead><TableHead className="text-right">Hatching Egg</TableHead><TableHead className="text-right">HE Recovery (HE / TEP) %</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map((row) => <TableRow key={row.ageWeek}><TableCell className="text-right font-medium">{row.ageWeek}</TableCell><TableCell className="text-right">{formatNumber(row.malePopulation, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.femalePopulation, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.mortality, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.otherDepletion, 0)}</TableCell><TableCell className="text-right font-semibold">{formatNumber(row.totalDepletion, 0)}</TableCell><TableCell className="text-right">{row.maleBodyWeight == null ? "—" : formatFixed(row.maleBodyWeight, 2)}</TableCell><TableCell className="text-right">{row.femaleBodyWeight == null ? "—" : formatFixed(row.femaleBodyWeight, 2)}</TableCell><TableCell className="text-right font-semibold">{row.averageGramsPerBird == null ? "—" : formatFixed(row.averageGramsPerBird, 2)}</TableCell><TableCell className="text-right">{formatNumber(row.tep, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.hatchingEgg, 0)}</TableCell><TableCell className="text-right font-semibold">{row.heRecovery == null ? "—" : formatPercent(row.heRecovery)}</TableCell></TableRow>) : <EmptyRow columns={12} />}</TableBody></Table></div></>;
+}
 function FeedConsumptionTable({ rows }: { rows: FeedDailyRow[] }) {
   return <><div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:bg-sky-950/20 dark:text-sky-100">Standard feed is configured from the supplied schedule: Week 21 = 118, Week 22 = 121, Week 23 = 124, Week 24 = 127, and Week 25 = 130 g/bird. Other weeks display “—” until their standard is configured.</div><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead className="text-right">Cycle #</TableHead><TableHead className="text-right">Age (Week)</TableHead><TableHead className="text-right">Total Pop</TableHead><TableHead className="text-right">Male Pop</TableHead><TableHead className="text-right">Female Pop</TableHead><TableHead className="text-right">Std Feed (g/bird)</TableHead><TableHead className="text-right">Male Feed (kg)</TableHead><TableHead className="text-right">Female Feed (kg)</TableHead><TableHead className="text-right">Total Feed (kg)</TableHead><TableHead className="text-right">Male Feed (g)</TableHead><TableHead className="text-right">Female Feed (g)</TableHead><TableHead className="text-right">Total Feed (g)</TableHead><TableHead className="text-right">Ave Feeds (g/bird)</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map((row) => <TableRow key={`${row.cycleNumber ?? "none"}:${row.date}`}><TableCell>{formatDate(row.date)}</TableCell><TableCell className="text-right">{row.cycleNumber ?? "-"}</TableCell><TableCell className="text-right">{row.ageWeek}</TableCell><TableCell className="text-right">{formatNumber(row.totalPopulation, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.malePopulation, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.femalePopulation, 0)}</TableCell><TableCell className="text-right">{row.standardFeed == null ? "—" : formatFixed(row.standardFeed, 2)}</TableCell><TableCell className="text-right">{formatFixed(row.maleFeedKg, 2)}</TableCell><TableCell className="text-right">{formatFixed(row.femaleFeedKg, 2)}</TableCell><TableCell className="text-right font-semibold">{formatFixed(row.totalFeedKg, 2)}</TableCell><TableCell className="text-right">{formatNumber(row.maleFeedGrams, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.femaleFeedGrams, 0)}</TableCell><TableCell className="text-right">{formatNumber(row.totalFeedGrams, 0)}</TableCell><TableCell className="text-right font-semibold">{formatFixed(row.averageFeed, 2)}</TableCell></TableRow>) : <EmptyRow columns={14} />}</TableBody></Table></>;
 }

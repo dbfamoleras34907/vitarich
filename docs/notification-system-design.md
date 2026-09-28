@@ -48,6 +48,10 @@ The initial integrations are DOC Receiving and Hatchery DOC Dispatch. Delivery, 
 
 ## Core boundaries
 
+Breeder Weight Samples (`BREEDER_WEIGHT_SAMPLES`) has prepared Post/Edit events
+with document farm routing. Activation remains blocked pending deployment and
+authenticated checks. See [sample storage and readiness audit](../app/jmb/placement/card/weight-samples-setup.md).
+
 - A notification event key describes a completed business action. It does not execute or trigger the business action itself.
 - Post, Edit, and Void operations are the triggers. They publish an event only after the authoritative mutation succeeds.
 - Modules do not select recipients or insert directly into per-user inbox tables.

@@ -19,6 +19,7 @@ import { ChevronDown, ChevronUp, Loader2, Paperclip, Save, X } from "lucide-reac
 import { toast } from "sonner";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { compareNaturalText } from "@/lib/utils/naturalSort";
 import {
   createPlacement,
   createPlacementBatch,
@@ -492,6 +493,10 @@ export default function PlacementForm() {
   function buildRowsFromPens(pens: FarmLocationLookup[]) {
     const uniquePens = Array.from(
       new Map(pens.map((pen) => [pen.pen_id, pen])).values(),
+    ).sort(
+      (left, right) =>
+        compareNaturalText(left.pen_no, right.pen_no) ||
+        left.pen_id - right.pen_id,
     );
 
     return uniquePens.map((pen, index) => ({
