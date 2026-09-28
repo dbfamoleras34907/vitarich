@@ -447,6 +447,8 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Placement",
             url: "/jmb/placement",
+            view: true,
+            insert: true,
           },
 
           {
@@ -454,6 +456,8 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Laying Production",
             url: "/jmb/egglaying",
+            view: true,
+            insert: true,
           },
 
           {
@@ -462,6 +466,9 @@ export const NavFolders: NavFolder[] = [
             title: "Breeder Dispatch",
             url: "/jmb/breederdispatch",
             newDocumentUrl: "/jmb/breederdispatch/new",
+            view: true,
+            insert: true,
+            void: true,
           },
 
           {
@@ -470,6 +477,9 @@ export const NavFolders: NavFolder[] = [
             title: "Terminal Culling",
             url: "/jmb/cleanup",
             newDocumentUrl: "/jmb/cleanup/new",
+            view: true,
+            insert: true,
+            void: true,
           },
 
           {
@@ -477,6 +487,10 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Vaccination",
             url: "/jmb/vaccination",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
           },
 
           {
@@ -484,6 +498,10 @@ export const NavFolders: NavFolder[] = [
             type: "Module",
             title: "Medication",
             url: "/jmb/medication",
+            view: true,
+            insert: true,
+            edit: true,
+            void: true,
           },
 
           {

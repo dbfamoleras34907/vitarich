@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 
 const PLACEMENT_TABLE = "tbl_placement";
 const PERFORMANCE_TABLE = "tbl_breeder_daily_performance";
@@ -23,6 +24,12 @@ type PerformanceRow = {
   inv_female: number | null;
   mc_male: number | null;
   mc_female: number | null;
+  cull_male: number | null;
+  cull_female: number | null;
+  kitchen_male: number | null;
+  kitchen_female: number | null;
+  condem_male: number | null;
+  condem_female: number | null;
   avg_body_weight_male: number | null;
   avg_body_weight_female: number | null;
   feed_consumption_male: number | null;
@@ -45,6 +52,12 @@ export type MortalityReportRow = {
   inventoryFemale: number;
   mortalityMale: number;
   mortalityFemale: number;
+  cullMale: number;
+  cullFemale: number;
+  kitchenMale: number;
+  kitchenFemale: number;
+  condemnedMale: number;
+  condemnedFemale: number;
   averageWeightMale: number;
   averageWeightFemale: number;
   feedConsumptionMale: number;
@@ -118,6 +131,21 @@ export type MortalityReportFilters = {
   dateTo: string;
 };
 
+export type BreederPerformanceReportRow = {
+  ageWeek: number;
+  malePopulation: number;
+  femalePopulation: number;
+  mortality: number;
+  otherDepletion: number;
+  totalDepletion: number;
+  maleBodyWeight: number | null;
+  femaleBodyWeight: number | null;
+  averageGramsPerBird: number | null;
+  tep: number;
+  hatchingEgg: number;
+  heRecovery: number | null;
+};
+
 async function cycleIdsForFilters(filters: MortalityReportFilters) {
   if (!filters.cycleNumber) return null;
   let query = db.from("tbl_breeder_cycle").select("id").eq("farm_id", filters.farmId).eq("cycle_no", filters.cycleNumber);
@@ -179,7 +207,7 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
     const ids = placementIds.slice(index, index + 300);
     const { data, error } = await db
       .from(PERFORMANCE_TABLE)
-      .select("id, placement_id, daterec, inv_male, inv_female, mc_male, mc_female, avg_body_weight_male, avg_body_weight_female, feed_consumption_male, feed_consumption_female")
+      .select("id, placement_id, daterec, inv_male, inv_female, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female, avg_body_weight_male, avg_body_weight_female, feed_consumption_male, feed_consumption_female")
       .in("placement_id", ids)
       .eq("isactive", true)
       .gte("daterec", filters.dateFrom)
@@ -211,6 +239,12 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
         inventoryFemale: number(row.inv_female),
         mortalityMale: number(row.mc_male),
         mortalityFemale: number(row.mc_female),
+        cullMale: number(row.cull_male),
+        cullFemale: number(row.cull_female),
+        kitchenMale: number(row.kitchen_male),
+        kitchenFemale: number(row.kitchen_female),
+        condemnedMale: number(row.condem_male),
+        condemnedFemale: number(row.condem_female),
         averageWeightMale: number(row.avg_body_weight_male),
         averageWeightFemale: number(row.avg_body_weight_female),
         feedConsumptionMale: number(row.feed_consumption_male),
@@ -226,6 +260,140 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
         left.recordDate.localeCompare(right.recordDate) ||
         left.id - right.id,
     );
+}
+
+function ageWeek(placementDate: string, recordDate: string) {
+  const start = new Date(`${placementDate}T00:00:00`);
+  const end = new Date(`${recordDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
+  return Math.ceil(days / 7);
+}
+
+/**
+ * Weekly breeder performance summary. Population and body weight use the last
+ * recorded value for each placement/week; depletion and egg production are
+ * accumulated across the week.
+ */
+export async function listBreederPerformanceReport(filters: MortalityReportFilters): Promise<BreederPerformanceReportRow[]> {
+  const placements = await reportPlacements(filters);
+  if (!placements.length) return [];
+
+  const placementIds = placements.map((placement) => Number(placement.id));
+  const placementById = new Map(placements.map((placement) => [Number(placement.id), placement]));
+  const [dailyRows, eggRows] = await Promise.all([
+    listMortalityReport(filters),
+    listBreederEggLayings({ placementIds, from: filters.dateFrom, to: filters.dateTo, ascending: true }),
+  ]);
+
+  type PlacementWeek = {
+    ageWeek: number;
+    latestPopulationDate: string;
+    malePopulation: number;
+    femalePopulation: number;
+    maleWeightDate: string;
+    femaleWeightDate: string;
+    maleBodyWeight: number | null;
+    femaleBodyWeight: number | null;
+    mortality: number;
+    otherDepletion: number;
+    tep: number;
+    hatchingEgg: number;
+  };
+  const placementWeeks = new Map<string, PlacementWeek>();
+
+  const ensureWeek = (placementId: number, recordDate: string) => {
+    const placement = placementById.get(placementId);
+    if (!placement) return null;
+    const week = ageWeek(placement.placement_date, recordDate);
+    if (week == null) return null;
+    const key = `${placementId}:${week}`;
+    const current = placementWeeks.get(key) ?? {
+      ageWeek: week, latestPopulationDate: "", malePopulation: 0, femalePopulation: 0,
+      maleWeightDate: "", femaleWeightDate: "", maleBodyWeight: null, femaleBodyWeight: null,
+      mortality: 0, otherDepletion: 0, tep: 0, hatchingEgg: 0,
+    };
+    placementWeeks.set(key, current);
+    return current;
+  };
+
+  dailyRows.forEach((row) => {
+    const current = ensureWeek(row.placementId, row.recordDate);
+    if (!current) return;
+    if (row.recordDate >= current.latestPopulationDate) {
+      current.latestPopulationDate = row.recordDate;
+      current.malePopulation = row.inventoryMale;
+      current.femalePopulation = row.inventoryFemale;
+    }
+    if (row.averageWeightMale > 0 && row.recordDate >= current.maleWeightDate) {
+      current.maleWeightDate = row.recordDate;
+      current.maleBodyWeight = row.averageWeightMale;
+    }
+    if (row.averageWeightFemale > 0 && row.recordDate >= current.femaleWeightDate) {
+      current.femaleWeightDate = row.recordDate;
+      current.femaleBodyWeight = row.averageWeightFemale;
+    }
+    current.mortality += row.mortalityMale + row.mortalityFemale;
+    current.otherDepletion += row.cullMale + row.cullFemale + row.kitchenMale + row.kitchenFemale + row.condemnedMale + row.condemnedFemale;
+  });
+
+  eggRows.forEach((row) => {
+    const current = ensureWeek(Number(row.placement_id), row.date_laying);
+    if (!current) return;
+    current.tep += number(row.tep_collection);
+    current.hatchingEgg += number(row.hatching_egg);
+  });
+
+  type WeeklyAccumulator = Omit<BreederPerformanceReportRow, "maleBodyWeight" | "femaleBodyWeight" | "averageGramsPerBird" | "heRecovery"> & {
+    maleWeightTotal: number;
+    maleWeightBirds: number;
+    femaleWeightTotal: number;
+    femaleWeightBirds: number;
+  };
+  const weekly = new Map<number, WeeklyAccumulator>();
+  placementWeeks.forEach((row) => {
+    const current = weekly.get(row.ageWeek) ?? {
+      ageWeek: row.ageWeek, malePopulation: 0, femalePopulation: 0, mortality: 0, otherDepletion: 0,
+      totalDepletion: 0, tep: 0, hatchingEgg: 0, maleWeightTotal: 0, maleWeightBirds: 0,
+      femaleWeightTotal: 0, femaleWeightBirds: 0,
+    };
+    current.malePopulation += row.malePopulation;
+    current.femalePopulation += row.femalePopulation;
+    current.mortality += row.mortality;
+    current.otherDepletion += row.otherDepletion;
+    current.totalDepletion = current.mortality + current.otherDepletion;
+    current.tep += row.tep;
+    current.hatchingEgg += row.hatchingEgg;
+    if (row.maleBodyWeight != null && row.malePopulation > 0) {
+      current.maleWeightTotal += row.maleBodyWeight * row.malePopulation;
+      current.maleWeightBirds += row.malePopulation;
+    }
+    if (row.femaleBodyWeight != null && row.femalePopulation > 0) {
+      current.femaleWeightTotal += row.femaleBodyWeight * row.femalePopulation;
+      current.femaleWeightBirds += row.femalePopulation;
+    }
+    weekly.set(row.ageWeek, current);
+  });
+
+  return [...weekly.values()].sort((left, right) => left.ageWeek - right.ageWeek).map((row) => {
+    const maleBodyWeight = row.maleWeightBirds > 0 ? row.maleWeightTotal / row.maleWeightBirds : null;
+    const femaleBodyWeight = row.femaleWeightBirds > 0 ? row.femaleWeightTotal / row.femaleWeightBirds : null;
+    const measuredBirds = row.maleWeightBirds + row.femaleWeightBirds;
+    return {
+      ageWeek: row.ageWeek,
+      malePopulation: row.malePopulation,
+      femalePopulation: row.femalePopulation,
+      mortality: row.mortality,
+      otherDepletion: row.otherDepletion,
+      totalDepletion: row.totalDepletion,
+      maleBodyWeight,
+      femaleBodyWeight,
+      averageGramsPerBird: measuredBirds > 0 ? (row.maleWeightTotal + row.femaleWeightTotal) / measuredBirds : null,
+      tep: row.tep,
+      hatchingEgg: row.hatchingEgg,
+      heRecovery: row.tep > 0 ? (row.hatchingEgg / row.tep) * 100 : null,
+    };
+  });
 }
 
 async function reportPlacements(filters: MortalityReportFilters) {

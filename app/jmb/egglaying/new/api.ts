@@ -1,35 +1,10 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { listBreederEggLayings, type EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+export type { EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 
 const EGG_LAYING_TABLE = "tbl_egglaying";
 const PLACEMENT_TABLE = "tbl_placement";
 const BREEDER_CYCLE_TABLE = "tbl_breeder_cycle";
-
-export type EggLaying = {
-  id: number;
-  created_at: string;
-  created_by: string | null;
-  updated_at: string | null;
-  updated_by: string | null;
-  placement_id: number | null;
-  date_laying: string;
-  farm_id: number | null;
-  farm_name: string | null;
-  building: string | null;
-  age: number | null;
-  tep_collection: number | null;
-  hatching_egg: number | null;
-  classb: number | null;
-  table_egg_dirty: number | null;
-  table_egg_misshapen: number | null;
-  table_egg_off_size: number | null;
-  table_egg_thin_shell: number | null;
-  crack: number | null;
-  junior: number | null;
-  jumbo: number | null;
-  condemn: number | null;
-  is_active: boolean;
-  building_id: number | null;
-};
 
 export type EggLayingInsert = Omit<
   EggLaying,
@@ -67,38 +42,17 @@ export type LayingPlacement = {
 };
 
 export async function listEggLayings() {
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .select("*")
-    .eq("is_active", true)
-    .order("date_laying", { ascending: false })
-    .order("id", { ascending: false });
-
-  if (error) throw error;
-  return (data ?? []) as EggLaying[];
+  return listBreederEggLayings();
 }
 
 export async function listEggLayingHistoryByFarm(params: {
   farmId?: number | null;
   farmName?: string | null;
 }) {
-  let query = db
-    .from(EGG_LAYING_TABLE)
-    .select("*")
-    .eq("is_active", true)
-    .order("date_laying", { ascending: false })
-    .order("id", { ascending: false });
-
-  if (params.farmId) {
-    query = query.eq("farm_id", params.farmId);
-  } else if (params.farmName) {
-    query = query.eq("farm_name", params.farmName);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const rows = (data ?? []) as EggLaying[];
+  const rows = await listBreederEggLayings({
+    farmId: params.farmId ?? undefined,
+    farmName: params.farmName ?? undefined,
+  });
   const placementIds = Array.from(new Set(rows
     .map((row) => Number(row.placement_id ?? 0))
     .filter((id) => id > 0)));
@@ -163,32 +117,11 @@ export async function createEggLaying(payload: EggLayingInsert) {
 }
 
 export async function listEggLayingsByPlacement(placementId: number) {
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .select("*")
-    .eq("placement_id", placementId)
-    .eq("is_active", true)
-    .order("date_laying", { ascending: true })
-    .order("id", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as EggLaying[];
+  return listBreederEggLayings({ placementIds: [placementId], ascending: true });
 }
 
 export async function listEggLayingsByPlacements(placementIds: number[]) {
-  const validPlacementIds = [...new Set(placementIds.filter((id) => Number.isInteger(id) && id > 0))];
-  if (!validPlacementIds.length) return [];
-
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .select("*")
-    .in("placement_id", validPlacementIds)
-    .eq("is_active", true)
-    .order("date_laying", { ascending: true })
-    .order("id", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as EggLaying[];
+  return listBreederEggLayings({ placementIds, ascending: true });
 }
 
 export async function createEggLayingBatch(payloads: EggLayingInsert[]) {

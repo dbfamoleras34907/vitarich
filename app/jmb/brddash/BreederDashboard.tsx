@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Bird, CalendarDays, HeartCrack, Percent, Scale, Wheat } from "lucide-react";
+import { Bird, CalendarDays, Egg, HeartCrack, House, Percent, Scale, Wheat } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
@@ -30,6 +30,8 @@ import BreederBodyWeight from "./BreederBodyWeight";
 import { breederFeedStandard } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { breederAgeDays } from "./api";
+import { COBB_EGG_PRODUCTION_LABEL, COBB_EGG_PRODUCTION_SOURCE } from "@/app/jmb/lib/data/queries/cobb500BreederEggProduction";
+import type { EggRangeBuilding } from "@/app/jmb/lib/breederWeeklyEggProduction";
 
 const ALL_FARMS = "__all__";
 
@@ -39,18 +41,37 @@ const decimal = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const showEggNumber = (value: number | null | undefined, suffix = "", whole = false) =>
+  value == null ? "N/A" : `${(whole ? integer : decimal).format(value)}${suffix}`;
+
+function EggRangeDetails({ rows, metric, allFarms }: { rows: EggRangeBuilding[]; metric: "tep" | "hen" | "recovery"; allFarms: boolean }) {
+  return rows.length ? <div className="max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
+    {rows.map(row => <div key={row.key} className="space-y-0.5 border-t pt-1">
+      <p className="font-semibold text-foreground">{allFarms ? `${row.farmName} / ` : ""}{row.buildingName}</p>
+      <p>{row.from} – {row.to} · {row.recordedDays}/{row.daysInRange} production days recorded{row.partial ? " (partial)" : ""}</p>
+      <p className="font-medium text-foreground">{metric === "tep"
+        ? `Actual ${showEggNumber(row.totalEggs, " eggs", true)} / Std ${showEggNumber(row.standardEggs, " eggs", true)}`
+        : metric === "hen" ? `Actual ${showEggNumber(row.eggsPerHen)} / Std ${showEggNumber(row.standardEggsPerHen)} eggs/hen`
+          : `${showEggNumber(row.hatchRecovery, "%")} · ${showEggNumber(row.goodEggs, " good eggs", true)}`}</p>
+      {row.issue && <p className="text-amber-700 dark:text-amber-400">{row.issue}</p>}
+    </div>)}
+  </div> : <p>No egg production recorded in the selected date range.</p>;
+}
+
 function StatCard({
   title,
   value,
   helper,
   icon,
   accent,
+  className,
 }: {
   title: string;
   value: string;
   helper: React.ReactNode;
   icon: React.ReactNode;
   accent: string;
+  className?: string;
 }) {
   const titleColors: Record<string, string> = {
     "text-violet-500": "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200",
@@ -58,9 +79,11 @@ function StatCard({
     "text-rose-500": "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200",
     "text-blue-500": "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
     "text-amber-500": "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+    "text-emerald-500": "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+    "text-teal-500": "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200",
   };
   return (
-    <Card className={`overflow-hidden gap-0 py-0 ${accent}`}>
+    <Card className={`overflow-hidden gap-0 py-0 ${accent} ${className ?? ""}`}>
       <CardContent className="p-0">
         <div className="h-1 w-full bg-current opacity-80" />
         <div className="flex items-start justify-between gap-3 p-4">
@@ -154,6 +177,9 @@ export default function BreederDashboard() {
   }, [filter]);
 
   const totals = summary?.totals;
+  const eggRange = summary?.eggRangeProduction;
+  const eggRangeTotals = eggRange?.totals;
+  const eggStandardLink = <a className="underline underline-offset-2" href={COBB_EGG_PRODUCTION_SOURCE} target="_blank" rel="noreferrer">{COBB_EGG_PRODUCTION_LABEL}</a>;
   const activePlacements = summary?.activePlacements ?? [];
   const agePlacement = activePlacements[0];
   const ageOnCalendarDate = (date: Date) => {
@@ -221,10 +247,10 @@ export default function BreederDashboard() {
 
         {loading && !summary ? (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-48 w-full" />)}
+            {Array.from({ length: 9 }, (_, index) => <Skeleton key={index} className="h-48 w-full" />)}
           </div>
         ) : (
-          <div className="grid auto-rows-fr items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading}>
+          <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading}>
             <StatCard
             title="Population"
             value={loading ? "Loading..." : integer.format(population)}
@@ -294,9 +320,15 @@ export default function BreederDashboard() {
             title="Uniformity"
             value={loading ? "Loading..." : `Male ${summary?.latestUniformity.male ? decimal.format(summary.latestUniformity.male.value) + "%" : "N/A"} / Female ${summary?.latestUniformity.female ? decimal.format(summary.latestUniformity.female.value) + "%" : "N/A"}`}
             helper={<div className="space-y-1">
-              <p>Latest recorded uniformity for the latest flock.</p>
+              <p>{summary?.weightSampleStorageAvailable === false ? "Weight sample storage is not installed." : "Latest 50-bird samples for the latest flock."}</p>
               <p>{latestFlockAge ? `${latestFlockAge.farmName} / ${latestFlockAge.buildingName} / ${latestFlockAge.penName}` : "No flock selected."}</p>
-              <p>Male: {summary?.latestUniformity.male?.date ?? "Not recorded"}<br />Female: {summary?.latestUniformity.female?.date ?? "Not recorded"}</p>
+              {(["male", "female"] as const).map(sex => {
+                const reading = summary?.latestUniformity[sex];
+                return <p key={sex}>
+                  {sex === "male" ? "Male" : "Female"}: {reading ? `${reading.sampleCount} samples · ${decimal.format(reading.meanGrams)} g average · ${reading.date}` : "No samples recorded"}
+                  {reading?.ageDays != null ? ` · Age ${Math.floor(reading.ageDays / 7)}.${reading.ageDays % 7} (Weeks.Day)` : ""}
+                </p>;
+              })}
             </div>}
             icon={<Percent className="size-6 text-violet-700" />}
             accent="text-violet-500"
@@ -318,6 +350,45 @@ export default function BreederDashboard() {
               </div>}
               icon={<Wheat className="size-6 text-amber-700" />}
               accent="text-amber-500"
+            />
+            <StatCard
+              title="TEP"
+              value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.totalEggs, " eggs", true)}
+              helper={<div className="space-y-1">
+                <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggs, " eggs", true)}</p>
+                <p>Production: {showEggNumber(eggRangeTotals?.productionPercent, "%")} / Std {showEggNumber(eggRangeTotals?.standardPercent, "%")}</p>
+                <p>Totals for the selected Production Date Range.</p>
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="tep" allFarms={farmId === ALL_FARMS} />
+                <p className="text-xs">{eggStandardLink}. Actual and standard use the same recorded days.</p>
+                {!!eggRange?.excludedRecords && <p className="text-xs text-amber-700">{eggRange.excludedRecords} unmatched egg records excluded.</p>}
+              </div>}
+              icon={<Egg className="size-6 text-emerald-700" />}
+              accent="text-emerald-500"
+            />
+            <StatCard
+              title="TEP per Hen House"
+              value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.eggsPerHen, " eggs/hen")}
+              helper={<div className="space-y-1">
+                <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggsPerHen, " eggs/hen")}</p>
+                <p>TEP ÷ average live females on recorded days.</p>
+                <p>Average live females: {showEggNumber(eggRangeTotals?.averageLiveFemales, "", true)}</p>
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="hen" allFarms={farmId === ALL_FARMS} />
+                <p className="text-xs">{eggStandardLink} production rate converted to eggs per live hen.</p>
+              </div>}
+              icon={<House className="size-6 text-teal-700" />}
+              accent="text-teal-500"
+            />
+            <StatCard
+              title="Hatch Recovery"
+              value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.hatchRecovery, "%")}
+              helper={<div className="space-y-1">
+                <p>Good Egg ÷ TEP × 100</p>
+                <p>Good Egg: {showEggNumber(eggRangeTotals?.goodEggs, "", true)} / TEP: {showEggNumber(eggRangeTotals?.totalEggs, "", true)}</p>
+                <p>Good Egg uses Egg Laying&apos;s Hatching Egg count.</p>
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="recovery" allFarms={farmId === ALL_FARMS} />
+              </div>}
+              icon={<Percent className="size-6 text-blue-700" />}
+              accent="text-blue-500"
             />
           </div>
         )}

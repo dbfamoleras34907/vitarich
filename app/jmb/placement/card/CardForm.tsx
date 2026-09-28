@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import type { Placement } from "../new/api";
+import WeightSamplesDialog from "./WeightSamplesDialog";
 import {
   getPlacement,
   listDailyPerformance,
@@ -1612,6 +1613,7 @@ export default function CardForm() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                  <WeightSamplesDialog key={placement.id} placement={placement} disabled={saving || savingDraft} />
                   <Button
                     type="button"
                     variant="outline"

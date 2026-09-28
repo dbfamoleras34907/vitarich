@@ -528,6 +528,26 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'BREEDER_WEIGHT_SAMPLES' then
+        select exists (
+          select 1 from public.breeder_weight_samples s
+          join public.farms f on f.id = s.farm_id
+          join public.tbl_placement p on p.id = s.placement_id and p.farm_id = f.id
+          where s.id::text = v_event.entity_id and s.farm_id = v_event.farm_id
+            and s.farm_id = v_event.recipient_farm_id
+            and v_event.entity_type = 'breeder_weight_samples' and v_event.fms_type = 'Breeder'
+            and v_event.permission_group = 'Breeder Masters' and v_event.permission_title = 'Placement/view'
+            and v_event.document_no = 'BWS-' || s.id
+            and v_event.event_key in ('BREEDER_WEIGHT_SAMPLES_POSTED', 'BREEDER_WEIGHT_SAMPLES_EDITED')
+            and v_event.posting_version > 0 and s.revision >= v_event.posting_version
+            and v_event.dedupe_key = v_event.event_key || ':' || s.id || ':' || v_event.posting_version
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox set status = 'invalid', processed_at = now(),
+            processing_started_at = null, last_error = 'Weight sample source or canonical farm is invalid.'
+          where id = v_event.id;
+          continue;
+        end if;
       elsif v_event.module_key = 'BREEDER_CLEANUP' then
         select exists (
           select 1 from public.tbl_breeder_cleanup c
@@ -726,7 +746,7 @@ begin
               left join public.farms farm on farm.code = recipient_farm.farm_code
               where recipient_farm.users_id = recipient.id
                 and btrim(coalesce(recipient_farm.void::text, '0')) = '1'
-                and case when v_event.module_key in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP')
+                and case when v_event.module_key in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP', 'BREEDER_WEIGHT_SAMPLES')
                   then recipient_farm.farm_id
                   else coalesce(recipient_farm.farm_id, farm.id) end = v_event.recipient_farm_id
             )
@@ -736,7 +756,7 @@ begin
             or recipient.auth_id is distinct from v_event.actor_auth_id
           )
           and (
-            (not rule.require_view_permission and v_event.module_key not in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP'))
+            (not rule.require_view_permission and v_event.module_key not in ('DOC_CLASSIFICATION', 'BREEDER_CLEANUP', 'BREEDER_WEIGHT_SAMPLES'))
             or coalesce(recipient.user_type, 3) = 1
             or exists (
               select 1

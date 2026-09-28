@@ -3,6 +3,20 @@ import type { NotificationCatalog } from "./types";
 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BREEDER_WEIGHT_SAMPLES,
+    ruleActivationReady: false, // Enable only after sample SQL deployment and verification.
+    label: "Breeder Weight Samples",
+    description: "Saved individual body weights from Population Record.",
+    fmsTypes: ["Breeder"],
+    permissionGroup: "Breeder Masters",
+    permissionTitle: "Placement/view",
+    baseUrl: "/jmb/placement",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_WEIGHT_SAMPLES.POSTED, label: "Weight Samples Posted", description: "First saved set of weights for a placement and date.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_WEIGHT_SAMPLES.EDITED, label: "Weight Samples Edited", description: "Persisted change to an existing set of weights.", action: "edited", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.BR_CLEANUP,
     ruleActivationReady: false, // Enable only after target SQL deployment and verification.
     label: "Clean up",

@@ -38,6 +38,7 @@ export type BreederCleanupRow = {
   male_condemn_variance: number;
   age: number | null;
   date_of_culling: string | null;
+  dr_no: string | null;
   body_weight: string | null;
   buyer_name: string | null;
   hauler_name: string | null;
@@ -87,6 +88,7 @@ export type BreederCleanupInput = {
   cycle_ids?: number[];
   record_scope?: "pen" | "building";
   date_of_culling: string | null;
+  dr_no: string | null;
   body_weight: string | null;
   buyer_name: string | null;
   hauler_name: string | null;
@@ -294,7 +296,12 @@ async function validatedPayload(input: BreederCleanupInput, recordId?: number) {
   }
   const femaleSystemBalance = existingRecord?.female_system_balance ?? members.reduce((sum, item) => sum + item.female_system_balance, 0);
   const maleSystemBalance = existingRecord?.male_system_balance ?? members.reduce((sum, item) => sum + item.male_system_balance, 0);
-  // The remaining signed balance is Condemn Variance; culling may exceed inventory.
+  if (input.female_cleanup_qty > femaleSystemBalance) {
+    throw new Error(`Female Culling Qty cannot exceed the available inventory of ${femaleSystemBalance.toLocaleString("en-US")}.`);
+  }
+  if (input.male_cleanup_qty > maleSystemBalance) {
+    throw new Error(`Male Culling Qty cannot exceed the available inventory of ${maleSystemBalance.toLocaleString("en-US")}.`);
+  }
   return {
     cycle_id: existingRecord?.cycle_id ?? cycle.id,
     cycle_ids: memberIds,
@@ -308,6 +315,7 @@ async function validatedPayload(input: BreederCleanupInput, recordId?: number) {
     male_cleanup_qty: input.male_cleanup_qty,
     remarks: input.remarks?.trim() || null,
     date_of_culling: input.date_of_culling,
+    dr_no: input.dr_no?.trim() || null,
     body_weight: input.body_weight?.trim() || null,
     buyer_name: input.buyer_name?.trim() || null,
     hauler_name: input.hauler_name?.trim() || null,

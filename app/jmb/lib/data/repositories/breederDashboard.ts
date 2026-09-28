@@ -1,6 +1,10 @@
+import { breederAgeDays } from "../../breederAge";
+import { calculateEggRangeProduction, emptyEggRangeProduction, type EggRangeProduction } from "../../breederWeeklyEggProduction";
+import { listBreederEggLayings } from "./breederEggLaying";
 import { listBreederCycles } from "@/app/jmb/placement/new/api";
 import { db } from "@/lib/Supabase/supabaseClient";
 import { format, parseISO, startOfMonth, startOfWeek } from "date-fns";
+import { listBreederWeightSamples } from "./breederWeightSamples";
 
 const PLACEMENT_TABLE = "tbl_placement";
 const PERFORMANCE_TABLE = "tbl_breeder_daily_performance";
@@ -98,13 +102,23 @@ export type BreederWeeklyBodyWeight = {
   female: WeeklyBodyWeightReading | null;
 };
 
+export type BreederUniformityReading = {
+  value: number;
+  date: string;
+  ageDays: number | null;
+  sampleCount: number;
+  meanGrams: number;
+};
+
 export type BreederDashboardSummary = {
+  eggRangeProduction: EggRangeProduction;
+  weightSampleStorageAvailable: boolean;
   depletionRates: {
     growing: { openingPopulation: number | null; ratePercent: number | null };
     laying: { openingPopulation: number | null; ratePercent: number | null };
   };
   activePlacements: { id: number; placementDate: string; farmName: string; buildingName: string; penName: string }[];
-  latestUniformity: { male: { value: number; date: string } | null; female: { value: number; date: string } | null };
+  latestUniformity: { male: BreederUniformityReading | null; female: BreederUniformityReading | null };
   latestFeed: { date: string; ageDays: number | null; gramsPerBird: number | null } | null;
   latestFlockAge: {
     placementId: number;
@@ -136,19 +150,7 @@ export type BreederTrendRow = {
   averageFeedGrams: number;
 };
 
-// Population Record treats placement day as age 0.1 (day one).
-// Weeks.Day is base seven: 25.0 = 175 days, 25.1 = 176, 65.0 = 455.
-export function breederAgeDays(placementDate: string | undefined, recordDate: string): number | null {
-  const calendarDay = (value: string | undefined) => {
-    const date = value?.slice(0, 10) ?? "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Number.NaN;
-    const timestamp = Date.parse(`${date}T00:00:00Z`);
-    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date
-      ? timestamp : Number.NaN;
-  };
-  const days = (calendarDay(recordDate) - calendarDay(placementDate)) / 86_400_000 + 1;
-  return Number.isInteger(days) && days >= 1 ? days : null;
-}
+export { breederAgeDays } from "../../breederAge";
 
 export function mortalityAgeBucket(placementDate: string | undefined, recordDate: string) {
   const days = breederAgeDays(placementDate, recordDate);
@@ -333,6 +335,8 @@ export async function getBreederDashboard(
         laying: { openingPopulation: null, ratePercent: null },
       },
       activePlacements: [],
+      weightSampleStorageAvailable: true,
+      eggRangeProduction: emptyEggRangeProduction(),
       latestUniformity: { male: null, female: null },
       latestFlockAge: null,
       latestFeed: null,
@@ -360,7 +364,12 @@ export async function getBreederDashboard(
   }
 
   const placementById = new Map(placements.map((row) => [Number(row.id), row]));
-  const performance = await performanceForPlacements([...placementById.keys()], filter, true);
+  const [performance, weightSamples, eggs] = await Promise.all([
+    performanceForPlacements([...placementById.keys()], filter, true),
+    listBreederWeightSamples({ placementIds: [...placementById.keys()], to: filter.to }),
+    listBreederEggLayings({ from: filter.from, to: filter.to, farmId: filter.farmId, ascending: true }),
+  ]);
+  const eggRangeProduction = calculateEggRangeProduction({ ...filter, placements, performance, eggs });
   const latestByPlacement = new Map<number, PerformanceRow>();
   // Same opening-inventory basis as Breeder Reports, split by age period.
   // Take each placement's first eligible record once, never sum daily inventories.
@@ -544,6 +553,18 @@ export async function getBreederDashboard(
       row[sex] = { date: record.daterec.slice(0, 10), ageDays, value: Number(value) };
     }
   }
+  // Saved individual samples are authoritative for that date; keep a newer
+  // manual weekly weighing when no sample set has been recorded for it.
+  for (const sample of weightSamples.records) {
+    const row = weightsByPlacement.get(Number(sample.placement_id));
+    const placement = placementById.get(Number(sample.placement_id));
+    if (!row || !placement || Number(sample.farm_id) !== Number(placement.farm_id)) continue;
+    for (const sex of ["male", "female"] as const) {
+      if (!row[sex] || sample.sample_date >= row[sex].date) {
+        row[sex] = { date: sample.sample_date, ageDays: breederAgeDays(placement.placement_date, sample.sample_date), value: Number(sample[`${sex}_mean`]) };
+      }
+    }
+  }
   weeklyBodyWeights.sort((a, b) => a.farmName.localeCompare(b.farmName)
     || a.buildingName.localeCompare(b.buildingName, undefined, { numeric: true })
     || a.penName.localeCompare(b.penName, undefined, { numeric: true })
@@ -569,12 +590,16 @@ export async function getBreederDashboard(
       : null,
   } : null;
   const latestUniformity: BreederDashboardSummary["latestUniformity"] = { male: null, female: null };
-  for (const record of performance) {
-    if (Number(record.placement_id) !== latestPlacement?.id) continue;
-    for (const [sex, value] of [["male", record.m_uniformity], ["female", record.f_uniformity]] as const) {
-      if (value != null && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100) {
-        latestUniformity[sex] = { value: Number(value), date: record.daterec.slice(0, 10) };
-      }
+  for (const sample of weightSamples.records) {
+    if (Number(sample.placement_id) !== latestPlacement?.id || Number(sample.farm_id) !== Number(latestPlacement.farm_id)) continue;
+    for (const sex of ["male", "female"] as const) {
+      latestUniformity[sex] = {
+        value: Number(sample[`${sex}_uniformity`]),
+        date: sample.sample_date,
+        ageDays: breederAgeDays(latestPlacement.placement_date, sample.sample_date),
+        sampleCount: sample[`${sex}_weights`].length,
+        meanGrams: Number(sample[`${sex}_mean`]),
+      };
     }
   }
   const activeCycleIds = new Set((await listBreederCycles())
@@ -597,7 +622,7 @@ export async function getBreederDashboard(
     growing: depletionRate(openingByAgePeriod.growingMortality, totals.growingMortality),
     laying: depletionRate(openingByAgePeriod.layingMortality, totals.layingMortality),
   };
-  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates };
+  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates, weightSampleStorageAvailable: weightSamples.available, eggRangeProduction };
 }
 
 export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {

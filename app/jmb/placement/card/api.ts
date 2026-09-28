@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { compareNaturalText } from "@/lib/utils/naturalSort";
 import type { Placement } from "../new/api";
 
 const TABLE = "tbl_breeder_daily_performance";
@@ -94,15 +95,16 @@ export async function listPlacementPens(placement: Placement) {
     .select("*")
     .eq("farm_id", placement.farm_id)
     .eq("building_id", placement.building_id)
-    .eq("placement_date", placement.placement_date)
-    .order("pen_no", { ascending: true })
-    .order("id", { ascending: true });
+    .eq("placement_date", placement.placement_date);
 
   if (placement.dr_no?.trim()) query = query.eq("dr_no", placement.dr_no.trim());
 
   const { data, error } = await query;
   if (error) throw new Error(errorMessage(error));
-  return (data ?? []) as Placement[];
+  return ((data ?? []) as Placement[]).sort(
+    (left, right) =>
+      compareNaturalText(left.pen_no, right.pen_no) || left.id - right.id,
+  );
 }
 
 export async function listFeedTypes() {

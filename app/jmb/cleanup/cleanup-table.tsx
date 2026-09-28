@@ -104,6 +104,7 @@ export default function CleanupTable() {
           record.building_name,
           record.age,
           record.date_of_culling,
+          record.dr_no,
           record.body_weight,
           record.buyer_name,
           record.hauler_name,
@@ -224,7 +225,7 @@ export default function CleanupTable() {
                 {["Created", "Cycle", "Farm", "Building", "Age", "Date of Culling"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
                 <TableHead scope="colgroup" colSpan={3} className="bg-pink-100 text-center text-pink-900">Female</TableHead>
                 <TableHead scope="colgroup" colSpan={3} className="bg-sky-100 text-center text-sky-900">Male</TableHead>
-                {["Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
+                {["TS/DR #", "Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
               </TableRow>
               <TableRow>
                 {["Female", "Male"].flatMap(sex => ["Balance", "Culling Qty", "Condemn Variance"].map(label => <TableHead key={sex + label} scope="col" className={`min-w-24 text-right ${sex === "Female" ? "bg-pink-100 text-pink-900" : "bg-sky-100 text-sky-900"}`}>{label}</TableHead>))}
@@ -233,7 +234,7 @@ export default function CleanupTable() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={19} className="h-32 text-center">
+                  <TableCell colSpan={20} className="h-32 text-center">
                     <Loader2 className="mx-auto size-5 animate-spin" />
                   </TableCell>
                 </TableRow>
@@ -279,6 +280,7 @@ export default function CleanupTable() {
                       {record.male_cleanup_qty.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{(record.male_condemn_variance ?? record.male_system_balance - record.male_cleanup_qty).toLocaleString()}</TableCell>
+                    <TableCell className="whitespace-nowrap">{record.dr_no || "-"}</TableCell>
                     <TableCell>{record.body_weight || "-"}</TableCell>
                     <TableCell>{record.buyer_name || "-"}</TableCell>
                     <TableCell>{record.hauler_name || "-"}</TableCell>
@@ -318,7 +320,7 @@ export default function CleanupTable() {
               {!loading && !filtered.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={19}
+                    colSpan={20}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No breeder Terminal Culling records found.

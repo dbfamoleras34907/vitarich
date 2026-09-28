@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
+import { compareNaturalText } from "@/lib/utils/naturalSort";
 import type { Placement } from "../../placement/new/api";
 
 const HEADER_TABLE = "tbl_brd_dispatch";
@@ -96,7 +97,7 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   let placementQuery = db.from("tbl_placement").select("*").lte("placement_date", dispatchDate);
   if (farmId) placementQuery = placementQuery.eq("farm_id", farmId);
   const [{ data: placements, error: placementError }, { data: farms, error: farmError }] = await Promise.all([
-    placementQuery.order("building_no").order("pen_no"), db.from("view_breeder_farm").select("id, code"),
+    placementQuery, db.from("view_breeder_farm").select("id, code"),
   ]);
   if (placementError) throw placementError;
   if (farmError) throw farmError;
@@ -110,7 +111,11 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   const byPlacement = new Map<number, Record<string, unknown>[]>();
   dailyRows.forEach((row) => { const id = Number(row.placement_id); byPlacement.set(id, [...(byPlacement.get(id) ?? []), row]); });
   const farmCode = new Map((farms ?? []).map((row) => [Number(row.id), row.code as string | null]));
-  return ((placements ?? []) as Placement[]).map((placement): AvailableBreederFlock => {
+  return ((placements ?? []) as Placement[]).sort((left, right) =>
+    compareNaturalText(left.building_no, right.building_no) ||
+    compareNaturalText(left.pen_no, right.pen_no) ||
+    left.id - right.id,
+  ).map((placement): AvailableBreederFlock => {
     const rows = byPlacement.get(placement.id) ?? [];
     let male = count(placement.m_endingbalance ?? placement.m_beg - placement.m_doa - placement.m_reject - placement.m_shortcount);
     let female = count(placement.f_endingbalance ?? placement.f_beg - placement.f_doa - placement.f_reject - placement.f_shortcount);
