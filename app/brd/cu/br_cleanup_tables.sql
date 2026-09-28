@@ -28,6 +28,7 @@ create table if not exists public.br_cleanup (
   gi_no text not null unique,
   issue_date date not null,
   farm_id bigint null references public.farms (id),
+  farm_cycle_id bigint null references public.doc_farm_cycles (id),
   farm_code text null,
   farm_name text null,
   from_warehouse_id bigint null references public.i_warehouse (id),
@@ -73,6 +74,7 @@ create table if not exists public.br_cleanup_lines (
 
 create index if not exists br_cleanup_issue_date_idx on public.br_cleanup (issue_date desc);
 create index if not exists br_cleanup_farm_id_idx on public.br_cleanup (farm_id);
+create index if not exists br_cleanup_farm_cycle_id_idx on public.br_cleanup (farm_cycle_id);
 create index if not exists br_cleanup_status_idx on public.br_cleanup (status);
 create index if not exists br_cleanup_lines_cleanup_id_idx on public.br_cleanup_lines (br_cleanup_id);
 create index if not exists br_cleanup_lines_item_id_idx on public.br_cleanup_lines (item_id);
@@ -205,6 +207,7 @@ begin
         public.get_brd_fc_last_mortality_age(card.id) as actual_age
       from public.flock_card card
       where card.farm_id = new.farm_id
+        and card.farm_cycle_id = new.farm_cycle_id
         and card.void = '1'
         and card.status = 'Saved'
         and (
@@ -236,6 +239,7 @@ begin
       from public.br_cleanup_lines line
       join public.flock_card card
         on card.farm_id = new.farm_id
+       and card.farm_cycle_id = new.farm_cycle_id
        and card.void = '1'
        and card.status = 'Saved'
        and (
@@ -402,6 +406,7 @@ begin
     from public.br_cleanup_lines line
     join public.flock_card card
       on card.farm_id = new.farm_id
+     and card.farm_cycle_id = new.farm_cycle_id
      and card.void = '1'
      and card.status = 'Saved'
      and (
@@ -486,6 +491,7 @@ begin
     from selected_buildings selected
     join public.flock_card card
       on card.farm_id = new.farm_id
+     and card.farm_cycle_id = new.farm_cycle_id
      and card.void = '1'
      and card.status = 'Saved'
      and (
@@ -548,6 +554,7 @@ begin
     from public.br_cleanup_lines line
     join public.flock_card card
       on card.farm_id = new.farm_id
+      and card.farm_cycle_id = new.farm_cycle_id
       and card.void = '1'
       and card.status = 'Closed'
       and card.extra->>'closed_by_doc_type' = 'BR_CLEANUP'

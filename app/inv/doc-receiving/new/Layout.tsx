@@ -49,6 +49,7 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
+import { formatCycleMask } from '@/lib/broiler/cycleMask'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
@@ -119,6 +120,13 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
   { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
 ]
+
+const getBuildingCycleOptionLabel = (
+  building: FarmBuildingListRow,
+  activeCycle: GoodsReceiptOpenFlockBuilding | undefined,
+) => `${building.code}${activeCycle?.cycleNumber ? ` · Cycle #${activeCycle.cycleNumber}` : ''} - ${building.name}${
+  activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'
+}`
 
 const DOC_RECEIVING_MODAL_GROUPS = [
   {
@@ -355,6 +363,7 @@ const emptyCycleForm = (): CycleInformationForm => ({
   startDate: '',
   breed: '',
   cycleNumber: '1',
+  farmCycleId: '',
 })
 
 const newLine = (): GoodsReceiptLine => ({
@@ -831,6 +840,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         warehouseName: building.name,
         cardNo: flockCard.cardNo,
         flockCode: flockCard.flockCode,
+        cycleNumber: flockCard.cycleMask || '',
         cycleAge: flockCard.age,
       } satisfies GoodsReceiptOpenFlockBuilding]
     })
@@ -1779,7 +1789,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           getFarmCycleMasterRows(receipt.farmId, { status: 'Saved' }),
         ])
         setCycleForm(current => ({
-          ...current, cycleNumber: farmCycle.cycleNumber,
+          ...current, cycleNumber: farmCycle.cycleNumber, farmCycleId: farmCycle.id ? String(farmCycle.id) : '',
           farmCycleStartDate: activeCycles.find(cycle => cycle.id === farmCycle.id)?.startDate ?? null
         }))
       }
@@ -1890,7 +1900,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     setSavingCycle(true)
     try {
-      const farmCycle = cycleIsExcluded ? null : await ensureActiveDocFarmCycle(receipt.farmId)
+      const farmCycle = cycleIsExcluded
+        ? null
+        : cycleForm.farmCycleId
+          ? { id: Number(cycleForm.farmCycleId), cycleNumber: cycleForm.cycleNumber }
+          : await ensureActiveDocFarmCycle(receipt.farmId)
+      const createdCycleNumber = farmCycle?.cycleNumber ?? cycleForm.cycleNumber
+      const createdCycleMask = formatCycleMask(createdCycleNumber, cycleForm.startDate)
       const saved = await saveFlockCardPlacement({
         farmId: receipt.farmId,
         farmCode: receipt.farmCode,
@@ -1903,7 +1919,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age: cycleAge,
         startDate: cycleForm.startDate,
         breed: cycleForm.breed,
-        cycleNumber: farmCycle?.cycleNumber ?? cycleForm.cycleNumber,
+        cycleNumber: createdCycleNumber,
         farmCycleId: farmCycle?.id ?? null,
         animalQty: calculateActualReceived(targetRow ?? {}),
         extra: {
@@ -1922,6 +1938,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         warehouseName: cycleBuilding.name,
         cardNo: saved.cardNo,
         flockCode: '',
+        cycleNumber: createdCycleMask,
         cycleAge,
       }
       if (cycleTarget.kind === 'row') {
@@ -1939,7 +1956,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       }
       setFarmBuildings(current => current.map(building =>
         building.id === cycleBuilding.id
-          ? { ...building, flockCard: { id: saved.id, cardNo: saved.cardNo, age: cycleAge, startDate: cycleForm.startDate, flockCode: '', breed: cycleForm.breed, animalQty: calculateActualReceived(targetRow ?? {}), status: 'Saved' } }
+          ? { ...building, flockCard: { id: saved.id, farmCycleId: farmCycle?.id ?? null, cardNo: saved.cardNo, cycleMask: createdCycleMask, age: cycleAge, startDate: cycleForm.startDate, flockCode: '', breed: cycleForm.breed, animalQty: calculateActualReceived(targetRow ?? {}), status: 'Saved' } }
           : building
       ))
       setCycleModalOpen(false)
@@ -2442,9 +2459,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               column.code !== 'actual_received',
                             )
                           }
-                          onCopyDown={() => docDetailsCopyDown.copyToBottom(
+                          onCopyDown={sourceValue => docDetailsCopyDown.copyToBottom(
                             docDetailRows.findIndex(candidate => candidate.id === row.id),
                             DOC_RECEIVING_DETAIL_COLUMNS.findIndex(candidate => candidate.code === column.code),
+                            sourceValue,
                           )}
                         >
                           {column.code === 'building' ? (
@@ -2472,8 +2490,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                     key={building.key}
                                     value={building.id ?? ''}
                                   >
-                                    {building.code} - {building.name}
-                                    {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
+                                    {getBuildingCycleOptionLabel(building, activeCycle)}
                                   </option>
                                 ))}
                               </select>
@@ -2662,8 +2679,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                         key={building.key}
                                         value={building.id ?? ''}
                                       >
-                                        {building.code} - {building.name}
-                                        {activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'}
+                                        {getBuildingCycleOptionLabel(building, activeCycle)}
                                       </option>
                                     ))}
                                   </select>
@@ -3307,6 +3323,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         saving={savingCycle}
         cycleNumberEditable={cycleIsExcluded}
         farmCycle={!cycleIsExcluded}
+        farmId={receipt?.farmId ?? null}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}
         onCancel={() => {

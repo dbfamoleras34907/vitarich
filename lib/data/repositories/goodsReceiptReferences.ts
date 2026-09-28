@@ -20,6 +20,7 @@ export type GoodsReceiptOpenFlockBuilding = {
   warehouseName: string
   cardNo: string
   flockCode: string
+  cycleNumber?: string
   cycleAge: number
 }
 

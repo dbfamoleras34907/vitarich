@@ -176,7 +176,21 @@ async function main() {
   assert.equal(model.buildingMetrics({ ...building, placements: [] }).population, null)
   const second = { ...building, flockCardId: 20, startingPopulation: 900, deliveries: [], growingLines: [{ ...building.growingLines.find(row => row.id === 3), mortalityAm: 9, mortalityTotal: 9, thin_am: 0, thinningAm: 0, thinningPm: 0, thinningTotal: 9, actualWeight: 200 }] }
   const combined = model.dashboardMetrics([building, second])
-  assert(Math.abs(combined.mortalityPercent - 1.1) < 1e-12, 'Farm mortality uses total deaths / total placed, not mean percentages')
+  assert.equal(combined.mortalityPercent, 5.5, 'Farm mortality uses receipt totals even when flock-card quantities differ')
+  const receivedSecond = { ...second, placements: [{ ...openingReceipt, id: 29, actualReceived: 900 }] }
+  assert.equal(model.buildingMetrics(receivedSecond).mortalityPercent, 1)
+  assert(Math.abs(model.dashboardMetrics([building, receivedSecond]).mortalityPercent - 1.1) < 1e-12,
+    'Farm mortality uses total deaths / total placed, not mean percentages')
+  assert.equal(model.buildingMetrics(second).mortalityPercent, 9, 'Use received good birds rather than flock-card quantity')
+  for (const placements of [[], [{ ...openingReceipt, actualReceived: 0 }]]) {
+    const missingPopulation = { ...building, placements }
+    assert.equal(model.buildingMetrics(missingPopulation).mortalityPercent, null)
+    assert.equal(model.dashboardMetrics([missingPopulation]).mortalityPercent, null)
+  }
+  assert.equal(zero.mortalityPercent, 0, 'Recorded zero deaths remain zero percent')
+  assert.equal(empty.mortalityPercent, null, 'Unrecorded mortality is not zero percent')
+  assert.equal(model.dashboardMetrics([building, { ...second, placements: [] }]).mortalityPercent, null,
+    'Incomplete placement totals must not produce a farm mortality rate')
   assert.equal(combined.weight, (100 * 120 + 900 * 200) / 1000)
   assert.equal(metrics.fcr, 10 / (84 * 120 / 1000))
   assert.equal(combined.fcr, 20 / (972 * combined.weight / 1000), 'Aggregate FCR uses total feed / total estimated live weight')

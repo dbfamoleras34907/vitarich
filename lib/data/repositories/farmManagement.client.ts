@@ -1,6 +1,6 @@
 import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/http'
 import { db } from '@/lib/Supabase/supabaseClient'
-import { ACTIVE_FARM_VOID } from '@/lib/data/repositories/farms'
+import { ACTIVE_FARM_VOID, activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 
 export type FarmRecord = {
   id: number
@@ -18,11 +18,17 @@ export type FarmRecord = {
   [key: string]: unknown
 }
 
-export async function getActiveFarms() {
-  const { data, error } = await db
+export async function getActiveFarms({ approvedOnly = false, farmType }: {
+  approvedOnly?: boolean
+  farmType?: 'BR' | 'BE' | 'HA'
+} = {}) {
+  let query = db
     .from('farms')
     .select('*')
     .eq('void', ACTIVE_FARM_VOID)
+  if (approvedOnly) query = activeApprovedFarmsQuery(query)
+  if (farmType) query = query.eq('farm_type', farmType)
+  const { data, error } = await query
     .order('created_at', { ascending: false })
 
   if (error) throw error

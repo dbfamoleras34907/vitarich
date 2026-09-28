@@ -29,7 +29,7 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   precise detail error separately. Additional warehouse/standalone-cycle lookup
   failures produce explicit warnings without hiding valid farm cycles or their
   persisted participating buildings.
-- Building tabs follow building-code order. Initially select the first open building
+- Building tabs display names (falling back to codes when unnamed) and follow building-code order. Initially select the first open building
   in the selected cycle, then the first participating building if all are closed.
   All Buildings totals and charts include only that selected cycle.
 - Empty buildings show **No records in this cycle**. Closed buildings retain their
@@ -61,6 +61,11 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   flock origin batches or the farm DOC receiving settings, with DOA/reject/short
   counts retained as columns.
 - Mortality, depletion, and remaining birds share `getBroilerDepletionSummary`
+  with mortality percentage based on cumulative deaths / total Actual Received
+  good birds from posted, non-void receipts × 100. All Buildings divides combined
+  deaths by combined receipt totals, not the average of building percentages.
+  Missing or zero placement totals leave the percentage unavailable.
+  Depletion and remaining birds share the same helper
   with Flock Card Report. Dashboard remaining birds subtract mortality, thinning,
   posted harvest heads, and posted clean-up heads from the Growing population.
   The Population card shows the formula and its component values.

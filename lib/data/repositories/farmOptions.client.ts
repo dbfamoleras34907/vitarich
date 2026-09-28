@@ -13,6 +13,7 @@ export type AssignedFarmOption = {
   code: string
   name: string
   farm_type: string
+  ref: string | null
 }
 
 export async function listAssignedUserFarmOptions(
@@ -57,7 +58,7 @@ export async function listAssignedUserFarmOptions(
 
   const selectFarms = () => {
     let query = activeApprovedFarmsQuery(
-      db.from('farms').select('id, code, name, farm_type'),
+      db.from('farms').select('id, code, name, farm_type, ref'),
     )
     if (farmTypes.length) query = query.in('farm_type', farmTypes)
     return query
@@ -81,7 +82,7 @@ export async function listAssignedUserFarmOptions(
       const name = String(farm.name ?? code).trim()
       const farmType = String(farm.farm_type ?? '').trim()
       if (!Number.isInteger(id) || id <= 0 || !code || !farmType) return []
-      return [{ id, code, name, farm_type: farmType }]
+      return [{ id, code, name, farm_type: farmType, ref: farm.ref == null ? null : String(farm.ref).trim() }]
     })
     .sort((left, right) => left.name.localeCompare(right.name))
 }

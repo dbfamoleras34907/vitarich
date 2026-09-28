@@ -35,6 +35,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { usePermission } from '@/hooks/usePermission'
 import { voidFarm } from '../api'
+import { useGlobalDefaults } from '@/lib/Defaults/GlobalDefaults'
 import {
   createFarmSetup,
   generateNextCode,
@@ -522,6 +523,7 @@ function StructureWorkspace({
 
 export default function Layout() {
   const router = useRouter()
+  const { setGlobals } = useGlobalDefaults()
   const params = useParams<{ farmid?: string }>()
   const farmId = Number(params?.farmid ?? 0)
   const isEditMode = Number.isFinite(farmId) && farmId > 0
@@ -962,6 +964,7 @@ export default function Layout() {
     setVoiding(true)
     try {
       await voidFarm(farmId)
+      await setGlobals()
       toast.success('Farm voided successfully.')
       router.push('/a_dean/farm')
     } catch (error) {

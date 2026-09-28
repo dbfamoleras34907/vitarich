@@ -183,6 +183,7 @@ begin
     from public.br_cleanup_lines line
     join public.flock_card card
       on card.farm_id = new.farm_id
+     and card.farm_cycle_id = new.farm_cycle_id
      and card.void = ''1''
      and card.status = ''Saved''
      and (

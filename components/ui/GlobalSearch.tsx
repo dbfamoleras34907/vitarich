@@ -14,6 +14,7 @@ import {
 import { Search, Settings, ArrowUp, ArrowDown, CornerDownLeft, ExternalLink } from "lucide-react"
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
 import { getModuleIcon } from '@/lib/sidebar/moduleIcons'
+import { canInsertDocument } from '@/lib/sidebar/navigationPermissions'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { Modal } from "@/lib/Moda"
@@ -215,13 +216,6 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     })).filter(group => group.children.length > 0),
   })).filter(folder => Boolean(folder.items?.length)) as NavCommandFolder[]
 
-  const canInsertDocument = (child: NavCommandChild) =>
-    child.insert === true &&
-    Boolean(child.newDocumentUrl) &&
-    (userType === 1 || userPermissions.some(
-      (permission) => permission.ilink === `${child.url}/insert` && permission.is_visible
-    ))
-
   /**
    * INTERNAL COMMANDS
    */
@@ -280,7 +274,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                 order: folderIndex * 10000 + groupIndex * 1000 + childIndex * 2,
               }
 
-              if (!canInsertDocument(child)) return [navigationItem]
+              if (!canInsertDocument(child, userPermissions, userType)) return [navigationItem]
 
               const newDocumentTitle = `${child.title} New Document`
               const newDocumentItem: RankedSearchItem = {
@@ -532,7 +526,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
                     </CommandItem>
                     )]
 
-                    if (canInsertDocument(child)) {
+                    if (canInsertDocument(child, userPermissions, userType)) {
                       const newDocumentTitle = `${child.title} New Document`
                       items.push(
                         <CommandItem

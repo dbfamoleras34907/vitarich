@@ -107,7 +107,8 @@ export function buildingMetrics(building: DashboardCycleBuilding) {
   return {
     startingPopulation: startingPopulation(building), population, placed, remaining, cleanupHeads,
     mortality: mortalityLines.length ? depletion.totalMortality : null,
-    mortalityPercent: mortalityLines.length && population ? depletion.cumulativeMortality : null,
+    mortalityPercent: mortalityLines.length && placed !== null && placed > 0
+      ? getBroilerDepletionSummary(placed, depletionLines).cumulativeMortality : null,
     thinning: mortalityLines.length ? depletion.totalThinning : null,
     feed, water: waterValues.length ? waterValues.reduce((sum, value) => sum + value, 0) : null, weight, standardWeight,
     weightAge: latestWeight?.age ?? null,
@@ -125,6 +126,7 @@ export function dashboardMetrics(buildings: DashboardCycleBuilding[]) {
   const population = nullableSum(metrics.map(metric => metric.population))
   const remaining = nullableSum(metrics.map(metric => metric.remaining))
   const mortality = nullableSum(metrics.map(metric => metric.mortality))
+  const placed = nullableSum(metrics.map(metric => metric.placed))
   const weighted = (field: 'weight' | 'standardWeight') => {
     if (metrics.length === 1) return metrics[0][field]
     if (!metrics.length || metrics.some(metric => metric[field] === null || metric.population === null)) return null
@@ -134,10 +136,10 @@ export function dashboardMetrics(buildings: DashboardCycleBuilding[]) {
   return {
     startingPopulation: nullableSum(metrics.map(metric => metric.startingPopulation)),
     population, remaining, mortality,
-    placed: nullableSum(metrics.map(metric => metric.placed)),
+    placed,
     thinning: nullableSum(metrics.map(metric => metric.thinning)),
     cleanupHeads: nullableSum(metrics.map(metric => metric.cleanupHeads)),
-    mortalityPercent: mortality !== null && population ? mortality / population * 100 : null,
+    mortalityPercent: mortality !== null && placed !== null && placed > 0 ? mortality / placed * 100 : null,
     feed: nullableSum(metrics.map(metric => metric.feed)),
     water: nullableSum(metrics.map(metric => metric.water)),
     weight: weighted('weight'), standardWeight: weighted('standardWeight'),

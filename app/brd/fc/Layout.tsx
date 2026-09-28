@@ -19,6 +19,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import BroilerCycleSelect from "@/components/broiler/BroilerCycleSelect";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -136,6 +137,7 @@ export default function Layout() {
   const reportViewBlocked = usePermission("/brd/fc/report/view");
   const cannotViewReport = flockCardViewBlocked && reportViewBlocked;
   const [selectedFarmId, setSelectedFarmId] = useState("");
+  const [selectedCycleId, setSelectedCycleId] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(false);
@@ -198,6 +200,8 @@ export default function Layout() {
     [effectiveSelectedFarmId, farms],
   );
 
+  useEffect(() => { setSelectedCycleId(""); }, [effectiveSelectedFarmId]);
+
   const farmOptions = useMemo(
     () => farms.map(farm => ({
       code: String(farm.id),
@@ -247,7 +251,8 @@ export default function Layout() {
   }, [assignedFarmCodes.length, sessionUser?.id]);
 
   useEffect(() => {
-    if (!selectedFarm) {
+    if (!selectedFarm || !selectedCycleId) {
+      setBuildings([]);
       return;
     }
 
@@ -259,7 +264,7 @@ export default function Layout() {
       setBuildingError("");
 
       try {
-        const rows = await getFarmBuildingsForFlockCard(farmId);
+        const rows = await getFarmBuildingsForFlockCard(farmId, { farmCycleId: Number(selectedCycleId) });
         if (!cancelled) setBuildings(rows);
       } catch (error) {
         console.error(error);
@@ -277,7 +282,7 @@ export default function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [selectedFarm, refreshVersion]);
+  }, [selectedCycleId, selectedFarm, refreshVersion]);
 
   useEffect(() => {
     if (!reverseTarget) return;
@@ -385,7 +390,8 @@ export default function Layout() {
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
               <label className="text-sm font-semibold">Farm</label>
               <SearchableCombobox
                 items={farmOptions}
@@ -393,6 +399,13 @@ export default function Layout() {
                 onValueChange={setSelectedFarmId}
                 placeholder="Select farm..."
                 showCode
+                className="w-full min-w-[280px] lg:w-[420px]"
+              />
+              </div>
+              <BroilerCycleSelect
+                farmId={selectedFarm?.id}
+                value={selectedCycleId}
+                onValueChange={cycleId => setSelectedCycleId(cycleId)}
                 className="w-full min-w-[280px] lg:w-[420px]"
               />
             </div>

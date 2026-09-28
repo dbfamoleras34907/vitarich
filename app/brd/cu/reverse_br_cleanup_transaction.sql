@@ -83,7 +83,7 @@ begin
   if v_header.status <> 'Posted' then raise exception 'Only posted Clean Up documents can be reversed.'; end if;
 
   select array_agg(c.id) into v_cards from public.flock_card c
-    where c.farm_id = v_header.farm_id and c.void = '1' and c.status = 'Closed'
+    where c.farm_id = v_header.farm_id and c.void = '1' and c.status in ('Saved', 'Closed')
       and c.extra->>'closed_by_doc_type' = 'BR_CLEANUP'
       and c.extra->>'closed_by_docentry' = p_cleanup_id::text;
   if v_cards is null or exists (
@@ -103,12 +103,12 @@ begin
     end if;
     if v_card.farm_cycle_id is not null and (
       not exists (select 1 from public.doc_farm_cycles f where f.id = v_card.farm_cycle_id
-        and f.farm_id = v_header.farm_id and f.status in ('Saved', 'Closed'))
+        and f.farm_id = v_header.farm_id and f.status in ('Saved', 'Past Open'))
       or exists (select 1 from public.doc_farm_cycles newer join public.doc_farm_cycles original
         on original.id = v_card.farm_cycle_id where newer.farm_id = original.farm_id
         and newer.id <> original.id and newer.status <> 'Cancelled'
         and (newer.cycle_no > original.cycle_no or newer.status = 'Saved'))
-    ) then raise exception 'The farm cycle cannot be reopened because a newer cycle exists or the original is inactive.'; end if;
+    ) then raise exception 'Open the farm cycle in Cycle Master first, and make sure no newer-cycle blocker exists.'; end if;
 
     if exists (select 1 from public.inventory_postings p
       where upper(btrim(p.warehouse_code)) = upper(btrim(v_card.building_code))
@@ -153,8 +153,6 @@ begin
     extra = (extra - 'closed_by_doc_type' - 'closed_by_docentry' - 'closed_by_doc_no' - 'closed_at')
       || jsonb_build_object('reopened_by_cleanup_id', p_cleanup_id, 'reopened_at', now())
     where id = any(v_cards);
-  update public.doc_farm_cycles set status = 'Saved', closed_at = null, updated_by = v_actor, updated_at = now()
-    where id in (select farm_cycle_id from public.flock_card where id = any(v_cards)) and status = 'Closed';
   -- The existing transactional enqueue trigger publishes one VOIDED event.
   update public.br_cleanup set status = 'Cancelled', reversed_at = now(), reversed_by = v_actor,
     reversal_reason = btrim(p_reason), updated_at = now(), updated_by = v_actor,

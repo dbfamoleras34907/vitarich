@@ -58,6 +58,18 @@ begin
   end if;
 
   if not exists (
+    select 1
+    from public.flock_card placement
+    left join public.doc_farm_cycles cycle on cycle.id = placement.farm_cycle_id
+    where placement.card_no = v_card.card_no
+      and placement.farm_id = v_card.farm_id
+      and placement.void = '1' and placement.status = 'Saved'
+      and (placement.farm_cycle_id is null or cycle.status in ('Saved', 'Past Open'))
+  ) then
+    raise exception 'Unable to save feed intake: the selected Broiler cycle is closed.';
+  end if;
+
+  if not exists (
     select 1 from public.farms farm
     cross join lateral jsonb_array_elements(
       case when jsonb_typeof(to_jsonb(farm.associated_warehouses)) = 'array'
@@ -375,6 +387,17 @@ begin
   v_header.farm_id := v_farm.id;
   v_header.farm_code := v_farm.code;
   v_header.farm_name := v_farm.name;
+  if not exists (
+    select 1
+    from public.flock_card placement
+    left join public.doc_farm_cycles cycle on cycle.id = placement.farm_cycle_id
+    where placement.card_no = v_header.card_no
+      and placement.farm_id = v_header.farm_id
+      and placement.void = '1' and placement.status = 'Saved'
+      and (placement.farm_cycle_id is null or cycle.status in ('Saved', 'Past Open'))
+  ) then
+    raise exception 'Growing requires a Current Cycle or Past Open Cycle.';
+  end if;
   if v_id is null then
     insert into public.brd_fc (fc_no, card_no, fc_date, farm_id, farm_code, farm_name, building_id, building_whse_id, building_src, building_key, building_code, building_name, building_status, feed_whse_id, feed_whse_code, feed_whse_name, animal_qty, created_by, updated_by, void)
     values (v_header.fc_no, v_header.card_no, v_header.fc_date, v_header.farm_id, v_header.farm_code, v_header.farm_name, v_header.building_id, v_header.building_whse_id, v_header.building_src, v_header.building_key, v_header.building_code, v_header.building_name, v_header.building_status, v_header.feed_whse_id, v_header.feed_whse_code, v_header.feed_whse_name, v_header.animal_qty, v_user, v_user, '1')

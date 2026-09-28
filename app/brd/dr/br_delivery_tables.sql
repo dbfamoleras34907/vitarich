@@ -12,6 +12,7 @@ create table if not exists public.br_delivery (
   gi_no text not null unique,
   issue_date date not null,
   farm_id bigint null references public.farms (id),
+  farm_cycle_id bigint null references public.doc_farm_cycles (id),
   farm_code text null,
   farm_name text null,
   from_warehouse_id bigint null references public.i_warehouse (id),
@@ -83,6 +84,7 @@ alter table public.br_delivery_lines
 
 create index if not exists br_delivery_issue_date_idx on public.br_delivery (issue_date desc);
 create index if not exists br_delivery_farm_id_idx on public.br_delivery (farm_id);
+create index if not exists br_delivery_farm_cycle_id_idx on public.br_delivery (farm_cycle_id);
 create index if not exists br_delivery_status_idx on public.br_delivery (status);
 create index if not exists br_delivery_lines_delivery_id_idx on public.br_delivery_lines (br_delivery_id);
 create index if not exists br_delivery_lines_item_id_idx on public.br_delivery_lines (item_id);
@@ -225,6 +227,7 @@ begin
         limit 1
       ) growing on true
       where card.farm_id = new.farm_id
+        and card.farm_cycle_id = new.farm_cycle_id
         and card.void = '1'
         and card.status = 'Saved'
         and (

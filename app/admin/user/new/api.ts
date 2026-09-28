@@ -1,5 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
-import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { activeApprovedFarmsQuery, listApprovedFarmAccessOptions } from "@/lib/data/repositories/farms";
 import { createClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
@@ -67,16 +67,7 @@ export async function getUserPermissions(userId: string) {
 
 
 export async function getvwdmf_get_farmlist_code_name_farmtype() {
-  try {
-    const { data, error } = await db
-      .from("vwdmf_get_farmlist_code_name_farmtype")
-      .select("*")
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.log(err);
-    throw err;
-  }
+  return listApprovedFarmAccessOptions(db);
 }
 
 export async function get_vwdmf_super_users() {

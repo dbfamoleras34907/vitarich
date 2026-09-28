@@ -1074,7 +1074,7 @@ export const NavFolders: NavFolder[] = [
             url: "/brd/cycle-master",
             view: true,
             insert: false,
-            edit: false,
+            edit: true,
             approval: false,
           },
 

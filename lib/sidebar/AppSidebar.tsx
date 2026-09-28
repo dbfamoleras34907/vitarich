@@ -3,20 +3,27 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Boxes, ExternalLink, Menu } from "lucide-react"
+import { Boxes, ChevronDown, ExternalLink, FilePlus, Menu } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useSidebar } from "./SidebarProvider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
 import { useGlobalContext } from "../context/GlobalContext"
 import { NavFolders } from "../Defaults/DefaultValues"
 import GlobalSearch from "@/components/ui/GlobalSearch"
+import RefreshDataButton from "./RefreshDataButton"
 import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
 import { getProfileByAuthId } from "@/app/admin/user/api"
-import { getNavigationPermissionTitle } from "./navigationPermissions"
+import { canInsertDocument, getNavigationPermissionTitle } from "./navigationPermissions"
 import NotificationCenter from "@/components/notifications/NotificationCenter"
 
 export { getNavigationPermissionTitle } from "./navigationPermissions"
@@ -258,15 +265,30 @@ export function AppSidebar() {
                               <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
                               <span className="truncate">{child.title}</span>
                             </Button>
-                            <button
-                              type="button"
-                              onClick={() => openInNewWindow(child.url)}
-                              className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
-                              aria-label={`Open ${child.title} in a new window`}
-                              title="Open in new window"
-                            >
-                              <ExternalLink className="size-3.5" />
-                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100 data-[state=open]:opacity-100"
+                                  aria-label={`Options for ${child.title}`}
+                                  title="Module options"
+                                >
+                                  <ChevronDown className="size-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" side="right">
+                                {canInsertDocument(child, userPermissions || [], Number(accessProfile?.user_type ?? 3)) && (
+                                  <DropdownMenuItem onSelect={() => goTo(child.newDocumentUrl!)}>
+                                    <FilePlus />
+                                    New Document
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onSelect={() => openInNewWindow(child.url)}>
+                                  <ExternalLink />
+                                  Open to another tab
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         )
                       })}
@@ -333,8 +355,11 @@ export function AppSidebar() {
                 </div>
               </div>
               <GlobalSearch collapsed={false} />
+              <div className="mt-1">
+                <RefreshDataButton />
+              </div>
 
-              <div className={`mt-4 max-h-[calc(100vh-15rem)] overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
+              <div className={`mt-4 max-h-[calc(100vh-17.5rem)] overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
                 {renderExpandedNavigation()}
               </div>
               <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
@@ -382,8 +407,9 @@ export function AppSidebar() {
           </Button>
         </div>
         {!collapsed && (
-          <div className="mt-3">
+          <div className="mt-3 space-y-1">
             <GlobalSearch collapsed={collapsed} />
+            <RefreshDataButton />
           </div>
         )}
       </div>
@@ -401,6 +427,9 @@ export function AppSidebar() {
                 </TooltipTrigger>
                 <TooltipContent side="right">Search</TooltipContent>
               </Tooltip>
+              <div className="mt-1">
+                <RefreshDataButton collapsed />
+              </div>
             </div>
           )}
 

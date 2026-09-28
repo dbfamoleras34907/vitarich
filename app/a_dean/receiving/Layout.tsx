@@ -2,17 +2,18 @@
 import { Button } from '@/components/ui/button'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import { useEffect, useMemo, useState } from 'react'
-import { getReceivingList, getReceivingListByUser, vwdmf_get_farmdr_unres } from './api'
+import { getReceivingListByUser } from './api'
 import { useRouter } from 'next/navigation'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { toast } from 'sonner'
 import ScannerModal from '@/components/ScannerModal'
 import Breadcrumb from '@/lib/Breadcrumb'
 import DynamicTable from '@/components/ui/DataTableV2'
-import { ClipboardCopy, Copy, Expand, HandCoins, Map, Plus, RefreshCcw, View } from 'lucide-react'
+import { ClipboardCopy, Copy, HandCoins, Map, Plus, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
-import { getDefaultFarm } from './manual/api'
-import { Farms } from '@/lib/types'
+import SearchableCombobox from '@/components/SearchableCombobox'
+import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
+import { getReceivingList, getPendingReceivingDispatches } from '@/lib/data/repositories/receivingLists'
 import { usePermission } from '@/hooks/usePermission'
 import {
     DropdownMenu,
@@ -22,27 +23,24 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { MoreHorizontal } from "lucide-react"
-import { copyRow, copyTable, toggleFullscreen } from '@/lib/tableActions'
+import { copyRow, copyTable } from '@/lib/tableActions'
 
 
 export default function Layout() {
     const canView = usePermission('/a_dean/receiving/view')
     const canInsert = usePermission('/a_dean/receiving/insert')
 
-    const get = async () => {
-        await new Promise(resolve => setTimeout(resolve, 3000))
-
-    }
-
-
     const [receivedRows, setReceivedRows] = useState<RowDataKey[]>([])
     const [loadingReceived, setLoadingReceived] = useState(true)
-    const [farms, setfarms] = useState<Farms[]>([])
+    const [farms, setFarms] = useState<AssignedFarmOption[]>([])
+    const [loadingFarms, setLoadingFarms] = useState(true)
+    const [selectedFarmId, setSelectedFarmId] = useState('')
+    const [loadedFarmId, setLoadedFarmId] = useState<number | null>(null)
 
 
     const { setValue, getValue } = useGlobalContext()
     const [isScanning, setIsScanning] = useState(false);
-    const [scannedData, setScannedData] = useState<string | null>(null);
+    const [, setScannedData] = useState<string | null>(null);
     const handleScanSuccess = (text: string) => {
         setScannedData(text);
         setIsScanning(false);
@@ -78,7 +76,7 @@ export default function Layout() {
             { key: 'remarks', label: 'Remarks', type: 'text', disabled: true },
             { key: 'created_at', label: 'Created At', type: 'text', disabled: true },
         ],
-        [initialRows]
+        []
     )
     const receivedColumns: ColumnConfig[] = [
         { key: 'actions', label: 'Actions', type: 'button', disabled: true },
@@ -143,168 +141,79 @@ export default function Layout() {
                 label: "Copy Table",
                 icon: <ClipboardCopy className="w-4 h-4" />,
                 onClick: () => {
-                    copyTable(receivedRows)
+                    copyTable(rowsAreCurrent ? receivedRows : [])
                 },
             },
 
 
         ]
     }
-    const getData = async () => {
-        setLoading(true)
+    const userId = getValue('UserInfoAuthSession')?.[0]?.id
+    const defaultFarmId = String(getValue('DefaultFarmId') ?? '')
+    const selectedFarm = farms.find(farm => String(farm.id) === selectedFarmId)
+    const currentFarmId = selectedFarm?.id ?? null
+    const currentFarmRef = selectedFarm?.ref ?? null
+    const rowsAreCurrent = currentFarmId !== null && loadedFarmId === currentFarmId
 
-        try {
-            const res = await fetch('/api/dispatch')
-
-            if (!res.ok) {
-                // throw new Error('Failed to fetch dispatch data')
-                toast("No Dispatch data found")
-            }
-
-            const unresolvedJson = await vwdmf_get_farmdr_unres()
-            const dispatchJson = await res.json()
-
-            // normalize helper (removes spacing differences + case issues)
-            const normalize = (v: any) =>
-                String(v ?? '')
-                    .replace(/\s+/g, '')
-                    .toUpperCase()
-
-            // build lookup set of unresolved DR numbers
-            const unresolvedDRSet = new Set(
-                (unresolvedJson || []).map(x => normalize(x.dr_num))
-            )
-
-            const rows = Array.isArray(dispatchJson)
-                ? dispatchJson
-                : Array.isArray(dispatchJson.data)
-                    ? dispatchJson.data
-                    : []
-
-            // collect valid destination refs from farms
-            const validRefs = farms
-                .map(f => f.ref)
-                .filter(ref => ref !== null && ref !== undefined)
-                .map(ref => String(ref))
-
-            const filtered = rows
-                .map((item: any) => {
-                    let parsedDispatchBody: any[] = []
-                    let parsedModifiedDispatchBody: any[] = []
-
-                    try {
-                        if (typeof item.dispatchbody === "string") {
-                            parsedDispatchBody = JSON.parse(item.dispatchbody)
-                        } else if (Array.isArray(item.dispatchbody)) {
-                            parsedDispatchBody = item.dispatchbody
-                        }
-                    } catch {
-                        parsedDispatchBody = []
-                    }
-
-                    try {
-                        if (typeof item.modified_dispatchbody === "string") {
-                            parsedModifiedDispatchBody = JSON.parse(item.modified_dispatchbody)
-                        } else if (Array.isArray(item.modified_dispatchbody)) {
-                            parsedModifiedDispatchBody = item.modified_dispatchbody
-                        }
-                    } catch {
-                        parsedModifiedDispatchBody = []
-                    }
-
-                    return {
-                        ...item,
-                        dispatchbody: parsedDispatchBody,
-                        modified_dispatchbody: parsedModifiedDispatchBody
-                    }
+    useEffect(() => {
+        let cancelled = false
+        const loadFarms = async () => {
+            setLoadingFarms(true)
+            setFarms([])
+            setSelectedFarmId('')
+            await listAssignedUserFarmOptions(['HA'])
+                .then(options => {
+                    if (cancelled) return
+                    setFarms(options)
+                    const preferred = options.find(farm => String(farm.id) === defaultFarmId)
+                    setSelectedFarmId(String((preferred ?? options[0])?.id ?? ''))
                 })
-                .filter((item: any) => {
-                    // remove rows without dispatch body
-                    if (item.dispatchbody.length === 0) return false
-
-                    // support both dr and dr_num fields
-                    const drValue = item.dr ?? item.dr_num
-
-                    // exclude unresolved DRs
-                    if (unresolvedDRSet.has(normalize(drValue))) {
-                        return false
-                    }
-
-                    // filter by farm destination refs
-                    if (validRefs.length > 0) {
-                        return validRefs.includes(String(item.destinationid))
-                    }
-
-                    return true
+                .catch(error => {
+                    if (!cancelled) toast.error(error instanceof Error ? error.message : 'Unable to load farms.')
                 })
+                .finally(() => { if (!cancelled) setLoadingFarms(false) })
+        }
+        void loadFarms()
+        return () => { cancelled = true }
+    }, [userId, defaultFarmId])
 
-            setinitialRows(filtered)
+    useEffect(() => {
+        refreshSessionx(route)
+        route.prefetch('/a_dean/receiving/approval')
+        route.prefetch('/a_dean/receiving/manual')
+    }, [route])
 
-        } catch (err) {
-            console.error(err)
+    useEffect(() => {
+        let cancelled = false
+        const loadRows = async () => {
             setinitialRows([])
+            setReceivedRows([])
+            setLoadedFarmId(null)
+            setLoading(currentFarmId !== null)
+            setLoadingReceived(currentFarmId !== null)
+            if (currentFarmId === null) return
+
+            await Promise.allSettled([
+                getPendingReceivingDispatches(currentFarmRef),
+                getReceivingList(currentFarmId),
+            ]).then(([pending, received]) => {
+                if (cancelled) return
+                if (pending.status === 'fulfilled') setinitialRows(pending.value)
+                else toast.error('Unable to load items for receiving.')
+                if (received.status === 'fulfilled') setReceivedRows(received.value)
+                else toast.error('Unable to load received items.')
+                setLoadedFarmId(currentFarmId)
+                setLoading(false)
+                setLoadingReceived(false)
+            })
         }
-
-        setLoading(false)
-    }
-
-
-    const getReceivedData = async () => {
-        setLoadingReceived(true)
-
-        const data = await getReceivingList()
-        console.log({ data })
-        setReceivedRows(data)
-        setLoadingReceived(false)
-    }
-
-    const getFarms = async () => {
-        const user = getValue('UserInfoAuthSession')
-        // console.loglog({ user })
-        if (!user) {
-            toast.error("User information is not available. Please log in again.")
-            return
-        }
-        if (user[0].id === undefined) return
-
-        const farms = await getDefaultFarm(user[0].id)
-        // console.loglog({ farms })
-        setfarms(farms)
-    }
-
-    useEffect(() => {
-        getFarms()
-    }, [getValue])
-
-    useEffect(() => {
-        refreshSessionx(route);
-    }, [])
-
-
-    useEffect(() => {
-        if (farms.length === 0) return
-
-        get()
-        getData()
-        getReceivedData()
-
-        route.prefetch("/a_dean/receiving/approval")
-        route.prefetch("/a_dean/receiving/manual")
-
-    }, [farms.length])
-
-    useEffect(() => {
-        get()
-        getData()
-        getReceivedData()
-
-        route.prefetch("/a_dean/receiving/approval")
-        route.prefetch("/a_dean/receiving/manual")
-    }, [])
+        void loadRows()
+        return () => { cancelled = true }
+    }, [currentFarmId, currentFarmRef])
 
     useEffect(() => {
         setValue("loading_g", loading)
-    }, [loading])
+    }, [loading, setValue])
 
 
     return (
@@ -342,7 +251,20 @@ export default function Layout() {
                     {/* <Button onClick={() => console.log(getValue("DefaultFarmId"))}>Check getValue("defaultFarmId")</Button> */}
                 </div>
             </div>
-            <div className='my-4'></div>
+            <div className="mx-4 mb-4 max-w-md space-y-2">
+                <SearchableCombobox
+                    label="Farm"
+                    required
+                    items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
+                    value={selectedFarmId}
+                    onValueChange={setSelectedFarmId}
+                    disabled={loadingFarms}
+                    placeholder={loadingFarms ? 'Loading farms...' : 'Select farm'}
+                />
+                {!loadingFarms && farms.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No active Hatchery farms are associated with your account.</p>
+                )}
+            </div>
 
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold mx-4">For Receiving Items</h2>
@@ -384,7 +306,7 @@ export default function Layout() {
                         },
                     }))}
 
-                    data={initialRows}
+                    data={rowsAreCurrent ? initialRows : []}
 
                 />
             }
@@ -396,15 +318,6 @@ export default function Layout() {
                 </div>
                 <DynamicTable
                     loading={loadingReceived}
-                    initialFilters={[
-                        {
-                            id: "",
-                            columnKey: 'deliverted_to_id',
-                            operator: 'equals',
-                            value: getValue("DefaultFarmId") || '',
-                            joiner: 'and',
-                        },
-                    ]} // show all records
                     columns={receivedColumns.map((col) => ({
                         key: col.key,
                         label: col.label,
@@ -454,7 +367,7 @@ export default function Layout() {
                         }
                     }))}
 
-                    data={receivedRows}
+                    data={rowsAreCurrent ? receivedRows : []}
                 />
             </div>
 

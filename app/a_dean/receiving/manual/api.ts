@@ -1,6 +1,7 @@
 
 import { db } from '@/lib/Supabase/supabaseClient'
 import { createHatcheryReceiving } from '@/lib/data/repositories/receivingSources'
+import { getActiveFarms } from '@/lib/data/repositories/farmManagement.client'
 import { DefaultFarm, DocumentApproval, Farms, Users } from '@/lib/types'
 
 
@@ -10,32 +11,14 @@ import { DefaultFarm, DocumentApproval, Farms, Users } from '@/lib/types'
  * @returns {Promise<Farms[]>} A promise resolving to an array of farm objects.
  */
 export async function getFarmDB_breeder() {
-  const { data, error } = await db
-    .from('vwdmf_get_farmlist_breeder_code_name')
-    .select('*')
-  // .order('posting_date', { ascending: false })
-
-  if (error) {
-    throw error
-  }
-
-  return data as Farms[]
+  return await getActiveFarms({ approvedOnly: true, farmType: 'BE' }) as unknown as Farms[]
 }
 
 
 
 
 export async function getFarmDB() {
-  const { data, error } = await db
-    .from('vwdmf_get_farmlist')
-    .select('*')
-  // .order('posting_date', { ascending: false })
-
-  if (error) {
-    throw error
-  }
-
-  return data as Farms[]
+  return await getActiveFarms({ approvedOnly: true }) as unknown as Farms[]
 }
 
 

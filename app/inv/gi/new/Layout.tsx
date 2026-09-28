@@ -6,6 +6,7 @@ import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from
 import { toast } from 'sonner'
 
 import SearchableCombobox from '@/components/SearchableCombobox'
+import BroilerCycleSelect from '@/components/broiler/BroilerCycleSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -122,6 +123,8 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   triggeredBy: 'GI',
   issueDate: today(),
   farmId: null,
+  farmCycleId: null,
+  farmCycleMask: '',
   farmCode: '',
   farmName: '',
   fromWarehouseId: null,
@@ -189,13 +192,14 @@ const canSearchLineInventory = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWar
 
 const getLineFlockCardLookupKey = (
   farmId: number | null | undefined,
+  farmCycleId: number | null | undefined,
   line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode' | 'flockCardId'>,
 ) => {
   const normalizedFarmId = Number(farmId ?? 0)
   const buildingCode = line.fromWarehouseCode.trim().toUpperCase()
   if (!Number.isFinite(normalizedFarmId) || normalizedFarmId <= 0 || !buildingCode) return ''
 
-  return `${normalizedFarmId}|${line.fromWarehouseId ?? ''}|${buildingCode}|${line.flockCardId ?? ''}`
+  return `${normalizedFarmId}|${farmCycleId ?? ''}|${line.fromWarehouseId ?? ''}|${buildingCode}|${line.flockCardId ?? ''}`
 }
 
 const getFarmWarehouseCodes = (farm?: GoodsReceiptFarm | null) => {
@@ -588,7 +592,7 @@ export default function NewGoodsIssue({
           triggeredBy === 'BR-CU' || Boolean(deliverySettings?.batch_auto_selection),
         )
 
-        const farmKey = String(issue.farmId)
+        const farmKey = `${issue.farmId}:${issue.farmCycleId ?? ''}`
         const shouldInitializeBuildings =
           !loadingReferences &&
           !issue.id &&
@@ -598,6 +602,7 @@ export default function NewGoodsIssue({
 
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
           allowHarvestEmptied: triggeredBy === 'BR-CU',
         })
@@ -661,6 +666,7 @@ export default function NewGoodsIssue({
     duplicateId,
     farmWarehouses,
     issue?.farmId,
+    issue?.farmCycleId,
     issue?.id,
     issue?.status,
     loadingReferences,
@@ -710,6 +716,7 @@ export default function NewGoodsIssue({
       try {
         const summaries = await getCleanupCycleSummaries({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           cleanupDocumentId: issue.id,
           buildings,
         })
@@ -727,7 +734,7 @@ export default function NewGoodsIssue({
 
     void loadCleanupSummaries()
     return () => { cancelled = true }
-  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups])
+  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, lineWarehouseLookups])
 
   useEffect(() => {
     let cancelled = false
@@ -742,6 +749,7 @@ export default function NewGoodsIssue({
       try {
         const info = await getDeliveryFlockCardInfo({
           farmId: issue.farmId,
+          farmCycleId: issue.farmCycleId,
           buildingWarehouseId: issue.fromWarehouseId,
           buildingCode: issue.fromWarehouseCode,
         })
@@ -763,7 +771,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
+  }, [issue?.farmCycleId, issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
 
   useEffect(() => {
     if (isBroilerCycleIssue) lineFlockCardCacheRef.current = {}
@@ -785,18 +793,20 @@ export default function NewGoodsIssue({
       const activeLineIds = new Set(lineWarehouseLookups.map(line => String(line.id)))
       const missingLookups = new Map<string, {
         farmId: number
+        farmCycleId: number | null
         buildingWarehouseId: number | null
         buildingCode: string
         flockCardId?: number | null
       }>()
 
       lineWarehouseLookups.forEach(line => {
-        const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+        const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
         const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
 
         if (lookupKey && !cached) {
           missingLookups.set(lookupKey, {
             farmId: Number(issue.farmId),
+            farmCycleId: issue.farmCycleId,
             buildingWarehouseId: line.fromWarehouseId,
             buildingCode: line.fromWarehouseCode,
             flockCardId: line.flockCardId ?? (issue.status === 'Draft' ? undefined : null),
@@ -809,7 +819,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
 
           nextState[id] = cached
@@ -828,7 +838,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           nextBatches[id] = cached?.placementBatches ?? current[id] ?? []
         })
@@ -844,7 +854,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           nextLoading[id] = Boolean(lookupKey && !cached)
         })
@@ -863,6 +873,7 @@ export default function NewGoodsIssue({
           try {
             const info = await getDeliveryFlockCardInfo({
               farmId: params.farmId,
+              farmCycleId: params.farmCycleId,
               buildingWarehouseId: params.buildingWarehouseId,
               buildingCode: params.buildingCode,
               cleanupDocumentId: isCleanup ? issue.id : null,
@@ -889,13 +900,13 @@ export default function NewGoodsIssue({
         const updated: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           updated[id] = { loading: false, info: cached?.info ?? null }
         })
         infoResults.forEach(result => {
           const matchingLines = linesWithBuildings.filter(line =>
-            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+            getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line) === result.lookupKey,
           )
           matchingLines.forEach(line => {
             updated[String(line.id)] = { loading: false, info: result.info }
@@ -938,7 +949,7 @@ export default function NewGoodsIssue({
       setLinePlacementBatches(() => {
         const updated: Record<string, DeliveryPlacementBatch[]> = {}
         lineWarehouseLookups.forEach(line => {
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           updated[String(line.id)] = cached?.placementBatches ?? []
         })
@@ -948,7 +959,7 @@ export default function NewGoodsIssue({
         const updated = { ...current }
         placementResults.forEach(result => {
           const matchingLines = linesWithBuildings.filter(line =>
-            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+            getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line) === result.lookupKey,
           )
           matchingLines.forEach(line => {
             updated[String(line.id)] = false
@@ -963,7 +974,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [isCleanup, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
+  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -1129,6 +1140,8 @@ export default function NewGoodsIssue({
       farmId: farm?.id ?? null,
       farmCode: farm?.code ?? '',
       farmName: farm?.name ?? '',
+      farmCycleId: null,
+      farmCycleMask: '',
       fromWarehouseId: autoSelectedWarehouse?.id ?? null,
       fromWarehouseCode: autoSelectedWarehouse?.whse_code ?? '',
       fromWarehouseName: autoSelectedWarehouse?.whse_name ?? '',
@@ -1498,7 +1511,7 @@ export default function NewGoodsIssue({
           let lookup = placementLookups.get(code)
           if (!lookup) {
             lookup = (async () => {
-              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
+              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, farmCycleId: snapshot.farmCycleId, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
               if (!info) throw new Error('The building has no eligible flock card.')
               return getDeliveryFlockCardPlacementBatches({ flockCardId: info.id, farmId: info.farmId, buildingWarehouseId: info.buildingWarehouseId, buildingCode: info.buildingCode, cycleNumber: info.cycleNumber })
             })()
@@ -1665,6 +1678,10 @@ export default function NewGoodsIssue({
       toast('Please select a farm.')
       return
     }
+    if (isBroilerCycleIssue && !issue.farmCycleId) {
+      toast('Please select a cycle.')
+      return
+    }
     if (!usesLineWarehouse && (!issue.fromWarehouseId || !issue.fromWarehouseCode)) {
       toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
@@ -1745,6 +1762,7 @@ export default function NewGoodsIssue({
       try {
         const ageShortage = await (triggeredBy === 'BR-CU' ? getBrCleanupAgeShortage : getBrDeliveryAgeShortage)({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           lines: linesToSave,
         })
         if (ageShortage) {
@@ -2012,6 +2030,31 @@ export default function NewGoodsIssue({
         />
       ),
     },
+    ...(isBroilerCycleIssue
+      ? [{
+          key: 'cycle',
+          label: '',
+          content: (
+            issue.status === 'Draft' ? (
+              <BroilerCycleSelect
+                farmId={issue.farmId}
+                value={issue.farmCycleId == null ? '' : String(issue.farmCycleId)}
+                onValueChange={(cycleId, cycle) => setIssue(current => current ? {
+                  ...current,
+                  farmCycleId: cycleId ? Number(cycleId) : null,
+                  farmCycleMask: cycle?.cycleMask ?? '',
+                  lines: current.lines.map(line => clearWarehouseSensitiveLineData(line, null)),
+                } : current)}
+              />
+            ) : (
+              <div className="space-y-2">
+                <Label>Cycle</Label>
+                <Input value={issue.farmCycleMask || issue.lines[0]?.cycleMask || '-'} readOnly className="bg-muted/40" />
+              </div>
+            )
+          ),
+        }]
+      : []),
 
     {
       key: 'status',

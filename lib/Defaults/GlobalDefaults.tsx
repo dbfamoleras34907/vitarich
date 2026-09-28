@@ -68,6 +68,7 @@ export function useGlobalDefaults() {
       return data;
     } catch (error) {
       console.error("getFarmDB error:", error);
+      setValue("getFarmDB", []);
     }
   };
 
@@ -88,6 +89,7 @@ export function useGlobalDefaults() {
       return data;
     } catch (error) {
       console.error("getFarmDB_breeder error:", error);
+      setValue("getFarmDB_breeder", []);
     }
   };
 
@@ -154,22 +156,27 @@ export function useGlobalDefaults() {
         setGoodsReceiptReferences(),
       ]);
 
-      if (autoSelectSingleFarm || previousDefaultFarm !== userInfo?.[0]?.default_farm || !getValue("DefaultFarmId")) {
-        const assignedFarmCodes = new Set(
-          (userInfo?.[0]?.users_farms ?? [])
-            .map((farmCode: unknown) => String(farmCode ?? "").trim())
-            .filter(Boolean),
-        );
-        const assignedFarms = (farms ?? []).filter((farm) =>
-          assignedFarmCodes.has(String(farm.code ?? "").trim()),
-        );
+      const assignedFarmCodes = new Set(
+        (userInfo?.[0]?.users_farms ?? [])
+          .map((farmCode: unknown) => String(farmCode ?? "").trim())
+          .filter(Boolean),
+      );
+      const assignedFarms = (farms ?? []).filter((farm) =>
+        assignedFarmCodes.has(String(farm.code ?? "").trim()),
+      );
 
+      const currentFarmIsAvailable = assignedFarms.some(
+        farm => String(farm.id) === String(getValue("DefaultFarmId")),
+      );
+      if (autoSelectSingleFarm || previousDefaultFarm !== userInfo?.[0]?.default_farm || !currentFarmIsAvailable) {
         const savedDefaultCode = String(userInfo?.[0]?.default_farm ?? '').trim();
         const savedDefaultFarm = assignedFarms.find(farm => String(farm.code ?? '').trim() === savedDefaultCode);
         if (savedDefaultFarm) {
           setValue("DefaultFarmId", savedDefaultFarm.id);
         } else if (autoSelectSingleFarm && assignedFarms.length === 1) {
           setValue("DefaultFarmId", assignedFarms[0].id);
+        } else {
+          setValue("DefaultFarmId", null);
         }
       }
     } catch (error) {
