@@ -3,6 +3,7 @@ import { calculateEggRangeProduction, emptyEggRangeProduction, type EggRangeProd
 import { listBreederEggLayings } from "./breederEggLaying";
 import { listBreederCycles } from "@/app/jmb/placement/new/api";
 import { db } from "@/lib/Supabase/supabaseClient";
+import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { format, parseISO, startOfMonth, startOfWeek } from "date-fns";
 import { listBreederWeightSamples } from "./breederWeightSamples";
 
@@ -626,26 +627,15 @@ export async function getBreederDashboard(
 }
 
 export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {
-  const farms = new Map<number, BreederDashboardFarm>();
+  const { data, error } = await activeApprovedFarmsQuery(
+    db.from("farms").select("id, name"),
+  )
+    .eq("farm_type", "BE")
+    .order("name", { ascending: true });
 
-  for (let page = 0; ; page += 1) {
-    const from = page * PAGE_SIZE;
-    const { data, error } = await db
-      .from(PLACEMENT_TABLE)
-      .select("farm_id, farm_name")
-      .order("farm_name", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
+  if (error) throw new Error(errorMessage(error));
 
-    if (error) throw new Error(errorMessage(error));
-    const rows = (data ?? []) as Pick<PlacementRow, "farm_id" | "farm_name">[];
-    rows.forEach((row) => {
-      const id = numeric(row.farm_id);
-      if (id && !farms.has(id)) {
-        farms.set(id, { id, name: row.farm_name || `Farm ${id}` });
-      }
-    });
-    if (rows.length < PAGE_SIZE) break;
-  }
-
-  return [...farms.values()].sort((left, right) => left.name.localeCompare(right.name));
+  return (data ?? [])
+    .map((farm) => ({ id: numeric(farm.id), name: String(farm.name ?? "").trim() }))
+    .filter((farm): farm is BreederDashboardFarm => farm.id > 0 && Boolean(farm.name));
 }
