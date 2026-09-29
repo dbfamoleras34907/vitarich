@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import NavigationBar from '@/components/ui/sidebar/NavigationBar'
 import DataComplianceDashboard from './DataComplianceDashboard'
 

@@ -1,18 +1,35 @@
-import { listAssignedUserFarmOptions } from './farmOptions.client'
-import { getActiveFarmById } from './farmManagement.client'
+import { listBroilerFarmOptions } from './farmOptions.client'
 import { getCycleMasterListRows } from './broilerFarmCycles'
 import { getBroilerBuildingCycleReport, getBroilerCycleReport } from './broilerCycleReport'
 import type { ComplianceSource } from '@/lib/broiler/dataCompliance'
 import { listFarmAssignedUsers, type FarmAssignedUser } from './farmAssignedUsers'
 import { USER_TYPES } from '@/lib/notifications/types'
+import { normalizeAdministrativeRegion } from '@/lib/farmProfileOptions'
 
 export type ComplianceCycleScope = 'current' | 'all'
+export type ComplianceFarmOption = { id: number; name: string; region: string }
 export type ComplianceFarm = { id: number; name: string; region: string; assignedTas: FarmAssignedUser[] }
 export type ComplianceDataset = { sources: ComplianceSource[]; farms: ComplianceFarm[]; warnings: string[]; loadedAt: string }
 
-/** Reuse Cycle Master's farm and standalone lineage, under the signed-in user's RLS. */
-export async function getBroilerDataCompliance(scope: ComplianceCycleScope = 'current'): Promise<ComplianceDataset> {
-  const farms = await listAssignedUserFarmOptions(['BR'], { requireComplete: true })
+export async function listBroilerDataComplianceFarmOptions(): Promise<ComplianceFarmOption[]> {
+  const farms = await listBroilerFarmOptions({ requireComplete: true })
+  return farms.map(farm => ({
+    id: farm.id,
+    name: farm.name,
+    region: normalizeAdministrativeRegion(farm.administrative_region),
+  }))
+}
+
+/** Reuse the visible Farm catalog and Cycle Master's lineage under the signed-in user's RLS. */
+export async function getBroilerDataCompliance(farmIds: number[], scope: ComplianceCycleScope = 'current'): Promise<ComplianceDataset> {
+  const requestedFarmIds = [...new Set(farmIds)].filter(id => Number.isInteger(id) && id > 0)
+  if (!requestedFarmIds.length) throw new Error('Select a region and farm before refreshing Data Compliance.')
+
+  const requestedFarmIdSet = new Set(requestedFarmIds)
+  const visibleFarms = await listBroilerFarmOptions({ requireComplete: true })
+  const farms = visibleFarms.filter(farm => requestedFarmIdSet.has(farm.id))
+  if (farms.length !== requestedFarmIds.length) throw new Error('One or more selected farms are not visible to your account.')
+
   const assignments = await listFarmAssignedUsers(farms, USER_TYPES.USER)
   const farmCatalog: ComplianceFarm[] = []
   const sources: ComplianceSource[] = []
@@ -21,9 +38,9 @@ export async function getBroilerDataCompliance(scope: ComplianceCycleScope = 'cu
   // silently omitting a farm would produce a misleading compliance percentage.
   for (let offset = 0; offset < farms.length; offset += 3) {
     const results = await Promise.all(farms.slice(offset, offset + 3).map(async farm => {
-      const [profile, catalog] = await Promise.all([getActiveFarmById(farm.id), getCycleMasterListRows(farm.id, { requireComplete: true })])
+      const catalog = await getCycleMasterListRows(farm.id, { requireComplete: true })
       const assignedTas = assignments.get(farm.id) ?? []
-      const region = profile.region?.trim() || 'Region not set'
+      const region = normalizeAdministrativeRegion(farm.administrative_region) || 'Region not set'
       farmCatalog.push({ id: farm.id, name: farm.name, region, assignedTas })
       const cycles = catalog.filter(cycle => scope === 'current' ? cycle.status === 'Saved' : cycle.status !== 'Cancelled')
       const rows: ComplianceSource[] = []

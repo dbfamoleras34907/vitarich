@@ -28,6 +28,8 @@ begin
     raise exception 'You do not have permission to edit farms.';
   end if;
 
+  perform public.validate_farm_profile_payload(payload->'farm');
+
   if not exists (
     select 1 from public.farms
     where id = p_farm_id and coalesce(approval_status, 'approved') = 'approved'

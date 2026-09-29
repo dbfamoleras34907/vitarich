@@ -387,63 +387,63 @@ export default function Layout() {
         />
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
-        <div className="border-b bg-muted/30 px-5 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+      <section className="mx-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm sm:mx-5">
+        <div className="border-b bg-muted/30 p-4 sm:p-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+            <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-              <label className="text-sm font-semibold">Farm</label>
-              <SearchableCombobox
-                items={farmOptions}
-                value={effectiveSelectedFarmId}
-                onValueChange={setSelectedFarmId}
-                placeholder="Select farm..."
-                showCode
-                className="w-full min-w-[280px] lg:w-[420px]"
-              />
+                <label className="text-sm font-semibold">Farm</label>
+                <SearchableCombobox
+                  items={farmOptions}
+                  value={effectiveSelectedFarmId}
+                  onValueChange={setSelectedFarmId}
+                  placeholder="Select farm..."
+                  showCode
+                  className="w-full"
+                />
               </div>
               <BroilerCycleSelect
                 farmId={selectedFarm?.id}
                 value={selectedCycleId}
                 onValueChange={cycleId => setSelectedCycleId(cycleId)}
-                className="w-full min-w-[280px] lg:w-[420px]"
+                className="w-full"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Building2 className="size-3.5" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <Building2 className="size-4" />
                   Buildings
                 </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{loadingBuildings ? "..." : formatNumber(visibleBuildings.length)}</div>
+                <div className="mt-1.5 text-xl font-semibold tabular-nums">{loadingBuildings ? "..." : formatNumber(visibleBuildings.length)}</div>
               </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Hash className="size-3.5" />
+              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <Hash className="size-4" />
                   Occupied
                 </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatNumber(occupiedCount)}</div>
+                <div className="mt-1.5 text-xl font-semibold tabular-nums">{formatNumber(occupiedCount)}</div>
               </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <UsersRound className="size-3.5" />
+              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <UsersRound className="size-4" />
                   Birds
                 </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatNumber(totalBirdCount)}</div>
+                <div className="mt-1.5 text-xl font-semibold tabular-nums">{formatNumber(totalBirdCount)}</div>
               </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <CalendarDays className="size-3.5" />
+              <div className="min-w-[9rem] rounded-lg border bg-background px-3.5 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <CalendarDays className="size-4" />
                   First start
                 </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatDateValue(nextStartDate)}</div>
+                <div className="mt-1.5 whitespace-nowrap text-xl font-semibold tabular-nums">{formatDateValue(nextStartDate)}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4 xl:grid-cols-[0.85fr_0.8fr_0.75fr_1.1fr_3fr]">
           {[
             ["Farm code", selectedFarm?.code || "-"],
             ["Company", "Vitarich"],
@@ -451,20 +451,28 @@ export default function Layout() {
             ["Contact", selectedFarm?.contact_person || "-"],
             ["Location", selectedFarm?.address || "-"],
           ].map(([label, value]) => (
-            <div key={label} className="border-r px-5 py-3 last:border-r-0">
-              <div className="text-xs font-medium uppercase text-muted-foreground">{label}</div>
-              <div className="mt-1 truncate font-medium">{value}</div>
+            <div
+              key={label}
+              className={label === "Location" ? "col-span-2 min-w-0 bg-card px-4 py-3.5 sm:col-span-4 xl:col-span-1" : "min-w-0 bg-card px-4 py-3.5"}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+              <div className="mt-1 break-words text-sm font-medium leading-5" title={value}>{value}</div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="m-3 mt-5 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
-        <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-3">
+      <section className="mx-3 mt-5 overflow-hidden rounded-xl border bg-card shadow-sm sm:mx-5">
+        <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3.5 sm:px-5">
           <div>
-            <h2 className="text-sm font-semibold">Buildings</h2>
-            <p className="text-xs text-muted-foreground">Active flock placements for the selected farm.</p>
+            <h2 className="font-semibold">Buildings</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Flock placements for the selected farm and cycle.</p>
           </div>
+          {!loadingBuildings && selectedFarm && visibleBuildings.length > 0 ? (
+            <span className="shrink-0 rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              {visibleBuildings.length} {visibleBuildings.length === 1 ? "building" : "buildings"}
+            </span>
+          ) : null}
         </div>
 
         {loadingBuildings ? (
@@ -490,18 +498,18 @@ export default function Layout() {
           </div>
         ) : (
           <>
-            <Table className="min-w-[1120px] bg-white dark:bg-card">
+            <Table className="min-w-[1080px] bg-card">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="">Action</TableHead>
-                  <TableHead className="]">Building</TableHead>
+                  <TableHead className="w-[250px]">Actions</TableHead>
+                  <TableHead>Building</TableHead>
                   <TableHead>Cycle Number</TableHead>
-                  <TableHead className="]">Cycle Age</TableHead>
-                  <TableHead className="]">Age</TableHead>
-                  <TableHead className="">Start date</TableHead>
-                  <TableHead>Code</TableHead>
-                  <TableHead className=" text-right">Count</TableHead>
-                  <TableHead className="">Status</TableHead>
+                  <TableHead>Cycle Age</TableHead>
+                  <TableHead>Actual Age</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>Flock Code</TableHead>
+                  <TableHead className="text-right">Birds</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -520,8 +528,8 @@ export default function Layout() {
                     <TableRow
                       key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
-                      <TableCell>
-                        <div className="flex  gap-2">
+                      <TableCell className="py-3">
+                        <div className="flex gap-2">
                           {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
                             <Button type="button" size="sm" variant="outline"
                               className="text-destructive" disabled={openingAction !== null || reversing}
@@ -583,7 +591,7 @@ export default function Layout() {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell className="min-w-0">
+                      <TableCell className="min-w-0 py-3">
                         <div className="truncate text-base font-semibold">{building.name || "-"}</div>
                         <div className="truncate text-xs text-muted-foreground" >{building.code || index + 1}</div>
                       </TableCell>
@@ -613,8 +621,8 @@ export default function Layout() {
                 })}
               </TableBody>
             </Table>
-            <div className="py-6 text-center text-sm font-medium">
-              Showing {visibleBuildings.length} of {buildings.length}
+            <div className="border-t bg-muted/10 px-5 py-3 text-right text-xs font-medium text-muted-foreground">
+              Showing {visibleBuildings.length} of {buildings.length} buildings
             </div>
           </>
         )}

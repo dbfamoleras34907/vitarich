@@ -26,9 +26,9 @@ export const PHILIPPINE_REGIONS = [
 ] as const
 
 export const FARM_PROFILE_FIELDS = [
-  { code: 'production_model', label: 'Production Model', options: FARM_PRODUCTION_MODELS },
-  { code: 'island', label: 'Island Group', options: FARM_ISLANDS },
-  { code: 'administrative_region', label: 'Region', options: PHILIPPINE_REGIONS },
+  { code: 'production_model', label: 'Production Model', options: FARM_PRODUCTION_MODELS, required: true },
+  { code: 'island', label: 'Island Group', options: FARM_ISLANDS, required: true },
+  { code: 'administrative_region', label: 'Region', options: PHILIPPINE_REGIONS, required: true },
 ] as const
 
 /** User master stores region codes; Farm master stores full administrative names. */

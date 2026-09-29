@@ -7,6 +7,7 @@ export type BroilerFarmOption = {
   code: string
   name: string
   address: string | null
+  administrative_region: string | null
 }
 
 export type AssignedFarmOption = {
@@ -87,24 +88,34 @@ export async function listAssignedUserFarmOptions(
       const name = String(farm.name ?? code).trim()
       const farmType = String(farm.farm_type ?? '').trim()
       if (!Number.isInteger(id) || id <= 0 || !code || !farmType) return []
-      return [{ id, code, name, farm_type: farmType, ref: farm.ref == null ? null : String(farm.ref).trim() }]
+      return [{
+        id,
+        code,
+        name,
+        farm_type: farmType,
+        ref: farm.ref == null ? null : String(farm.ref).trim(),
+      }]
     })
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
-export async function listBroilerFarmOptions(): Promise<BroilerFarmOption[]> {
-  const { data, error } = await activeApprovedFarmsQuery(
-    db.from('farms').select('id, code, name, address'),
+export async function listBroilerFarmOptions(
+  options: { requireComplete?: boolean } = {},
+): Promise<BroilerFarmOption[]> {
+  const { data, error, count } = await activeApprovedFarmsQuery(
+    db.from('farms').select('id, code, name, address, administrative_region', options.requireComplete ? { count: 'exact' } : undefined),
   )
     .eq('farm_type', 'BR')
     .order('name', { ascending: true })
 
   if (error) throw error
+  assertCompleteRead({ data, count }, 'Broiler farm catalog')
 
   return (data ?? []).map(farm => ({
     id: Number(farm.id),
     code: String(farm.code ?? ''),
     name: String(farm.name ?? ''),
     address: farm.address ? String(farm.address) : null,
+    administrative_region: farm.administrative_region ? String(farm.administrative_region).trim() : null,
   })).filter(farm => Number.isInteger(farm.id) && farm.id > 0 && farm.name)
 }

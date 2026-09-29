@@ -361,17 +361,17 @@ export default function GlobalSearch({ collapsed }: collapsed) {
         type="button"
         variant="ghost"
         onClick={() => setOpen(true)}
-        className={`relative h-9 gap-2 rounded-xl border border-border/80 bg-card py-2 text-sm font-normal text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/40 ${collapsed ? "w-9 justify-center px-0" : "w-full justify-start px-3"}`}
-        aria-label="Open global search"
+        className={`relative h-9 gap-2 rounded-lg border border-border bg-background py-2 text-sm font-normal text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 ${collapsed ? "w-9 justify-center px-0" : "w-full justify-start px-3"}`}
+        aria-label="Search menus"
       >
-        <Search className="h-4 w-4" />
+        <Search className="h-4 w-4" aria-hidden="true" />
 
         {!collapsed && (
           <>
-            <span className="flex-1 text-left">Search settings...</span>
+            <span className="flex-1 text-left">Search menus…</span>
 
             <kbd className="pointer-events-none absolute right-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted/70 px-1.5 font-mono text-[10px] font-medium opacity-80 sm:flex">
-              <span className="text-xs">⌘</span>K
+              Ctrl K
             </kbd>
           </>
         )}

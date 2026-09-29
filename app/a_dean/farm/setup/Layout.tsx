@@ -721,10 +721,14 @@ export default function Layout() {
     const missingAddress = requiredAddressFields.filter(
       (field) => field.required && !compact(addressData[field.code])
     )
+    const missingProfile = FARM_PROFILE_FIELDS.filter(
+      (field) => field.required && !compact(farmData[field.code])
+    )
 
-    if (missingFarm.length || missingAddress.length || !compact(farmData.farm_type)) {
+    if (missingFarm.length || missingProfile.length || missingAddress.length || !compact(farmData.farm_type)) {
       const missingLabels = [
         ...missingFarm.map((field) => field.label),
+        ...missingProfile.map((field) => field.label),
         ...missingAddress.map((field) => field.label),
         ...(!compact(farmData.farm_type) ? ['Farm Type'] : []),
       ]
@@ -1061,7 +1065,7 @@ export default function Layout() {
                     {FARM_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
                   </InlineSelect>
                   {FARM_PROFILE_FIELDS.map((field) => (
-                    <InlineSelect key={field.code} label={field.label} value={farmData[field.code] ?? ''} placeholder={`Select ${field.label.toLowerCase()}`} onValueChange={(value) => updateFarm(field.code, value)}>
+                    <InlineSelect key={field.code} label={field.label} required={field.required} value={farmData[field.code] ?? ''} placeholder={`Select ${field.label.toLowerCase()}`} onValueChange={(value) => updateFarm(field.code, value)}>
                       {field.options.map((value) => <SelectItem key={value} value={value} className="whitespace-normal">{value}</SelectItem>)}
                     </InlineSelect>
                   ))}

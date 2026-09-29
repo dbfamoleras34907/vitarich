@@ -34,6 +34,7 @@ export type StageCompliance = {
 }
 export type ComplianceRow = Omit<ComplianceSource, 'building'> & {
   key: string
+  building: BroilerCycleBuilding
   buildingId: number | null
   buildingName: string
   cardNo: string
@@ -124,6 +125,7 @@ export function buildComplianceRow(source: ComplianceSource, asOf: string, cutof
   return {
     farmId: source.farmId, farmName: source.farmName, region: source.region, ta: source.ta, assignedTas: source.assignedTas,
     cycleKey: source.cycleKey, cycleLabel: source.cycleLabel, cycleStatus: source.cycleStatus, closedAt: source.closedAt,
+    building,
     key: `${source.farmId}:${source.cycleKey}:${building.flockCardId}`, buildingId: building.buildingWarehouseId,
     buildingName: building.buildingName || building.buildingCode || building.cardNo, cardNo: building.cardNo,
     status, daysLate: Math.max(...assessed.map(value => value.daysLate)), stages: { placement, growing: daily, harvest, cleanup },

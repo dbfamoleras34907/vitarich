@@ -44,10 +44,13 @@ export default function UserAccountMenu({
     <div className="w-full">
       {/* Trigger */}
       <button
+        type="button"
         onClick={() =>
           setIsOpen((prev) => !prev)
         }
         className="w-full rounded-md text-left transition-colors"
+        aria-label="Account menu"
+        aria-expanded={isOpen}
       >
         <UserProfileCard
           email={email}
