@@ -216,6 +216,7 @@ async function validateInput(input: BreederDispatchInput) {
   for (const line of input.lines) {
     const item = availableByKey.get(dispatchItemKey(line.source_type, line.source_record_id, line.category));
     if (!item) throw new Error(`${line.category_label} is no longer available from the selected source record.`);
+    if (item.building_id !== line.building_id) throw new Error(`${line.category_label} does not match the selected source building.`);
     if (!Number.isInteger(Number(line.dispatch_qty)) || Number(line.dispatch_qty) <= 0) throw new Error("Dispatch quantities must be positive whole numbers.");
     if (Number(line.dispatch_qty) > item.source_available) throw new Error(`${line.category_label} exceeds the available quantity for ${line.building_name}.`);
   }

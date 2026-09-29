@@ -3,7 +3,7 @@ import { calculateEggRangeProduction, emptyEggRangeProduction, type EggRangeProd
 import { listBreederEggLayings } from "./breederEggLaying";
 import { listBreederCycles } from "@/app/jmb/placement/new/api";
 import { db } from "@/lib/Supabase/supabaseClient";
-import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { format, parseISO, startOfMonth, startOfWeek } from "date-fns";
 import { listBreederWeightSamples } from "./breederWeightSamples";
 
@@ -627,15 +627,9 @@ export async function getBreederDashboard(
 }
 
 export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {
-  const { data, error } = await activeApprovedFarmsQuery(
-    db.from("farms").select("id, name"),
-  )
-    .eq("farm_type", "BE")
-    .order("name", { ascending: true });
+  const farms = await listAssignedUserFarmOptions(["BE", "Breeder"]);
 
-  if (error) throw new Error(errorMessage(error));
-
-  return (data ?? [])
-    .map((farm) => ({ id: numeric(farm.id), name: String(farm.name ?? "").trim() }))
+  return farms
+    .map((farm) => ({ id: numeric(farm.id), name: farm.name.trim() }))
     .filter((farm): farm is BreederDashboardFarm => farm.id > 0 && Boolean(farm.name));
 }

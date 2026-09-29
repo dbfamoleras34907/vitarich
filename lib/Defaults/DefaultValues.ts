@@ -458,6 +458,8 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/egglaying",
             view: true,
             insert: true,
+            edit: true,
+            void: true,
           },
 
           {
