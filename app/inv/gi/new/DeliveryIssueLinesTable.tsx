@@ -179,7 +179,7 @@ export default function DeliveryIssueLinesTable({
   })
   const copyCellProps = (row: number, key: DeliveryPasteKey) => ({
     canCopyDown: row < allocationGroups.length - 1 && canCopyCell(key, allocationGroups[row]),
-    onCopyDown: () => copyDown.copyToBottom(row, COPY_COLUMNS.indexOf(key)),
+    onCopyDown: (sourceValue?: unknown) => copyDown.copyToBottom(row, COPY_COLUMNS.indexOf(key), sourceValue),
   })
   const showHarvestWeight = issue.triggeredBy === 'BR-DR'
   const requiredMark = showTransportFields ? <span className="text-red-600">*</span> : null
@@ -209,7 +209,7 @@ export default function DeliveryIssueLinesTable({
   return (
     <>
     {spreadsheetEnabled && <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-      <p className="text-xs text-muted-foreground">Right-click an editable cell and choose Copy down to fill the rows below. Paste Excel cells to add extra rows automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
+      <p className="text-xs text-muted-foreground">Right-click an editable cell and choose Copy down, or press Ctrl+Down, to fill the rows below. Paste Excel cells to add extra rows automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
       <Button type="button" size="sm" variant="outline" onClick={async () => {
         try {
           const { default: writeXlsxFile } = await import('write-excel-file/browser')

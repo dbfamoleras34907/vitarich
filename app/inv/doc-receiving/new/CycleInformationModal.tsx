@@ -11,6 +11,7 @@ import type { FarmBuildingListRow } from '@/app/brd/fc/api'
 import { flockCardBreedComboOptions } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import { Modal } from '@/lib/Moda'
 import { formatCycleMask } from '@/lib/broiler/cycleMask'
+import BroilerCycleSelect from '@/components/broiler/BroilerCycleSelect'
 
 const expectedCycleEndDate = (startDate: string) => {
   const [year, month, day] = startDate.split('-').map(Number)
@@ -25,6 +26,7 @@ export type CycleInformationForm = {
   startDate: string
   breed: string
   cycleNumber: string
+  farmCycleId: string
   farmCycleStartDate?: string | null
 }
 
@@ -36,6 +38,7 @@ type CycleInformationModalProps = {
   saving: boolean
   cycleNumberEditable: boolean
   farmCycle: boolean
+  farmId: number | null
   onOpenChange: (open: boolean) => void
   onFormChange: (changes: Partial<CycleInformationForm>) => void
   onCancel: () => void
@@ -50,6 +53,7 @@ export default function CycleInformationModal({
   saving,
   cycleNumberEditable,
   farmCycle,
+  farmId,
   onOpenChange,
   onFormChange,
   onCancel,
@@ -83,6 +87,16 @@ export default function CycleInformationModal({
                   className="bg-stone-50"
                 />
               </div>
+              {farmCycle && <BroilerCycleSelect
+                farmId={farmId}
+                value={form.farmCycleId}
+                onValueChange={(cycleId, cycle) => onFormChange({
+                  farmCycleId: cycleId,
+                  cycleNumber: cycle ? String(cycle.cycleNumber) : form.cycleNumber,
+                  farmCycleStartDate: cycle?.startDate ?? null,
+                })}
+                contentPositionerZIndex={310}
+              />}
               {!farmCycle && <div className="space-y-2">
                 <Label>Cycle Count</Label>
                 <Input

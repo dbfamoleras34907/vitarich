@@ -98,6 +98,7 @@ begin
         public.get_brd_fc_last_mortality_age(card.id) as actual_age
       from public.flock_card card
       where card.farm_id = new.farm_id
+        and card.farm_cycle_id = new.farm_cycle_id
         and card.void = '1'
         and card.status = 'Saved'
         and (
@@ -129,6 +130,7 @@ begin
       from public.br_cleanup_lines line
       join public.flock_card card
         on card.farm_id = new.farm_id
+       and card.farm_cycle_id = new.farm_cycle_id
        and card.void = '1'
        and card.status = 'Saved'
        and (
@@ -295,6 +297,7 @@ begin
     from public.br_cleanup_lines line
     join public.flock_card card
       on card.farm_id = new.farm_id
+     and card.farm_cycle_id = new.farm_cycle_id
      and card.void = '1'
      and card.status = 'Saved'
      and (
@@ -379,6 +382,7 @@ begin
     from selected_buildings selected
     join public.flock_card card
       on card.farm_id = new.farm_id
+     and card.farm_cycle_id = new.farm_cycle_id
      and card.void = '1'
      and card.status = 'Saved'
      and (
@@ -441,6 +445,7 @@ begin
     from public.br_cleanup_lines line
     join public.flock_card card
       on card.farm_id = new.farm_id
+      and card.farm_cycle_id = new.farm_cycle_id
       and card.void = '1'
       and card.status = 'Closed'
       and card.extra->>'closed_by_doc_type' = 'BR_CLEANUP'

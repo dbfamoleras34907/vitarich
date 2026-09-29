@@ -35,9 +35,10 @@ function database(tables) {
     let rows = structuredClone(tables[table] ?? [])
     let single = false
     let start = 0, end = 999
+    let includeCount = false
     const ordering = []
     const query = {
-      select() { return query },
+      select(_fields, options) { includeCount = options?.count === 'exact'; return query },
       eq(field, value) { rows = rows.filter(row => String(row[field]) === String(value)); return query },
       is(field, value) { rows = rows.filter(row => row[field] === value); return query },
       in(field, values) { rows = rows.filter(row => values.some(value => String(row[field]) === String(value))); return query },
@@ -47,7 +48,7 @@ function database(tables) {
       maybeSingle() { single = true; return query },
       then(resolve, reject) {
         rows.sort((a, b) => { for (const [field, direction] of ordering) { const diff = (a[field] > b[field] ? 1 : a[field] < b[field] ? -1 : 0) * direction; if (diff) return diff } return 0 })
-        return Promise.resolve({ data: single ? rows[0] ?? null : rows.slice(start, end + 1), error: null }).then(resolve, reject)
+        return Promise.resolve({ data: single ? rows[0] ?? null : rows.slice(start, end + 1), error: null, count: includeCount ? rows.length : null }).then(resolve, reject)
       },
     }
     return query
@@ -176,7 +177,21 @@ async function main() {
   assert.equal(model.buildingMetrics({ ...building, placements: [] }).population, null)
   const second = { ...building, flockCardId: 20, startingPopulation: 900, deliveries: [], growingLines: [{ ...building.growingLines.find(row => row.id === 3), mortalityAm: 9, mortalityTotal: 9, thin_am: 0, thinningAm: 0, thinningPm: 0, thinningTotal: 9, actualWeight: 200 }] }
   const combined = model.dashboardMetrics([building, second])
-  assert(Math.abs(combined.mortalityPercent - 1.1) < 1e-12, 'Farm mortality uses total deaths / total placed, not mean percentages')
+  assert.equal(combined.mortalityPercent, 5.5, 'Farm mortality uses receipt totals even when flock-card quantities differ')
+  const receivedSecond = { ...second, placements: [{ ...openingReceipt, id: 29, actualReceived: 900 }] }
+  assert.equal(model.buildingMetrics(receivedSecond).mortalityPercent, 1)
+  assert(Math.abs(model.dashboardMetrics([building, receivedSecond]).mortalityPercent - 1.1) < 1e-12,
+    'Farm mortality uses total deaths / total placed, not mean percentages')
+  assert.equal(model.buildingMetrics(second).mortalityPercent, 9, 'Use received good birds rather than flock-card quantity')
+  for (const placements of [[], [{ ...openingReceipt, actualReceived: 0 }]]) {
+    const missingPopulation = { ...building, placements }
+    assert.equal(model.buildingMetrics(missingPopulation).mortalityPercent, null)
+    assert.equal(model.dashboardMetrics([missingPopulation]).mortalityPercent, null)
+  }
+  assert.equal(zero.mortalityPercent, 0, 'Recorded zero deaths remain zero percent')
+  assert.equal(empty.mortalityPercent, null, 'Unrecorded mortality is not zero percent')
+  assert.equal(model.dashboardMetrics([building, { ...second, placements: [] }]).mortalityPercent, null,
+    'Incomplete placement totals must not produce a farm mortality rate')
   assert.equal(combined.weight, (100 * 120 + 900 * 200) / 1000)
   assert.equal(metrics.fcr, 10 / (84 * 120 / 1000))
   assert.equal(combined.fcr, 20 / (972 * combined.weight / 1000), 'Aggregate FCR uses total feed / total estimated live weight')
@@ -321,4 +336,5 @@ async function main() {
   assert(withStandaloneFailure.warnings.some(warning => warning.includes('Simulated standalone lookup failure')))
   console.log('Cycle Dashboard tests passed: posting filters, latest/closed cycle recall, cycle isolation, lineage, weighted totals, age at close, access guards, pagination, and report compatibility.')
 }
-main().catch(error => { console.error(error); process.exitCode = 1 })
+module.exports = { loader, database }
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1 })

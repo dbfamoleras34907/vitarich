@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { TableCopyDownCell } from "@/components/ui/TableCopyDownCell";
+import { isCopyDownShortcut, TableCopyDownCell } from "@/components/ui/TableCopyDownCell";
 import { useTableCopyDown } from "@/hooks/useTableCopyDown";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -2978,6 +2978,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     rowIndex: number,
     colIndex: number
   ) {
+    if (isCopyDownShortcut(event)) return;
+
     const keyActions: Record<string, () => void> = {
       ArrowLeft: () =>
         moveFocus(getNextFocusableHorizontalTarget(rowIndex, colIndex, -1)),
@@ -4151,7 +4153,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         </Dialog>
 
         <p className="px-3 py-1 text-xs text-muted-foreground">
-          Right-click an editable cell and choose Copy down to fill the unlocked rows below. Batch selection follows the farm settings.
+          Right-click an editable cell and choose Copy down, or press Ctrl+Down, to fill the unlocked rows below. Batch selection follows the farm settings.
         </p>
         <div className="relative flex-1 overflow-auto">
           <table
@@ -4286,9 +4288,10 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                         <TableCopyDownCell
                           key={colIndex}
                           canCopyDown={canCopyGrowingCell(colIndex, rowIndex) && copyRows.some(row => row.rowIndex > rowIndex && canCopyGrowingCell(colIndex, row.rowIndex))}
-                          onCopyDown={() => copyDown.copyToBottom(
+                          onCopyDown={sourceValue => copyDown.copyToBottom(
                             copyRows.findIndex(row => row.rowIndex === rowIndex),
                             copyColumns.findIndex(column => column.index === colIndex),
+                            sourceValue,
                           )}
                           className={`fc-grid-cell ${disabled ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} ${bodyEmphasisClasses[colIndex]} ${active ? "fc-grid-cell-active" : ""} p-0 ${bodyBorderClasses[colIndex]}`}
                         >

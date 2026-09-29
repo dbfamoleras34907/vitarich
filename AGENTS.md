@@ -43,6 +43,19 @@ Route-local files and UI components should call shared reusable functions instea
 
 Do not create generic arbitrary table/query executors.
 
+## SQL File Location
+
+Place deployable and migration `.sql` files under `app/sql/` according to their state:
+
+```text
+app/sql/
+  new/       # newly created SQL files
+  updated/   # existing SQL files that were changed
+  old/       # retired or superseded SQL files kept for reference
+```
+
+Do not add deployable or migration SQL files beside route or module source files. Move a file between these folders when its state changes. SQL test fixtures may remain in their test directories.
+
 ---
 
 ## Browser Rule

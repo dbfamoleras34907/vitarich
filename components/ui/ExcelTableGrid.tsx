@@ -545,7 +545,7 @@ export default function ExcelTableGrid<T extends Record<string, unknown>>({
                       <TableCopyDownCell
                         key={String(column.key)}
                         canCopyDown={!loading && editable && !editing && rowIndex < rows.length - 1}
-                        onCopyDown={() => copyDown.copyToBottom(rowIndex, columnIndex)}
+                        onCopyDown={sourceValue => copyDown.copyToBottom(rowIndex, columnIndex, sourceValue)}
                         data-excel-cell={`${rowIndex}:${columnIndex}`}
                         data-copy-down-row={rowIndex}
                         data-copy-down-column={columnIndex}

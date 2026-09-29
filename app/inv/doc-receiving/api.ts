@@ -1,5 +1,7 @@
 'use client'
 
+import { addDays, parseISO } from 'date-fns'
+
 import { db } from '@/lib/Supabase/supabaseClient'
 import { saveDocReceivingWithSources, type ReceivingAllocation } from '@/lib/data/repositories/receivingSources'
 
@@ -87,6 +89,14 @@ export type GoodsReceiptDocLine = {
   reject_count_remarks: string
 }
 
+export type GoodsReceiptReceivingSummary = {
+  total: number
+  good: number
+  doa: number
+  reject: number
+  shortCount: number
+}
+
 export type GoodsReceipt = {
   id: number | null
   grNo: string
@@ -102,6 +112,7 @@ export type GoodsReceipt = {
   lines: GoodsReceiptLine[]
   docDetails: GoodsReceiptDocLine[]
   createdAt: string
+  receivingSummary?: GoodsReceiptReceivingSummary
 }
 
 type GoodsReceiptRow = {
@@ -176,12 +187,23 @@ type GoodsReceiptListItemRow = {
   returned_qty: number
 }
 
+type GoodsReceiptListDocRow = {
+  goods_reciept_id: number
+  quantity_received: number | null
+  actual_received: number | null
+  doa_quantity: number | null
+  reject_count: number | null
+}
+
 export type GoodsReceiptListParams = {
   limit?: number
   farmId?: number | string
   dateFrom?: string
   dateTo?: string
+  dateField?: GoodsReceiptDateField
 }
+
+export type GoodsReceiptDateField = 'receiveDate' | 'createdDate'
 
 const toReceiptLine = (row: GoodsReceiptItemRow): GoodsReceiptLine => ({
   sourceDispatchLineId: row.source_dispatch_line_id,
@@ -274,6 +296,7 @@ const toReceiptListLine = (row: GoodsReceiptListItemRow): GoodsReceiptLine => ({
 const toReceiptListItem = (
   row: GoodsReceiptRow,
   lines: GoodsReceiptListItemRow[],
+  receivingSummary: GoodsReceiptReceivingSummary,
 ): GoodsReceipt => ({
   id: row.id,
   grNo: row.gr_no,
@@ -289,23 +312,43 @@ const toReceiptListItem = (
   lines: lines.map(toReceiptListLine),
   docDetails: [],
   createdAt: row.created_at,
+  receivingSummary,
 })
 
-async function getReceiptIdsWithDocReceiving() {
+async function getDocReceivingListRows() {
   const { data, error } = await db
     .from('goods_receipt_doc')
-    .select('goods_reciept_id')
+    .select('goods_reciept_id, quantity_received, actual_received, doa_quantity, reject_count')
     .eq('void', '1')
 
   if (error) throw error
 
-  return Array.from(
-    new Set(
-      (data ?? [])
-        .map(row => Number(row.goods_reciept_id))
-        .filter(id => Number.isFinite(id))
-    )
-  )
+  return (data ?? []) as GoodsReceiptListDocRow[]
+}
+
+function summarizeDocReceivingRows(rows: GoodsReceiptListDocRow[]) {
+  const summaries = new Map<number, GoodsReceiptReceivingSummary>()
+
+  for (const row of rows) {
+    const receiptId = Number(row.goods_reciept_id)
+    if (!Number.isFinite(receiptId)) continue
+
+    const total = Number(row.quantity_received ?? 0)
+    const good = Number(row.actual_received ?? 0)
+    const doa = Number(row.doa_quantity ?? 0)
+    const reject = Number(row.reject_count ?? 0)
+    const current = summaries.get(receiptId) ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 }
+
+    summaries.set(receiptId, {
+      total: current.total + total,
+      good: current.good + good,
+      doa: current.doa + doa,
+      reject: current.reject + reject,
+      shortCount: current.shortCount + Math.max(total - good - doa - reject, 0),
+    })
+  }
+
+  return summaries
 }
 
 export async function getGoodsReceipts({
@@ -313,8 +356,11 @@ export async function getGoodsReceipts({
   farmId,
   dateFrom,
   dateTo,
+  dateField = 'receiveDate',
 }: GoodsReceiptListParams = {}): Promise<GoodsReceipt[]> {
-  const docReceivingReceiptIds = await getReceiptIdsWithDocReceiving()
+  const docReceivingRows = await getDocReceivingListRows()
+  const receivingSummaries = summarizeDocReceivingRows(docReceivingRows)
+  const docReceivingReceiptIds = Array.from(receivingSummaries.keys())
 
   if (docReceivingReceiptIds.length === 0) return []
 
@@ -326,8 +372,14 @@ export async function getGoodsReceipts({
     .limit(limit)
 
   if (farmId !== undefined && farmId !== '') receiptQuery = receiptQuery.eq('farm_id', farmId)
-  if (dateFrom) receiptQuery = receiptQuery.gte('receive_date', dateFrom)
-  if (dateTo) receiptQuery = receiptQuery.lte('receive_date', dateTo)
+  if (dateField === 'createdDate') {
+    if (dateFrom) receiptQuery = receiptQuery.gte('created_at', parseISO(dateFrom).toISOString())
+    // Use the next local midnight so the entire selected end date is included.
+    if (dateTo) receiptQuery = receiptQuery.lt('created_at', addDays(parseISO(dateTo), 1).toISOString())
+  } else {
+    if (dateFrom) receiptQuery = receiptQuery.gte('receive_date', dateFrom)
+    if (dateTo) receiptQuery = receiptQuery.lte('receive_date', dateTo)
+  }
 
   const { data: receiptRows, error: receiptError } = await receiptQuery
 
@@ -353,6 +405,7 @@ export async function getGoodsReceipts({
     toReceiptListItem(
       receipt,
       items.filter(item => item.goods_reciept_id === receipt.id),
+      receivingSummaries.get(receipt.id) ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 },
     )
   )
 }

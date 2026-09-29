@@ -104,6 +104,7 @@ begin
         select 1 from public.flock_card card
         cross join lateral public.get_harvest_emptied_cleanup_batches(card.id) batch
         where card.farm_id = new.farm_id
+          and card.farm_cycle_id = new.farm_cycle_id
           and card.building_whse_id = line.from_warehouse_id
           and upper(btrim(batch.warehouse_code)) = upper(btrim(line.from_warehouse_code))
           and upper(batch.item_code) = upper(btrim(line.item_code))

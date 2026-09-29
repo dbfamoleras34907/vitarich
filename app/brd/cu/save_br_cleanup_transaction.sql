@@ -15,6 +15,7 @@ declare
   v_existing_status text;
   v_target_status text := coalesce(nullif(trim(p_document->>'status'), ''), 'Draft');
   v_farm_id bigint := nullif(p_document->>'farmId', '')::bigint;
+  v_farm_cycle_id bigint := nullif(p_document->>'farmCycleId', '')::bigint;
   v_farm_code text;
   v_farm_name text;
   v_line jsonb;
@@ -47,6 +48,30 @@ begin
     raise exception 'Clean Up requires at least one line.';
   end if;
 
+  if v_farm_cycle_id is null or not exists (
+    select 1 from public.doc_farm_cycles cycle
+    where cycle.id = v_farm_cycle_id and cycle.farm_id = v_farm_id
+      and cycle.status in ('Saved', 'Past Open')
+  ) then
+    raise exception 'Clean Up requires a Current Cycle or Past Open Cycle for the selected farm.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'lines') input(line)
+    where not exists (
+      select 1 from public.flock_card card
+      where card.farm_cycle_id = v_farm_cycle_id and card.farm_id = v_farm_id
+        and card.void = '1' and card.status = 'Saved'
+        and (
+          card.building_whse_id = nullif(input.line->>'fromWarehouseId', '')::bigint
+          or upper(btrim(card.building_code)) = upper(btrim(input.line->>'fromWarehouseCode'))
+        )
+    )
+  ) then
+    raise exception 'Every Clean Up building must belong to the selected open cycle.';
+  end if;
+
   -- Serialize by document number to recover a lost create response safely.
   perform pg_advisory_xact_lock(hashtextextended('BR-CU-SAVE:' || (p_document->>'giNo'), 0));
   v_request_fingerprint := md5(jsonb_build_object(
@@ -77,6 +102,7 @@ begin
       gi_no = trim(p_document->>'giNo'),
       issue_date = (p_document->>'issueDate')::date,
       farm_id = v_farm_id,
+      farm_cycle_id = v_farm_cycle_id,
       farm_code = nullif(trim(v_farm_code), ''),
       farm_name = nullif(trim(v_farm_name), ''),
       from_warehouse_id = nullif(p_document->>'fromWarehouseId', '')::bigint,
@@ -93,6 +119,7 @@ begin
       gi_no,
       issue_date,
       farm_id,
+      farm_cycle_id,
       farm_code,
       farm_name,
       from_warehouse_id,
@@ -106,6 +133,7 @@ begin
       trim(p_document->>'giNo'),
       (p_document->>'issueDate')::date,
       v_farm_id,
+      v_farm_cycle_id,
       nullif(trim(v_farm_code), ''),
       nullif(trim(v_farm_name), ''),
       nullif(p_document->>'fromWarehouseId', '')::bigint,

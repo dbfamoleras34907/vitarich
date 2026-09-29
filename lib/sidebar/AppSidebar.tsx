@@ -1,22 +1,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Boxes, ExternalLink, Menu } from "lucide-react"
+import { Boxes, ChevronDown, ExternalLink, FilePlus, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useSidebar } from "./SidebarProvider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePathname, useRouter } from "next/navigation"
 import { useGlobalContext } from "../context/GlobalContext"
 import { NavFolders } from "../Defaults/DefaultValues"
 import GlobalSearch from "@/components/ui/GlobalSearch"
+import RefreshDataButton from "./RefreshDataButton"
 import { db } from "../Supabase/supabaseClient"
 import { Session } from "@supabase/supabase-js"
 import UserAccountMenu from "../UserAccountMenu"
 import { getModuleIcon } from "./moduleIcons"
 import type { NavFolder, NavGroup } from "../types"
 import { getProfileByAuthId } from "@/app/admin/user/api"
-import { getNavigationPermissionTitle } from "./navigationPermissions"
+import { canInsertDocument, getNavigationPermissionTitle } from "./navigationPermissions"
 import NotificationCenter from "@/components/notifications/NotificationCenter"
 
 export { getNavigationPermissionTitle } from "./navigationPermissions"
@@ -38,9 +46,9 @@ type SidebarFarm = {
 const FMS_FOLDER_TITLES = new Set(["broiler", "hatchery", "breeder"])
 
 const ACTIVE_NAV_ITEM_CLASS =
-  "relative bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary before:content-['']"
+  "relative bg-primary/10 text-primary before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary before:content-['']"
 const SIDEBAR_SCROLL_CLASS =
-  "[scrollbar-color:#d6d3d1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300/80 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400/90"
+  "[scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border"
 
 function routeIsActive(pathname: string, url: string) {
   return url !== "#" && (pathname === url || pathname.startsWith(`${url}/`))
@@ -52,6 +60,20 @@ function folderContainsRoute(folder: NavFolder, pathname: string) {
       group.children.some(child => routeIsActive(pathname, child.url)),
     ),
   )
+}
+
+function getActiveNavigationUrl(folder: NavFolder | undefined, pathname: string) {
+  return folder?.items
+    ?.flatMap(group => group.children)
+    .filter(child => !child.hideFromNavigation && routeIsActive(pathname, child.url))
+    .sort((left, right) => right.url.length - left.url.length)[0]?.url ?? null
+}
+
+function getSidebarGroupLabel(group: string) {
+  const normalizedGroup = group.trim().toLowerCase()
+  if (normalizedGroup === "menus") return "Operations"
+  if (normalizedGroup === "report") return "Reports"
+  return group
 }
 
 export function AppSidebar() {
@@ -71,6 +93,9 @@ export function AppSidebar() {
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null)
   const [preferredFmsFolder, setPreferredFmsFolder] = useState<string | null>(null)
   const [accessProfile, setAccessProfile] = useState<SidebarAccessProfile | null>(null)
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null)
+  const mobileCloseRef = useRef<HTMLButtonElement>(null)
+  const mobileWasOpenedRef = useRef(false)
 
   const userInfo = getValue("UserInfoAuthSession")?.[0] as SidebarAccessProfile | undefined
   const farmList = (getValue("getFarmDB") ?? []) as SidebarFarm[]
@@ -96,6 +121,7 @@ export function AppSidebar() {
   )
 
   const activeFolder = filteredNavFolders.find(folder => folder.id === activeFolderId)
+  const activeNavigationUrl = getActiveNavigationUrl(activeFolder, pathname)
 
   useEffect(() => {
     const routeFolder = filteredNavFolders.find(folder => folderContainsRoute(folder, pathname))
@@ -122,6 +148,23 @@ export function AppSidebar() {
   }, [])
 
   useEffect(() => {
+    if (!mobileOpen) {
+      if (mobileWasOpenedRef.current) mobileTriggerRef.current?.focus()
+      return
+    }
+
+    mobileWasOpenedRef.current = true
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false)
+    }
+
+    document.addEventListener("keydown", closeOnEscape)
+    mobileCloseRef.current?.focus()
+    return () => document.removeEventListener("keydown", closeOnEscape)
+  }, [mobileOpen])
+
+  useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await db.auth.getSession()
       setSession(session)
@@ -146,7 +189,13 @@ export function AppSidebar() {
 
   const goTo = (url: string) => {
     setValue("loading_s", true)
+    setMobileOpen(false)
     router.push(url)
+  }
+
+  const prepareNavigation = () => {
+    setValue("loading_s", true)
+    setMobileOpen(false)
   }
 
   const openInNewWindow = (url: string) => {
@@ -186,11 +235,11 @@ export function AppSidebar() {
 
     return (
     <>
-      <div className="px-2 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/45">
-        Module groups
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Modules
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
         {filteredNavFolders.map(folder => {
           const Icon = folder.icon
           const isSelected = activeFolderId === folder.id
@@ -200,17 +249,17 @@ export function AppSidebar() {
             <button
               key={folder.id}
               type="button"
-              onClick={() => setActiveFolderId(current => current === folder.id ? null : folder.id)}
-              className={`group flex w-full min-w-0 items-center justify-start gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${isSelected
+              onClick={() => setActiveFolderId(folder.id)}
+              className={`group flex h-9 w-full min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 text-center text-[10px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${isSelected
                 ? "border-primary bg-primary text-primary-foreground"
                 : hasActiveRoute
-                  ? "border-primary/40 bg-primary/5 text-sidebar-foreground"
-                  : "border-sidebar-border bg-card text-sidebar-foreground hover:border-primary/40 hover:bg-sidebar-accent"
+                  ? "border-primary/30 bg-primary/5 text-sidebar-foreground"
+                  : "border-transparent bg-muted/45 text-sidebar-foreground hover:border-primary/20 hover:bg-primary/5"
                 }`}
               aria-expanded={isSelected}
             >
-              <Icon className="size-4 shrink-0" />
-              <span className="min-w-0 whitespace-normal">{folder.title}</span>
+              <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{folder.title}</span>
             </button>
           )
         })}
@@ -218,17 +267,17 @@ export function AppSidebar() {
 
       {
         activeFolder ? (
-          <div className="mt-6">
-            <div className="mb-2 flex items-center justify-between px-2">
-              <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+          <div className="mt-4 border-t border-sidebar-border pt-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {activeFolder.title}
               </div>
-              <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] text-sidebar-foreground/60">
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {activeFolder.items?.reduce((count, group) => count + group.children.filter(child => child.url !== "#" && !child.hideFromNavigation).length, 0) ?? 0} modules
               </span>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               {activeFolder.items?.map(group => {
                 const visibleChildren = group.children.filter(child => child.url && child.url !== "#" && !child.hideFromNavigation)
                 if (!visibleChildren.length) return null
@@ -236,14 +285,14 @@ export function AppSidebar() {
                 return (
                   <div key={`${activeFolder.id}-${group.group}`}>
                     {(activeFolder.items?.length ?? 0) > 1 && (
-                      <div className="mb-1 px-3 text-[11px] font-medium text-sidebar-foreground/45">
-                        {group.group}
+                      <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        {getSidebarGroupLabel(group.group)}
                       </div>
                     )}
                     <div className="space-y-1">
                       {visibleChildren.map(child => {
                         const Icon = getModuleIcon(child.title, child.type)
-                        const isCurrentRoute = routeIsActive(pathname, child.url)
+                        const isCurrentRoute = child.url === activeNavigationUrl
 
                         return (
                           <div
@@ -251,22 +300,43 @@ export function AppSidebar() {
                             className="group/route relative"
                           >
                             <Button
+                              asChild
                               variant="ghost"
-                              className={`h-9 w-full justify-start rounded-md px-3 pr-10 text-sm font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
-                              onClick={() => goTo(child.url)}
+                              className={`min-h-10 h-auto w-full justify-start rounded-lg px-3 py-2 pr-10 text-sm font-normal leading-5 hover:bg-primary/5 hover:text-foreground ${isCurrentRoute ? ACTIVE_NAV_ITEM_CLASS : "text-sidebar-foreground/80"}`}
                             >
-                              <Icon className="size-4 shrink-0 text-sidebar-foreground/65" />
-                              <span className="truncate">{child.title}</span>
+                              <Link
+                                href={child.url}
+                                onClick={prepareNavigation}
+                                aria-current={isCurrentRoute ? "page" : undefined}
+                              >
+                                <Icon className="size-[18px] shrink-0 text-current opacity-70" aria-hidden="true" />
+                                <span className="min-w-0 whitespace-normal text-left">{child.title}</span>
+                              </Link>
                             </Button>
-                            <button
-                              type="button"
-                              onClick={() => openInNewWindow(child.url)}
-                              className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100"
-                              aria-label={`Open ${child.title} in a new window`}
-                              title="Open in new window"
-                            >
-                              <ExternalLink className="size-3.5" />
-                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/60 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/route:opacity-100 data-[state=open]:opacity-100"
+                                  aria-label={`Options for ${child.title}`}
+                                  title="Module options"
+                                >
+                                  <ChevronDown className="size-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" side="right">
+                                {canInsertDocument(child, userPermissions || [], Number(accessProfile?.user_type ?? 3)) && (
+                                  <DropdownMenuItem onSelect={() => goTo(child.newDocumentUrl!)}>
+                                    <FilePlus />
+                                    New Document
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onSelect={() => openInNewWindow(child.url)}>
+                                  <ExternalLink />
+                                  Open to another tab
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         )
                       })}
@@ -300,11 +370,15 @@ export function AppSidebar() {
       <>
         {!mobileOpen && (
           <Button
+            ref={mobileTriggerRef}
+            type="button"
             variant="ghost"
             onClick={() => setMobileOpen(true)}
-            className="fixed z-50 left-3 top-3 bg-card/95 p-2 shadow-[var(--starbucks-nav-shadow)]"
+            className="fixed left-3 top-3 z-50 border border-border bg-card/95 p-2 shadow-sm"
+            aria-label="Open navigation"
+            aria-expanded={false}
           >
-            <Menu className="size-5" />
+            <Menu className="size-5" aria-hidden="true" />
           </Button>
         )}
 
@@ -313,16 +387,20 @@ export function AppSidebar() {
             <div
               className="absolute inset-0 bg-black/40"
               onClick={() => setMobileOpen(false)}
+              aria-hidden="true"
             />
 
-            <aside className="relative h-full w-72 bg-sidebar p-3 text-sidebar-foreground shadow-lg">
-
-              {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
-              <div className="mb-3 flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)]">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Application navigation"
+              className="relative flex h-dvh w-[min(21rem,calc(100vw-2rem))] flex-col border-r border-sidebar-border bg-card text-sidebar-foreground shadow-xl"
+            >
+              <div className="flex shrink-0 items-center gap-3 border-b border-sidebar-border px-4 py-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                   V
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-foreground">{sidebarTitle}</div>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -331,15 +409,33 @@ export function AppSidebar() {
                     <TooltipContent side="right">Default Farm</TooltipContent>
                   </Tooltip>
                 </div>
+                <Button
+                  ref={mobileCloseRef}
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setMobileOpen(false)}
+                  aria-label="Close navigation"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </Button>
               </div>
-              <GlobalSearch collapsed={false} />
 
-              <div className={`mt-4 max-h-[calc(100vh-15rem)] overflow-y-auto rounded-md bg-card/70 p-2 pb-6 shadow-[var(--starbucks-card-shadow)] ${SIDEBAR_SCROLL_CLASS}`}>
-                {renderExpandedNavigation()}
+              <div className="flex shrink-0 gap-2 border-b border-sidebar-border px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <GlobalSearch collapsed={false} />
+                </div>
+                <div className="w-9 shrink-0">
+                  <RefreshDataButton collapsed />
+                </div>
               </div>
-              <div className="mt-3 rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
+
+              <nav className={`min-h-0 flex-1 overflow-y-auto px-4 py-4 ${SIDEBAR_SCROLL_CLASS}`}>
+                {renderExpandedNavigation()}
+              </nav>
+
+              <div className="shrink-0 border-t border-sidebar-border px-3 py-2">
                 <NotificationCenter />
-                <div className="my-2 border-t border-sidebar-border" />
                 <UserAccountMenu session={session} collapsed={false} />
               </div>
             </aside>
@@ -355,15 +451,14 @@ export function AppSidebar() {
 
   return (
     <aside
-      className={`flex h-screen flex-col text-sidebar-foreground shadow-[var(--starbucks-nav-shadow)] transition-all ${collapsed ? "w-16 bg-card" : "w-72 bg-sidebar"
+      className={`flex h-dvh shrink-0 flex-col border-r border-sidebar-border bg-card text-sidebar-foreground transition-[width] ${collapsed ? "w-16" : "w-[21rem]"
         } duration-300`}
     >
-      <div className="z-50 px-3 pt-3">
-        <div className={`flex items-center gap-3 rounded-md bg-card px-3 py-3 shadow-[var(--starbucks-card-shadow)] ${collapsed ? "justify-center" : "justify-between"}`}>
-          {/* <VersionSwitcher versions={versions} defaultVersion={versions[0]} /> */}
+      <div className="z-50 shrink-0 border-b border-sidebar-border">
+        <div className={`flex h-16 items-center gap-3 px-3 ${collapsed ? "justify-center" : "justify-between"}`}>
           {!collapsed && (
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                 V
               </div>
               <div className="min-w-0">
@@ -377,35 +472,44 @@ export function AppSidebar() {
               </div>
             </div>
           )}
-          <Button className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" variant="ghost" size="icon" onClick={toggle} >
-            <Menu className="size-5" />
+          <Button
+            className="text-muted-foreground hover:bg-primary/5 hover:text-foreground"
+            variant="ghost"
+            size="icon-sm"
+            onClick={toggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed
+              ? <PanelLeftOpen className="size-[18px]" aria-hidden="true" />
+              : <PanelLeftClose className="size-[18px]" aria-hidden="true" />}
           </Button>
         </div>
         {!collapsed && (
-          <div className="mt-3">
-            <GlobalSearch collapsed={collapsed} />
+          <div className="flex gap-2 px-4 pb-3">
+            <div className="min-w-0 flex-1">
+              <GlobalSearch collapsed={false} />
+            </div>
+            <div className="w-9 shrink-0">
+              <RefreshDataButton collapsed />
+            </div>
           </div>
         )}
       </div>
 
-      <nav className={`mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-8 ${collapsed ? "space-y-1" : "space-y-5"} ${SIDEBAR_SCROLL_CLASS}`}>
-
-        <div className={`mb-2 ${collapsed ? "space-y-1" : "rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]"}`}>
+      <nav className={`min-h-0 flex-1 overflow-y-auto ${collapsed ? "space-y-1 px-2 py-3" : "px-4 py-4"} ${SIDEBAR_SCROLL_CLASS}`}>
+        <div className={collapsed ? "space-y-1" : ""}>
           {collapsed && (
             <div className="text-sidebar-foreground/80">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <GlobalSearch collapsed={collapsed} />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">Search</TooltipContent>
-              </Tooltip>
+              <GlobalSearch collapsed />
+              <div className="mt-1">
+                <RefreshDataButton collapsed />
+              </div>
+              <div className="my-3 border-t border-sidebar-border" />
             </div>
           )}
 
           {collapsed ? filteredNavFolders.map(folder => (
-            <div key={folder.id} className={`text-sidebar-foreground/80 ${collapsed ? "" : "space-y-1 pb-3 last:pb-0"}`}>
+            <div key={folder.id} className="text-sidebar-foreground/80">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -414,10 +518,10 @@ export function AppSidebar() {
                       setActiveFolderId(folder.id)
                       toggle()
                     }}
-                    className={`h-10 w-full justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${folderContainsRoute(folder, pathname) ? ACTIVE_NAV_ITEM_CLASS : ""}`}
+                    className={`h-10 w-full justify-center rounded-lg text-sidebar-foreground hover:bg-primary/5 hover:text-foreground ${folderContainsRoute(folder, pathname) ? ACTIVE_NAV_ITEM_CLASS : ""}`}
                     aria-label={folder.title}
                   >
-                    <folder.icon className="size-5 text-sidebar-foreground/70" />
+                    <folder.icon className="size-5 text-current opacity-70" aria-hidden="true" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">{folder.title}</TooltipContent>
@@ -426,17 +530,10 @@ export function AppSidebar() {
           )) : renderExpandedNavigation()}
         </div>
 
-        {/* {getValue("loading_s") && (
-          <RefreshCw className="animate-spin size-4 fixed bottom-3 right-3" />
-        )} */}
-
       </nav>
-      <div className="shrink-0 px-3 pb-3 pt-3">
-        <div className="rounded-md bg-card/70 p-2 shadow-[var(--starbucks-card-shadow)]">
-          <NotificationCenter collapsed={collapsed} />
-          <div className="my-2 border-t border-sidebar-border" />
-          <UserAccountMenu session={session} collapsed={collapsed} />
-        </div>
+      <div className="shrink-0 border-t border-sidebar-border px-2 py-2">
+        <NotificationCenter collapsed={collapsed} />
+        <UserAccountMenu session={session} collapsed={collapsed} />
       </div>
     </aside>
   )

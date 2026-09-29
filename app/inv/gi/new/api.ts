@@ -35,6 +35,7 @@ export type GoodsIssueFlockCardInfo = {
   id: number
   cardNo: string
   farmId: number | null
+  farmCycleId: number | null
   farmCode: string
   farmName: string
   buildingWarehouseId: number | null
@@ -96,6 +97,7 @@ type CleanupSummaryPostingRow = {
 
 export async function getCleanupCycleSummaries(params: {
   farmId: number
+  farmCycleId?: number | null
   cleanupDocumentId: number | null
   buildings: Array<{ warehouseId: number | null; warehouseCode: string }>
 }): Promise<CleanupCycleSummary[]> {
@@ -104,7 +106,7 @@ export async function getCleanupCycleSummaries(params: {
 
   const cardResult = await db
     .from('flock_card')
-    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra')
+    .select('id, card_no, farm_id, farm_cycle_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .in('status', ['Saved', 'Closed'])
@@ -112,7 +114,8 @@ export async function getCleanupCycleSummaries(params: {
     .order('id', { ascending: false })
 
   if (cardResult.error) throwReferenceError('Clean up cycle summary', cardResult.error)
-  const cards = (cardResult.data ?? []) as CleanupSummaryCardRow[]
+  const cards = ((cardResult.data ?? []) as CleanupSummaryCardRow[])
+    .filter(card => params.farmCycleId == null || Number(card.farm_cycle_id) === Number(params.farmCycleId))
   const documentId = Number(params.cleanupDocumentId ?? 0)
 
   const selectedCards = params.buildings.flatMap(building => {
@@ -407,6 +410,7 @@ type FlockCardInfoRow = {
   id: number
   card_no: string | null
   farm_id: number | null
+  farm_cycle_id: number | null
   farm_code: string | null
   farm_name: string | null
   building_whse_id: number | null
@@ -437,6 +441,7 @@ const toFlockCardInfo = (
   id: Number(row.id),
   cardNo: row.card_no ?? '',
   farmId: row.farm_id,
+  farmCycleId: row.farm_cycle_id,
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   buildingWarehouseId: row.building_whse_id,
@@ -516,6 +521,7 @@ const getPlacementBatchId = (itemCode: string, batchNumber: string, warehouseCod
 
 export async function getDeliveryFlockCardInfo(params: {
   farmId: number | null
+  farmCycleId?: number | null
   buildingWarehouseId: number | null
   buildingCode: string
   cleanupDocumentId?: number | null
@@ -530,17 +536,20 @@ export async function getDeliveryFlockCardInfo(params: {
   if ((!Number.isFinite(buildingWarehouseId) || buildingWarehouseId <= 0) && !buildingCode) return null
 
   const cleanupDocumentId = Number(params.cleanupDocumentId ?? 0)
-  const selectFields = 'id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra'
+  const selectFields = 'id, card_no, farm_id, farm_cycle_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra'
   const selectCard = (rows: FlockCardInfoRow[]) => {
-    if (params.flockCardId) return rows.find(row => Number(row.id) === params.flockCardId) ?? null
+    const cycleRows = params.farmCycleId
+      ? rows.filter(row => Number(row.farm_cycle_id) === Number(params.farmCycleId))
+      : rows
+    if (params.flockCardId) return cycleRows.find(row => Number(row.id) === params.flockCardId) ?? null
     if (Number.isFinite(cleanupDocumentId) && cleanupDocumentId > 0) {
-      const closedCard = rows.find(row =>
+      const closedCard = cycleRows.find(row =>
         Number(row.extra?.closed_by_docentry ?? 0) === cleanupDocumentId,
       )
       if (closedCard) return closedCard
     }
 
-    return rows.find(row => row.status === 'Saved') ?? null
+    return cycleRows.find(row => row.status === 'Saved') ?? null
   }
 
   if (Number.isFinite(buildingWarehouseId) && buildingWarehouseId > 0) {
@@ -578,6 +587,7 @@ export async function getDeliveryFlockCardInfo(params: {
 
 export async function getBrDeliveryAgeShortage(params: {
   farmId: number
+  farmCycleId?: number | null
   lines: Array<{
     fromWarehouseId: number | null
     fromWarehouseCode: string
@@ -610,6 +620,7 @@ export async function getBrDeliveryAgeShortage(params: {
   for (const building of uniqueBuildings) {
     const flock = await getDeliveryFlockCardInfo({
       farmId,
+      farmCycleId: params.farmCycleId,
       buildingWarehouseId: building.fromWarehouseId,
       buildingCode: building.fromWarehouseCode,
     })
@@ -629,6 +640,7 @@ export async function getBrDeliveryAgeShortage(params: {
 
 export async function getBrCleanupAgeShortage(params: {
   farmId: number
+  farmCycleId?: number | null
   lines: Array<{
     fromWarehouseId: number | null
     fromWarehouseCode: string
@@ -661,6 +673,7 @@ export async function getBrCleanupAgeShortage(params: {
   for (const building of uniqueBuildings) {
     const flock = await getDeliveryFlockCardInfo({
       farmId,
+      farmCycleId: params.farmCycleId,
       buildingWarehouseId: building.fromWarehouseId,
       buildingCode: building.fromWarehouseCode,
     })
@@ -682,6 +695,7 @@ export async function getBrCleanupAgeShortage(params: {
 
 export async function getAvailableDeliveryFlockCards(params: {
   farmId: number
+  farmCycleId?: number | null
   targetAge: number
   allowHarvestEmptied?: boolean
 }): Promise<GoodsIssueFlockCardInfo[]> {
@@ -689,14 +703,17 @@ export async function getAvailableDeliveryFlockCards(params: {
   const targetAge = Math.max(0, Number(params.targetAge) || 0)
   if (!Number.isFinite(farmId) || farmId <= 0) return []
 
-  const { data, error } = await db
+  let cardQuery = db
     .from('flock_card')
-    .select('id, card_no, farm_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status')
+    .select('id, card_no, farm_id, farm_cycle_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .eq('status', 'Saved')
     .order('start_date', { ascending: false })
     .order('id', { ascending: false })
+
+  if (params.farmCycleId != null) cardQuery = cardQuery.eq('farm_cycle_id', params.farmCycleId)
+  const { data, error } = await cardQuery
 
   if (error) throwReferenceError('Available delivery flock cards', error)
 

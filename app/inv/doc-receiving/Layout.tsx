@@ -34,24 +34,37 @@ import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
+import { formatNumber } from '@/lib/utils/numberFormat'
 import {
   GoodsReceipt,
   getGoodsReceipts,
-  getReceiptItemSummary,
   reverseGoodsReceipt,
 } from './api'
+import type { GoodsReceiptDateField } from './api'
 
 type GoodsReceiptTableRow = Record<string, unknown> & {
   id: number | null
   grNo: string
-  itemDescription: string
   vendor: string
   farmName: string
   receiveDate: string
+  createdDate: string
+  totalReceived: number
+  goodReceived: number
+  doaReceived: number
+  rejectReceived: number
+  shortCount: number
   status: string
   receipt: GoodsReceipt
 }
@@ -67,6 +80,7 @@ export default function GoodsReceiveHistory() {
   const [farmId, setFarmId] = useState<string | number>('')
   const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [dateField, setDateField] = useState<GoodsReceiptDateField>('createdDate')
   const [reverseTarget, setReverseTarget] = useState<GoodsReceipt | null>(null)
   const [reversing, setReversing] = useState(false)
 
@@ -78,6 +92,7 @@ export default function GoodsReceiveHistory() {
         farmId: farmId || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        dateField,
       }))
     } catch (error) {
       toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -85,7 +100,7 @@ export default function GoodsReceiveHistory() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, farmId])
+  }, [dateField, dateFrom, dateTo, farmId])
 
   const handleReverse = async () => {
     if (!reverseTarget?.id || reverseTarget.status !== 'Posted' || !canVoid) return
@@ -115,13 +130,20 @@ export default function GoodsReceiveHistory() {
   const rows = useMemo<GoodsReceiptTableRow[]>(
     () =>
       receipts.map(receipt => {
+        const summary = receipt.receivingSummary ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 }
+
         return {
           id: receipt.id,
           grNo: receipt.grNo,
-          itemDescription: getReceiptItemSummary(receipt),
           vendor: receipt.vendor || '-',
           farmName: receipt.farmName || '-',
           receiveDate: receipt.receiveDate,
+          createdDate: receipt.createdAt ? format(new Date(receipt.createdAt), 'yyyy-MM-dd') : '-',
+          totalReceived: summary.total,
+          goodReceived: summary.good,
+          doaReceived: summary.doa,
+          rejectReceived: summary.reject,
+          shortCount: summary.shortCount,
           status: receipt.status,
           receipt,
         }
@@ -139,10 +161,15 @@ export default function GoodsReceiveHistory() {
         )
 
       },
-      { key: 'itemDescription', label: 'Item Description' },
+      { key: 'createdDate', label: 'Created Date' },
+      { key: 'receiveDate', label: 'Date Received' },
       { key: 'vendor', label: 'Vendor' },
       { key: 'farmName', label: 'Farm' },
-      { key: 'receiveDate', label: 'Date Received' },
+      { key: 'totalReceived', label: 'Total', align: 'right', render: row => formatNumber(row.totalReceived) },
+      { key: 'goodReceived', label: 'Good', align: 'right', render: row => formatNumber(row.goodReceived) },
+      { key: 'doaReceived', label: 'DAO', align: 'right', render: row => formatNumber(row.doaReceived) },
+      { key: 'rejectReceived', label: 'Reject', align: 'right', render: row => formatNumber(row.rejectReceived) },
+      { key: 'shortCount', label: 'Short Count', align: 'right', render: row => formatNumber(row.shortCount) },
       {
         key: 'status',
         label: 'Status',
@@ -247,7 +274,7 @@ export default function GoodsReceiveHistory() {
       </div>
 
       <div className=" mt-4 space-y-3">
-        <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+        <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px_180px]">
           <DefaultFarmComboBox
             label="Farm"
             value={farmId}
@@ -275,6 +302,19 @@ export default function GoodsReceiveHistory() {
               min={dateFrom || undefined}
               onChange={event => setDateTo(event.target.value)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="doc-receiving-date-field">Search Date By</Label>
+            <Select value={dateField} onValueChange={value => setDateField(value as GoodsReceiptDateField)}>
+              <SelectTrigger id="doc-receiving-date-field" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="receiveDate">Received Date</SelectItem>
+                <SelectItem value="createdDate">Created Date</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

@@ -49,6 +49,8 @@ export type GoodsIssue = {
   triggeredBy: string
   issueDate: string
   farmId: number | null
+  farmCycleId: number | null
+  farmCycleMask: string
   farmCode: string
   farmName: string
   fromWarehouseId: number | null
@@ -70,6 +72,7 @@ type GoodsIssueRow = {
   gi_no: string
   issue_date: string
   farm_id: number | null
+  farm_cycle_id?: number | null
   farm_code: string | null
   farm_name: string | null
   from_warehouse_id: number | null
@@ -234,6 +237,8 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   triggeredBy: row.triggered_by ?? 'GI',
   issueDate: row.issue_date,
   farmId: row.farm_id,
+  farmCycleId: row.farm_cycle_id ?? null,
+  farmCycleMask: '',
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   fromWarehouseId: row.from_warehouse_id,
@@ -550,6 +555,7 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
       giNo: issue.giNo,
       issueDate: issue.issueDate,
       farmId: issue.farmId,
+      farmCycleId: issue.farmCycleId,
       fromWarehouseId: issue.fromWarehouseId,
       fromWarehouseCode: issue.fromWarehouseCode,
       fromWarehouseName: issue.fromWarehouseName,
@@ -611,6 +617,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     gi_no: issue.giNo,
     issue_date: issue.issueDate,
     farm_id: issue.farmId,
+    farm_cycle_id: issue.farmCycleId,
     farm_code: issue.farmCode || null,
     farm_name: issue.farmName || null,
     from_warehouse_id: issue.fromWarehouseId,

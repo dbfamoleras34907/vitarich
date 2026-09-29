@@ -18,6 +18,7 @@ import { decryptData } from '@/app/utils/supabase/url-encryption'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import BroilerGrowingReportTable from '@/components/reports/BroilerGrowingReportTable'
 import {
   Table,
   TableBody,
@@ -132,41 +133,6 @@ function PlacementTable({ building }: { building: BroilerCycleBuilding }) {
         <TableCell className="text-right">{formatNumber(row.doaQuantity)}</TableCell><TableCell className="text-right">{formatNumber(row.rejectCount)}</TableCell>
       </TableRow>)}</TableBody>
     </Table>
-  </div>
-}
-
-function GrowingTable({ building }: { building: BroilerCycleBuilding }) {
-  if (!building.growingLines.length) return <EmptyStage label="Growing & Farm Condition" />
-  return <div className="overflow-auto rounded-md border">
-    <table className="min-w-[1720px] border-collapse text-xs">
-      <thead className="sticky top-0 z-10 bg-muted">
-        <tr className="border-b">
-          <th rowSpan={2} className="border-r px-2 py-2 text-center">Age</th>
-          <th colSpan={3} className="border-r px-2 py-1 text-center">Mortality</th>
-          <th colSpan={3} className="border-r px-2 py-1 text-center">Thinning</th>
-          <th colSpan={2} className="border-r px-2 py-1 text-center">Batch</th>
-          <th colSpan={4} className="border-r px-2 py-1 text-center">Feeds Consumption</th>
-          <th colSpan={3} className="border-r px-2 py-1 text-center">Water Intake</th>
-          <th colSpan={2} className="border-r px-2 py-1 text-center">Average Live Weight</th>
-          <th colSpan={2} className="px-2 py-1 text-center">Average Daily Gain</th>
-        </tr>
-        <tr className="border-b [&>th]:whitespace-nowrap [&>th]:border-r [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
-          <th>AM</th><th>PM</th><th>Total</th><th>AM</th><th>PM</th><th>Total</th>
-          <th>DOC Batch</th><th>Cumulative</th><th>Actual FC</th><th>Feed Type</th><th>Standard FC</th><th>Feeds Batch</th>
-          <th>Daily L/Flock</th><th>Daily per Bird</th><th>Guideline</th><th>Actual ALW</th><th>Standard ALW</th>
-          <th>Actual ADG</th><th>Standard ADG</th>
-        </tr>
-      </thead>
-      <tbody>{building.growingLines.map(row => <tr key={row.id} className={cn('border-b last:border-0 [&>td]:border-r [&>td]:px-2 [&>td]:py-1.5 [&>td]:text-right', row.age % 5 === 4 && 'bg-muted/35', row.isVoided && 'text-muted-foreground line-through')}>
-        <td className="sticky left-0 bg-card text-center font-semibold">{row.age}</td>
-        <td>{formatNumber(row.mortalityAm)}</td><td>{formatNumber(row.mortalityPm)}</td><td className="font-medium">{formatNumber(row.mortalityTotal)}</td>
-        <td>{formatNumber(row.thinningAm)}</td><td>{formatNumber(row.thinningPm)}</td><td className="font-medium">{formatNumber(row.thinningTotal)}</td>
-        <td className="max-w-40 text-left">{row.docBatch || '-'}</td><td>{formatNumber(row.cumulative)}</td>
-        <td>{formatNumber(row.feedActual)}</td><td className="text-left">{row.feedType || '-'}</td><td>{formatNumber(row.feedStandard)}</td><td className="text-left">{row.feedBatch || '-'}</td>
-        <td>{formatNumber(row.waterLiters)}</td><td>{formatNumber(row.waterPerBird)}</td><td>{formatNumber(row.waterGuideline)}</td>
-        <td>{formatNumber(row.actualWeight)}</td><td>{formatNumber(row.standardWeight)}</td><td>{formatNumber(row.actualAdg)}</td><td>{formatNumber(row.standardAdg)}</td>
-      </tr>)}</tbody>
-    </table>
   </div>
 }
 
@@ -383,7 +349,7 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
                   <CardContent className="min-w-0 space-y-3 p-3">
                     <div><h2 className="font-semibold">{STAGE_META[selectedStage].label}</h2><p className="text-xs text-muted-foreground">Read-only historical records for the selected Building and cycle.</p></div>
                     {selectedStage === 'placement' ? <PlacementTable building={building} /> : null}
-                    {selectedStage === 'growing' ? <GrowingTable building={building} /> : null}
+                    {selectedStage === 'growing' ? <BroilerGrowingReportTable building={building} /> : null}
                     {selectedStage === 'delivery' ? <MovementTable label="Harvest & Delivery" rows={building.deliveries} /> : null}
                     {selectedStage === 'cleanup' ? <MovementTable label="Clean Up" rows={building.cleanups} cleanup /> : null}
                   </CardContent>

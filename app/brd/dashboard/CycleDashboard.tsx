@@ -250,7 +250,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
                         id={`building-tab-${item.key}`} aria-controls="building-panel" tabIndex={activeBuilding === item.key ? 0 : -1}
                         title={item.name || item.code} onClick={() => selectBuilding(item.key)}
                         className={cn(buildingTabClassName, activeBuilding === item.key ? 'bg-[#006241] text-white shadow-sm hover:bg-[#004d33]' : 'text-foreground hover:bg-card')}>
-                        {item.code || item.name}
+                        {item.name || item.code}
                       </button>)}
                       <button type="button" role="tab" aria-selected={activeBuilding === 'all'} onClick={() => selectBuilding('all')}
                         id="building-tab-all" aria-controls="building-panel" tabIndex={activeBuilding === 'all' ? 0 : -1}
@@ -289,7 +289,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
                         <MetricCard title="Placement" icon={Bird} onClick={() => drillDown('placement')}><Metric label="Total good birds" value={formatNumber(metrics.placed, 0)} unit="birds" /></MetricCard>
                         <MetricCard title="Population" icon={Activity} onClick={() => drillDown('growing')} note={`Growing population (${formatNumber(metrics.population, 0)}) - mortality (${formatNumber(metrics.mortality, 0)}) - thinning (${formatNumber(metrics.thinning, 0)}) - harvest (${formatNumber(metrics.deliveredHeads, 0)}) - clean-up (${formatNumber(metrics.cleanupHeads, 0)}).`}><Metric label="Remaining birds" value={formatNumber(metrics.remaining, 0)} /></MetricCard>
                         <MetricCard title="Age" note="Maximum displayed age: 45 days." icon={CalendarDays} onClick={() => drillDown('growing')}><Metric label="Calendar" value={ageRange(metrics.calendarAges)} unit="days" /><Metric label="Posted Growing" value={ageRange(metrics.postedAges)} unit="days" /></MetricCard>
-                        <MetricCard title="Mortality" icon={HeartPulse} onClick={() => drillDown('growing')}><Metric label="Cumulative" value={formatNumber(metrics.mortality, 0)} unit="birds" /><Metric label="Mortality" value={formatNumber(metrics.mortalityPercent)} unit="%" /></MetricCard>
+                        <MetricCard title="Mortality" icon={HeartPulse} onClick={() => drillDown('growing')} note="Cumulative mortality / total good birds placed × 100."><Metric label="Cumulative" value={formatNumber(metrics.mortality, 0)} unit="birds" /><Metric label="Mortality" value={formatNumber(metrics.mortalityPercent)} unit="%" /></MetricCard>
                         <MetricCard title="Feed Consumption" icon={Wheat} onClick={() => drillDown('feed')}><Metric label="Cumulative feed" value={formatNumber(metrics.feed)} unit="kg" /></MetricCard>
                         <MetricCard title="Body Weight" icon={Weight} onClick={() => drillDown('growing')} note={`Latest weight measurement age: ${ageRange(metrics.weightAges)} days.`}><Metric label="Actual" value={formatNumber(metrics.weight)} unit="g" /><Metric label="Standard" value={formatNumber(metrics.standardWeight)} unit="g" /></MetricCard>
                         <MetricCard title="Water Consumption" icon={Droplets} onClick={() => drillDown('growing')}><Metric label="Cumulative water" value={formatNumber(metrics.water)} unit="L" /></MetricCard>
