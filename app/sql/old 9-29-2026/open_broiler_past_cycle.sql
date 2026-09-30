@@ -1,6 +1,5 @@
 -- Apply after app/sql/updated/broiler_cycle_management.sql.
--- Creates a new empty Past Open Cycle for one historical month when the
--- selected building has no other open cycle.
+-- Creates a new empty Past Open Cycle for one historical month.
 begin;
 
 create or replace function public.open_broiler_past_cycle(
@@ -95,17 +94,6 @@ begin
 
   perform pg_advisory_xact_lock(73191, p_farm_id::integer);
   perform pg_advisory_xact_lock(73192, p_building_whse_id::integer);
-
-  if exists (
-    select 1
-    from public.flock_card card
-    where card.farm_id = p_farm_id
-      and card.building_whse_id = p_building_whse_id
-      and card.void = '1'
-      and card.status = 'Saved'
-  ) then
-    raise exception 'This building already has an open cycle. Close the open cycle before creating another one.';
-  end if;
 
   if exists (
     select 1

@@ -126,40 +126,53 @@ export async function POST(request: Request) {
     const actor = await requireAdminActor(request)
     const body = await request.json() as {
       userId?: string
-      groupName?: string
-      title?: string
-      checked?: boolean
+      changes?: Array<{ groupName?: string; title?: string; checked?: boolean }>
     }
     const userId = String(body.userId ?? "").trim()
-    const groupName = String(body.groupName ?? "").trim()
-    const title = String(body.title ?? "").trim()
-    if (!userId || !groupName || !title || typeof body.checked !== "boolean") {
+    const changes = Array.isArray(body.changes)
+      ? body.changes.map(change => ({
+        groupName: String(change.groupName ?? "").trim(),
+        title: String(change.title ?? "").trim(),
+        checked: change.checked,
+      }))
+      : []
+    if (!userId || !changes.length || changes.some(change => !change.groupName || !change.title || typeof change.checked !== "boolean")) {
       return NextResponse.json({ error: "Invalid permission request." }, { status: 400 })
     }
+    const uniqueChanges = Array.from(new Map(
+      changes.map(change => [`${change.groupName}\u0000${change.title}`, change]),
+    ).values())
 
     const target = await getTarget(userId)
-    const definition = permissionDefinition(groupName, title)
-    if (!target || !definition || !canGrantForTarget(actor, target, definition.folder.fmsTypes)) {
-      throw new Error("FORBIDDEN")
-    }
+    if (!target) throw new Error("FORBIDDEN")
 
-    const actionUrl = definition.action === "list"
-      ? definition.child.url
-      : `${definition.child.url}/${definition.action}`
+    const updatedAt = new Date().toISOString()
+    const rows = uniqueChanges.map(change => {
+      const definition = permissionDefinition(change.groupName, change.title)
+      if (!definition || !canGrantForTarget(actor, target, definition.folder.fmsTypes)) {
+        throw new Error("FORBIDDEN")
+      }
 
-    const { error } = await admin_db.from("user_permissions").upsert({
-      user_id: userId,
-      group_name: groupName,
-      title,
-      is_visible: body.checked,
-      updated_by: actor.auth_id,
-      ilink: actionUrl,
-      updated_at: new Date().toISOString(),
-      type: definition.action,
-    }, { onConflict: "user_id,group_name,title" })
+      return {
+        user_id: userId,
+        group_name: change.groupName,
+        title: change.title,
+        is_visible: change.checked,
+        updated_by: actor.auth_id,
+        ilink: definition.action === "list"
+          ? definition.child.url
+          : `${definition.child.url}/${definition.action}`,
+        updated_at: updatedAt,
+        type: definition.action,
+      }
+    })
+
+    const { error } = await admin_db
+      .from("user_permissions")
+      .upsert(rows, { onConflict: "user_id,group_name,title" })
 
     if (error) throw error
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, updated: rows.length })
   } catch (error) {
     const response = adminAccessError(error)
     return NextResponse.json({ error: response.message }, { status: response.status })

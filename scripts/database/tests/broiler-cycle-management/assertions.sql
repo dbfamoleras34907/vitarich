@@ -25,16 +25,16 @@ before insert or update of farm_id, building_whse_id, cycle_no, farm_cycle_id, s
 on public.flock_card for each row
 execute function public.validate_doc_flock_cycle_assignment();
 
+select public.set_broiler_farm_cycle_state(1, 'reopen');
 do $$ begin
-  begin
-    perform public.set_broiler_farm_cycle_state(1, 'reopen');
-    raise exception 'A second open cycle was allowed for one building';
-  exception when others then
-    if sqlerrm <> 'This cycle cannot be reopened because building B001 already has an open cycle.' then raise; end if;
-  end;
-  if (select status <> 'Closed' from public.doc_farm_cycles where id = 1) then raise exception 'Blocked reopen changed the closed farm cycle'; end if;
-  if (select status <> 'Closed' from public.flock_card where farm_cycle_id = 1) then raise exception 'Blocked reopen changed the closed building cycle'; end if;
+  if (select status <> 'Past Open' from public.doc_farm_cycles where id = 1) then
+    raise exception 'Closed cycle was not reopened while the building had another open cycle';
+  end if;
+  if (select count(*) <> 2 from public.flock_card where building_whse_id = 10 and void = '1' and status = 'Saved') then
+    raise exception 'Multiple open cycles for one building were not preserved';
+  end if;
 end $$;
+select public.set_broiler_farm_cycle_state(1, 'close');
 
 do $$ begin
   begin
@@ -93,18 +93,16 @@ begin
 
   begin
     perform public.open_broiler_past_cycle(1, 20, v_month);
-    raise exception 'A second open cycle was accepted for one building';
+    raise exception 'A duplicate building cycle was accepted for the same historical month';
   exception when others then
-    if sqlerrm <> 'This building already has an open cycle. Close the open cycle before creating another one.' then raise; end if;
+    if sqlerrm <> 'This building already has a cycle in the selected month.' then raise; end if;
   end;
 
-  begin
-    insert into public.flock_card(farm_id, building_whse_id, cycle_no, status, void, extra)
-    values (1, 20, '9999', 'Saved', '1', '{}');
-    raise exception 'The shared flock-card trigger accepted a second open cycle';
-  exception when others then
-    if sqlerrm <> 'This building already has an open cycle. Close the open cycle before creating or reopening another one.' then raise; end if;
-  end;
+  insert into public.flock_card(farm_id, building_whse_id, cycle_no, status, void, extra)
+  values (1, 20, '9999', 'Saved', '1', '{}');
+  if (select count(*) < 2 from public.flock_card where building_whse_id = 20 and void = '1' and status = 'Saved') then
+    raise exception 'The shared flock-card trigger rejected multiple open cycles for one building';
+  end if;
 
   begin
     perform public.open_broiler_past_cycle(1, 20, date_trunc('month', current_date)::date);

@@ -1,6 +1,6 @@
 -- Updated Cycle Master migration. Apply after doc_farm_cycles.sql.
 -- Adds manual Cycle Master
--- close/reopen behavior while preserving Saved as the one automatic current cycle.
+-- close/reopen behavior while preserving Saved as the automatic current cycle.
 -- Then deploy the current Broiler Growing, Harvest & Delivery, Clean Up save/
 -- posting SQL files listed in docs/broiler-cycle-management.md.
 begin;
@@ -36,7 +36,6 @@ declare
   v_user public.users%rowtype;
   v_cycle public.doc_farm_cycles%rowtype;
   v_action text := lower(btrim(coalesce(p_action, '')));
-  v_blocked_building text;
 begin
   if v_actor is null then
     raise exception 'An authenticated user is required to manage Broiler cycles.' using errcode = '42501';
@@ -98,27 +97,6 @@ begin
     where id = v_cycle.id returning * into v_cycle;
   elsif v_action = 'reopen' then
     if v_cycle.status <> 'Closed' then raise exception 'Only a Closed Cycle can be reopened.'; end if;
-    select coalesce(
-      nullif(btrim(target.building_code), ''),
-      nullif(btrim(building.whse_code), ''),
-      nullif(btrim(target.building_name), ''),
-      target.building_whse_id::text
-    )
-    into v_blocked_building
-    from public.flock_card target
-    left join public.i_warehouse building on building.id = target.building_whse_id
-    join public.flock_card active
-      on active.building_whse_id = target.building_whse_id
-     and active.id <> target.id
-     and active.void = '1'
-     and active.status = 'Saved'
-    where target.farm_cycle_id = v_cycle.id
-      and target.void = '1'
-    order by target.id
-    limit 1;
-    if v_blocked_building is not null then
-      raise exception 'This cycle cannot be reopened because building % already has an open cycle.', v_blocked_building;
-    end if;
     update public.doc_farm_cycles
     set status = 'Past Open', reopened_at = now(), reopened_by = v_actor,
         updated_at = now(), updated_by = v_actor
@@ -188,25 +166,6 @@ declare
   v_excluded boolean;
   v_farm_cycle_no bigint;
 begin
-  if new.status = 'Saved'
-    and new.void = '1'
-    and new.building_whse_id is not null then
-    perform pg_advisory_xact_lock(
-      hashtextextended('BROILER_OPEN_BUILDING:' || new.building_whse_id::text, 0)
-    );
-    if exists (
-      select 1
-      from public.flock_card card
-      where card.farm_id = new.farm_id
-        and card.building_whse_id = new.building_whse_id
-        and card.void = '1'
-        and card.status = 'Saved'
-        and card.id is distinct from new.id
-    ) then
-      raise exception 'This building already has an open cycle. Close the open cycle before creating or reopening another one.';
-    end if;
-  end if;
-
   if coalesce(new.extra->>'createdFrom', '') <> 'DOC_RECEIVING' then return new; end if;
   if new.building_whse_id is null then raise exception 'DOC Placement cycle requires a building.'; end if;
   select exists (select 1 from public.doc_cycle_excluded_buildings excluded
@@ -243,47 +202,9 @@ before insert or update of farm_id, building_whse_id, cycle_no, farm_cycle_id, s
 on public.flock_card
 for each row execute function public.validate_doc_flock_cycle_assignment();
 
-do $$
-declare
-  v_overlap_details text;
-begin
-  select string_agg(
-    format(
-      'farm_ids=[%s], building_whse_id=%s, building=%s, flock_card_ids=[%s], farm_cycle_ids=[%s]',
-      overlap.farm_ids,
-      overlap.building_whse_id,
-      overlap.building_name,
-      overlap.flock_card_ids,
-      overlap.farm_cycle_ids
-    ),
-    E'\n'
-    order by overlap.building_whse_id
-  )
-  into v_overlap_details
-  from (
-    select
-      card.building_whse_id,
-      string_agg(coalesce(card.farm_id::text, 'none'), ', ' order by card.id) as farm_ids,
-      coalesce(max(nullif(btrim(card.building_code), '')), max(nullif(btrim(card.building_name), '')), '<unknown>') as building_name,
-      string_agg(card.id::text, ', ' order by card.id) as flock_card_ids,
-      string_agg(coalesce(card.farm_cycle_id::text, 'none'), ', ' order by card.id) as farm_cycle_ids
-    from public.flock_card card
-    where card.building_whse_id is not null
-      and card.void = '1'
-      and card.status = 'Saved'
-    group by card.building_whse_id
-    having count(*) > 1
-  ) overlap;
-
-  if v_overlap_details is not null then
-    raise exception E'Cannot enforce one open Broiler cycle per building because existing open cycles overlap:\n%\nClose the extra cycles in Cycle Master, then apply this migration again.', v_overlap_details;
-  end if;
-end;
-$$;
-
-create unique index if not exists flock_card_one_open_cycle_per_building_uidx
-on public.flock_card(building_whse_id)
-where building_whse_id is not null and void = '1' and status = 'Saved';
+-- A building may have more than one open cycle. Drop the superseded index so
+-- reapplying this file also repairs databases where the earlier rule was installed.
+drop index if exists public.flock_card_one_open_cycle_per_building_uidx;
 
 notify pgrst, 'reload schema';
 commit;

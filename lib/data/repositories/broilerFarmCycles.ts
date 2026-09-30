@@ -17,7 +17,6 @@ export type FarmCycleMasterRow = {
   reopenedByName: string | null
   participatingBuildings: number
   openBuildings: number
-  reopenBlockedBuildings: number
 }
 
 export type BroilerFarmCycleStatus = 'Saved' | 'Past Open' | 'Closed' | 'Cancelled'
@@ -142,7 +141,6 @@ export async function getCycleMasterListRows(farmId: number, options: { requireC
       reopenedByName: null,
       participatingBuildings: 1,
       openBuildings: cycle.status === 'Saved' ? 1 : 0,
-      reopenBlockedBuildings: 0,
     })),
   ]
 }
@@ -194,18 +192,6 @@ export async function getFarmCycleMasterRows(
         .map(card => Number(card.building_whse_id))
         .filter(id => Number.isFinite(id) && id > 0),
     ).size
-    const cycleBuildingIds = new Set(
-      cycleCards.map(card => Number(card.building_whse_id)).filter(id => Number.isFinite(id) && id > 0),
-    )
-    const reopenBlockedBuildings = new Set(
-      cards
-        .filter(card =>
-          card.status === 'Saved' &&
-          Number(card.farm_cycle_id) !== Number(cycle.id) &&
-          cycleBuildingIds.has(Number(card.building_whse_id)))
-        .map(card => Number(card.building_whse_id)),
-    ).size
-
     return {
       id: Number(cycle.id),
       farmId: Number(cycle.farm_id),
@@ -221,7 +207,6 @@ export async function getFarmCycleMasterRows(
       reopenedByName: actorName(actors.get(cycle.reopened_by ?? '')),
       participatingBuildings,
       openBuildings,
-      reopenBlockedBuildings,
     }
   })
 }
@@ -258,20 +243,27 @@ export async function getBroilerPastCycleBuildingOptions(
 ): Promise<BroilerPastCycleBuildingOption[]> {
   if (!Number.isInteger(farmId) || farmId <= 0 || !/^\d{4}-\d{2}$/.test(cycleMonth)) return []
 
-  const [buildings, openCycleResult] = await Promise.all([
-    getFarmBuildingsForFlockCard(farmId, { includePlacementInventory: false }),
-    db.from('flock_card').select('building_whse_id')
-      .eq('farm_id', farmId).eq('void', '1')
-      .eq('status', 'Saved'),
-  ])
-  if (openCycleResult.error) throw openCycleResult.error
+  const [year, month] = cycleMonth.split('-').map(Number)
+  const nextMonth = month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const existingCycleResult = await db
+    .from('flock_card')
+    .select('building_whse_id', { count: 'exact' })
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+    .gte('start_date', `${cycleMonth}-01`)
+    .lt('start_date', nextMonth)
+  if (existingCycleResult.error) throw existingCycleResult.error
+  assertCompleteRead(existingCycleResult, 'Past cycle building catalog')
 
-  const openBuildingIds = new Set((openCycleResult.data ?? [])
+  const existingBuildingIds = new Set((existingCycleResult.data ?? [])
     .map(row => Number(row.building_whse_id))
     .filter(id => Number.isInteger(id) && id > 0))
+  const buildings = await getFarmBuildingsForFlockCard(farmId, { includePlacementInventory: false })
 
   return buildings
-    .filter(building => building.id != null && !openBuildingIds.has(Number(building.id)))
+    .filter(building => building.id != null && !existingBuildingIds.has(Number(building.id)))
     .map(building => ({ id: Number(building.id), code: building.code, name: building.name }))
 }
 

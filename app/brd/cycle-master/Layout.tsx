@@ -192,7 +192,7 @@ export default function CycleMasterLayout() {
         <div className="flex flex-col gap-3 border-b border-stone-200 p-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold">Cycle Master</h1>
-            <p className="mt-1 text-sm text-muted-foreground">DOC Placement creates the Current Cycle. Each building can have only one open cycle. Cycle Master can create a missing historical cycle, close an open cycle, or reopen a Closed Cycle.</p>
+            <p className="mt-1 text-sm text-muted-foreground">DOC Placement creates the Current Cycle. Cycle Master can create a missing historical cycle, close an open cycle, or reopen a Closed Cycle.</p>
           </div>
           <div className="flex  gap-2">
             {!editBlocked && (
@@ -285,17 +285,14 @@ export default function CycleMasterLayout() {
                       </div>
                     )}
                     {row.kind === 'farm' && !editBlocked && row.status === 'Closed' && (
-                      <span title={row.reopenBlockedBuildings > 0 ? `${row.reopenBlockedBuildings} linked ${row.reopenBlockedBuildings === 1 ? 'building has' : 'buildings have'} another open cycle.` : undefined}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={row.reopenBlockedBuildings > 0}
-                          onClick={() => setActionTarget({ row, action: 'reopen' })}
-                        >
-                          <RotateCcw className="size-3.5" /> Reopen
-                        </Button>
-                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setActionTarget({ row, action: 'reopen' })}
+                      >
+                        <RotateCcw className="size-3.5" /> Reopen
+                      </Button>
                     )}
                   </TableCell>
                   <TableCell><ChevronRight className="size-4 text-muted-foreground" /></TableCell>
@@ -311,7 +308,7 @@ export default function CycleMasterLayout() {
           <DialogHeader>
             <DialogTitle>Open Past Cycle</DialogTitle>
             <DialogDescription>
-              Create an empty Past Open Cycle for a historical month. The selected building must not have another open cycle.
+              Create an empty Past Open Cycle for a historical month.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -342,7 +339,7 @@ export default function CycleMasterLayout() {
               className="w-full max-w-none"
             />
             {!loadingPastCycleBuildings && pastCycleMonth && pastCycleBuildings.length === 0 && (
-              <p className="text-sm text-muted-foreground">Every building already has an open cycle, or no active building is assigned to the farm.</p>
+              <p className="text-sm text-muted-foreground">No active building is available for the selected month.</p>
             )}
           </div>
           <DialogFooter>
@@ -366,7 +363,7 @@ export default function CycleMasterLayout() {
             <DialogDescription>
               {actionTarget?.action === 'close'
                 ? 'A Current Cycle can be closed only after it is no longer current for every participating building. Closing a Past Open Cycle closes its linked open flock cards.'
-                : 'The cycle will become a Past Open Cycle only when none of its buildings has another open cycle. Existing module blockers still apply.'}
+                : 'The cycle will become a Past Open Cycle. Existing module validations still apply.'}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">

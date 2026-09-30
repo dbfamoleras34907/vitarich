@@ -73,11 +73,15 @@ export async function getManagedUserPermissions(userId: string) {
   }>(response)
 }
 
-export async function setManagedUserPermission(payload: {
-  userId: string
+export type ManagedPermissionChange = {
   groupName: string
   title: string
   checked: boolean
+}
+
+export async function setManagedUserPermissions(payload: {
+  userId: string
+  changes: ManagedPermissionChange[]
 }) {
   const response = await fetchWithInternetErrorNotice("/api/admin/user-permissions", {
     method: "POST",

@@ -1,8 +1,8 @@
 # Broiler cycle management
 
-`Saved` remains the Current Cycle created automatically through DOC Placement. Each building may have only one open flock-card cycle, whether its farm cycle is `Saved` or `Past Open`. **Open Past Cycle** creates a new empty `Past Open` cycle for one historical month only when the selected building has no open cycle. DOC Placement therefore resolves at most one open cycle for each building.
+`Saved` remains the Current Cycle created automatically through DOC Placement. **Open Past Cycle** creates a new empty `Past Open` cycle for one historical month. A building may have multiple open cycles, while duplicate cycles for the same building and historical month remain blocked.
 
-A Current Cycle cannot be closed while any linked building flock card is still `Saved`; Cycle Master shows a disabled Close button until every participating building is no longer current. A Past Open Cycle may still be closed directly. Reopen is disabled when any linked building already has another open cycle, and the database enforces the same rule. Existing Growing, Harvest & Delivery, and Clean Up validations still apply after reopening.
+A Current Cycle cannot be closed while any linked building flock card is still `Saved`; Cycle Master shows a disabled Close button until every participating building is no longer current. A Past Open Cycle may still be closed directly. A Closed Cycle may be reopened even when one of its buildings has another open cycle. Existing Growing, Harvest & Delivery, and Clean Up validations still apply after reopening.
 
 Cycle Master management uses `/brd/cycle-master/edit`. The database mutation also checks the authenticated user's active profile and assigned farm; the existing Super Admin permission bypass remains unchanged.
 
@@ -27,4 +27,4 @@ Keep the later Clean Up patches in this order because they extend the trigger fu
 
 ## Verification
 
-Run `scripts/database/tests/broiler-cycle-management/fixture.sql`, both Cycle Master migration files, then `scripts/database/tests/broiler-cycle-management/assertions.sql` in a disposable PostgreSQL database. The assertions cover the one-open-cycle-per-building rule, historical-month guards, linked flock-card state changes, Current Cycle close protection, and Cycle Master edit permission enforcement.
+Run `scripts/database/tests/broiler-cycle-management/fixture.sql`, both Cycle Master migration files, then `scripts/database/tests/broiler-cycle-management/assertions.sql` in a disposable PostgreSQL database. The assertions cover multiple open cycles for one building, historical-month guards, linked flock-card state changes, Current Cycle close protection, and Cycle Master edit permission enforcement.
