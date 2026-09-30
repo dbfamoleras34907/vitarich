@@ -16,7 +16,7 @@ alter table public.br_cleanup
   add column if not exists farm_cycle_id bigint null references public.doc_farm_cycles(id);
 create index if not exists br_delivery_farm_cycle_id_idx on public.br_delivery(farm_cycle_id);
 create index if not exists br_cleanup_farm_cycle_id_idx on public.br_cleanup(farm_cycle_id);
-
+-- 
 alter table public.doc_farm_cycles
   drop constraint if exists doc_farm_cycles_status_check;
 alter table public.doc_farm_cycles
