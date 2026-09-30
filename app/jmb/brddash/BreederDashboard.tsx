@@ -33,8 +33,6 @@ import { breederAgeDays } from "./api";
 import { COBB_EGG_PRODUCTION_LABEL, COBB_EGG_PRODUCTION_SOURCE } from "@/app/jmb/lib/data/queries/cobb500BreederEggProduction";
 import type { EggRangeBuilding } from "@/app/jmb/lib/breederWeeklyEggProduction";
 
-const ALL_FARMS = "__all__";
-
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -44,10 +42,10 @@ const decimal = new Intl.NumberFormat("en-US", {
 const showEggNumber = (value: number | null | undefined, suffix = "", whole = false) =>
   value == null ? "N/A" : `${(whole ? integer : decimal).format(value)}${suffix}`;
 
-function EggRangeDetails({ rows, metric, allFarms }: { rows: EggRangeBuilding[]; metric: "tep" | "hen" | "recovery"; allFarms: boolean }) {
+function EggRangeDetails({ rows, metric }: { rows: EggRangeBuilding[]; metric: "tep" | "hen" | "recovery" }) {
   return rows.length ? <div className="max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
     {rows.map(row => <div key={row.key} className="space-y-0.5 border-t pt-1">
-      <p className="font-semibold text-foreground">{allFarms ? `${row.farmName} / ` : ""}{row.buildingName}</p>
+      <p className="font-semibold text-foreground">{row.buildingName}</p>
       <p>{row.from} – {row.to} · {row.recordedDays}/{row.daysInRange} production days recorded{row.partial ? " (partial)" : ""}</p>
       <p className="font-medium text-foreground">{metric === "tep"
         ? `Actual ${showEggNumber(row.totalEggs, " eggs", true)} / Std ${showEggNumber(row.standardEggs, " eggs", true)}`
@@ -111,17 +109,20 @@ export default function BreederDashboard() {
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
   const [farms, setFarms] = useState<BreederDashboardFarm[]>([]);
   const defaultFarmId = String(defaultFarmRow?.id ?? defaultFarmReference ?? "");
-  const farmId = selectedFarmId ?? (farms.some(farm => String(farm.id) === defaultFarmId) ? defaultFarmId : ALL_FARMS);
+  const farmId = selectedFarmId ?? (farms.some(farm => String(farm.id) === defaultFarmId)
+    ? defaultFarmId
+    : String(farms[0]?.id ?? ""));
   const [summary, setSummary] = useState<BreederDashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const filter = useMemo(() => {
-    if (!date?.from || !date?.to) return null;
+    const selectedId = Number(farmId);
+    if (!date?.from || !date?.to || !Number.isInteger(selectedId) || selectedId <= 0) return null;
     return {
       from: format(date.from, "yyyy-MM-dd"),
       to: format(date.to, "yyyy-MM-dd"),
-      farmId: farmId === ALL_FARMS ? undefined : Number(farmId),
+      farmId: selectedId,
     };
   }, [date, farmId]);
 
@@ -142,10 +143,7 @@ export default function BreederDashboard() {
   }, []);
 
   const farmOptions = useMemo(
-    () => [
-      { code: ALL_FARMS, name: "All farms" },
-      ...farms.map((farm) => ({ code: String(farm.id), name: farm.name })),
-    ],
+    () => farms.map((farm) => ({ code: String(farm.id), name: farm.name })),
     [farms],
   );
 
@@ -226,7 +224,7 @@ export default function BreederDashboard() {
                   items={farmOptions}
                   value={farmId}
                   onValueChange={setSelectedFarmId}
-                  placeholder="All farms"
+                  placeholder="Select breeder farm"
                   className="w-full"
                 />
               </div>
@@ -263,7 +261,7 @@ export default function BreederDashboard() {
                 <dl className="max-h-48 space-y-2 overflow-y-auto">
                   {summary.buildings.map(row => (
                     <div key={row.key} className="flex justify-between gap-4 border-t pt-2">
-                      <dt>{farmId === ALL_FARMS ? `${row.farmName} / ` : ""}{row.buildingName}</dt>
+                      <dt>{row.buildingName}</dt>
                       <dd className="font-semibold tabular-nums text-foreground">{integer.format(row.populationFemale)}</dd>
                     </div>
                   ))}
@@ -358,7 +356,7 @@ export default function BreederDashboard() {
                 <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggs, " eggs", true)}</p>
                 <p>Production: {showEggNumber(eggRangeTotals?.productionPercent, "%")} / Std {showEggNumber(eggRangeTotals?.standardPercent, "%")}</p>
                 <p>Totals for the selected Production Date Range.</p>
-                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="tep" allFarms={farmId === ALL_FARMS} />
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="tep" />
                 <p className="text-xs">{eggStandardLink}. Actual and standard use the same recorded days.</p>
                 {!!eggRange?.excludedRecords && <p className="text-xs text-amber-700">{eggRange.excludedRecords} unmatched egg records excluded.</p>}
               </div>}
@@ -372,7 +370,7 @@ export default function BreederDashboard() {
                 <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggsPerHen, " eggs/hen")}</p>
                 <p>TEP ÷ average live females on recorded days.</p>
                 <p>Average live females: {showEggNumber(eggRangeTotals?.averageLiveFemales, "", true)}</p>
-                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="hen" allFarms={farmId === ALL_FARMS} />
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="hen" />
                 <p className="text-xs">{eggStandardLink} production rate converted to eggs per live hen.</p>
               </div>}
               icon={<House className="size-6 text-teal-700" />}
@@ -385,7 +383,7 @@ export default function BreederDashboard() {
                 <p>Good Egg ÷ TEP × 100</p>
                 <p>Good Egg: {showEggNumber(eggRangeTotals?.goodEggs, "", true)} / TEP: {showEggNumber(eggRangeTotals?.totalEggs, "", true)}</p>
                 <p>Good Egg uses Egg Laying&apos;s Hatching Egg count.</p>
-                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="recovery" allFarms={farmId === ALL_FARMS} />
+                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="recovery" />
               </div>}
               icon={<Percent className="size-6 text-blue-700" />}
               accent="text-blue-500"

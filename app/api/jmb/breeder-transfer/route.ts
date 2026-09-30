@@ -127,7 +127,7 @@ export async function POST(req: Request) {
   let createdId: number | null = null;
   try {
     const user = await authenticatedUser(req);
-    const body = (await req.json()) as { action?: string; id?: unknown; reason?: unknown; input?: TransferInput; post?: boolean };
+    const body = (await req.json()) as { action?: string; id?: unknown; reason?: unknown; correctionReason?: unknown; input?: TransferInput; post?: boolean };
     if (body.action === "post") {
       const id = Number(body.id);
       if (!Number.isInteger(id) || id <= 0) throw new Error("A valid bird transfer is required.");
@@ -140,12 +140,49 @@ export async function POST(req: Request) {
       const reason = String(body.reason ?? "").trim();
       if (!Number.isInteger(id) || id <= 0) throw new Error("A valid bird transfer is required.");
       if (!reason) throw new Error("Cancellation reason is required.");
-      const { error } = await admin_db.rpc("cancel_breeder_transfer", { p_transfer_id: id, p_reason: reason, p_user_id: user.id });
+      const { error } = await admin_db.rpc("void_breeder_transfer", { p_transfer_id: id, p_reason: reason, p_user_id: user.id });
       if (error) throw error;
       return NextResponse.json({ id });
     }
 
     const input = body.input ?? {};
+    if (body.action === "edit") {
+      const id = Number(body.id);
+      const correctionReason = String(body.correctionReason ?? "").trim();
+      const maleQty = Number(input.male_qty ?? 0);
+      const femaleQty = Number(input.female_qty ?? 0);
+      if (!Number.isInteger(id) || id <= 0) throw new Error("A valid bird transfer is required.");
+      if (!Number.isInteger(maleQty) || !Number.isInteger(femaleQty) || maleQty < 0 || femaleQty < 0 || maleQty + femaleQty <= 0) throw new Error("Enter a positive whole-number male or female quantity.");
+      if (!correctionReason) throw new Error("Edit reason is required.");
+
+      // The correction may change quantities only. Read the authoritative document so
+      // client-provided date, locations, reason, and remarks can never be substituted.
+      const { data: original, error: originalError } = await admin_db
+        .from("tbl_breeder_transfer")
+        .select("transfer_date, source_placement_id, destination_placement_id, reason, remarks")
+        .eq("id", id)
+        .maybeSingle();
+      if (originalError) throw originalError;
+      if (!original) throw new Error("Bird transfer not found.");
+
+      const { data, error } = await admin_db.rpc("edit_breeder_transfer", {
+        p_transfer_id: id,
+        p_transfer_date: original.transfer_date,
+        p_source_placement_id: original.source_placement_id,
+        p_destination_placement_id: original.destination_placement_id,
+        p_male_qty: maleQty,
+        p_female_qty: femaleQty,
+        p_reason: original.reason,
+        p_remarks: original.remarks,
+        p_edit_reason: correctionReason,
+        p_user_id: user.id,
+      });
+      if (error) throw error;
+      const replacementId = Number(data);
+      if (!Number.isInteger(replacementId) || replacementId <= 0) throw new Error("The corrected transfer was not created.");
+      return NextResponse.json({ id, replacementId });
+    }
+
     const transferDate = String(input.transfer_date ?? "");
     const sourcePlacementId = Number(input.source_placement_id);
     const destinationPlacementId = Number(input.destination_placement_id);

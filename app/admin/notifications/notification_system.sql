@@ -567,6 +567,59 @@ begin
           where id = v_event.id;
           continue;
         end if;
+      elsif v_event.module_key = 'BREEDER_TRANSFER'
+            and v_event.event_key in ('BREEDER_TRANSFER_POSTED', 'BREEDER_TRANSFER_EDITED', 'BREEDER_TRANSFER_VOIDED') then
+        if v_event.entity_id !~ '^[0-9]+$'
+           or v_event.farm_id is null
+           or v_event.recipient_farm_id is null
+           or v_event.farm_id <> v_event.recipient_farm_id then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Breeder transfer origin farm routing is missing or inconsistent.'
+          where id = v_event.id;
+          continue;
+        end if;
+
+        select exists (
+          select 1
+          from public.tbl_breeder_transfer transfer
+          join public.tbl_placement source on source.id = transfer.source_placement_id
+          join public.tbl_placement destination on destination.id = transfer.destination_placement_id
+          join public.farms origin on origin.id = source.farm_id
+          join public.farms destination_farm on destination_farm.id = destination.farm_id
+          where transfer.id::text = v_event.entity_id
+            and transfer.origin_farm_id = source.farm_id
+            and transfer.destination_farm_id = destination.farm_id
+            and transfer.origin_farm_id = v_event.farm_id
+            and (v_event.metadata ->> 'destinationFarmId')::bigint = transfer.destination_farm_id
+            and v_event.entity_type = 'tbl_breeder_transfer'
+            and v_event.fms_type = 'Breeder'
+            and v_event.permission_group = 'Breeder Masters'
+            and v_event.permission_title = 'Placement/view'
+            and v_event.posting_version > 0
+            and transfer.notification_revision >= v_event.posting_version
+            and (
+              (v_event.event_key = 'BREEDER_TRANSFER_POSTED' and transfer.status = 'Posted')
+              or (v_event.event_key = 'BREEDER_TRANSFER_EDITED'
+                and transfer.status = 'Posted'
+                and exists (
+                  select 1 from public.tbl_breeder_transfer original
+                  where original.id = transfer.corrects_transfer_id
+                    and original.status = 'Cancelled'
+                    and original.replaced_by_transfer_id = transfer.id
+                ))
+              or (v_event.event_key = 'BREEDER_TRANSFER_VOIDED'
+                and transfer.status = 'Cancelled'
+                and transfer.replaced_by_transfer_id is null)
+            )
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox
+          set status = 'invalid', processed_at = now(), processing_started_at = null,
+              last_error = 'Breeder transfer event does not match its persisted source, destination, or status.'
+          where id = v_event.id;
+          continue;
+        end if;
       elsif v_event.module_key = 'BRD_FC'
             and v_event.event_key in ('BRD_FC_POSTED', 'BRD_FC_EDITED', 'BRD_FC_VOIDED') then
         select exists (

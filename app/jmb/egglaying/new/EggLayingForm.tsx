@@ -691,6 +691,12 @@ export default function EggLayingForm() {
       return;
     }
 
+    const farmId = asNumber(form.farm_id);
+    if (!Number.isInteger(farmId) || farmId <= 0) {
+      alert("The selected Placement has no valid Farm. Assign the Placement to a Breeder farm before saving Egg Laying.");
+      return;
+    }
+
     const dates = new Set<string>();
     const existingDates = new Set(
       history
@@ -731,7 +737,7 @@ export default function EggLayingForm() {
     const payloads: EggLayingInsert[] = productionRows.map((row) => ({
       placement_id: asNumber(form.placement_id),
       date_laying: row.date_laying,
-      farm_id: form.farm_id ? asNumber(form.farm_id) : null,
+      farm_id: farmId,
       farm_name: form.farm_name || null,
       building: form.building || null,
       age: selectedPlacement

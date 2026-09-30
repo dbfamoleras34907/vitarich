@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { DefaultFarm } from "@/lib/types";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 
 const TABLE = "tbl_placement";
 const GROWING_TABLE = "tbl_growing";
@@ -551,9 +552,17 @@ export async function listFarmLocationLookup() {
 }
 
 export async function listBreederFarms() {
+  const assignedFarms = await listAssignedUserFarmOptions(["BE", "Breeder"]);
+  const assignedFarmIds = assignedFarms
+    .map((farm) => Number(farm.id))
+    .filter((farmId) => Number.isInteger(farmId) && farmId > 0);
+
+  if (!assignedFarmIds.length) return [];
+
   const { data, error } = await db
     .from(BREEDER_FARM_VIEW)
     .select("id, code, name, address, assigned_ta")
+    .in("id", assignedFarmIds)
     .order("name", { ascending: true });
 
   if (error) throw error;
