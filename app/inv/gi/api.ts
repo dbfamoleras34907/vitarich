@@ -15,6 +15,7 @@ export type GoodsIssueLine = {
   id: number | string
   allocationGroupKey?: string
   netLiveWeight?: number | null
+  harvestAge?: number | null
   tsDrNo?: string
   deliveredDate?: string
   haulerName?: string
@@ -114,6 +115,7 @@ type GoodsIssueItemRow = {
   void: string
   allocation_group_key?: string | null
   net_live_weight?: number | null
+  harvest_age?: number | null
   ts_dr_no?: string | null
   delivered_date?: string | null
   hauler_name?: string | null
@@ -204,6 +206,7 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       : `line:${row.id}`
   ),
   netLiveWeight: row.net_live_weight == null ? null : Number(row.net_live_weight),
+  harvestAge: row.harvest_age == null ? null : Number(row.harvest_age),
   tsDrNo: row.ts_dr_no ?? '',
   deliveredDate: row.delivered_date ?? legacyHeader?.issue_date ?? '',
   haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',

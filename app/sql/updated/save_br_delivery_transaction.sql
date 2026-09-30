@@ -1,4 +1,5 @@
--- Apply notification_system.sql and alter_br_delivery_lines_add_net_live_weight.sql first.
+-- Apply notification_system.sql, alter_br_delivery_lines_add_net_live_weight.sql,
+-- and app/sql/new/alter_growing_harvest_age.sql first.
 begin;
 
 create or replace function public.save_br_delivery_transaction(p_document jsonb)
@@ -44,6 +45,15 @@ begin
   if jsonb_typeof(p_document->'lines') is distinct from 'array'
      or jsonb_array_length(p_document->'lines') = 0 then
     raise exception 'Harvest & Delivery requires at least one line.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'lines') input(line)
+    where nullif(input.line->>'harvestAge', '') is null
+       or (input.line->>'harvestAge') !~ '^[0-9]+$'
+  ) then
+    raise exception 'Every Harvest & Delivery line requires an Age that is a whole number, zero or greater.';
   end if;
 
   if v_farm_cycle_id is null or not exists (
@@ -162,6 +172,7 @@ begin
       set
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
+        harvest_age = (v_line->>'harvestAge')::integer,
         net_live_weight = nullif(v_line->>'netLiveWeight', '')::numeric,
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
         delivered_date = nullif(v_line->>'deliveredDate', '')::date,
@@ -192,6 +203,7 @@ begin
         br_delivery_id,
         line_no,
         allocation_group_key,
+        harvest_age,
         net_live_weight,
         ts_dr_no,
         delivered_date,
@@ -220,6 +232,7 @@ begin
         v_document_id,
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
+        (v_line->>'harvestAge')::integer,
         nullif(v_line->>'netLiveWeight', '')::numeric,
         nullif(trim(v_line->>'tsDrNo'), ''),
         nullif(v_line->>'deliveredDate', '')::date,

@@ -19,7 +19,7 @@ function load(relative) {
 const { parseDeliveryPaste, deliveryDateValue, prepareDeliveryPaste, calculateHarvestAlw, DELIVERY_COLUMNS } = load('app/inv/gi/new/deliverySpreadsheet.ts')
 const { parseExcelClipboard } = load('lib/utils/parseExcelClipboard.ts')
 let serial = 0
-const newLine = () => ({ id: `new-${++serial}`, allocationGroupKey: `group-${serial}`, deliveredDate: '2026-09-11', itemId: null, itemCode: '', description: '', altQty: 1, requestedAltQty: 1, altUom: '', baseQty: 0, baseUom: '', fromWarehouseId: null, fromWarehouseCode: '', fromWarehouseName: '', batchNumber: '', batchRuleId: null, manufacturingDate: '', expiryDate: '', onHandQty: 0 })
+const newLine = () => ({ id: `new-${++serial}`, allocationGroupKey: `group-${serial}`, harvestAge: 40, deliveredDate: '2026-09-11', itemId: null, itemCode: '', description: '', altQty: 1, requestedAltQty: 1, altUom: '', baseQty: 0, baseUom: '', fromWarehouseId: null, fromWarehouseCode: '', fromWarehouseName: '', batchNumber: '', batchRuleId: null, manufacturingDate: '', expiryDate: '', onHandQty: 0 })
 const base = {
   startRow: 0, newLine, getAllocationGroupKey: line => line.allocationGroupKey,
   warehouses: [{ id: 1, whse_code: 'B1', whse_name: 'Building One' }],
@@ -34,7 +34,7 @@ async function run() {
   assert.equal(calculateHarvestAlw(null, 500), null)
   assert.equal(calculateHarvestAlw(1250, 0), null)
   assert.equal(calculateHarvestAlw(0, 500), 0)
-  assert.deepEqual(parseDeliveryPaste('Harvest Quantity\tNet Live Weight\tALW\n500\t1250\t999', 0), [{ requestedAltQty: '500', netLiveWeight: '1250' }])
+  assert.deepEqual(parseDeliveryPaste('Age\tHarvest Quantity\tNet Live Weight\tALW\n41\t500\t1250\t999', 0), [{ harvestAge: '41', requestedAltQty: '500', netLiveWeight: '1250' }])
   assert.deepEqual(parseExcelClipboard('"A\tB"\t"C\nD"\t"E""F"\r\n'), [['A\tB', 'C\nD', 'E"F']])
   assert.throws(() => parseExcelClipboard('"unfinished'), /unclosed/)
   assert.equal(deliveryDateValue('9/1/2026'), '2026-09-01')
@@ -58,6 +58,9 @@ async function run() {
   assert.deepEqual(weighted.map(line => line.netLiveWeight), [12.5, 12.5])
   assert.deepEqual(weighted.map(line => line.altQty), [2, 3])
   assert.equal(calculateHarvestAlw(weighted[0].netLiveWeight, weighted.reduce((sum, line) => sum + line.altQty, 0)), 2.5)
+  const aged = await prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ harvestAge: '41' }] })
+  assert.ok(aged.every(line => line.harvestAge === 41))
+  await assert.rejects(prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ harvestAge: '40.5' }] }), /whole number/)
   await assert.rejects(prepareDeliveryPaste({ ...base, lines: allocations, rows: [{ netLiveWeight: '-1' }] }), /negative/)
   const cleared = await prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ netLiveWeight: '' }] })
   assert.ok(cleared.every(line => line.netLiveWeight === null))

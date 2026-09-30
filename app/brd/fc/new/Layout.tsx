@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { getGrowingHarvestBlocker } from "@/lib/data/repositories/broilerGrowing";
 import type {
   ClipboardEvent,
   KeyboardEvent,
@@ -352,41 +351,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const rawRequestedFlockAge = flockCardNavigationContext?.flockAge ?? searchParams.get("flockAge");
   const requestedFlockAge = Number(rawRequestedFlockAge);
   const linkedCardNo = requestedCardNo || flockCardCardNo;
-  const [harvestCheck, setHarvestCheck] = useState<{ key: string; message: string | null } | null>(null);
-  const harvestCheckKey = `${selectedFarmId}:${linkedCardNo}`;
-  const harvestLockMessage = harvestCheck?.key === harvestCheckKey
-    ? harvestCheck.message
-    : "Checking posted harvests for this cycle…";
-  const harvestLocked = Boolean(harvestLockMessage);
-
-  useEffect(() => {
-    let disposed = false;
-    let request = 0;
-    const refresh = async () => {
-      const currentRequest = ++request;
-      if (!selectedFarmId || !linkedCardNo) {
-        setHarvestCheck({ key: harvestCheckKey, message: null });
-        return;
-      }
-      try {
-        const documentNo = await getGrowingHarvestBlocker(Number(selectedFarmId), linkedCardNo);
-        if (!disposed && request === currentRequest) setHarvestCheck({
-          key: harvestCheckKey,
-          message: documentNo
-            ? `Growing is read-only because ${documentNo} is Posted for this building and cycle. Reverse all posted harvests in this cycle to edit Growing.`
-            : null,
-        });
-      } catch (error) {
-        if (!disposed && request === currentRequest) setHarvestCheck({
-          key: harvestCheckKey,
-          message: `Unable to check posted harvests. ${error instanceof Error ? error.message : "Refresh and try again."}`,
-        });
-      }
-    };
-    void refresh();
-    window.addEventListener("focus", refresh);
-    return () => { disposed = true; window.removeEventListener("focus", refresh); };
-  }, [selectedFarmId, linkedCardNo, harvestCheckKey]);
   const displayFlockCode = requestedFlockCode || linkedCardNo || "-";
   const selectedBreed = String(flockCardNavigationContext?.breed ?? "").trim();
   const hasLockedFlockContext = Boolean(flockCardNavigationContext?.buildingKey);
@@ -1230,7 +1194,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   function isRowAgeLocked(rowIndex: number) {
-    if (harvestLocked) return true;
     if (allowAdvancePosting) return false;
     if (currentFlockAge == null) return false;
 
@@ -2104,7 +2067,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     values, rowIndex,
   })).filter(({ rowIndex }) => rows[rowIndex]?.age !== 0), [gridValues]);
   const copyColumns = useMemo(() => visibleColumnIndexes.map(index => ({ index })), []);
-  const copyDisabled = saving || isDatabaseLoading || harvestLocked
+  const copyDisabled = saving || isDatabaseLoading
     || loadingFeedBatches || loadingMortalityBatches;
   const canCopyGrowingCell = (colIndex: number, rowIndex: number) => {
     if (copyDisabled || isRowAgeLocked(rowIndex) || columnDisabledFlags[colIndex]) return false;
@@ -2589,7 +2552,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
   async function handleSave() {
     if (saving) return;
-    if (harvestLocked) { toast(harvestLockMessage); return; }
 
     if (!selectedFarm) {
       toast("Please select a farm.");
@@ -2786,7 +2748,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   async function reverseFeedIntake(rowIndex: number) {
-    if (harvestLocked) { toast(harvestLockMessage); return; }
     const savedLine = savedLineByRowIndex[rowIndex];
     if (!savedLine) return;
 
@@ -2827,7 +2788,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   async function reverseMortalityThinning(rowIndex: number) {
-    if (harvestLocked) { toast(harvestLockMessage); return; }
     const savedLine = savedMortalityLineByRowIndex[rowIndex];
     if (!savedLine) return;
 
@@ -3024,7 +2984,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   return (
     <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
       <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-white dark:bg-card">
-        {harvestLockMessage && <div role="status" className="border-b bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">{harvestLockMessage}</div>}
         <Collapsible open={headerOpen} onOpenChange={setHeaderOpen}>
           <CollapsibleContent className="overflow-visible">
             <div className="relative border-b bg-white px-4 pb-6 pt-3 dark:bg-card">
@@ -3151,7 +3110,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                     size="default"
                     variant={"secondary"}
                     onClick={handleSave}
-                    disabled={saving || harvestLocked}
+                    disabled={saving}
                   >
                     {saving ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -3166,7 +3125,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                     type="button"
                     size="default"
                     onClick={handleSave}
-                    disabled={saving || harvestLocked}
+                    disabled={saving}
                   >
                     {saving ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -3307,7 +3266,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 type="button"
                 size="sm"
                 onClick={handleSave}
-                disabled={saving || harvestLocked}
+                disabled={saving}
               >
                 {saving ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -3320,7 +3279,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 type="button"
                 size="sm"
                 onClick={handleSave}
-                disabled={saving || harvestLocked}
+                disabled={saving}
               >
                 {saving ? (
                   <Loader2 className="size-4 animate-spin" />

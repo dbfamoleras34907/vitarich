@@ -42,6 +42,7 @@ create table if not exists public.br_delivery_lines (
   br_delivery_id bigint not null references public.br_delivery (id) on delete cascade,
   line_no integer not null,
   allocation_group_key text null,
+  harvest_age integer null,
   ts_dr_no text null,
   hauler_name text null,
   plate_number text null,

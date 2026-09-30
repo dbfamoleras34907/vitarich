@@ -258,6 +258,7 @@ const clearWarehouseSensitiveLineData = (
   flockCardNo: undefined,
   cycleNumber: undefined,
   cycleMask: undefined,
+  harvestAge: undefined,
   fromWarehouseId: warehouse?.id ?? null,
   fromWarehouseCode: warehouse?.whse_code ?? '',
   fromWarehouseName: warehouse?.whse_name ?? '',
@@ -896,6 +897,18 @@ export default function NewGoodsIssue({
         }
       })
 
+      if (triggeredBy === 'BR-DR') {
+        setIssue(current => current ? {
+          ...current,
+          lines: current.lines.map(line => {
+            if (line.harvestAge !== undefined) return line
+            const lookupKey = getLineFlockCardLookupKey(current.farmId, current.farmCycleId, line)
+            const age = lookupKey ? lineFlockCardCacheRef.current[lookupKey]?.info?.age : null
+            return age == null ? line : { ...line, harvestAge: age }
+          }),
+        } : current)
+      }
+
       setLineFlockCardInfo(() => {
         const updated: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
         lineWarehouseLookups.forEach(line => {
@@ -974,7 +987,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
+  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, triggeredBy, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -1716,6 +1729,13 @@ export default function NewGoodsIssue({
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
     if (triggeredBy === 'BR-DR') {
+      const invalidAgeLine = linesToSave.find(line =>
+        line.harvestAge == null || !Number.isInteger(Number(line.harvestAge)) || Number(line.harvestAge) < 0,
+      )
+      if (invalidAgeLine) {
+        toast(`Line ${getDocumentLineNumber(invalidAgeLine)}: Age is required and must be a whole number, zero or greater.`)
+        return
+      }
       try {
         linesToSave.forEach(line => deliveryDateValue(line.deliveredDate ?? ''))
       } catch (error) {
@@ -1766,7 +1786,11 @@ export default function NewGoodsIssue({
           lines: linesToSave,
         })
         if (ageShortage) {
-          const currentAgeText = !ageShortage.hasFlockCard
+          const currentAgeText = triggeredBy === 'BR-DR'
+            ? ageShortage.currentAge === null
+              ? 'has no Harvest age'
+              : `has a Harvest age of only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'}`
+            : !ageShortage.hasFlockCard
             ? 'has no saved flock card'
             : ageShortage.currentAge === null
               ? 'has no mortality input to determine its actual age'

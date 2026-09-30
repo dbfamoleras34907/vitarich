@@ -1,4 +1,6 @@
--- Apply after the Growing and Harvest schemas/save RPCs. No business data changes.
+-- RETIRED: Posted Harvest documents no longer lock Growing.
+-- Kept only as historical reference. Do not deploy.
+-- Use app/sql/new/alter_growing_harvest_age.sql instead.
 begin;
 
 -- Invoker rights preserve RLS for the screen. The write trigger calls this with

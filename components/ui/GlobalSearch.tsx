@@ -306,18 +306,21 @@ export default function GlobalSearch({ collapsed }: collapsed) {
     })
 
   /**
-   * Keyboard shortcut (CTRL+K / CMD+K)
+   * Keyboard shortcut (CTRL+K / CMD+K / F2)
    */
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+      const isSearchShortcut =
+        (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) || e.key === "F2"
+
+      if (isSearchShortcut) {
         e.preventDefault()
         setOpen((prev) => !prev)
       }
     }
 
-    document.addEventListener("keydown", down)
-    return () => document.removeEventListener("keydown", down)
+    document.addEventListener("keydown", down, true)
+    return () => document.removeEventListener("keydown", down, true)
   }, [])
 
   useEffect(() => {
@@ -371,7 +374,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
             <span className="flex-1 text-left">Search menus…</span>
 
             <kbd className="pointer-events-none absolute right-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted/70 px-1.5 font-mono text-[10px] font-medium opacity-80 sm:flex">
-              Ctrl K
+              Ctrl K / F2
             </kbd>
           </>
         )}

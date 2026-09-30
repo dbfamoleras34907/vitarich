@@ -19,6 +19,11 @@ import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
 
 const COPY_COLUMNS = DELIVERY_COLUMNS.flatMap(([, key]) => key ? [key] : [])
 
+const getGrowingBodyWeightForAge = (
+  info: GoodsIssueFlockCardInfo | null | undefined,
+  age: number | null | undefined,
+) => age == null ? null : info?.bodyWeightsByAge[String(age)] ?? null
+
 type LineFlockCardState = {
   loading: boolean
   info: GoodsIssueFlockCardInfo | null
@@ -218,7 +223,8 @@ export default function DeliveryIssueLinesTable({
           const rows = Array.from(groups.values()).map((lines, index) => {
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
-            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), info?.age ?? '', info?.bodyWeight ?? '', line.itemCode,
+            const harvestAge = line.harvestAge === undefined ? info?.age : line.harvestAge
+            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), harvestAge ?? '', getGrowingBodyWeightForAge(info, harvestAge) ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
               lines.filter(entry => entry.batchNumber).map(entry => `${entry.batchNumber} (${entry.altQty})`).join('; '),
@@ -343,6 +349,8 @@ export default function DeliveryIssueLinesTable({
             const hasSearchedBatches = Object.prototype.hasOwnProperty.call(batchOptions, batchKey)
             const canSearchBatches = canOpenBatchSelector(line)
             const flockState = lineFlockCardInfo[String(line.id)]
+            const harvestAge = line.harvestAge === undefined ? flockState?.info?.age : line.harvestAge
+            const growingBodyWeight = getGrowingBodyWeightForAge(flockState?.info, harvestAge)
             const loadingPlacementItems = Boolean(flockState?.loading || loadingLinePlacementBatches[String(line.id)])
             const lineItems = getItemsForLine(line)
             const allocatedTransferQty = allocationLines
@@ -418,16 +426,27 @@ export default function DeliveryIssueLinesTable({
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
                   />
                 </td>
-                <td className="border-r p-1 align-middle">
+                <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'harvestAge')}>
                   <Input
-                    value={flockState?.info?.age != null ? String(flockState.info.age) : ''}
-                    readOnly
+                    type={showHarvestWeight ? 'number' : 'text'}
+                    min={showHarvestWeight ? 0 : undefined}
+                    step={showHarvestWeight ? 1 : undefined}
+                    value={showHarvestWeight
+                      ? line.harvestAge === undefined
+                        ? flockState?.info?.age ?? ''
+                        : line.harvestAge ?? ''
+                      : flockState?.info?.age != null ? String(flockState.info.age) : ''}
+                    readOnly={!showHarvestWeight || activeDocumentIsPosted}
+                    aria-label={`Age row ${index + 1}`}
+                    onChange={showHarvestWeight ? event => updateAllocationGroup(allocationGroupKey, {
+                      harvestAge: event.target.value === '' ? null : numberValue(event.target.value),
+                    }) : undefined}
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />
-                </td>
+                </TableCopyDownCell>
                 <td className="border-r p-1 align-middle">
                   <Input
-                    value={flockState?.info?.bodyWeight ? formatQuantity(flockState.info.bodyWeight) : ''}
+                    value={growingBodyWeight != null ? formatQuantity(growingBodyWeight) : ''}
                     readOnly
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />

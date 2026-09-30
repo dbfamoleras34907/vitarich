@@ -1,22 +1,17 @@
-# Growing edit guard after Harvest
+# Growing and Harvest age behavior
 
-Deploy `app/brd/fc/guard_growing_posted_harvest.sql` in the target database before
-deploying the screen change. It requires the current Growing, Harvest and placement
-schemas. This migration changes functions/triggers only and is safe to reapply.
+Deploy `app/sql/new/alter_growing_harvest_age.sql`, then
+`app/sql/updated/save_br_delivery_transaction.sql`, before releasing the screen
+change. Both scripts are safe to reapply.
 
-A Posted Harvest & Delivery locks Growing for its exact persisted farm, building
-and Growing placement cycle. Draft and Cancelled (voided) harvests do not lock it.
-All Posted harvests in that cycle must be reversed before editing resumes.
-Canonical DOC batches take precedence over carried origin batches; legacy batches
-match active placement origins by item and batch. Other cycles remain independent.
+A Posted Harvest & Delivery no longer locks Growing. Growing rows, feed allocations,
+mortality entries, and Save remain available after Harvest is posted. Full Growing
+reversal keeps its separate downstream-document safety check.
 
-Database triggers enforce the check on Growing headers, rows and feed allocations,
-including additions, updates, deletions and row reversals. They check both old and
-new identities on updates. The check shares the Harvest posting advisory lock,
-and direct Harvest status transitions acquire that lock too. The screen uses an
-RLS-preserving read RPC, disables row editing and Save, and refreshes on window
-focus. An unavailable check keeps the screen locked. The database remains the
-authority if a harvest is posted while the screen is already open.
+Harvest Age is initialized from the linked Growing actual age, remains editable on
+Draft Harvest documents, and is persisted on each allocation group. Posting checks
+the saved Harvest age against Target Delivery Age; later Growing edits do not change
+the historical age saved on an existing Harvest document.
 
 ## Notification readiness audit
 

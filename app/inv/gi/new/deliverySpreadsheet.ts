@@ -8,7 +8,7 @@ export const DELIVERY_COLUMNS = [
   ['Building', 'fromWarehouseCode'],
   ['Flock Card', null],
   ['Cycle #', null],
-  ['Age', null],
+  ['Age', 'harvestAge'],
   ['ALW g', null],
   ['Item', 'itemCode'],
   ['Harvest Quantity', 'requestedAltQty'],
@@ -112,6 +112,11 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.netLiveWeight = values.netLiveWeight ? deliveryNumberValue(values.netLiveWeight, 'Net Live Weight') : null
         if (line.netLiveWeight != null && line.netLiveWeight < 0) throw new Error('Net Live Weight cannot be negative.')
       }
+      if (values.harvestAge !== undefined) {
+        const harvestAge = deliveryNumberValue(values.harvestAge, 'Age')
+        if (!Number.isInteger(harvestAge) || harvestAge < 0) throw new Error('Age must be a whole number, zero or greater.')
+        line.harvestAge = harvestAge
+      }
       if (values.deliveredDate !== undefined) line.deliveredDate = deliveryDateValue(values.deliveredDate)
       for (const key of ['tsDrNo', 'haulerName', 'plateNumber', 'liveSalesCustomerName'] as const) {
         if (values[key] !== undefined) line[key] = values[key]
@@ -124,7 +129,7 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
       if (values.truckSeal !== undefined) line.truckSeal = values.truckSeal ? deliveryNumberValue(values.truckSeal, 'Truck Seal') : null
       const inventoryKeys = ['fromWarehouseCode', 'itemCode', 'requestedAltQty', 'altUom', 'batchNumber'] as const
       if (!inventoryKeys.some(key => values[key] !== undefined)) {
-        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
+        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, harvestAge: line.harvestAge, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
         continue
       }
       const buildingValue = normalize(values.fromWarehouseCode ?? line.fromWarehouseCode)
@@ -139,6 +144,7 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
       const placement = await getPlacementBatches(warehouse)
       const allowedItems = items.filter(item => placement.some(batch => normalize(batch.itemCode) === normalize(item.item_code ?? '')))
       const buildingChanged = line.fromWarehouseCode !== original.fromWarehouseCode
+      if (buildingChanged && values.harvestAge === undefined) line.harvestAge = undefined
       const itemValue = normalize(values.itemCode ?? (buildingChanged && !allowedItems.some(item => item.id === original.itemId) ? '' : line.itemCode))
       const matchingItems = itemValue ? allowedItems.filter(item => [item.item_code, item.item_name, `${item.item_code} - ${item.item_name}`].some(value => normalize(value ?? '') === itemValue)) : allowedItems
       if (!itemValue && matchingItems.length !== 1 && !values.batchNumber && !values.altUom) {

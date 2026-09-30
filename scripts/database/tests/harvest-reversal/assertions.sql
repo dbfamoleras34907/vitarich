@@ -9,7 +9,7 @@ create function test_harvest_document(n integer, quantity numeric, state text de
   select test_cleanup_document(n,quantity,state) || jsonb_build_object(
     'id',(select id from br_delivery where gi_no='HARVEST-'||n), 'giNo','HARVEST-'||n,
     'lines',(select jsonb_agg(value || jsonb_build_object('deliveredDate','2026-09-12',
-      'allocationGroupKey','HARVEST-GROUP-'||n,'haulerName','Hauler','plateNumber','ABC',
+      'allocationGroupKey','HARVEST-GROUP-'||n,'harvestAge',40,'haulerName','Hauler','plateNumber','ABC',
       'destination','Sales','liveSalesCustomerName','Buyer','truckSeal',1))
       from jsonb_array_elements(test_cleanup_document(n,quantity,state)->'lines')));
 $$;

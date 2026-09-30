@@ -50,6 +50,7 @@ export type GoodsIssueFlockCardInfo = {
   cycleMask?: string
   animalQty: number
   bodyWeight: number | null
+  bodyWeightsByAge: Record<string, number>
   status: string
 }
 
@@ -430,6 +431,7 @@ type FlockCardInfoRow = {
 }
 
 type FlockCardBodyWeightLineRow = {
+  age: number | null
   body_wt: number | null
 }
 
@@ -437,6 +439,7 @@ const toFlockCardInfo = (
   row: FlockCardInfoRow,
   actualAge: number | null,
   bodyWeight: number | null,
+  bodyWeightsByAge: Record<string, number>,
 ): GoodsIssueFlockCardInfo => ({
   id: Number(row.id),
   cardNo: row.card_no ?? '',
@@ -456,44 +459,54 @@ const toFlockCardInfo = (
   cycleMask: getBroilerCycleDisplay(row),
   animalQty: Number(row.animal_qty ?? 0),
   bodyWeight,
+  bodyWeightsByAge,
   status: row.status ?? '',
 })
 
 async function getLatestFlockCardGrowingMetrics(row: FlockCardInfoRow) {
   const cardNo = String(row.card_no ?? '').trim()
-  if (!cardNo) return { actualAge: null, bodyWeight: null }
+  if (!cardNo) return { actualAge: null, bodyWeight: null, bodyWeightsByAge: {} }
 
   const [actualAge, headers] = await Promise.all([
     getLastMortalityAge(Number(row.id)),
     getLatestBroilerGrowingHeaders([cardNo]),
   ])
   const header = getBroilerGrowingHeader(headers, cardNo)
-  if (!header) return { actualAge, bodyWeight: null }
+  if (!header) return { actualAge, bodyWeight: null, bodyWeightsByAge: {} }
 
   const lineResult = await db
     .from('brd_fc_line')
-    .select('body_wt')
+    .select('age, body_wt')
     .eq('fc_id', header.id)
     .eq('void', '1')
     .gt('body_wt', 0)
-    .order('age', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .order('age', { ascending: true })
+    .order('id', { ascending: true })
 
   if (lineResult.error) throwReferenceError('Flock card body weight', lineResult.error)
 
-  const line = lineResult.data as FlockCardBodyWeightLineRow | null
-  const bodyWeight = Number(line?.body_wt ?? 0)
+  const bodyWeightsByAge: Record<string, number> = {}
+  for (const line of (lineResult.data ?? []) as FlockCardBodyWeightLineRow[]) {
+    const age = Number(line.age)
+    const bodyWeight = Number(line.body_wt)
+    if (Number.isInteger(age) && age >= 0 && Number.isFinite(bodyWeight) && bodyWeight > 0) {
+      bodyWeightsByAge[String(age)] = bodyWeight
+    }
+  }
+  const latestAge = Object.keys(bodyWeightsByAge)
+    .map(Number)
+    .sort((left, right) => right - left)[0]
+  const bodyWeight = latestAge === undefined ? null : bodyWeightsByAge[String(latestAge)]
   return {
     actualAge,
-    bodyWeight: Number.isFinite(bodyWeight) && bodyWeight > 0 ? bodyWeight : null,
+    bodyWeight,
+    bodyWeightsByAge,
   }
 }
 
 async function toFlockCardInfoWithBodyWeight(row: FlockCardInfoRow) {
   const metrics = await getLatestFlockCardGrowingMetrics(row)
-  return toFlockCardInfo(row, metrics.actualAge, metrics.bodyWeight)
+  return toFlockCardInfo(row, metrics.actualAge, metrics.bodyWeight, metrics.bodyWeightsByAge)
 }
 
 type FlockCardOriginBatchRow = {
@@ -591,6 +604,7 @@ export async function getBrDeliveryAgeShortage(params: {
   lines: Array<{
     fromWarehouseId: number | null
     fromWarehouseCode: string
+    harvestAge?: number | null
   }>
 }) {
   const farmId = Number(params.farmId)
@@ -610,27 +624,14 @@ export async function getBrDeliveryAgeShortage(params: {
   const targetAge = Number(settings?.target_delivery_age ?? 0)
   if (!Number.isFinite(targetAge) || targetAge <= 0) return null
 
-  const uniqueBuildings = Array.from(new Map(
-    params.lines.map(line => [
-      `${line.fromWarehouseId ?? ''}|${line.fromWarehouseCode.trim().toUpperCase()}`,
-      line,
-    ]),
-  ).values())
-
-  for (const building of uniqueBuildings) {
-    const flock = await getDeliveryFlockCardInfo({
-      farmId,
-      farmCycleId: params.farmCycleId,
-      buildingWarehouseId: building.fromWarehouseId,
-      buildingCode: building.fromWarehouseCode,
-    })
-
-    if (!flock || flock.age === null || flock.age < targetAge) {
+  for (const building of params.lines) {
+    const harvestAge = building.harvestAge == null ? null : Number(building.harvestAge)
+    if (harvestAge === null || !Number.isFinite(harvestAge) || harvestAge < targetAge) {
       return {
         targetAge,
-        currentAge: flock?.age ?? null,
-        buildingName: flock?.buildingName || building.fromWarehouseCode,
-        hasFlockCard: Boolean(flock),
+        currentAge: Number.isFinite(harvestAge) ? harvestAge : null,
+        buildingName: building.fromWarehouseCode,
+        hasFlockCard: true,
       }
     }
   }
