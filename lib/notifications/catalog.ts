@@ -3,6 +3,22 @@ import type { NotificationCatalog } from "./types";
 // 
 export const notificationCatalog: NotificationCatalog = [
   {
+    // Deployment requires egg_laying_transactions.sql and authenticated checks.
+    ruleActivationReady: false,
+    key: NOTIFICATION_MODULE_KEYS.EGG_LAYING,
+    label: "Egg Laying Production",
+    description: "Saved breeder egg collections and their voids.",
+    fmsTypes: ["Breeder"],
+    permissionGroup: "Breeder Masters",
+    permissionTitle: "Laying Production/view",
+    baseUrl: "/jmb/egglaying",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.EGG_LAYING.POSTED, label: "Egg Laying Posted", description: "Successful first save of an egg collection record.", action: "posted", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.EGG_LAYING.EDITED, label: "Egg Laying Edited", description: "Successful persisted correction of an egg collection record.", action: "edited", farmRouting: "document" },
+      { key: NOTIFICATION_EVENT_KEYS.EGG_LAYING.VOIDED, label: "Egg Laying Voided", description: "Successful void of an egg collection record with no posted dispatch allocation.", action: "voided", farmRouting: "document" },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.BREEDER_WEIGHT_SAMPLES,
     ruleActivationReady: false, // Enable only after sample SQL deployment and verification.
     label: "Breeder Weight Samples",

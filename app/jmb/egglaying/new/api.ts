@@ -1,5 +1,9 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { listBreederEggLayings, type EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+import {
+  saveBreederEggLayings,
+  voidBreederEggLaying,
+} from "@/app/jmb/lib/data/mutations/breederEggLaying";
 export type { EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 
 const EGG_LAYING_TABLE = "tbl_egglaying";
@@ -106,14 +110,10 @@ export async function getEggLayingById(id: number) {
 
 export async function createEggLaying(payload: EggLayingInsert) {
   validateDateLaying(payload.date_laying);
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .insert({ ...payload, age: normalizeAge(payload.age) })
-    .select("*")
-    .single();
-
-  if (error) throw error;
-  return data as EggLaying;
+  const rows = await saveBreederEggLayings([
+    { ...payload, age: normalizeAge(payload.age) },
+  ]);
+  return rows[0];
 }
 
 export async function listEggLayingsByPlacement(placementId: number) {
@@ -126,43 +126,25 @@ export async function listEggLayingsByPlacements(placementIds: number[]) {
 
 export async function createEggLayingBatch(payloads: EggLayingInsert[]) {
   payloads.forEach((payload) => validateDateLaying(payload.date_laying));
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .insert(payloads.map((payload) => ({ ...payload, age: normalizeAge(payload.age) })))
-    .select("*");
-
-  if (error) throw error;
-  return (data ?? []) as EggLaying[];
+  return saveBreederEggLayings(
+    payloads.map((payload) => ({ ...payload, age: normalizeAge(payload.age) })),
+  );
 }
 
 export async function updateEggLaying(id: number, payload: EggLayingUpdate) {
   if (payload.date_laying !== undefined) validateDateLaying(payload.date_laying);
-  const { data, error } = await db
-    .from(EGG_LAYING_TABLE)
-    .update({
-      ...payload,
-      ...(payload.age !== undefined ? { age: normalizeAge(payload.age) } : {}),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) throw error;
-  return data as EggLaying;
+  const existing = await getEggLayingById(id);
+  const rows = await saveBreederEggLayings([{
+    ...existing,
+    ...payload,
+    id,
+    age: payload.age !== undefined ? normalizeAge(payload.age) : existing.age,
+  }]);
+  return rows[0];
 }
 
-export async function deleteEggLaying(id: number) {
-  const { error } = await db
-    .from(EGG_LAYING_TABLE)
-    .update({
-      is_active: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (error) throw error;
-  return true;
+export async function voidEggLaying(id: number, reason: string) {
+  return voidBreederEggLaying(id, reason);
 }
 
 export async function listLayingPlacements() {

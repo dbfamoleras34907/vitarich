@@ -65,6 +65,7 @@ type EditableRow = Omit<
 
 type TransferModalState = {
   transfer_date: string;
+  destination_building_id: string;
   destination_placement_id: string;
   male_qty: string;
   female_qty: string;
@@ -1318,6 +1319,7 @@ export default function CardForm() {
     if (!placement || row.daterec > localDate()) return;
     setTransferModal({
       transfer_date: row.daterec,
+      destination_building_id: "",
       destination_placement_id: "",
       male_qty: "",
       female_qty: "",
@@ -1529,13 +1531,42 @@ export default function CardForm() {
     transferPlacements.find(
       (item) => String(item.id) === transferModal?.destination_placement_id,
     ) ?? null;
+  const transferDestinations = transferPlacements.filter(
+    (item) => item.id !== placement.id && item.farm_id === placement.farm_id,
+  );
+  const destinationBuildings = Array.from(
+    transferDestinations.reduce((buildings, item) => {
+      if (!buildings.has(item.building_id)) {
+        buildings.set(item.building_id, item);
+      }
+      return buildings;
+    }, new Map<number, TransferPlacement>()).values(),
+  ).sort((left, right) =>
+    left.building_no.localeCompare(right.building_no, undefined, {
+      numeric: true,
+    }),
+  );
+  const selectedDestinationBuildingId = Number(
+    transferModal?.destination_building_id,
+  );
+  const destinationPens = Array.from(
+    transferDestinations
+      .filter((item) => item.building_id === selectedDestinationBuildingId)
+      .reduce((pens, item) => {
+        if (!pens.has(item.pen_id)) {
+          pens.set(item.pen_id, item);
+        }
+        return pens;
+      }, new Map<number, TransferPlacement>())
+      .values(),
+  ).sort((left, right) =>
+    left.pen_no.localeCompare(right.pen_no, undefined, { numeric: true }),
+  );
   const transferMinimumDate =
     [transferSource?.placement_date, transferDestination?.placement_date]
       .filter(Boolean)
       .sort()
       .at(-1) ?? placement.placement_date;
-  const transferLabel = (item: TransferPlacement) =>
-    `${item.building_no} - ${item.pen_no}`;
   const periodEndIndex = periodStartIndex + visibleRows.length;
   const periodFirstRow = visibleRows[0];
   const periodLastRow = visibleRows.at(-1);
@@ -2148,8 +2179,38 @@ export default function CardForm() {
                   className="bg-muted/40"
                 />
               </label>
-              <label className="space-y-2 sm:col-span-2">
-                <Label required>Destination building / pen</Label>
+              <label className="space-y-2">
+                <Label required>Destination building</Label>
+                <select
+                  value={transferModal.destination_building_id}
+                  onChange={(event) =>
+                    setTransferModal((current) =>
+                      current
+                        ? {
+                            ...current,
+                            destination_building_id: event.target.value,
+                            destination_placement_id: "",
+                          }
+                        : current,
+                    )
+                  }
+                  disabled={transferLoading}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">
+                    {transferLoading
+                      ? "Loading destinations..."
+                      : "Select building"}
+                  </option>
+                  {destinationBuildings.map((item) => (
+                    <option key={item.building_id} value={item.building_id}>
+                      {item.building_no}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <Label required>Destination pen</Label>
                 <select
                   value={transferModal.destination_placement_id}
                   onChange={(event) =>
@@ -2162,32 +2223,23 @@ export default function CardForm() {
                         : current,
                     )
                   }
-                  disabled={transferLoading}
+                  disabled={
+                    transferLoading || !transferModal.destination_building_id
+                  }
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   <option value="">
                     {transferLoading
                       ? "Loading destinations..."
-                      : "Select destination"}
+                      : transferModal.destination_building_id
+                        ? "Select pen"
+                        : "Select a building first"}
                   </option>
-                  {transferPlacements
-                    .filter((item) => item.id !== placement.id)
-                    .sort(
-                      (left, right) =>
-                        left.building_no.localeCompare(
-                          right.building_no,
-                          undefined,
-                          { numeric: true },
-                        ) ||
-                        left.pen_no.localeCompare(right.pen_no, undefined, {
-                          numeric: true,
-                        }),
-                    )
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {transferLabel(item)}
-                      </option>
-                    ))}
+                  {destinationPens.map((item) => (
+                    <option key={item.pen_id} value={item.id}>
+                      {item.pen_no}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className="grid grid-cols-2 gap-3 sm:col-span-2">

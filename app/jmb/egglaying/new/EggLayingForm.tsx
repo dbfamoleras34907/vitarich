@@ -7,11 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
-import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
+import { Ban, ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { usePermission } from "@/hooks/usePermission";
 import {
   createEggLaying,
   createEggLayingBatch,
@@ -19,6 +23,7 @@ import {
   getLayingPlacementById,
   listEggLayingHistoryByFarm,
   updateEggLaying,
+  voidEggLaying,
   type EggLaying,
   type EggLayingHistory,
   type EggLayingInsert,
@@ -259,6 +264,12 @@ export default function EggLayingForm() {
   const productionGridRef = useRef<HTMLTableElement>(null);
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [voidingRecord, setVoidingRecord] = useState<EggLayingHistory | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voiding, setVoiding] = useState(false);
+  const insertDenied = usePermission("/jmb/egglaying/insert");
+  const editDenied = usePermission("/jmb/egglaying/edit");
+  const voidDenied = usePermission("/jmb/egglaying/void");
 
   const disabledAll = saving || loadingRecord;
   const netPlacementFromTable =
@@ -765,6 +776,22 @@ export default function EggLayingForm() {
     }
   }
 
+  async function confirmVoid() {
+    if (!voidingRecord || !voidReason.trim()) return;
+    setVoiding(true);
+    try {
+      await voidEggLaying(voidingRecord.id, voidReason);
+      setHistory((records) => records.filter((record) => record.id !== voidingRecord.id));
+      setVoidingRecord(null);
+      setVoidReason("");
+      toast.success("Egg Laying record voided.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to void Egg Laying record.");
+    } finally {
+      setVoiding(false);
+    }
+  }
+
   return (
     <div className="space-y-4 mt-8">
       <Breadcrumb
@@ -937,7 +964,7 @@ export default function EggLayingForm() {
             <FormActionButtons
               saving={saving}
               isEdit={isEdit}
-              disabled={disabledAll}
+              disabled={disabledAll || (isEdit ? editDenied : insertDenied)}
               cancelPath="/jmb/egglaying"
               onSave={onSave}
             />
@@ -1004,8 +1031,8 @@ export default function EggLayingForm() {
               <div className="max-h-[420px] w-full overflow-auto bg-white dark:bg-card">
                 <table className="fc-grid-table min-w-[1595px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
                   <colgroup>
-                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 7, 7, 7, 6, 6, 6, 7, 9].map((width, index) => (
-                      <col key={index} style={{ width: `${width / 117 * 100}%` }} />
+                    {[4, 8, 9, 5, 5, 9, 8, 7, 7, 7, 7, 7, 6, 6, 6, 7, 9, 10].map((width, index) => (
+                      <col key={index} style={{ width: `${width / 127 * 100}%` }} />
                     ))}
                   </colgroup>
                   <thead>
@@ -1013,7 +1040,7 @@ export default function EggLayingForm() {
                       {[
                         "Row #", "Date Laying", "Building", "Cycle #", "Age", "TEP Collection",
                         "Hatching Egg (<54g)", "Class B (<52g - 53g)", "Junior (<49g - 51g)", "Table Egg", "Jumbo", "Crack",
-                        "Condemn", "Total Egg Classification",
+                        "Condemn", "Total Egg Classification", "Actions",
                       ].map((label, index) => (
                         <th
                           key={label}
@@ -1065,13 +1092,42 @@ export default function EggLayingForm() {
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 text-center text-xs font-semibold tabular-nums ${rowDivider}`}>
                             {getEggTotal(row).toLocaleString("en-US")}
                           </td>
+                          <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
+                            <div className="flex h-8 items-center justify-center px-1">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="outline" size="xs" disabled={disabledAll}>
+                                    Actions <ChevronDown className="size-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    disabled={editDenied}
+                                    onSelect={() => router.push(`/jmb/egglaying/new?id=${row.id}`)}
+                                  >
+                                    <Pencil className="size-4" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    disabled={voidDenied}
+                                    onSelect={() => {
+                                      setVoidingRecord(row);
+                                      setVoidReason("");
+                                    }}
+                                  >
+                                    <Ban className="size-4" /> Void
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
                         </tr>
                         );
                       })
                     ) : (
                       <tr>
                         <td
-                          colSpan={17}
+                          colSpan={18}
                           className="fc-grid-cell fc-grid-cell-readonly fc-grid-border-r fc-grid-row-divider px-3 py-6 text-center text-muted-foreground"
                         >
                           {history.length ? "No history matches the selected filters." : "No farm history found."}
@@ -1116,6 +1172,45 @@ export default function EggLayingForm() {
           </div>
         </CardContent>
       </Card>
+      <Dialog
+        open={Boolean(voidingRecord)}
+        onOpenChange={(open) => {
+          if (!open && !voiding) {
+            setVoidingRecord(null);
+            setVoidReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Void Egg Laying record?</DialogTitle>
+            <DialogDescription>
+              {voidingRecord
+                ? `The ${formatDate(voidingRecord.date_laying)} record for ${voidingRecord.building ?? "this building"} will be excluded from Egg Laying totals and future dispatch availability.`
+                : ""}
+              {" "}Voiding is blocked if a Posted Breeder Dispatch already uses this record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="egg-laying-void-reason" required>Void Reason</Label>
+            <Textarea
+              id="egg-laying-void-reason"
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              placeholder="Explain why this saved Egg Laying record must be voided."
+              disabled={voiding}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setVoidingRecord(null)} disabled={voiding}>
+              Keep record
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void confirmVoid()} disabled={voiding || !voidReason.trim()}>
+              <Ban className="size-4" /> {voiding ? "Voiding..." : "Void record"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
