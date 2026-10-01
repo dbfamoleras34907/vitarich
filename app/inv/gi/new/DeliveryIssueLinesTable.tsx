@@ -224,7 +224,7 @@ export default function DeliveryIssueLinesTable({
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
             const harvestAge = line.harvestAge === undefined ? info?.age : line.harvestAge
-            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), harvestAge ?? '', getGrowingBodyWeightForAge(info, harvestAge) ?? '', line.itemCode,
+            return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), harvestAge ?? '', line.averageLiveWeight ?? getGrowingBodyWeightForAge(info, harvestAge) ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
               lines.filter(entry => entry.batchNumber).map(entry => `${entry.batchNumber} (${entry.altQty})`).join('; '),
@@ -350,7 +350,10 @@ export default function DeliveryIssueLinesTable({
             const canSearchBatches = canOpenBatchSelector(line)
             const flockState = lineFlockCardInfo[String(line.id)]
             const harvestAge = line.harvestAge === undefined ? flockState?.info?.age : line.harvestAge
-            const growingBodyWeight = getGrowingBodyWeightForAge(flockState?.info, harvestAge)
+            const automaticAverageLiveWeight = getGrowingBodyWeightForAge(flockState?.info, harvestAge)
+            const averageLiveWeight = line.averageLiveWeight === undefined
+              ? automaticAverageLiveWeight
+              : line.averageLiveWeight
             const loadingPlacementItems = Boolean(flockState?.loading || loadingLinePlacementBatches[String(line.id)])
             const lineItems = getItemsForLine(line)
             const allocatedTransferQty = allocationLines
@@ -438,19 +441,30 @@ export default function DeliveryIssueLinesTable({
                       : flockState?.info?.age != null ? String(flockState.info.age) : ''}
                     readOnly={!showHarvestWeight || activeDocumentIsPosted}
                     aria-label={`Age row ${index + 1}`}
-                    onChange={showHarvestWeight ? event => updateAllocationGroup(allocationGroupKey, {
-                      harvestAge: event.target.value === '' ? null : numberValue(event.target.value),
-                    }) : undefined}
+                    onChange={showHarvestWeight ? event => {
+                      const harvestAge = event.target.value === '' ? null : numberValue(event.target.value)
+                      updateAllocationGroup(allocationGroupKey, {
+                        harvestAge,
+                        averageLiveWeight: getGrowingBodyWeightForAge(flockState?.info, harvestAge),
+                      })
+                    } : undefined}
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />
                 </TableCopyDownCell>
-                <td className="border-r p-1 align-middle">
+                <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'averageLiveWeight')}>
                   <Input
-                    value={growingBodyWeight != null ? formatQuantity(growingBodyWeight) : ''}
-                    readOnly
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={averageLiveWeight ?? ''}
+                    readOnly={activeDocumentIsPosted}
+                    aria-label={`${bodyWeightLabel} row ${index + 1}`}
+                    onChange={event => updateAllocationGroup(allocationGroupKey, {
+                      averageLiveWeight: event.target.value === '' ? null : Math.max(0, numberValue(event.target.value)),
+                    })}
                     className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
                   />
-                </td>
+                </TableCopyDownCell>
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'itemCode')}>
                   <SearchableDropdown
                     list={lineItems}

@@ -25,6 +25,7 @@ const base = {
   warehouses: [{ id: 1, whse_code: 'B1', whse_name: 'Building One' }],
   items: [{ id: 2, item_code: 'DOC', item_name: 'Bird', inventory_uom: 'PCS' }],
   getPlacementBatches: async () => ['BATCH-A', 'BATCH-B'].map(batchNumber => ({ batchNumber, itemCode: 'DOC', onHandQty: 100, manufacturingDate: '2026-08-01', expiryDate: '' })),
+  getAverageLiveWeight: async (_line, age) => age * 100,
   getDefaultAltUom: () => 'PCS', getGroupUoms: () => [{ uomCode: 'PCS' }],
   calculateBaseQty: (qty, uom) => uom === 'PCS' ? qty : 0, getBatchRuleId: () => null,
 }
@@ -60,8 +61,12 @@ async function run() {
   assert.equal(calculateHarvestAlw(weighted[0].netLiveWeight, weighted.reduce((sum, line) => sum + line.altQty, 0)), 2.5)
   const aged = await prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ harvestAge: '41' }] })
   assert.ok(aged.every(line => line.harvestAge === 41))
+  assert.ok(aged.every(line => line.averageLiveWeight === 4100))
+  const overridden = await prepareDeliveryPaste({ ...base, lines: aged, rows: [{ averageLiveWeight: '2250.5' }] })
+  assert.ok(overridden.every(line => line.averageLiveWeight === 2250.5))
   await assert.rejects(prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ harvestAge: '40.5' }] }), /whole number/)
   await assert.rejects(prepareDeliveryPaste({ ...base, lines: allocations, rows: [{ netLiveWeight: '-1' }] }), /negative/)
+  await assert.rejects(prepareDeliveryPaste({ ...base, lines: allocations, rows: [{ averageLiveWeight: '-1' }] }), /negative/)
   const cleared = await prepareDeliveryPaste({ ...base, lines: weighted, rows: [{ netLiveWeight: '' }] })
   assert.ok(cleared.every(line => line.netLiveWeight === null))
   const untouched = newLine()

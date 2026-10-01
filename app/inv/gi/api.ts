@@ -14,6 +14,7 @@ export type GoodsIssueLine = {
   cycleMask?: string | null
   id: number | string
   allocationGroupKey?: string
+  averageLiveWeight?: number | null
   netLiveWeight?: number | null
   harvestAge?: number | null
   tsDrNo?: string
@@ -114,6 +115,7 @@ type GoodsIssueItemRow = {
   from_warehouse_name: string | null
   void: string
   allocation_group_key?: string | null
+  average_live_weight?: number | null
   net_live_weight?: number | null
   harvest_age?: number | null
   ts_dr_no?: string | null
@@ -205,6 +207,7 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
       : `line:${row.id}`
   ),
+  averageLiveWeight: row.average_live_weight == null ? undefined : Number(row.average_live_weight),
   netLiveWeight: row.net_live_weight == null ? null : Number(row.net_live_weight),
   harvestAge: row.harvest_age == null ? null : Number(row.harvest_age),
   tsDrNo: row.ts_dr_no ?? '',

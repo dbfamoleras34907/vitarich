@@ -43,6 +43,95 @@ Route-local files and UI components should call shared reusable functions instea
 
 Do not create generic arbitrary table/query executors.
 
+## Global UI Standard: Compact Only
+
+The system uses one compact UI density. Do not create or expose:
+
+* a density toggle
+* a Comfortable, Spacious, or Uncompact mode
+* per-user density preferences
+* page-specific relaxed-density variants
+
+New UI and UI revamps should follow a clean, compact ERP visual language inspired by ERPNext/Frappe principles while retaining Vitarich branding and original components. Do not copy ERPNext/Frappe branding or assets.
+
+### Scope and Reuse
+
+Before creating page shells, headers, action bars, sections, form layouts, tables, dialogs, empty states, or skeletons:
+
+1. Search for an existing shared component or pattern.
+2. Reuse or extend the shared implementation when possible.
+3. Keep responsive and density behavior in shared components instead of repeating route-local class combinations.
+
+Do not modify the sidebar as part of the global compact UI revamp unless the user explicitly includes it in scope.
+
+### Responsive Layout
+
+Support these content-width targets:
+
+```text
+phone:  < 768px
+tablet: 768px - 1023px
+laptop: >= 1024px
+```
+
+Use the available content width rather than assuming a fixed sidebar state. Prefer container-aware shared layouts where practical.
+
+Compact layout expectations:
+
+* Phone: 12px page padding, single-column forms, stacked actions, and touch-safe controls.
+* Tablet: 16px page padding, one or two columns, and wrapping toolbars.
+* Laptop: 16px page padding by default, compact horizontal actions, and efficient two- or three-column layouts.
+* Avoid large empty areas, oversized headings, oversized cards, and decorative dashboard spacing.
+* Keep page titles, descriptions, filters, actions, and content visually close enough to read as one workflow.
+
+Phone controls must remain touch-safe even though the system is compact. Do not reduce interactive controls below a practical touch size merely to fit more content.
+
+### Visual Language
+
+Use:
+
+* quiet neutral page backgrounds
+* white or semantic card surfaces
+* thin borders
+* restrained shadows
+* small, consistent radii
+* compact typography with a clear hierarchy
+* Vitarich green as a restrained primary accent
+* semantic theme tokens such as `bg-card`, `bg-muted`, `text-muted-foreground`, and `border-border`
+
+Avoid route-local color systems, unnecessary hard-coded grays, excessive rounding, heavy shadows, gradients, glassmorphism, giant metric cards, and marketing-dashboard styling.
+
+### Forms and Actions
+
+* Use consistent compact label, help text, validation, and required-marker treatment.
+* Stack form fields on phones; use aligned multi-column grids only when the available width supports them.
+* Keep primary and secondary action order consistent across list, create, edit, view, post, and settings pages.
+* Preserve visible and reachable actions on all supported widths.
+* Do not change calculations, validation, permissions, numbering, posting, voiding, or persistence behavior during presentation-only UI work.
+
+### Tables and Operational Grids
+
+ERP tables and spreadsheet-style grids must remain dense and relational:
+
+* Keep required business columns instead of converting rows into disconnected mobile cards.
+* Use an internal horizontal scroll container on narrow screens; never rely on page-level horizontal scrolling.
+* Keep headers and rows compact on laptop and tablet while preserving readable text and usable row actions.
+* Stack search, filters, refresh, export, and pagination controls when needed on phones.
+* Preserve key identifiers, status, quantities, dates, and actions.
+* Reuse shared table and grid components before introducing another implementation.
+
+### UI Completion Check
+
+For UI changes, verify:
+
+1. The page follows the single compact density with no alternate density mode.
+2. The layout works at representative widths of 390px, 768px, 1024px, 1366px, and 1536px.
+3. There is no page-level horizontal overflow.
+4. Tables and grids scroll internally when necessary.
+5. Phone controls remain touch-safe.
+6. Loading, empty, error, disabled, and read-only states remain clear.
+7. Existing business behavior and permissions are unchanged unless explicitly requested.
+
 ## SQL File Location
 
 Place deployable and migration `.sql` files under `app/sql/` according to their state:

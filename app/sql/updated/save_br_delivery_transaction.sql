@@ -1,5 +1,6 @@
 -- Apply notification_system.sql, alter_br_delivery_lines_add_net_live_weight.sql,
--- and app/sql/new/alter_growing_harvest_age.sql first.
+-- app/sql/new/alter_growing_harvest_age.sql, and
+-- app/sql/new/alter_br_delivery_lines_add_average_live_weight.sql first.
 begin;
 
 create or replace function public.save_br_delivery_transaction(p_document jsonb)
@@ -173,6 +174,7 @@ begin
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
         harvest_age = (v_line->>'harvestAge')::integer,
+        average_live_weight = nullif(v_line->>'averageLiveWeight', '')::numeric,
         net_live_weight = nullif(v_line->>'netLiveWeight', '')::numeric,
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
         delivered_date = nullif(v_line->>'deliveredDate', '')::date,
@@ -204,6 +206,7 @@ begin
         line_no,
         allocation_group_key,
         harvest_age,
+        average_live_weight,
         net_live_weight,
         ts_dr_no,
         delivered_date,
@@ -233,6 +236,7 @@ begin
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
         (v_line->>'harvestAge')::integer,
+        nullif(v_line->>'averageLiveWeight', '')::numeric,
         nullif(v_line->>'netLiveWeight', '')::numeric,
         nullif(trim(v_line->>'tsDrNo'), ''),
         nullif(v_line->>'deliveredDate', '')::date,

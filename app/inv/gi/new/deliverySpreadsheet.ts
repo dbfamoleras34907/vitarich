@@ -9,7 +9,7 @@ export const DELIVERY_COLUMNS = [
   ['Flock Card', null],
   ['Cycle #', null],
   ['Age', 'harvestAge'],
-  ['ALW g', null],
+  ['ALW g', 'averageLiveWeight'],
   ['Item', 'itemCode'],
   ['Harvest Quantity', 'requestedAltQty'],
   ['Net Live Weight', 'netLiveWeight'],
@@ -78,7 +78,7 @@ export function deliveryNumberValue(value: string, label: string, positive = fal
 
 // Prepare the entire range before React state changes. Existing allocation groups
 // are the visible rows; a paste can grow them without dropping untouched groups.
-export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, getAllocationGroupKey, warehouses, items, getPlacementBatches, getDefaultAltUom, getGroupUoms, calculateBaseQty, getBatchRuleId }: {
+export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, getAllocationGroupKey, warehouses, items, getPlacementBatches, getAverageLiveWeight, getDefaultAltUom, getGroupUoms, calculateBaseQty, getBatchRuleId }: {
   lines: GoodsIssueLine[]
   rows: DeliveryPasteRow[]
   startRow: number
@@ -87,6 +87,7 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
   warehouses: WarehouseData[]
   items: Items[]
   getPlacementBatches: (warehouse: WarehouseData) => Promise<GoodsIssueOnHandBatch[]>
+  getAverageLiveWeight?: (line: GoodsIssueLine, age: number) => Promise<number | null>
   getDefaultAltUom: (group: string) => string
   getGroupUoms: (group: string) => { uomCode: string }[]
   calculateBaseQty: (qty: number, uom: string, group: string) => number
@@ -112,6 +113,10 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.netLiveWeight = values.netLiveWeight ? deliveryNumberValue(values.netLiveWeight, 'Net Live Weight') : null
         if (line.netLiveWeight != null && line.netLiveWeight < 0) throw new Error('Net Live Weight cannot be negative.')
       }
+      if (values.averageLiveWeight !== undefined) {
+        line.averageLiveWeight = values.averageLiveWeight ? deliveryNumberValue(values.averageLiveWeight, 'ALW g') : null
+        if (line.averageLiveWeight != null && line.averageLiveWeight < 0) throw new Error('ALW g cannot be negative.')
+      }
       if (values.harvestAge !== undefined) {
         const harvestAge = deliveryNumberValue(values.harvestAge, 'Age')
         if (!Number.isInteger(harvestAge) || harvestAge < 0) throw new Error('Age must be a whole number, zero or greater.')
@@ -127,9 +132,13 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.destination = destination ?? ''
       }
       if (values.truckSeal !== undefined) line.truckSeal = values.truckSeal ? deliveryNumberValue(values.truckSeal, 'Truck Seal') : null
+      const shouldRefreshAverageLiveWeight = values.harvestAge !== undefined && values.averageLiveWeight === undefined
       const inventoryKeys = ['fromWarehouseCode', 'itemCode', 'requestedAltQty', 'altUom', 'batchNumber'] as const
       if (!inventoryKeys.some(key => values[key] !== undefined)) {
-        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, harvestAge: line.harvestAge, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
+        if (shouldRefreshAverageLiveWeight && line.harvestAge != null && getAverageLiveWeight) {
+          line.averageLiveWeight = await getAverageLiveWeight(line, line.harvestAge)
+        }
+        visibleRows[rowIndex] = originals.map(entry => ({ ...entry, harvestAge: line.harvestAge, averageLiveWeight: line.averageLiveWeight, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
         continue
       }
       const buildingValue = normalize(values.fromWarehouseCode ?? line.fromWarehouseCode)
@@ -141,10 +150,16 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
       if (matches.length !== 1) throw new Error('Building must match one eligible building in the selected farm.')
       const warehouse = matches[0]
       Object.assign(line, { fromWarehouseId: warehouse.id, fromWarehouseCode: warehouse.whse_code ?? '', fromWarehouseName: warehouse.whse_name ?? '' })
+      if (shouldRefreshAverageLiveWeight && line.harvestAge != null && getAverageLiveWeight) {
+        line.averageLiveWeight = await getAverageLiveWeight(line, line.harvestAge)
+      }
       const placement = await getPlacementBatches(warehouse)
       const allowedItems = items.filter(item => placement.some(batch => normalize(batch.itemCode) === normalize(item.item_code ?? '')))
       const buildingChanged = line.fromWarehouseCode !== original.fromWarehouseCode
-      if (buildingChanged && values.harvestAge === undefined) line.harvestAge = undefined
+      if (buildingChanged && values.harvestAge === undefined) {
+        line.harvestAge = undefined
+        line.averageLiveWeight = undefined
+      }
       const itemValue = normalize(values.itemCode ?? (buildingChanged && !allowedItems.some(item => item.id === original.itemId) ? '' : line.itemCode))
       const matchingItems = itemValue ? allowedItems.filter(item => [item.item_code, item.item_name, `${item.item_code} - ${item.item_name}`].some(value => normalize(value ?? '') === itemValue)) : allowedItems
       if (!itemValue && matchingItems.length !== 1 && !values.batchNumber && !values.altUom) {

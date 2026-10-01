@@ -259,6 +259,7 @@ const clearWarehouseSensitiveLineData = (
   cycleNumber: undefined,
   cycleMask: undefined,
   harvestAge: undefined,
+  averageLiveWeight: undefined,
   fromWarehouseId: warehouse?.id ?? null,
   fromWarehouseCode: warehouse?.whse_code ?? '',
   fromWarehouseName: warehouse?.whse_name ?? '',
@@ -800,6 +801,24 @@ export default function NewGoodsIssue({
         flockCardId?: number | null
       }>()
 
+      const applyHarvestDefaults = () => {
+        if (triggeredBy !== 'BR-DR') return
+        setIssue(current => current ? {
+          ...current,
+          lines: current.lines.map(line => {
+            const lookupKey = getLineFlockCardLookupKey(current.farmId, current.farmCycleId, line)
+            const info = lookupKey ? lineFlockCardCacheRef.current[lookupKey]?.info : null
+            const age = line.harvestAge === undefined ? info?.age : line.harvestAge
+            const averageLiveWeight = line.averageLiveWeight === undefined && age != null
+              ? info?.bodyWeightsByAge[String(age)] ?? null
+              : line.averageLiveWeight
+            return age == null
+              ? line
+              : { ...line, harvestAge: age, averageLiveWeight }
+          }),
+        } : current)
+      }
+
       lineWarehouseLookups.forEach(line => {
         const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
         const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
@@ -867,7 +886,10 @@ export default function NewGoodsIssue({
         return nextLoading
       })
 
-      if (missingLookups.size === 0) return
+      if (missingLookups.size === 0) {
+        applyHarvestDefaults()
+        return
+      }
 
       const infoResults = await Promise.all(
         Array.from(missingLookups.entries()).map(async ([lookupKey, params]) => {
@@ -897,17 +919,7 @@ export default function NewGoodsIssue({
         }
       })
 
-      if (triggeredBy === 'BR-DR') {
-        setIssue(current => current ? {
-          ...current,
-          lines: current.lines.map(line => {
-            if (line.harvestAge !== undefined) return line
-            const lookupKey = getLineFlockCardLookupKey(current.farmId, current.farmCycleId, line)
-            const age = lookupKey ? lineFlockCardCacheRef.current[lookupKey]?.info?.age : null
-            return age == null ? line : { ...line, harvestAge: age }
-          }),
-        } : current)
-      }
+      applyHarvestDefaults()
 
       setLineFlockCardInfo(() => {
         const updated: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
@@ -1515,16 +1527,35 @@ export default function NewGoodsIssue({
     setPastingDelivery(true)
     try {
       const placementLookups = new Map<string, Promise<DeliveryPlacementBatch[]>>()
+      const flockInfoLookups = new Map<string, Promise<GoodsIssueFlockCardInfo | null>>()
+      const getPasteFlockInfo = (buildingWarehouseId: number | null, buildingCode: string) => {
+        const lookupKey = `${buildingWarehouseId ?? ''}|${buildingCode.trim().toUpperCase()}`
+        let lookup = flockInfoLookups.get(lookupKey)
+        if (!lookup) {
+          lookup = getDeliveryFlockCardInfo({
+            farmId: snapshot.farmId!,
+            farmCycleId: snapshot.farmCycleId,
+            buildingWarehouseId,
+            buildingCode,
+          })
+          flockInfoLookups.set(lookupKey, lookup)
+        }
+        return lookup
+      }
       const lines = await prepareDeliveryPaste({
         lines: issue.lines, rows, startRow, newLine, getAllocationGroupKey,
         warehouses: deliveryFarmWarehouses, items, getDefaultAltUom, getGroupUoms, calculateBaseQty,
         getBatchRuleId: line => getBatchRuleForLine(line)?.id ?? null,
+        getAverageLiveWeight: async (line, age) => {
+          const info = await getPasteFlockInfo(line.fromWarehouseId, line.fromWarehouseCode)
+          return info?.bodyWeightsByAge[String(age)] ?? null
+        },
         getPlacementBatches: warehouse => {
           const code = warehouse.whse_code ?? ''
           let lookup = placementLookups.get(code)
           if (!lookup) {
             lookup = (async () => {
-              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, farmCycleId: snapshot.farmCycleId, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
+              const info = await getPasteFlockInfo(warehouse.id ?? null, code)
               if (!info) throw new Error('The building has no eligible flock card.')
               return getDeliveryFlockCardPlacementBatches({ flockCardId: info.id, farmId: info.farmId, buildingWarehouseId: info.buildingWarehouseId, buildingCode: info.buildingCode, cycleNumber: info.cycleNumber })
             })()
