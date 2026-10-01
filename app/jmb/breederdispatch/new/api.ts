@@ -223,6 +223,66 @@ async function validateInput(input: BreederDispatchInput) {
   }
 }
 
+async function replaceLines(id: number, lines: BreederDispatchInput["lines"], userId: string) {
+  const existing = await getBreederDispatchById(id);
+  const existingBySource = new Map(
+    existing.lines
+      .filter((line) => Number.isInteger(line.id) && Number(line.id) > 0)
+      .map((line) => [dispatchItemKey(line.source_type, line.source_record_id, line.category), line]),
+  );
+  const retainedSourceKeys = new Set(
+    lines.map((line) => dispatchItemKey(line.source_type, line.source_record_id, line.category)),
+  );
+  const needsTemporaryLineNumbers = existing.lines.some((line) => {
+    const sourceKey = dispatchItemKey(line.source_type, line.source_record_id, line.category);
+    const newLineIndex = lines.findIndex((nextLine) =>
+      dispatchItemKey(nextLine.source_type, nextLine.source_record_id, nextLine.category) === sourceKey,
+    );
+    return newLineIndex < 0 || Number(line.line_no) !== newLineIndex + 1;
+  });
+
+  // Move numbers only when rows were reordered, added in the middle, or removed.
+  // An unchanged draft posts through updates without altering its saved line numbers.
+  if (needsTemporaryLineNumbers) {
+    await Promise.all(existing.lines.map(async (line) => {
+      if (!Number.isInteger(line.id) || Number(line.id) <= 0) return;
+      const { error } = await db
+        .from(LINE_TABLE)
+        .update({ line_no: -Number(line.id) })
+        .eq("id", line.id)
+        .eq("dispatch_id", id);
+      if (error) throw error;
+    }));
+  }
+
+  for (const [index, line] of lines.entries()) {
+    const sourceKey = dispatchItemKey(line.source_type, line.source_record_id, line.category);
+    const persistedLine = { ...line, dispatch_id: id, line_no: index + 1 };
+    const existingLine = existingBySource.get(sourceKey);
+    if (existingLine?.id) {
+      const { error } = await db
+        .from(LINE_TABLE)
+        .update({ ...persistedLine, updated_by: userId })
+        .eq("id", existingLine.id)
+        .eq("dispatch_id", id);
+      if (error) throw error;
+    } else {
+      const { error } = await db
+        .from(LINE_TABLE)
+        .insert({ ...persistedLine, created_by: userId });
+      if (error) throw error;
+    }
+  }
+
+  const removedLineIds = existing.lines
+    .filter((line) => line.id && !retainedSourceKeys.has(dispatchItemKey(line.source_type, line.source_record_id, line.category)))
+    .map((line) => Number(line.id));
+  if (removedLineIds.length) {
+    const { error } = await db.from(LINE_TABLE).delete().in("id", removedLineIds).eq("dispatch_id", id);
+    if (error) throw error;
+  }
+}
+
 export async function createBreederDispatch(input: BreederDispatchInput, post = false) {
   await validateInput(input);
   const id = await saveBreederDispatchTransaction(null, input, documentNo(), post);

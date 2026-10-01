@@ -171,7 +171,7 @@ export default function BreederDispatchTable() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => window.open(`/jmb/breederdispatch/${record.id}/print`, "_blank")}><Printer className="size-4" />Print</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => router.push(`/jmb/breederdispatch/multiple?id=${record.id}`)}><Eye className="size-4" />View</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => router.push(`/jmb/breederdispatch/multiple?id=${record.id}`)}><Eye className="size-4" />{record.status === "Draft" ? "Continue / Post" : "View"}</DropdownMenuItem>
                       <DropdownMenuItem variant="destructive" disabled={record.status !== "Posted"} onSelect={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

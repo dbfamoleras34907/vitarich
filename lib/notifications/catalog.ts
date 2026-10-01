@@ -3,6 +3,22 @@ import type { NotificationCatalog } from "./types";
 // 
 export const notificationCatalog: NotificationCatalog = [
   {
+    // Enable only after breeder_transfer_transactions.sql is deployed and verified.
+    ruleActivationReady: false,
+    key: NOTIFICATION_MODULE_KEYS.BREEDER_TRANSFER,
+    label: "Breeder Bird Transfer",
+    description: "Posted bird transfers, their audited corrections, and voids.",
+    fmsTypes: ["Breeder"],
+    permissionGroup: "Breeder Masters",
+    permissionTitle: "Placement/view",
+    baseUrl: "/jmb/placement/transfer",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_TRANSFER.POSTED, label: "Bird Transfer Posted", description: "Successful posted transfer from the persisted source farm.", action: "posted", farmRouting: "origin" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_TRANSFER.EDITED, label: "Bird Transfer Edited", description: "Successful audited correction that replaces a posted transfer.", action: "edited", farmRouting: "origin" },
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_TRANSFER.VOIDED, label: "Bird Transfer Voided", description: "Successful void of a posted transfer.", action: "voided", farmRouting: "origin" },
+    ],
+  },
+  {
     // Deployment requires egg_laying_transactions.sql and authenticated checks.
     ruleActivationReady: false,
     key: NOTIFICATION_MODULE_KEYS.EGG_LAYING,

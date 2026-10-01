@@ -707,7 +707,7 @@ export default function MultipleBreederDispatchForm() {
                 ) : (
                   <Send className="size-4" />
                 )}
-                Post multiple
+                {isEditingDraft ? "Post dispatch" : "Post multiple"}
               </Button></> : null}
             </div>
           </div>

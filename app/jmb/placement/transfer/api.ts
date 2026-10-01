@@ -20,6 +20,11 @@ export type BreederTransferInput = {
   male_qty: number; female_qty: number; reason: string; remarks: string | null;
 };
 
+export type BreederTransferQuantityEditInput = Pick<
+  BreederTransferInput,
+  "male_qty" | "female_qty"
+>;
+
 async function token() {
   const { data, error } = await db.auth.getSession();
   if (error) throw error;
@@ -53,4 +58,17 @@ export function postBreederTransfer(id: number) {
 
 export function cancelBreederTransfer(id: number, reason: string) {
   return request<{ id: number }>({ action: "cancel", id, reason });
+}
+
+export function editBreederTransfer(
+  id: number,
+  input: BreederTransferQuantityEditInput,
+  correctionReason: string,
+) {
+  return request<{ id: number; replacementId: number }>({
+    action: "edit",
+    id,
+    input,
+    correctionReason,
+  });
 }

@@ -449,6 +449,8 @@ export const NavFolders: NavFolder[] = [
             url: "/jmb/placement",
             view: true,
             insert: true,
+            edit: true,
+            void: true,
           },
 
           {
