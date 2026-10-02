@@ -17,7 +17,7 @@ import TransactionDetails from '@/app/brd/dashboard/TransactionDetails'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { usePermission } from '@/hooks/usePermission'
 import { getBroilerDataCompliance, listBroilerDataComplianceFarmOptions, type ComplianceDataset, type ComplianceFarmOption } from '@/lib/data/repositories/broilerDataCompliance'
-import { buildComplianceRow, dataAccuracyBy, farmDataScorecards, filterComplianceRows, complianceFilterOptions, complianceSummary, groupCompliance, manilaToday, taMonthlyCompliance, COMPLIANCE_STAGES, COMPLIANCE_LABELS, COMPLIANCE_RULE, COMPLIANCE_HISTORY_NOTE, type ComplianceRow, type ComplianceStage, type ComplianceStatus, type DataAccuracyRow, type StageCompliance } from '@/lib/broiler/dataCompliance'
+import { buildComplianceRow, complianceDate, complianceDateInRange, dataAccuracyBy, farmDataScorecards, filterComplianceRows, complianceFilterOptions, complianceSummary, groupCompliance, manilaToday, taMonthlyCompliance, COMPLIANCE_STAGES, COMPLIANCE_LABELS, COMPLIANCE_RULE, COMPLIANCE_HISTORY_NOTE, type ComplianceRow, type ComplianceStage, type ComplianceStatus, type DataAccuracyRow, type StageCompliance } from '@/lib/broiler/dataCompliance'
 import { complianceReportSheets } from '@/lib/reports/broilerDataCompliance'
 import { exportReportWorkbook } from '@/lib/reports/exportWorkbook'
 import { FARM_ISLANDS, PHILIPPINE_REGIONS, PHILIPPINE_REGIONS_BY_ISLAND, type FarmIslandGroup } from '@/lib/farmProfileOptions'
@@ -42,6 +42,9 @@ const percent = (value: number | null) => value === null ? '—' : `${value.toLo
 
 function Filter({ label, value, onChange, children, disabled = false }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode; disabled?: boolean }) {
   return <label className="min-w-0 space-y-1.5 text-sm text-foreground"><span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span><select aria-label={label} disabled={disabled} className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50" value={value} onChange={event => onChange(event.target.value)}>{children}</select></label>
+}
+function DateFilter({ label, value, onChange, min, max }: { label: string; value: string; onChange: (value: string) => void; min?: string; max?: string }) {
+  return <label className="min-w-0 space-y-1.5 text-sm text-foreground"><span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span><input type="date" aria-label={label} value={value} min={min} max={max} onChange={event => onChange(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground shadow-sm" /></label>
 }
 function StageBadge({ value, onClick }: { value: StageCompliance; onClick?: () => void }) {
   const label = value.status === 'overdue'
@@ -146,7 +149,10 @@ export default function DataComplianceDashboard() {
   const [loading, setLoading] = useState(false)
   const view = searchParams.get('view') === 'report' ? 'report' : 'chart'
   const asOf = manilaToday()
+  const defaultFromDate = `${asOf.slice(0, 7)}-01`
+  const defaultToDate = new Date(Date.UTC(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0)).toISOString().slice(0, 10)
   const cutoff = 'yesterday' as const
+  const dateRangeInitializedRef = useRef(false)
   const islandParam = searchParams.get('island') ?? ''
   const island = islandParam === 'all' ? ALL_ISLANDS : islandParam
   const regionParam = searchParams.get('region') ?? ''
@@ -157,6 +163,8 @@ export default function DataComplianceDashboard() {
   const cycle = useMemo(() => searchParams.getAll('cycle').filter(Boolean), [searchParams])
   const statusParam = searchParams.get('status') ?? ''
   const status = isFilterStatus(statusParam) ? statusParam : ''
+  const fromDate = dateRangeInitializedRef.current ? complianceDate(searchParams.get('fromDate')) ?? defaultFromDate : defaultFromDate
+  const toDate = dateRangeInitializedRef.current ? complianceDate(searchParams.get('toDate')) ?? defaultToDate : defaultToDate
   const [selected, setSelected] = useState<{ row: ComplianceRow; stage: ComplianceStage | null } | null>(null)
   const [exporting, setExporting] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
@@ -173,6 +181,14 @@ export default function DataComplianceDashboard() {
     const query = next.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
+
+  useEffect(() => {
+    if (dateRangeInitializedRef.current) return
+    dateRangeInitializedRef.current = true
+    if (searchParams.get('fromDate') !== defaultFromDate || searchParams.get('toDate') !== defaultToDate) {
+      updateQuery({ fromDate: defaultFromDate, toDate: defaultToDate })
+    }
+  }, [defaultFromDate, defaultToDate, searchParams, updateQuery])
 
   useEffect(() => {
     if (blocked || !owner) return
@@ -231,8 +247,8 @@ export default function DataComplianceDashboard() {
   }, [catalogLoading, farm, farmOptions, island, islands, refreshReport, region, regions, result?.key, selectionKey])
 
   const allRows = useMemo(() => !data ? [] : data.sources.map(source => buildComplianceRow(source, asOf, cutoff)).filter((row): row is ComplianceRow => row !== null), [data, asOf, cutoff])
-  const rows = useMemo(() => filterComplianceRows(allRows, { island: islandFilter, region: regionFilter, farm: farmFilter, ta, cycle, status })
-    .sort((a, b) => b.daysLate - a.daysLate || a.farmName.localeCompare(b.farmName) || a.buildingName.localeCompare(b.buildingName)), [allRows, islandFilter, regionFilter, farmFilter, ta, cycle, status])
+  const rows = useMemo(() => filterComplianceRows(allRows, { island: islandFilter, region: regionFilter, farm: farmFilter, ta, cycle, status, fromDate, toDate })
+    .sort((a, b) => b.daysLate - a.daysLate || a.farmName.localeCompare(b.farmName) || a.buildingName.localeCompare(b.buildingName)), [allRows, islandFilter, regionFilter, farmFilter, ta, cycle, status, fromDate, toDate])
   const summary = complianceSummary(rows)
   const overdueRows = rows.filter(row => row.status === 'overdue')
   const delayedFarmNames = [...new Map(overdueRows.map(row => [row.farmId, row.farmName])).values()].sort()
@@ -240,8 +256,9 @@ export default function DataComplianceDashboard() {
   const longestDelayRows = overdueRows.filter(row => row.daysLate === summary.longestDelay)
     .map(row => `${row.farmName} / ${row.buildingName} / Cycle ${row.cycleLabel}`)
   const { tas, hasUnassigned } = complianceFilterOptions(data?.farms ?? [], islandFilter, regionFilter, farmFilter)
-  const cycles = [...new Map(allRows.filter(row => (!farmFilter || String(row.farmId) === farmFilter) && (!islandFilter || row.island === islandFilter) && (!regionFilter || row.region === regionFilter)).map(row => [row.cycleKey, `${row.farmName} · ${row.cycleLabel}`])).entries()]
-  const context = `As of ${asOf} · ${island === ALL_ISLANDS ? 'All Island Groups' : island} · ${region === ALL_REGIONS ? 'All Regions' : region} · ${farm === ALL_FARMS ? 'All Farms' : catalog.find(item => String(item.id) === farm)?.name || 'Selected farm'} · ${ta === 'unassigned' ? 'Unassigned' : tas.find(user => String(user.id) === ta)?.name || 'All TAs'} · ${cycles.filter(([id]) => cycle.includes(id)).map(([, label]) => label).join(', ') || 'All cycles'} · Includes current, past open and closed cycles · ${status ? COMPLIANCE_LABELS[status as ComplianceStatus] : 'All statuses'} · Growing through ${cutoff}`
+  const cycles = [...new Map(allRows.filter(row => (!farmFilter || String(row.farmId) === farmFilter) && (!islandFilter || row.island === islandFilter) && (!regionFilter || row.region === regionFilter)
+    && complianceDateInRange(row.building.startDate, fromDate, toDate)).map(row => [row.cycleKey, `${row.farmName} · ${row.cycleLabel}`])).entries()]
+  const context = `As of ${asOf} · Cycle start ${fromDate || 'Any'} to ${toDate || 'Any'} · ${island === ALL_ISLANDS ? 'All Island Groups' : island} · ${region === ALL_REGIONS ? 'All Regions' : region} · ${farm === ALL_FARMS ? 'All Farms' : catalog.find(item => String(item.id) === farm)?.name || 'Selected farm'} · ${ta === 'unassigned' ? 'Unassigned' : tas.find(user => String(user.id) === ta)?.name || 'All TAs'} · ${cycles.filter(([id]) => cycle.includes(id)).map(([, label]) => label).join(', ') || 'All cycles'} · Includes current, past open and closed cycles · ${status ? COMPLIANCE_LABELS[status as ComplianceStatus] : 'All statuses'} · Growing through ${cutoff}`
   const ready = Boolean(data && rows.length)
   const regionGroups = groupCompliance(rows, 'region')
   const farmGroups = groupCompliance(rows, 'farm')
@@ -255,7 +272,7 @@ export default function DataComplianceDashboard() {
   const farmScorecardRows = farmDataScorecards(rows)
   const taScorecardRows = taMonthlyCompliance(rows, asOf)
   function resetFilters() {
-    updateQuery({ island: null, region: null, farmId: null, taId: null, cycle: null, status: null })
+    updateQuery({ island: null, region: null, farmId: null, taId: null, cycle: null, status: null, fromDate: null, toDate: null })
   }
   function drillDown(by: 'region' | 'farm' | 'ta', key: string) {
     if (by === 'region') updateQuery({ region: key, taId: null, cycle: null, view: 'report' })
@@ -277,11 +294,13 @@ export default function DataComplianceDashboard() {
       <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void refreshReport()} disabled={!island || !region || !farm || loading || catalogLoading}><RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Refreshing…' : 'Refresh'}</Button><Button variant="outline" disabled={!ready} onClick={() => printReport()} title="Open print dialog and choose Save as PDF"><FileText className="size-4" />Export PDF</Button><Button variant="outline" disabled={!ready || exporting} onClick={() => void exportExcel()}><FileSpreadsheet className="size-4" />{exporting ? 'Exporting…' : 'Export Excel'}</Button></div>
     </header>
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{data ? `Loaded ${timestamp(data.loadedAt)} · Asia/Manila` : catalogLoading ? 'Loading available Broiler farms…' : 'Select an island group, region and farm to load the report.'}</p><Tabs value={view} onValueChange={value => updateQuery({ view: value === 'report' ? 'report' : null })}><TabsList><TabsTrigger value="report" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><FileText className="size-4" />Report View</TabsTrigger><TabsTrigger value="chart" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><BarChart3 className="size-4" />Chart View</TabsTrigger></TabsList></Tabs></div>
-    <section aria-label="Report filters" className="grid gap-4 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-6">
-      <div className="flex items-center justify-between gap-3 border-b pb-3 sm:col-span-2 xl:col-span-6">
-        <div><h2 className="text-sm font-semibold">Report filters</h2><p className="mt-0.5 text-xs text-muted-foreground">Choose the geographic scope and farm; the report loads automatically.</p></div>
+    <section aria-label="Report filters" className="grid gap-4 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+      <div className="flex items-center justify-between gap-3 border-b pb-3 sm:col-span-2 xl:col-span-4 2xl:col-span-6">
+        <div><h2 className="text-sm font-semibold">Report filters</h2><p className="mt-0.5 text-xs text-muted-foreground">Choose the geographic scope and farm. The cycle start date range defaults to the current month.</p></div>
         <Button variant="ghost" size="sm" onClick={resetFilters} title="Clear all filters"><X className="size-4" />Clear filters</Button>
       </div>
+      <DateFilter label="From Date" value={fromDate} max={toDate || undefined} onChange={value => updateQuery({ fromDate: value || null, cycle: null })} />
+      <DateFilter label="To Date" value={toDate} min={fromDate || undefined} onChange={value => updateQuery({ toDate: value || null, cycle: null })} />
       <Filter label="Island Group" value={island} onChange={value => updateQuery({ island: value === ALL_ISLANDS ? 'all' : value || null, region: null, farmId: null, taId: null, cycle: null })}><option value="">Select an island group</option><option value={ALL_ISLANDS}>All Island Groups</option>{islands.map(value => <option key={value}>{value}</option>)}</Filter>
       <Filter label="Region" value={region} disabled={!island} onChange={value => updateQuery({ region: value === ALL_REGIONS ? 'all' : value || null, farmId: null, taId: null, cycle: null })}><option value="">Select a region</option><option value={ALL_REGIONS}>All Regions</option>{regions.map(value => <option key={value}>{value}</option>)}</Filter>
       <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-muted-foreground"><SearchableCombobox label="Farm" required items={farmOptions.length ? [{ code: ALL_FARMS, name: 'All Farms' }, ...farmOptions.map(item => ({ code: String(item.id), name: item.name }))] : []} value={farm} onValueChange={value => updateQuery({ farmId: value === ALL_FARMS ? 'all' : value || null, taId: null, cycle: null })} placeholder={region ? 'Select a farm' : 'Select a region first'} disabled={!island || !region || loading} className="w-full" /></div>
@@ -354,7 +373,7 @@ export default function DataComplianceDashboard() {
           note: 'Placement delay starts at the cycle start date. Growing delay starts at the oldest missing required Growing date. Both counts are inclusive through yesterday.',
         }} />
       </div>
-      <section className="rounded-lg border bg-card p-3 text-xs text-muted-foreground"><p><strong>Daily reporting deadline:</strong> Growing entries are expected through yesterday; today is not counted as overdue.</p><p className="mt-1">{COMPLIANCE_RULE}</p><p className="mt-1">{summary.review} need review · {summary.notDue} not yet due (excluded from the KPI). Assigned TAs are associated User accounts; Admin and Super Admin accounts are excluded. Shared farms count once in overall KPIs and once for each TA in TA summaries.</p><details className="mt-2"><summary className="cursor-pointer">Report definitions and coverage</summary><p className="mt-2">{COMPLIANCE_HISTORY_NOTE} All totals count building-cycle records. When several cycles are selected, the same building can appear more than once. Farms are limited to active, approved Broiler farms visible to your account.</p><p className="mt-1">Delay is the number of reporting days from the oldest missing required date through the selected cutoff, inclusive. Zero saved measurements count as entries; empty or voided rows do not.</p></details></section>
+      <section className=" hidden rounded-lg border bg-card p-3 text-xs text-muted-foreground"><p><strong>Daily reporting deadline:</strong> Growing entries are expected through yesterday; today is not counted as overdue.</p><p className="mt-1">{COMPLIANCE_RULE}</p><p className="mt-1">{summary.review} need review · {summary.notDue} not yet due (excluded from the KPI). Assigned TAs are associated User accounts; Admin and Super Admin accounts are excluded. Shared farms count once in overall KPIs and once for each TA in TA summaries.</p><details className="mt-2"><summary className="cursor-pointer">Report definitions and coverage</summary><p className="mt-2">{COMPLIANCE_HISTORY_NOTE} All totals count building-cycle records. When several cycles are selected, the same building can appear more than once. Farms are limited to active, approved Broiler farms visible to your account.</p><p className="mt-1">Delay is the number of reporting days from the oldest missing required date through the selected cutoff, inclusive. Zero saved measurements count as entries; empty or voided rows do not.</p></details></section>
       {data.warnings.length > 0 && <ul role="alert" className="rounded-lg border p-3 text-xs">{data.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {!rows.length ? <section className="rounded-xl border bg-card p-12 text-center"><BarChart3 className="mx-auto mb-3 size-8 text-muted-foreground" /><h2 className="font-medium">No matching building cycles</h2><p className="mt-1 text-sm text-muted-foreground">Adjust the filters or cycle scope. Only records available to your account are included.</p></section> : <>
         <DataAccuracyTable rows={islandAccuracy} summary={summaryAccuracy} summaryLabel={island === ALL_ISLANDS ? 'National' : 'Selected scope'} />

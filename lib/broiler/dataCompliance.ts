@@ -62,17 +62,27 @@ const latest = (values: (string | null | undefined)[]) => values.filter((value):
 const savedAt = (rows: CycleEncodingMetadata[]) => latest(rows.flatMap(row => [row.createdAt, row.updatedAt]))
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000)
 
-export function buildComplianceRow(source: ComplianceSource, asOf: string, cutoff: 'yesterday' | 'today'): ComplianceRow | null {
+export function buildComplianceRow(source: ComplianceSource, asOf: string, cutoff: 'yesterday' | 'today', fromDate?: string): ComplianceRow | null {
   if (!complianceDate(asOf)) throw new Error('Choose a valid reporting date.')
+  const rangeStart = fromDate ? complianceDate(fromDate) : null
+  if (fromDate && !rangeStart) throw new Error('Choose a valid From Date.')
+  if (rangeStart && rangeStart > asOf) throw new Error('From Date cannot be after To Date.')
   const building = source.building
   if (building.isVoided || building.status === 'Cancelled' || source.cycleStatus === 'Cancelled') return null
   const start = complianceDate(building.startDate)
   if (start && start > asOf) return null
+  const closed = complianceDate(source.closedAt)
+  if (rangeStart && closed && closed < rangeStart) return null
   const dueThrough = shiftComplianceDate(asOf, cutoff === 'yesterday' ? -1 : 0)
-  const placements = building.placements.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.receiveDate) && row.receiveDate.slice(0, 10) <= asOf)
-  const harvests = building.deliveries.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.date) && row.date.slice(0, 10) <= asOf)
-  const cleanups = building.cleanups.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.date) && row.date.slice(0, 10) <= asOf)
-  const growing = activeGrowingLines(building).filter(line => start && Number.isInteger(line.age) && line.age >= 0 && shiftComplianceDate(start, line.age) <= asOf)
+  const inRange = (date: string) => (!rangeStart || date >= rangeStart) && date <= asOf
+  const allPlacements = building.placements.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.receiveDate) && row.receiveDate.slice(0, 10) <= asOf)
+  const allHarvests = building.deliveries.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.date) && row.date.slice(0, 10) <= asOf)
+  const allCleanups = building.cleanups.filter(row => !row.isVoided && row.status === 'Posted' && complianceDate(row.date) && row.date.slice(0, 10) <= asOf)
+  const allGrowing = activeGrowingLines(building).filter(line => start && Number.isInteger(line.age) && line.age >= 0 && shiftComplianceDate(start, line.age) <= asOf)
+  const placements = allPlacements.filter(row => inRange(row.receiveDate.slice(0, 10)))
+  const harvests = allHarvests.filter(row => inRange(row.date.slice(0, 10)))
+  const cleanups = allCleanups.filter(row => inRange(row.date.slice(0, 10)))
+  const growing = allGrowing.filter(line => start && inRange(shiftComplianceDate(start, line.age)))
   const stage = (dates: (string | null)[], records: CycleEncodingMetadata[]): StageCompliance => ({
     status: dates.some(Boolean) ? 'updated' : 'not-assessed', latestDate: latest(dates), latestSavedAt: savedAt(records), daysLate: 0, missingDates: [], note: '',
   })
@@ -85,7 +95,10 @@ export function buildComplianceRow(source: ComplianceSource, asOf: string, cutof
     placement.status = daily.status = 'review'
     placement.note = daily.note = 'Missing or invalid cycle start date.'
   } else {
-    if (!placement.latestDate) {
+    if (rangeStart && start < rangeStart) {
+      placement.status = 'not-assessed'
+      placement.note = 'Placement falls before the selected date range.'
+    } else if (!placement.latestDate) {
       placement.status = start <= dueThrough ? 'overdue' : 'not-due'
       placement.daysLate = placement.status === 'overdue' ? daysBetween(start, dueThrough) + 1 : 0
       placement.note = 'No posted Placement record is visible for this building cycle.'
@@ -93,26 +106,27 @@ export function buildComplianceRow(source: ComplianceSource, asOf: string, cutof
     let end = dueThrough
     // A Cleanup ends Growing; a partial harvest does not. Use known live-bird
     // depletion only when every harvest quantity can be expressed in heads.
-    const firstCleanup = cleanups.map(row => row.date.slice(0, 10)).sort()[0]
+    const firstCleanup = allCleanups.map(row => row.date.slice(0, 10)).sort()[0]
     if (firstCleanup && firstCleanup < end) end = firstCleanup
-    const headCounts = harvests.map(row => movementQuantity(row, 'heads'))
-    const losses = growing.reduce((sum, line) => sum + (line.mortalityTotal || line.mortalityAm + line.mortalityPm) + line.thinningAm + line.thinningPm, 0)
-    const fullyHarvested = harvests.length > 0 && building.startingPopulation > 0 && headCounts.every(count => count !== null)
+    const headCounts = allHarvests.map(row => movementQuantity(row, 'heads'))
+    const losses = allGrowing.reduce((sum, line) => sum + (line.mortalityTotal || line.mortalityAm + line.mortalityPm) + line.thinningAm + line.thinningPm, 0)
+    const fullyHarvested = allHarvests.length > 0 && building.startingPopulation > 0 && headCounts.every(count => count !== null)
       && headCounts.reduce<number>((sum, count) => sum + (count ?? 0), 0) + losses >= building.startingPopulation
-    if (fullyHarvested && harvest.latestDate && harvest.latestDate < end) end = harvest.latestDate
-    const closed = complianceDate(source.closedAt)
+    const finalHarvestDate = latest(allHarvests.map(row => complianceDate(row.date)))
+    if (fullyHarvested && finalHarvestDate && finalHarvestDate < end) end = finalHarvestDate
     if (building.status === 'Closed' && closed && closed < end) end = closed
     const endAge = daysBetween(start, end)
+    const rangeStartAge = rangeStart ? Math.max(1, daysBetween(start, rangeStart)) : 1
     const unknownEnd = building.status === 'Closed' && !closed && !firstCleanup && !fullyHarvested
     if (unknownEnd || endAge > 45) {
       daily.status = 'review'
       daily.note = unknownEnd ? 'Closed building has no verifiable completion date.' : 'Growing extends beyond the supported age 0–45 grid; verify the cycle completion date.'
-    } else if (endAge < 1) {
+    } else if (endAge < rangeStartAge) {
       daily.status = 'not-due'
-      daily.note = 'Daily Growing is evaluated from age 1.'
+      daily.note = rangeStart ? 'No daily Growing updates are due in the selected date range.' : 'Daily Growing is evaluated from age 1.'
     } else {
       const recordedAges = new Set(growing.map(line => line.age))
-      daily.missingDates = Array.from({ length: endAge }, (_, index) => index + 1)
+      daily.missingDates = Array.from({ length: endAge - rangeStartAge + 1 }, (_, index) => index + rangeStartAge)
         .filter(age => !recordedAges.has(age)).map(age => shiftComplianceDate(start, age))
       daily.status = daily.missingDates.length ? 'overdue' : 'updated'
       daily.daysLate = daily.missingDates.length ? daysBetween(daily.missingDates[0], dueThrough) + 1 : 0
@@ -173,11 +187,18 @@ function matchesSelection(value: string, selection: string | string[]) {
   return Array.isArray(selection) ? !selection.length || selection.includes(value) : !selection || selection === value
 }
 
-export function filterComplianceRows(rows: ComplianceRow[], filters: { island?: string; region: string; farm: string | string[]; ta: string; cycle: string | string[]; status: string }) {
+export function complianceDateInRange(value: string | null | undefined, fromDate?: string, toDate?: string) {
+  if (!fromDate && !toDate) return true
+  const date = complianceDate(value)
+  return Boolean(date && (!fromDate || date >= fromDate) && (!toDate || date <= toDate))
+}
+
+export function filterComplianceRows(rows: ComplianceRow[], filters: { island?: string; region: string; farm: string | string[]; ta: string; cycle: string | string[]; status: string; fromDate?: string; toDate?: string }) {
   return rows.filter(row => (!filters.island || row.island === filters.island)
     && (!filters.region || row.region === filters.region)
     && matchesSelection(String(row.farmId), filters.farm)
     && matchesSelection(row.cycleKey, filters.cycle)
+    && complianceDateInRange(row.building.startDate, filters.fromDate, filters.toDate)
     && (!filters.status || row.status === filters.status)
     && (!filters.ta || (filters.ta === 'unassigned' ? !row.assignedTas.length : row.assignedTas.some(user => String(user.id) === filters.ta))))
     .map(row => {
@@ -276,15 +297,14 @@ function manilaDateTime(value: string | null | undefined): string | null {
 }
 
 /** Current-month timeliness based on initial createdAt timestamps and required activity dates. */
-export function taMonthlyCompliance(rows: ComplianceRow[], asOf: string, target = 95): TaMonthlyCompliance[] {
-  if (!complianceDate(asOf)) throw new Error('Choose a valid reporting date.')
-  const month = asOf.slice(0, 7)
-  const dueThrough = shiftComplianceDate(asOf, -1)
+export function taPeriodCompliance(rows: ComplianceRow[], fromDate: string, toDate: string, target = 95): TaMonthlyCompliance[] {
+  if (!complianceDate(fromDate) || !complianceDate(toDate) || fromDate > toDate) throw new Error('Choose a valid report date range.')
+  const dueThrough = shiftComplianceDate(toDate, -1)
   const groups = new Map<string, { label: string; required: number; onTime: number }>()
   for (const row of rows) {
     const obligations: { dueDate: string; createdAt?: string }[] = []
     const start = complianceDate(row.building.startDate)
-    if (start?.startsWith(month) && start <= dueThrough) {
+    if (start && start >= fromDate && start <= dueThrough) {
       const placement = row.building.placements
         .filter(item => !item.isVoided && item.status === 'Posted')
         .sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))[0]
@@ -295,7 +315,7 @@ export function taMonthlyCompliance(rows: ComplianceRow[], asOf: string, target 
         .filter(line => Number.isInteger(line.age) && line.age >= 1)
         .map(line => ({ dueDate: shiftComplianceDate(start, line.age), createdAt: line.createdAt }))
       const missing = row.stages.growing.missingDates.map(dueDate => ({ dueDate }))
-      const byDate = new Map([...recorded, ...missing].filter(item => item.dueDate.startsWith(month) && item.dueDate <= dueThrough).map(item => [item.dueDate, item]))
+      const byDate = new Map([...recorded, ...missing].filter(item => item.dueDate >= fromDate && item.dueDate <= dueThrough).map(item => [item.dueDate, item]))
       obligations.push(...byDate.values())
     }
     for (const ta of row.assignedTas) {
@@ -313,4 +333,8 @@ export function taMonthlyCompliance(rows: ComplianceRow[], asOf: string, target 
     const kpiStatus: TaMonthlyCompliance['kpiStatus'] = compliance === null ? 'Not assessed' : compliance >= target ? 'Meets' : compliance >= 85 ? 'Below Target' : 'Needs Improvement'
     return { key, label: group.label, requiredUpdates: group.required, onTimeUpdates: group.onTime, compliance, kpiStatus }
   }).sort((a, b) => (b.compliance ?? -1) - (a.compliance ?? -1) || a.label.localeCompare(b.label))
+}
+
+export function taMonthlyCompliance(rows: ComplianceRow[], asOf: string, target = 95): TaMonthlyCompliance[] {
+  return taPeriodCompliance(rows, `${asOf.slice(0, 7)}-01`, asOf, target)
 }
