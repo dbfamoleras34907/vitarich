@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -184,30 +185,27 @@ export default function GoodsReceiveHistory() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] text-stone-950">
-      <div className="mt-2 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
           CurrentPageName="Item Stock In"
         />
 
-        <div className='flex gap-2'>
-          <div className="flex justify-end">
-            <Button variant="outline" className="gap-2" onClick={refresh} disabled={loading}>
+        <PageHeaderActions>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
-          </div>
-
-          <Button type="button" onClick={openNewGoodsReceipt}>
+          <Button type="button" size="sm" onClick={openNewGoodsReceipt}>
             <Plus className="size-4" />
             New GR
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <div className=" mt-4 space-y-3">
-        <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+      <div className="space-y-3">
+        <div className="grid gap-2 rounded-md border bg-muted/30 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
           <DefaultFarmComboBox
             label="Farm"
             value={farmId}
@@ -255,6 +253,6 @@ export default function GoodsReceiveHistory() {
           }}
         />
       </div>
-    </main>
+    </PageShell>
   )
 }

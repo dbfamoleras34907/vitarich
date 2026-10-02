@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "@/components/ui/textarea";
 import {
   Building2,
-  BarChart3,
   CalendarDays,
   FileSpreadsheet,
   Hash,
@@ -22,6 +21,15 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import BroilerCycleSelect from "@/components/broiler/BroilerCycleSelect";
 import { Button } from "@/components/ui/button";
 import {
+  CompactMetric,
+  PageHeader,
+  PageSection,
+  PageSectionDescription,
+  PageSectionHeader,
+  PageSectionTitle,
+  PageShell,
+} from "@/components/ui/page-layout";
+import {
   Table,
   TableBody,
   TableCell,
@@ -29,7 +37,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { usePermission } from "@/hooks/usePermission";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { getUserFarms } from "@/app/admin/user/new/api";
@@ -133,9 +140,6 @@ function compareBuildingsByCode(left: FarmBuildingListRow, right: FarmBuildingLi
 export default function Layout() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
-  const flockCardViewBlocked = usePermission("/brd/fc/view");
-  const reportViewBlocked = usePermission("/brd/fc/report/view");
-  const cannotViewReport = flockCardViewBlocked && reportViewBlocked;
   const [selectedFarmId, setSelectedFarmId] = useState("");
   const [selectedCycleId, setSelectedCycleId] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
@@ -368,16 +372,9 @@ export default function Layout() {
     router.push("/brd/fc/new");
   }
 
-  function openFlockCardReport(building: FarmBuildingListRow) {
-    const cardNo = building.flockCard?.cardNo?.trim();
-    if (!cardNo) return;
-
-    router.push(`/brd/fc/report?cardNo=${encodeURIComponent(cardNo)}`);
-  }
-
   return (
-    <main className="min-h-[calc(100vh-4rem)] pb-8 text-stone-950 dark:bg-background dark:text-foreground">
-      <div className="flex items-center justify-between gap-3 px-4 mt-4">
+    <PageShell className="pb-6">
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Breeder"
           SecondPreviewPageLink="/brd"
@@ -385,14 +382,14 @@ export default function Layout() {
           FirstPreviewsPageLink="/brd/fc"
           CurrentPageName="Growing & Farm Condition"
         />
-      </div>
+      </PageHeader>
 
-      <section className="mx-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm sm:mx-5">
-        <div className="border-b bg-muted/30 p-4 sm:p-5">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-            <div className="grid min-w-0 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold">Farm</label>
+      <PageSection>
+        <div className="border-b bg-muted/25 p-3">
+          <div className="grid gap-3 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)] lg:items-end">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Farm</label>
                 <SearchableCombobox
                   items={farmOptions}
                   value={effectiveSelectedFarmId}
@@ -410,35 +407,11 @@ export default function Layout() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <Building2 className="size-4" />
-                  Buildings
-                </div>
-                <div className="mt-1.5 text-xl font-semibold tabular-nums">{loadingBuildings ? "..." : formatNumber(visibleBuildings.length)}</div>
-              </div>
-              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <Hash className="size-4" />
-                  Occupied
-                </div>
-                <div className="mt-1.5 text-xl font-semibold tabular-nums">{formatNumber(occupiedCount)}</div>
-              </div>
-              <div className="min-w-[7.5rem] rounded-lg border bg-background px-3.5 py-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <UsersRound className="size-4" />
-                  Birds
-                </div>
-                <div className="mt-1.5 text-xl font-semibold tabular-nums">{formatNumber(totalBirdCount)}</div>
-              </div>
-              <div className="min-w-[9rem] rounded-lg border bg-background px-3.5 py-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <CalendarDays className="size-4" />
-                  First start
-                </div>
-                <div className="mt-1.5 whitespace-nowrap text-xl font-semibold tabular-nums">{formatDateValue(nextStartDate)}</div>
-              </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <CompactMetric icon={<Building2 />} label="Buildings" value={loadingBuildings ? "..." : formatNumber(visibleBuildings.length)} />
+              <CompactMetric icon={<Hash />} label="Occupied" value={formatNumber(occupiedCount)} />
+              <CompactMetric icon={<UsersRound />} label="Birds" value={formatNumber(totalBirdCount)} />
+              <CompactMetric icon={<CalendarDays />} label="First start" value={formatDateValue(nextStartDate)} />
             </div>
           </div>
         </div>
@@ -453,52 +426,52 @@ export default function Layout() {
           ].map(([label, value]) => (
             <div
               key={label}
-              className={label === "Location" ? "col-span-2 min-w-0 bg-card px-4 py-3.5 sm:col-span-4 xl:col-span-1" : "min-w-0 bg-card px-4 py-3.5"}
+              className={label === "Location" ? "col-span-2 min-w-0 bg-card px-3 py-2 sm:col-span-4 xl:col-span-1" : "min-w-0 bg-card px-3 py-2"}
             >
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-              <div className="mt-1 break-words text-sm font-medium leading-5" title={value}>{value}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+              <div className="mt-0.5 break-words text-xs font-medium leading-4" title={value}>{value}</div>
             </div>
           ))}
         </div>
-      </section>
+      </PageSection>
 
-      <section className="mx-3 mt-5 overflow-hidden rounded-xl border bg-card shadow-sm sm:mx-5">
-        <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3.5 sm:px-5">
+      <PageSection>
+        <PageSectionHeader>
           <div>
-            <h2 className="font-semibold">Buildings</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Flock placements for the selected farm and cycle.</p>
+            <PageSectionTitle>Buildings</PageSectionTitle>
+            <PageSectionDescription>Flock placements for the selected farm and cycle.</PageSectionDescription>
           </div>
           {!loadingBuildings && selectedFarm && visibleBuildings.length > 0 ? (
             <span className="shrink-0 rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
               {visibleBuildings.length} {visibleBuildings.length === 1 ? "building" : "buildings"}
             </span>
           ) : null}
-        </div>
+        </PageSectionHeader>
 
         {loadingBuildings ? (
-          <div className="flex items-center justify-center gap-2 bg-white px-4 py-10 text-sm text-muted-foreground dark:bg-card">
+          <div className="flex items-center justify-center gap-2 bg-card px-4 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading buildings...
           </div>
         ) : buildingError ? (
-          <div className="bg-white p-4 dark:bg-card">
+          <div className="bg-card p-3">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
             {buildingError}
             </div>
           </div>
         ) : !selectedFarm ? (
-          <div className="flex flex-col items-center justify-center gap-2 bg-white px-4 py-12 text-center text-sm text-muted-foreground dark:bg-card">
+          <div className="flex flex-col items-center justify-center gap-2 bg-card px-4 py-8 text-center text-sm text-muted-foreground">
             <Search className="size-5" />
             Select a farm first.
           </div>
         ) : visibleBuildings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 bg-white px-4 py-12 text-center text-sm text-muted-foreground dark:bg-card">
+          <div className="flex flex-col items-center justify-center gap-2 bg-card px-4 py-8 text-center text-sm text-muted-foreground">
             <Search className="size-5" />
             No buildings found.
           </div>
         ) : (
           <>
-            <Table className="min-w-[1080px] bg-card">
+            <Table className="min-w-[1020px] bg-card text-xs">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[250px]">Actions</TableHead>
@@ -528,10 +501,10 @@ export default function Layout() {
                     <TableRow
                       key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
-                      <TableCell className="py-3">
-                        <div className="flex gap-2">
+                      <TableCell>
+                        <div className="flex gap-1.5">
                           {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
-                            <Button type="button" size="sm" variant="outline"
+                            <Button type="button" size="xs" variant="outline"
                               className="text-destructive" disabled={openingAction !== null || reversing}
                               onClick={() => {
                                 setCheckingReverseHarvest(true);
@@ -543,21 +516,10 @@ export default function Layout() {
                               Reverse Growing
                             </Button>
                           ) : null}
-                          {/* {hasFlockCard && !cannotViewReport ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openFlockCardReport(building)}
-                            >
-                              <BarChart3 className="size-4" />
-                              Report
-                            </Button>
-                          ) : null} */}
                           {canOpenCard ? (
                             <Button
                               type="button"
-                              size="sm"
+                              size="xs"
                               variant="outline"
                               onClick={() => openFlockCardSheet(building)}
                               disabled={openingAction !== null || !hasDocs}
@@ -574,7 +536,7 @@ export default function Layout() {
                           ) : null}
                           <Button
                             type="button"
-                            size="sm"
+                            size="xs"
                             variant="outline"
                             onClick={() => openFlockForm(building)}
                             disabled={openingAction !== null}
@@ -591,9 +553,9 @@ export default function Layout() {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell className="min-w-0 py-3">
-                        <div className="truncate text-base font-semibold">{building.name || "-"}</div>
-                        <div className="truncate text-xs text-muted-foreground" >{building.code || index + 1}</div>
+                      <TableCell className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{building.name || "-"}</div>
+                        <div className="truncate text-[10px] text-muted-foreground" >{building.code || index + 1}</div>
                       </TableCell>
                       <TableCell>{flockCard?.cycleMask || "-"}</TableCell>
                       <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
@@ -621,12 +583,12 @@ export default function Layout() {
                 })}
               </TableBody>
             </Table>
-            <div className="border-t bg-muted/10 px-5 py-3 text-right text-xs font-medium text-muted-foreground">
+            <div className="border-t bg-muted/10 px-3 py-2 text-right text-xs font-medium text-muted-foreground">
               Showing {visibleBuildings.length} of {buildings.length} buildings
             </div>
           </>
         )}
-      </section>
+      </PageSection>
 
       <Dialog open={reverseTarget !== null} onOpenChange={open => { if (!open && !reversing) setReverseTarget(null); }}>
         <DialogContent showCloseButton={!reversing}>
@@ -652,6 +614,6 @@ export default function Layout() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   );
 }

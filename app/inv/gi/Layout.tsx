@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -305,29 +306,26 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] text-stone-950">
-      <div className="mt-2 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName={config.parentLabel}
           CurrentPageName={config.title}
         />
 
-        <div className="flex gap-2">
-          <div className="flex justify-end">
-            <Button variant="outline" className="gap-2" onClick={refresh} disabled={loading}>
+        <PageHeaderActions>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
-          </div>
-
-          <Button type="button" onClick={openNewGoodsIssue} disabled={cannotInsert}>
+          <Button type="button" size="sm" onClick={openNewGoodsIssue} disabled={cannotInsert}>
             <Plus className="size-4" />
             New {config.documentPrefix}
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         {config.showFarmFilter && (
           <div className="w-full sm:max-w-sm">
             <UserFarmSearchCombobox
@@ -375,6 +373,6 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           if (!open) setReceiptDeliveryId(null)
         }}
       />
-    </main>
+    </PageShell>
   )
 }

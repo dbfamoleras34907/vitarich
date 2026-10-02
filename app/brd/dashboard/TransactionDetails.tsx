@@ -71,7 +71,7 @@ export default function TransactionDetails({ tab, cycles, includeAllPlacementRec
       <div className="max-h-[65vh] overflow-auto">
         <table className="w-full border-collapse whitespace-nowrap text-xs">
           <thead className="sticky top-0 bg-muted"><tr>{headers[tab].map(header => <th key={header} className="border-b px-3 py-2 text-left font-medium">{header}</th>)}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 tabular-nums group-data-[compact=true]/dashboard:px-2 group-data-[compact=true]/dashboard:py-1">{cell}</td>)}</tr>)}</tbody>
+          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-2 py-1 tabular-nums">{cell}</td>)}</tr>)}</tbody>
         </table>
       </div>}
   </section>

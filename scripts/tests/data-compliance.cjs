@@ -2,12 +2,12 @@
 const assert = require('node:assert/strict')
 const { loader, database } = require('./cycle-dashboard.cjs')
 const load = loader()
-const { buildComplianceRow, complianceSummary, groupCompliance, filterComplianceRows, complianceFilterOptions, manilaToday, complianceDate } = load('lib/broiler/dataCompliance.ts')
+const { buildComplianceRow, complianceSummary, groupCompliance, filterComplianceRows, complianceFilterOptions, dataAccuracyBy, farmDataScorecards, taMonthlyCompliance, manilaToday, complianceDate } = load('lib/broiler/dataCompliance.ts')
 const { complianceReportSheets } = load('lib/reports/broilerDataCompliance.ts')
 
 const line = age => ({ age, isVoided: false, hasMortality: true, hasFeed: false, hasWater: false, hasWeight: false,
-  mortalityTotal: 0, mortalityAm: 0, mortalityPm: 0, thinningAm: 0, thinningPm: 0, waterPerBird: 0 })
-const source = { farmId: 1, farmName: 'Farm A', region: 'Region A', ta: 'TA A', assignedTas: [{ id: 3, name: 'TA A', region: '03' }], cycleKey: '1:farm:1', cycleLabel: '0926001', cycleStatus: 'Saved', closedAt: '',
+  mortalityTotal: 0, mortalityAm: 0, mortalityPm: 0, thinningAm: 0, thinningPm: 0, waterPerBird: 0, createdAt: `2026-09-${25 + age}T08:00:00Z` })
+const source = { farmId: 1, farmName: 'Farm A', island: 'Luzon', region: 'Region A', ta: 'TA A', assignedTas: [{ id: 3, name: 'TA A', region: '03' }], cycleKey: '1:farm:1', cycleLabel: '0926001', cycleStatus: 'Saved', closedAt: '',
   building: { flockCardId: 1, buildingWarehouseId: 1, buildingName: 'B1', cardNo: 'FC1', startDate: '2026-09-25', status: 'Saved', isVoided: false, startingPopulation: 100,
     placements: [{ receiveDate: '2026-09-25', status: 'Posted', isVoided: false, createdAt: '2026-09-25T08:00:00Z' }], growingLines: [line(1), line(2)], deliveries: [], cleanups: [] } }
 const evaluate = (value = source, date = '2026-09-28', cutoff = 'yesterday') => buildComplianceRow(value, date, cutoff)
@@ -45,7 +45,7 @@ assert.equal(complianceSummary([{ ...gap, ta: null, assignedTas: [] }]).tasWithD
 const weighted = groupCompliance([good, gap, { ...gap, farmId: 2, farmName: 'Farm B' }], 'region')
 assert(Math.abs(weighted[0].compliance - 100 / 3) < 1e-10, 'Use counts, not an average of farm percentages')
 const sheets = complianceReportSheets([gap], 'Region A only', '2026-09-28T00:00:00Z')
-assert.equal(sheets.length, 5)
+assert.equal(sheets.length, 8)
 assert.equal(sheets.at(-1).rows.length, 2, 'Export the filtered records only')
 assert(sheets.at(-1).rows[1].includes('2026-09-26'))
 assert(sheets[0].rows.some(row => row.includes('Region A only')))
@@ -61,54 +61,60 @@ assert.equal(selectedTA[0].ta, 'TA B')
 assert.equal(complianceSummary(selectedTA).tasWithDelays, 1)
 assert.equal(filterComplianceRows([shared], { ...filters, region: 'Other region' }).length, 0)
 const catalog = [
-  { id: 1, name: 'Farm A', region: 'Region A', assignedTas: shared.assignedTas },
-  { id: 2, name: 'Farm B', region: 'Region B', assignedTas: [{ id: 5, name: 'TA C' }] },
-  { id: 3, name: 'Farm without cycles', region: 'Region A', assignedTas: [] },
+  { id: 1, name: 'Farm A', island: 'Luzon', region: 'Region A', assignedTas: shared.assignedTas },
+  { id: 2, name: 'Farm B', island: 'Visayas', region: 'Region B', assignedTas: [{ id: 5, name: 'TA C' }] },
+  { id: 3, name: 'Farm without cycles', island: 'Luzon', region: 'Region A', assignedTas: [] },
 ]
-assert.deepEqual(complianceFilterOptions(catalog, 'Region A', '').farms.map(row => row.id), [1, 3])
-assert.deepEqual(complianceFilterOptions(catalog, 'Region A', '1').tas.map(row => row.id), [3, 4])
-assert.equal(complianceFilterOptions(catalog, 'Region A', '1').hasUnassigned, false)
-assert.equal(complianceFilterOptions(catalog, 'Region A', '3').hasUnassigned, true)
-assert.deepEqual(complianceFilterOptions(catalog, '', ['1', '2']).tas.map(user => user.id), [3, 4, 5])
+assert.deepEqual(complianceFilterOptions(catalog, 'Luzon', 'Region A', '').farms.map(row => row.id), [1, 3])
+assert.deepEqual(complianceFilterOptions(catalog, 'Luzon', 'Region A', '1').tas.map(row => row.id), [3, 4])
+assert.equal(complianceFilterOptions(catalog, 'Luzon', 'Region A', '1').hasUnassigned, false)
+assert.equal(complianceFilterOptions(catalog, 'Luzon', 'Region A', '3').hasUnassigned, true)
+assert.deepEqual(complianceFilterOptions(catalog, '', '', ['1', '2']).tas.map(user => user.id), [3, 4, 5])
 assert.equal(filterComplianceRows([shared, { ...good, farmId: 2, cycleKey: 'second' }], { ...filters, ta: '', farm: ['1', '2'], cycle: [] }).length, 2)
 assert.equal(filterComplianceRows([shared, { ...good, farmId: 2, cycleKey: 'second' }], { ...filters, ta: '', farm: ['1', '2'], cycle: ['second'] }).length, 1)
-const { normalizeAdministrativeRegion } = load('lib/farmProfileOptions.ts')
+const accuracy = dataAccuracyBy([good], 'island')[0]
+assert.equal(accuracy.overallUpdated, 50, 'Data accuracy covers all four stage records')
+assert.equal(farmDataScorecards([good])[0].currentStage, 'Growing')
+assert.deepEqual(taMonthlyCompliance([good], '2026-09-28').map(row => [row.requiredUpdates, row.onTimeUpdates, row.kpiStatus]), [[3, 3, 'Meets']])
+const { normalizeAdministrativeRegion, islandGroupForRegion } = load('lib/farmProfileOptions.ts')
 assert.equal(normalizeAdministrativeRegion('03'), 'Region III (Central Luzon)')
 assert.equal(normalizeAdministrativeRegion('Central Luzon'), 'Region III (Central Luzon)')
+assert.equal(islandGroupForRegion('Negros Island Region (NIR)'), 'Visayas')
 
 async function repositories() {
   let reads = 0
   const mocks = {
     './farmAssignedUsers': { listFarmAssignedUsers: async () => new Map([[1, [{ id: 3, name: 'TA A', region: '03' }]]]) },
-    './farmOptions.client': { listAssignedUserFarmOptions: async () => [{ id: 1, name: 'Farm A' }] },
-    './farmManagement.client': { getActiveFarmById: async () => ({ region: 'Region A', administrative_region: 'Should not be used', contact_person: 'Not a TA' }) },
+    './farmOptions.client': { listBroilerFarmOptions: async () => [{ id: 1, code: 'A', name: 'Farm A', island: 'Luzon', administrative_region: 'Region III (Central Luzon)' }] },
     './broilerFarmCycles': { getCycleMasterListRows: async () => [{ id: 1, kind: 'farm', status: 'Saved' }, { id: 2, kind: 'farm', status: 'Past Open' }, { id: 3, kind: 'building', status: 'Closed' }, { id: 4, kind: 'farm', status: 'Cancelled' }] },
     './broilerCycleReport': { getBroilerCycleReport: async () => { reads++; return { farmId: 1, status: 'Saved', buildings: [source.building] } }, getBroilerBuildingCycleReport: async () => { reads++; return { farmId: 1, status: 'Closed', buildings: [source.building] } } },
   }
   const repo = loader(mocks)('lib/data/repositories/broilerDataCompliance.ts')
-  const current = await repo.getBroilerDataCompliance('current')
+  const current = await repo.getBroilerDataCompliance([1], 'current')
   assert.equal(reads, 1, 'Past Open must not be automatically treated as Current')
   assert.equal(current.sources[0].ta, 'TA A', 'Use associated User accounts, not the contact person')
-  assert.equal(current.sources[0].region, 'Region A')
+  assert.equal(current.sources[0].region, 'Region III (Central Luzon)')
+  assert.equal(current.sources[0].island, 'Luzon')
   assert.equal(current.farms.length, 1)
-  const fallback = loader({ ...mocks, './farmManagement.client': { getActiveFarmById: async () => ({ region: null, administrative_region: 'Should not be used' }) } })('lib/data/repositories/broilerDataCompliance.ts')
-  assert.equal((await fallback.getBroilerDataCompliance()).sources[0].region, 'Region not set', 'Only farms.region defines the report Region')
-  const ambiguous = loader({ ...mocks, './farmManagement.client': { getActiveFarmById: async () => ({ region: null }) },
+  const fallback = loader({ ...mocks, './farmOptions.client': { listBroilerFarmOptions: async () => [{ id: 1, code: 'A', name: 'Farm A', island: null, administrative_region: null }] } })('lib/data/repositories/broilerDataCompliance.ts')
+  assert.equal((await fallback.getBroilerDataCompliance([1])).sources[0].region, 'Region not set')
+  const ambiguous = loader({ ...mocks,
+    './farmOptions.client': { listBroilerFarmOptions: async () => [{ id: 1, code: 'A', name: 'Farm A', island: null, administrative_region: null }] },
     './farmAssignedUsers': { listFarmAssignedUsers: async () => new Map([[1, [{ id: 3, name: 'TA A', region: '03' }, { id: 4, name: 'TA B', region: '04A' }]]]) },
   })('lib/data/repositories/broilerDataCompliance.ts')
-  const unresolved = await ambiguous.getBroilerDataCompliance()
+  const unresolved = await ambiguous.getBroilerDataCompliance([1])
   assert.equal(unresolved.sources[0].region, 'Region not set')
   assert.equal(unresolved.sources[0].assignedTas.length, 2, 'Keep farm-associated TAs regardless of their personal regions')
   assert.equal(unresolved.warnings.length, 0, 'Different User regions must not generate a warning')
   reads = 0
-  await repo.getBroilerDataCompliance('all')
+  await repo.getBroilerDataCompliance([1], 'all')
   assert.equal(reads, 3, 'Include standalone, current and past cycles; exclude cancelled')
-  const denied = loader({ ...mocks, './farmOptions.client': { listAssignedUserFarmOptions: async () => [] } })('lib/data/repositories/broilerDataCompliance.ts')
-  assert.equal((await denied.getBroilerDataCompliance()).sources.length, 0)
+  const denied = loader({ ...mocks, './farmOptions.client': { listBroilerFarmOptions: async () => [] } })('lib/data/repositories/broilerDataCompliance.ts')
+  await assert.rejects(() => denied.getBroilerDataCompliance([1]), /not visible/)
   const failed = loader({ ...mocks, './broilerCycleReport': { getBroilerCycleReport: async () => { throw new Error('RLS read failed') } } })('lib/data/repositories/broilerDataCompliance.ts')
-  await assert.rejects(() => failed.getBroilerDataCompliance(), /RLS read failed/, 'Do not publish partial KPIs')
+  await assert.rejects(() => failed.getBroilerDataCompliance([1]), /RLS read failed/, 'Do not publish partial KPIs')
   const wrongFarm = loader({ ...mocks, './broilerCycleReport': { getBroilerCycleReport: async () => ({ farmId: 2, buildings: [] }) } })('lib/data/repositories/broilerDataCompliance.ts')
-  await assert.rejects(() => wrongFarm.getBroilerDataCompliance(), /Unable to load cycle/)
+  await assert.rejects(() => wrongFarm.getBroilerDataCompliance([1]), /Unable to load cycle/)
   const capped = loader({ '@/lib/Supabase/supabaseClient': { db: database({
     doc_farm_cycles: [{ id: 1, farm_id: 1 }], farms: [{ id: 1 }],
     flock_card: Array.from({ length: 1001 }, (_, id) => ({ id, farm_id: 1, farm_cycle_id: 1, void: '1' })),
@@ -139,7 +145,7 @@ async function repositories() {
   await exporter.exportReportWorkbook([...sheets, { name: 'Literal text', rows: [['Value'], ['=1+1']] }], 'test-report.xlsx')
   assert.equal(filename, 'test-report.xlsx')
   const workbook = await readXlsx(buffer)
-  assert.deepEqual(workbook.map(sheet => sheet.sheet), ['Summary', 'Region Summary', 'Farm Summary', 'TA Summary', 'Building Details', 'Literal text'])
+  assert.deepEqual(workbook.map(sheet => sheet.sheet), ['Summary', 'Island Accuracy', 'Farm Scorecard', 'TA Monthly KPI', 'Region Summary', 'Farm Summary', 'TA Summary', 'Building Details', 'Literal text'])
   assert.equal(workbook.at(-1).data[1][0], '=1+1', 'User text must not be interpreted as an Excel formula')
   assert.equal(workbook.find(sheet => sheet.sheet === 'Building Details').data.length, 2)
 }

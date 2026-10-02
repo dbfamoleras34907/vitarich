@@ -25,6 +25,17 @@ export const PHILIPPINE_REGIONS = [
   'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
 ] as const
 
+export type FarmIslandGroup = typeof FARM_ISLANDS[number]
+export type PhilippineRegion = typeof PHILIPPINE_REGIONS[number]
+
+// PSA major island group classification. NIR was restored in 2024 and is
+// grouped with the Visayas. Keep this as the single region cascade source.
+export const PHILIPPINE_REGIONS_BY_ISLAND: Record<FarmIslandGroup, readonly PhilippineRegion[]> = {
+  Luzon: PHILIPPINE_REGIONS.slice(0, 8),
+  Visayas: PHILIPPINE_REGIONS.slice(8, 12),
+  Mindanao: PHILIPPINE_REGIONS.slice(12),
+}
+
 export const FARM_PROFILE_FIELDS = [
   { code: 'production_model', label: 'Production Model', options: FARM_PRODUCTION_MODELS, required: true },
   { code: 'island', label: 'Island Group', options: FARM_ISLANDS, required: true },
@@ -42,4 +53,14 @@ export function normalizeAdministrativeRegion(value: string | null | undefined):
   return PHILIPPINE_REGIONS.find(region => region.toLowerCase() === normalized
     || region.toLowerCase().includes(`(${normalized})`)
     || region.toLowerCase().replace(/\s*\([^)]*\)$/, '') === normalized) || text
+}
+
+export function normalizeFarmIsland(value: string | null | undefined): FarmIslandGroup | '' {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return FARM_ISLANDS.find(island => island.toLowerCase() === normalized) ?? ''
+}
+
+export function islandGroupForRegion(value: string | null | undefined): FarmIslandGroup | '' {
+  const region = normalizeAdministrativeRegion(value)
+  return FARM_ISLANDS.find(island => PHILIPPINE_REGIONS_BY_ISLAND[island].some(item => item === region)) ?? ''
 }

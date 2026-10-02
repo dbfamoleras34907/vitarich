@@ -6,12 +6,12 @@ The existing permission matrix can grant this report. No database migration is r
 
 ## Views and exports
 
-Chart View is the default: KPI cards, region compliance, TA delay buckets, farm
-status and a building activity heatmap. Chart bars and accessible value lists
+Chart View is the default: KPI cards, island data accuracy, farm and TA scorecards,
+region compliance, TA delay buckets, farm status and a building activity heatmap. Chart bars and accessible value lists
 open matching Report View records. Building links show date gaps and saved timestamps.
 Filters and Excel exports share the same calculated rows. Excel writes a real
-XLSX workbook with Summary, Region Summary, Farm Summary, TA Summary and Building
-Details sheets. PDF uses the existing print workflow: select Save as PDF in the
+XLSX workbook with Summary, Island Accuracy, Farm Scorecard, TA Monthly KPI,
+Region Summary, Farm Summary, TA Summary and Building Details sheets. PDF uses the existing print workflow: select Save as PDF in the
 print dialog. Bar charts have PNG downloads. Both themes use shared UI tokens.
 
 ## Current rules and remaining business definitions
@@ -37,14 +37,19 @@ print dialog. Bar charts have PNG downloads. Both themes use shared UI tokens.
   against the available farm catalog. Contacts and encoders are not substituted.
   Multiple TAs appear individually in TA summaries, with each building counted
   once in overall KPIs. Selecting a TA scopes TA counts and exports to that user.
-- Region comes only from the Farm master (`farms.region`). A blank
-  farm Region is shown as **Region not set**. User regions are neither read nor
-  matched, and they do not produce warnings.
-- Region filters Farm options, and Region/Farm filter Assigned TA options.
+- Island Group and Region come from the Farm profile (`farms.island` and
+  `farms.administrative_region`). Known Region values are normalized to the PSA
+  list. When Island Group is blank, the report derives it from that official
+  Region mapping; unresolved values remain **Island not set** or **Region not set**.
+  Negros Island Region is grouped under Visayas.
+- Island Group filters Region, Region filters Farm, and the geographic scope/Farm
+  filters Assigned TA options. **All Island Groups**, **All Regions**, and
+  **All Farms** are explicit choices.
   Options include available master farms even when they have no cycle records.
-  The five filters are Region, Farm, Assigned TA, Cycle and Status. Farm and Cycle
-  support multiple selections. Changing Region clears Farm, TA and Cycle;
-  changing Farm clears TA and Cycle. **Clear** resets these five filters.
+  The six filters are Island Group, Region, Farm, Assigned TA, Cycle and Status.
+  Cycle supports multiple selections. Changing Island Group clears Region, Farm,
+  TA and Cycle; changing Region clears Farm, TA and Cycle; changing Farm clears
+  TA and Cycle. **Clear filters** resets all six filters.
   All current, past open and closed cycles are available in the Cycle selector.
 - Counts are building-cycle records, not distinct physical buildings across
   multiple cycles. Compliance = updated / (updated + overdue). Review and not-due
@@ -53,12 +58,23 @@ print dialog. Bar charts have PNG downloads. Both themes use shared UI tokens.
   snapshot. Later backfills and edits affect prior-date reports. Saved timestamps
   refer to receipt/Growing rows and Harvest/Cleanup headers, not immutable first
   encoding history. Historical TA attribution also remains undefined.
+- Data Accuracy is an explicitly labeled coverage proxy: for each stage it is the
+  percentage of included building-cycles whose stage status is Updated. Overall
+  updated is the weighted share across Placement, Growing, Harvest and Cleanup.
+  It does not validate whether saved field values are correct.
+- The farm scorecard uses the same four-stage coverage, the latest activity date,
+  and the furthest recorded stage. A farm is **Not Updated** when any included
+  building-cycle is overdue.
+- TA monthly compliance counts Placement and daily Growing obligations whose due
+  activity dates fall in the current month through yesterday. An update is on time
+  only when its initial `created_at` date in Asia/Manila is on or before its due
+  date. The KPI target is at least 95%; later edits do not rewrite timeliness.
 
 ## Data and authorization
 
-The shared repository reuses active assigned Broiler farms, Farm profiles, Cycle
-Master catalogs and Cycle Report lineage. `farms.id` remains the key; Region is
-read from `farms.region`. Current cycles exclude
+The shared repository reuses the active, approved Broiler farm catalog, Farm
+profiles, Cycle Master catalogs and Cycle Report lineage. `farms.id` remains the
+key; Island Group and Region are read from the Farm profile. Current cycles exclude
 Past Open; selecting all cycles includes Past Open and Closed plus standalone cycles.
 The signed-in Supabase client preserves existing RLS. Three farms load concurrently;
 any query failure blocks the complete report rather than publishing partial KPIs.

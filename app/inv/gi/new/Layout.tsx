@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } from '@/components/ui/page-layout'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -307,22 +308,22 @@ type NewGoodsIssueProps = {
 
 function GoodsIssueLoadingShell() {
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
-        <div className="h-6 w-56 rounded bg-stone-200" />
-        <div className="h-9 w-24 rounded-md bg-stone-100" />
+    <PageShell>
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-6 w-56 rounded bg-muted" />
+        <div className="h-8 w-24 rounded-md bg-muted" />
       </div>
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+      <PageSection>
+        <div className="grid gap-x-8 gap-y-2 p-3 lg:grid-cols-2">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="grid items-center gap-2 sm:grid-cols-[112px_minmax(0,300px)]">
-              <div className="h-4 w-20 rounded bg-stone-200" />
-              <div className="h-9 rounded-md bg-stone-100" />
+            <div key={index} className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+              <div className="h-3 w-20 rounded bg-muted" />
+              <div className="h-8 rounded-md bg-muted" />
             </div>
           ))}
         </div>
-      </section>
-    </main>
+      </PageSection>
+    </PageShell>
   )
 }
 
@@ -2162,8 +2163,8 @@ export default function NewGoodsIssue({
   ]
 
   return (
-    <main className="min-h-[calc(100vh-4rem)]  text-stone-950">
-      <div className="flex items-center justify-between gap-3 px-4 mt-4">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName={parentLabel}
           SecondPreviewPageLink={parentLink}
@@ -2171,17 +2172,19 @@ export default function NewGoodsIssue({
           FirstPreviewsPageLink={basePath}
           CurrentPageName={formLabel ?? (isPostMode ? `Post ${documentPrefix}` : `New ${documentPrefix}`)}
         />
-        <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
-          <List className="size-4" />
-          {listLabel} List
-        </Button>
-      </div>
+        <PageHeaderActions>
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push(basePath)}>
+            <List className="size-4" />
+            {listLabel} List
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <PageSection>
         <GoodsIssueHeaderSection fields={headerComponentList} />
 
-        <div className="border-t p-5">
-          <Tabs defaultValue="lines" className="space-y-3">
+        <div className="border-t p-3">
+          <Tabs defaultValue="lines" className="space-y-2">
             {isCleanup && (
               <TabsList>
                 <TabsTrigger value="lines">Clean up Lines</TabsTrigger>
@@ -2195,10 +2198,10 @@ export default function NewGoodsIssue({
               <Button type="button" variant="outline" size="sm" onClick={() => setDeliverySettingsRetry(value => value + 1)}>Retry</Button>
             </div>
           )}
-          <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
+          <section className="overflow-hidden rounded-md border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2.5">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="text-base font-semibold">Issue Lines</h2>
+                <h2 className="text-sm font-semibold">Issue Lines</h2>
                 {usesLineWarehouse && showFlockCardInformation && !deliverySettingsError && (
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
@@ -2237,7 +2240,9 @@ export default function NewGoodsIssue({
                 showRemainingOnHand={triggeredBy === 'BR-DR'}
                 showVariance={showLineVariance}
                 lockedQuantityEditable={lockedLineQuantityEditable}
-                allowDuplicateBuildings={triggeredBy === 'BR-DR'}
+                 allowDuplicateBuildings={triggeredBy === 'BR-DR'}
+                 enableMobileLineModal={triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'}
+                 canEdit={canSave}
                 showTransportFields={triggeredBy === 'BR-DR'}
                 onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
                 enableCopyDown={triggeredBy === 'BR-DR' && canSave}
@@ -2488,7 +2493,7 @@ export default function NewGoodsIssue({
             </div>
             )}
 
-            {(!isCleanup || canEditDraft) && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
+            {(!isCleanup || canEditDraft) && <div className={`${usesBroilerLineLayout ? 'hidden md:flex' : 'flex'} justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3`}>
               <Input
                 type="number"
                 min="1"
@@ -2944,7 +2949,7 @@ export default function NewGoodsIssue({
             </div>
 
             {canEditDraft ? (
-              <div className={`w-full ${showRemarksInActionRow ? 'flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between' : ''}`}>
+              <PageActionBar className={`w-full border-0 p-0 ${showRemarksInActionRow ? 'sm:justify-between' : ''}`}>
                 {showRemarksInActionRow && (
                   <div className="w-full space-y-2 sm:max-w-xl">
                     <Label htmlFor="goods-issue-remarks">Remarks</Label>
@@ -2974,13 +2979,13 @@ export default function NewGoodsIssue({
                     </Button>
                   )}
                 </div>
-              </div>
+              </PageActionBar>
             ) : (
-              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+              <p className="text-sm text-muted-foreground">This document is already posted and cannot be edited.</p>
             )}
           </div>
         </div>
-      </section>
+      </PageSection>
 
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
@@ -2991,21 +2996,21 @@ export default function NewGoodsIssue({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
             {isCleanup ? (
               <div className="space-y-2">
                 <div className="flex justify-between gap-3">
-                  <span className="text-stone-500">Total Clean up Quantity</span>
+                  <span className="text-muted-foreground">Total Clean up Quantity</span>
                   <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-stone-500">Total Variance</span>
+                  <span className="text-muted-foreground">Total Variance</span>
                   <span className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</span>
                 </div>
               </div>
             ) : (
               <div className="flex justify-between gap-3">
-                <span className="text-stone-500">Total Base Quantity</span>
+                <span className="text-muted-foreground">Total Base Quantity</span>
                 <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
               </div>
             )}
@@ -3032,6 +3037,6 @@ export default function NewGoodsIssue({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   )
 }

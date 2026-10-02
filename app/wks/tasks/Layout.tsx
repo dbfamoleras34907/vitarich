@@ -197,7 +197,6 @@ export default function Layout() {
         }))}
 
         data={initialRows}
-        compact
         pageSizeOptions={[25, 50, 100]}
 
       />

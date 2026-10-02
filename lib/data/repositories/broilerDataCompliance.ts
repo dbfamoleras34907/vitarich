@@ -4,20 +4,24 @@ import { getBroilerBuildingCycleReport, getBroilerCycleReport } from './broilerC
 import type { ComplianceSource } from '@/lib/broiler/dataCompliance'
 import { listFarmAssignedUsers, type FarmAssignedUser } from './farmAssignedUsers'
 import { USER_TYPES } from '@/lib/notifications/types'
-import { normalizeAdministrativeRegion } from '@/lib/farmProfileOptions'
+import { islandGroupForRegion, normalizeAdministrativeRegion, normalizeFarmIsland } from '@/lib/farmProfileOptions'
 
 export type ComplianceCycleScope = 'current' | 'all'
-export type ComplianceFarmOption = { id: number; name: string; region: string }
-export type ComplianceFarm = { id: number; name: string; region: string; assignedTas: FarmAssignedUser[] }
+export type ComplianceFarmOption = { id: number; name: string; island: string; region: string }
+export type ComplianceFarm = { id: number; name: string; island: string; region: string; assignedTas: FarmAssignedUser[] }
 export type ComplianceDataset = { sources: ComplianceSource[]; farms: ComplianceFarm[]; warnings: string[]; loadedAt: string }
 
 export async function listBroilerDataComplianceFarmOptions(): Promise<ComplianceFarmOption[]> {
   const farms = await listBroilerFarmOptions({ requireComplete: true })
-  return farms.map(farm => ({
-    id: farm.id,
-    name: farm.name,
-    region: normalizeAdministrativeRegion(farm.administrative_region),
-  }))
+  return farms.map(farm => {
+    const region = normalizeAdministrativeRegion(farm.administrative_region) || 'Region not set'
+    return {
+      id: farm.id,
+      name: farm.name,
+      island: normalizeFarmIsland(farm.island) || islandGroupForRegion(region) || 'Island not set',
+      region,
+    }
+  })
 }
 
 /** Reuse the visible Farm catalog and Cycle Master's lineage under the signed-in user's RLS. */
@@ -41,7 +45,8 @@ export async function getBroilerDataCompliance(farmIds: number[], scope: Complia
       const catalog = await getCycleMasterListRows(farm.id, { requireComplete: true })
       const assignedTas = assignments.get(farm.id) ?? []
       const region = normalizeAdministrativeRegion(farm.administrative_region) || 'Region not set'
-      farmCatalog.push({ id: farm.id, name: farm.name, region, assignedTas })
+      const island = normalizeFarmIsland(farm.island) || islandGroupForRegion(region) || 'Island not set'
+      farmCatalog.push({ id: farm.id, name: farm.name, island, region, assignedTas })
       const cycles = catalog.filter(cycle => scope === 'current' ? cycle.status === 'Saved' : cycle.status !== 'Cancelled')
       const rows: ComplianceSource[] = []
       for (const cycle of cycles) {
@@ -50,7 +55,7 @@ export async function getBroilerDataCompliance(farmIds: number[], scope: Complia
           : await getBroilerBuildingCycleReport(farm.id, cycle.id, { requireComplete: true })
         if (!report || report.farmId !== farm.id) throw new Error(`Unable to load cycle ${cycle.cycleMask || cycle.id} for ${farm.name}.`)
         for (const building of report.buildings) {
-          rows.push({ farmId: farm.id, farmName: farm.name, region, assignedTas,
+          rows.push({ farmId: farm.id, farmName: farm.name, island, region, assignedTas,
             ta: assignedTas.map(user => user.name).join(', ') || null, cycleKey: `${farm.id}:${cycle.kind}:${cycle.id}`, cycleLabel: cycle.cycleMask || building.cycleLabel || String(cycle.cycleNumber),
             cycleStatus: report.status, closedAt: report.closedAt || cycle.closedAt || '', building })
         }

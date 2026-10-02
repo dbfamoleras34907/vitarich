@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } from "@/components/ui/page-layout";
 import {
   Select,
   SelectContent,
@@ -431,8 +432,8 @@ export default function Layout() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] pb-8 text-stone-950 dark:bg-background dark:text-foreground">
-      <div className="flex items-center justify-between gap-3 px-4 mt-4">
+    <PageShell className="pb-6">
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Breeder"
           SecondPreviewPageLink="/brd"
@@ -440,16 +441,18 @@ export default function Layout() {
           FirstPreviewsPageLink="/brd/fc"
           CurrentPageName="Add Cycle"
         />
-        <Button type="button" variant="outline" onClick={() => router.push("/brd/fc")}>
-          <ArrowLeft className="size-4" />
-          Cycle Card List
-        </Button>
-      </div>
+        <PageHeaderActions>
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push("/brd/fc")}>
+            <ArrowLeft className="size-4" />
+            Cycle Card List
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <section className="mx-auto mt-6 max-w-[1270px] overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-card">
-        <div className="border-b p-5">
-          <h1 className="text-lg font-semibold">{editingCardId ? "Edit flock" : "Add new Cycle"}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageSection className="mx-auto w-full max-w-[1270px]">
+        <div className="border-b bg-muted/20 px-3 py-2.5">
+          <h2 className="text-sm font-semibold">{editingCardId ? "Edit flock" : "Add new Cycle"}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Building {selectedBuilding?.code || selectedBuilding?.name || routePayload?.buildingCode || routePayload?.buildingName || "-"}
             {editingCardNo ? ` | ${editingCardNo}` : ""}
           </p>
@@ -462,72 +465,72 @@ export default function Layout() {
           </div>
         ) : null}
 
-        <div className="space-y-5 p-5">
-          <section className="rounded-lg border">
-            <div className="border-b px-4 py-3">
+        <div className="space-y-3 p-3">
+          <section className="rounded-md border">
+            <div className="border-b bg-muted/20 px-3 py-2">
               <h2 className="text-sm font-semibold">Farm information</h2>
             </div>
-            <div className="grid gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Farm</label>
-                <Input value={farmInfo?.name || routePayload?.farmName || ""} readOnly className="bg-stone-50" />
+            <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Farm</label>
+                <Input value={farmInfo?.name || routePayload?.farmName || ""} readOnly className="bg-muted" />
               </div>
 
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Farm Code</label>
-                <Input value={farmInfo?.code || routePayload?.farmCode || ""} readOnly className="bg-stone-50" />
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Farm Code</label>
+                <Input value={farmInfo?.code || routePayload?.farmCode || ""} readOnly className="bg-muted" />
               </div>
 
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Complex</label>
-                <Input value={farmInfo?.farmType || routePayload?.farmType || ""} readOnly className="bg-stone-50" />
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Complex</label>
+                <Input value={farmInfo?.farmType || routePayload?.farmType || ""} readOnly className="bg-muted" />
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Location</label>
-                <Input value={farmInfo?.address || routePayload?.farmAddress || ""} readOnly className="bg-stone-50" />
+              <div className="grid gap-1 md:col-span-2">
+                <label className="text-xs font-medium">Location</label>
+                <Input value={farmInfo?.address || routePayload?.farmAddress || ""} readOnly className="bg-muted" />
               </div>
 
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Contact</label>
-                <Input value={farmInfo?.contactPerson || routePayload?.farmContact || ""} readOnly className="bg-stone-50" />
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Contact</label>
+                <Input value={farmInfo?.contactPerson || routePayload?.farmContact || ""} readOnly className="bg-muted" />
               </div>
 
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Selected Building</label>
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Selected Building</label>
                 <Input
                   value={selectedBuilding
                     ? `${selectedBuilding.code}${selectedBuilding.name ? ` - ${selectedBuilding.name}` : ""}`
                     : routePayload?.buildingCode || routePayload?.buildingName || ""}
                   readOnly
-                  className="bg-stone-50"
+                  className="bg-muted"
                 />
               </div>
             </div>
           </section>
 
-          <section className="rounded-lg border">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <section className="rounded-md border">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
               <div>
                 <h2 className="text-sm font-semibold">Placement Information</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   DOC inventory currently available in {selectedBuilding?.code || "the selected building"}.
                 </p>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-right text-xs">
-                <div className="rounded-md border px-3 py-2">
+              <div className="grid grid-cols-2 gap-1.5 text-right text-xs sm:grid-cols-4">
+                <div className="rounded-md border bg-card px-2 py-1.5">
                   <div className="text-muted-foreground">Actual Received</div>
                   <div className="font-semibold tabular-nums">{formatQuantity(totalActualReceived)}</div>
                 </div>
-                <div className="rounded-md border px-3 py-2">
+                <div className="rounded-md border bg-card px-2 py-1.5">
                   <div className="text-muted-foreground">On-hand</div>
                   <div className="font-semibold tabular-nums">{formatQuantity(totalPlacementAnimals)}</div>
                 </div>
-                <div className="rounded-md border px-3 py-2">
+                <div className="rounded-md border bg-card px-2 py-1.5">
                   <div className="text-muted-foreground">Mortality</div>
                   <div className="font-semibold tabular-nums">{formatQuantity(totalMortalityAnimals)}</div>
                 </div>
-                <div className="rounded-md border px-3 py-2">
+                <div className="rounded-md border bg-card px-2 py-1.5">
                   <div className="text-muted-foreground">Thinning</div>
                   <div className="font-semibold tabular-nums">{formatQuantity(totalThinningAnimals)}</div>
                 </div>
@@ -547,7 +550,7 @@ export default function Layout() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-[1300px] w-full text-sm">
+                <table className="w-full min-w-[1300px] text-xs">
                   <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
                     <tr>
                       {[
@@ -565,7 +568,7 @@ export default function Layout() {
                         "DOA Count Remarks",
                         "Reject Count Remarks",
                       ].map(label => (
-                        <th key={label} className="whitespace-nowrap border-r px-3 py-2 last:border-r-0">{label}</th>
+                        <th key={label} className="h-8 whitespace-nowrap border-r px-2 py-1.5 last:border-r-0">{label}</th>
                       ))}
                     </tr>
                   </thead>
@@ -576,19 +579,19 @@ export default function Layout() {
                       return details.map((detail, detailIndex) => (
                         <Fragment key={`${row.id}-${detailIndex}`}>
                           <tr className="border-t">
-                            <td className="whitespace-nowrap border-r px-3 py-2">{detail?.grOrigin || row.grOrigin || "-"}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.receiveDate ?? "")}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2">{formatDateValue(detail?.manufacturingDate || row.manufacturingDate)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2">{detail?.transferSlip || "-"}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.totalReceived ?? 0)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.actualReceived ?? row.batchQuantity)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.averageDocWeight ?? 0)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.doaCount ?? 0)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.rejectCount ?? 0)}</td>
-                            <td className="whitespace-nowrap border-r px-3 py-2 text-right tabular-nums">{formatQuantity(detail?.shortCount ?? 0)}</td>
-                            <td className="border-r px-3 py-2">{detail?.shortCountRemarks || "-"}</td>
-                            <td className="border-r px-3 py-2">{detail?.doaCountRemarks || "-"}</td>
-                            <td className="px-3 py-2">{detail?.rejectCountRemarks || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5">{detail?.grOrigin || row.grOrigin || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5">{formatDateValue(detail?.receiveDate ?? "")}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5">{formatDateValue(detail?.manufacturingDate || row.manufacturingDate)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5">{detail?.transferSlip || "-"}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.totalReceived ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.actualReceived ?? row.batchQuantity)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.averageDocWeight ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.doaCount ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.rejectCount ?? 0)}</td>
+                            <td className="whitespace-nowrap border-r px-2 py-1.5 text-right tabular-nums">{formatQuantity(detail?.shortCount ?? 0)}</td>
+                            <td className="border-r px-2 py-1.5">{detail?.shortCountRemarks || "-"}</td>
+                            <td className="border-r px-2 py-1.5">{detail?.doaCountRemarks || "-"}</td>
+                            <td className="px-2 py-1.5">{detail?.rejectCountRemarks || "-"}</td>
                           </tr>
                         </Fragment>
                       ));
@@ -599,11 +602,11 @@ export default function Layout() {
             )}
           </section>
 
-          <section className="rounded-lg border">
-            <div className="border-b px-4 py-3">
+          <section className="rounded-md border">
+            <div className="border-b bg-muted/20 px-3 py-2">
               <h2 className="text-sm font-semibold">Mandatory flock info</h2>
             </div>
-            <div className="grid gap-4 p-4 md:grid-cols-2">
+            <div className="grid gap-3 p-3 md:grid-cols-2">
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Age of birds *</label>
                 <div className="flex">
@@ -688,11 +691,11 @@ export default function Layout() {
             </div>
           </section>
 
-          <section className="rounded-lg border">
-            <div className="border-b px-4 py-3">
+          <section className="rounded-md border">
+            <div className="border-b bg-muted/20 px-3 py-2">
               <h2 className="text-sm font-semibold">Optional flock info</h2>
             </div>
-            <div className="grid gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">
               {[
                 ["coccidiostatProgramId", "Cocci programs", "Add cocci program"],
                 ["otherProgramId", "Other programs", "Add other program"],
@@ -732,16 +735,16 @@ export default function Layout() {
 
         </div>
 
-        <div className="flex justify-end gap-2 border-t p-5">
+        <PageActionBar>
           <Button type="button" variant="outline" onClick={() => router.push("/brd/fc")}>
             Cancel
           </Button>
           <Button type="button" onClick={handleSave} disabled={saving || loadingFlockCard || Boolean(routePayload?.cardId && !editingCardId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
-        </div>
-      </section>
+        </PageActionBar>
+      </PageSection>
 
-    </main>
+    </PageShell>
   );
 }

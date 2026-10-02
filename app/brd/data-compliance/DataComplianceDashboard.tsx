@@ -17,15 +17,17 @@ import TransactionDetails from '@/app/brd/dashboard/TransactionDetails'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { usePermission } from '@/hooks/usePermission'
 import { getBroilerDataCompliance, listBroilerDataComplianceFarmOptions, type ComplianceDataset, type ComplianceFarmOption } from '@/lib/data/repositories/broilerDataCompliance'
-import { buildComplianceRow, filterComplianceRows, complianceFilterOptions, complianceSummary, groupCompliance, manilaToday, COMPLIANCE_STAGES, COMPLIANCE_LABELS, COMPLIANCE_RULE, COMPLIANCE_HISTORY_NOTE, type ComplianceRow, type ComplianceStage, type ComplianceStatus, type StageCompliance } from '@/lib/broiler/dataCompliance'
+import { buildComplianceRow, dataAccuracyBy, farmDataScorecards, filterComplianceRows, complianceFilterOptions, complianceSummary, groupCompliance, manilaToday, taMonthlyCompliance, COMPLIANCE_STAGES, COMPLIANCE_LABELS, COMPLIANCE_RULE, COMPLIANCE_HISTORY_NOTE, type ComplianceRow, type ComplianceStage, type ComplianceStatus, type DataAccuracyRow, type StageCompliance } from '@/lib/broiler/dataCompliance'
 import { complianceReportSheets } from '@/lib/reports/broilerDataCompliance'
 import { exportReportWorkbook } from '@/lib/reports/exportWorkbook'
-import { PHILIPPINE_REGIONS } from '@/lib/farmProfileOptions'
+import { FARM_ISLANDS, PHILIPPINE_REGIONS, PHILIPPINE_REGIONS_BY_ISLAND, type FarmIslandGroup } from '@/lib/farmProfileOptions'
 import { cn } from '@/lib/utils'
 
 const stageLabels = { placement: 'Placement', growing: 'Growing', harvest: 'Harvest', cleanup: 'Cleanup' }
 const stageDocumentTabs = { placement: 'placement', growing: 'growing', harvest: 'delivery', cleanup: 'cleanup' } as const
 const ALL_FARMS = '__all_farms__'
+const ALL_ISLANDS = '__all_islands__'
+const ALL_REGIONS = '__all_regions__'
 const FILTER_STATUSES = ['updated', 'overdue', 'review', 'not-due'] as const
 const isFilterStatus = (value: string): value is typeof FILTER_STATUSES[number] => FILTER_STATUSES.some(status => status === value)
 const statusClass: Record<ComplianceStatus, string> = {
@@ -38,8 +40,8 @@ const timestamp = (value: string | null) => value ? new Date(value).toLocaleStri
 const displayDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '')
 const percent = (value: number | null) => value === null ? '—' : `${value.toLocaleString('en-PH', { maximumFractionDigits: 1 })}%`
 
-function Filter({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
-  return <label className="min-w-0 space-y-1.5 text-sm text-foreground"><span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span><select aria-label={label} className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground shadow-sm" value={value} onChange={event => onChange(event.target.value)}>{children}</select></label>
+function Filter({ label, value, onChange, children, disabled = false }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode; disabled?: boolean }) {
+  return <label className="min-w-0 space-y-1.5 text-sm text-foreground"><span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span><select aria-label={label} disabled={disabled} className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50" value={value} onChange={event => onChange(event.target.value)}>{children}</select></label>
 }
 function StageBadge({ value, onClick }: { value: StageCompliance; onClick?: () => void }) {
   const label = value.status === 'overdue'
@@ -98,15 +100,36 @@ function Metric({ title, value, note, icon: Icon, formula, danger = false }: { t
 function BuildingTable({ rows, onSelect }: { rows: ComplianceRow[]; onSelect: (row: ComplianceRow) => void }) {
   return <div className="mt-3 overflow-x-auto rounded-lg border bg-card"><table className="w-full min-w-[1080px] text-left text-sm">
     <caption className="sr-only">Building and cycle data compliance details</caption>
-    <thead className="sticky top-0 z-10 bg-muted text-xs uppercase tracking-wide text-muted-foreground"><tr>{['Region / Farm', 'Building / Cycle', 'Assigned TA', ...Object.values(stageLabels), 'Delay', 'Status'].map(label => <th key={label} className="whitespace-nowrap px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
+    <thead className="sticky top-0 z-10 bg-muted text-xs uppercase tracking-wide text-muted-foreground"><tr>{['Island / Region / Farm', 'Building / Cycle', 'Assigned TA', ...Object.values(stageLabels), 'Delay', 'Status'].map(label => <th key={label} className="whitespace-nowrap px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
     <tbody className="divide-y">{rows.map((row, index) => <tr key={row.key} className={cn('align-top transition-colors hover:bg-muted/50', index % 2 === 1 && 'bg-muted/20')}>
-      <td className="px-4 py-3.5"><span className="mb-1 block text-xs text-muted-foreground">{row.region}</span><span className="font-medium">{row.farmName}</span></td>
+      <td className="px-4 py-3.5"><span className="block text-xs text-muted-foreground">{row.island}</span><span className="mb-1 block text-xs text-muted-foreground">{row.region}</span><span className="font-medium">{row.farmName}</span></td>
       <td className="px-4 py-3.5"><button className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => onSelect(row)}>{row.buildingName}</button><span className="mt-1 block text-xs text-muted-foreground">Cycle {row.cycleLabel}</span></td>
       <td className="px-4 py-3.5">{row.ta || <span className="italic text-muted-foreground">Unassigned</span>}</td>
       {COMPLIANCE_STAGES.map(stage => <td key={stage} className="px-4 py-3.5"><span className="mb-2 block whitespace-nowrap text-xs tabular-nums text-muted-foreground">Latest: {row.stages[stage].latestDate || 'None'}</span><StageBadge value={row.stages[stage]} /></td>)}
       <td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums">{row.daysLate ? `${row.daysLate} days` : '—'}</td><td className="px-4 py-3.5"><span className={cn('inline-block whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold', statusClass[row.status])}>{COMPLIANCE_LABELS[row.status]}</span></td>
     </tr>)}</tbody>
   </table></div>
+}
+
+const scoreTone = (value: number | null) => value === null ? 'bg-muted text-muted-foreground' : value >= 90 ? 'bg-primary/10 text-primary' : value >= 80 ? 'bg-chart-4/15 text-foreground' : 'bg-destructive/10 text-destructive'
+
+function Score({ value }: { value: number | null }) {
+  return <span className={cn('inline-flex min-w-14 justify-center rounded-md px-2 py-1 font-semibold tabular-nums', scoreTone(value))}>{percent(value)}</span>
+}
+
+function DataAccuracyTable({ rows, summary, summaryLabel }: { rows: DataAccuracyRow[]; summary: DataAccuracyRow | null; summaryLabel: string }) {
+  return <MaximizableCard title="Data Accuracy by Island">{() => <div className="min-w-0 p-4">
+    <div className="pr-10"><h2 className="text-sm font-semibold">FMS Broiler — Data Accuracy by Island</h2><p className="mt-1 text-xs text-muted-foreground">Updated stage records ÷ included building-cycles. This is a coverage proxy, not validation of entered field values.</p></div>
+    <div className="mt-3 overflow-x-auto rounded-lg border"><table className="w-full min-w-[720px] text-left text-xs"><thead className="bg-muted text-muted-foreground"><tr>{['Island', 'Placement', 'Growing', 'Harvest', 'Cleanup', 'Overall updated'].map(label => <th key={label} className="whitespace-nowrap px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y">{rows.map(row => <tr key={row.key}><td className="px-3 py-2.5 font-medium">{row.label}</td>{(['placement', 'growing', 'harvest', 'cleanup', 'overallUpdated'] as const).map(key => <td key={key} className="px-3 py-2.5"><Score value={row[key]} /></td>)}</tr>)}{summary && <tr className="bg-muted/40 font-semibold"><td className="px-3 py-2.5">{summaryLabel}</td>{(['placement', 'growing', 'harvest', 'cleanup', 'overallUpdated'] as const).map(key => <td key={key} className="px-3 py-2.5"><Score value={summary[key]} /></td>)}</tr>}</tbody></table></div>
+  </div>}</MaximizableCard>
+}
+
+function FarmScorecard({ rows }: { rows: ReturnType<typeof farmDataScorecards> }) {
+  return <MaximizableCard title="Farm FMS Data Scorecard">{() => <div className="min-w-0 p-4"><div className="pr-10"><h2 className="text-sm font-semibold">Farm FMS Data Scorecard</h2><p className="mt-1 text-xs text-muted-foreground">Stage coverage and latest activity for each farm in the selected scope.</p></div><div className="mt-3 overflow-x-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-muted text-muted-foreground"><tr>{['Farm', 'Island', 'Accuracy', 'Current stage', 'Latest data', 'Update status'].map(label => <th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y">{rows.map(row => <tr key={row.key}><td className="px-3 py-2.5 font-medium">{row.label}</td><td className="px-3 py-2.5">{row.island}</td><td className="px-3 py-2.5"><Score value={row.overallUpdated} /></td><td className="px-3 py-2.5">{row.currentStage}</td><td className="px-3 py-2.5 tabular-nums">{row.latestData ? displayDate(row.latestData) : 'No data'}</td><td className="px-3 py-2.5"><span className={cn('inline-flex rounded-md px-2 py-1 font-semibold', row.updateStatus === 'Updated' ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive')}>{row.updateStatus}</span></td></tr>)}</tbody></table></div></div>}</MaximizableCard>
+}
+
+function TaScorecard({ rows }: { rows: ReturnType<typeof taMonthlyCompliance> }) {
+  return <MaximizableCard title="TA FMS Encoding Compliance">{() => <div className="min-w-0 p-4"><div className="pr-10"><h2 className="text-sm font-semibold">TA FMS Encoding Compliance</h2><p className="mt-1 text-xs text-muted-foreground">Target ≥95% monthly · On-time uses the initial save date against each required activity date.</p></div><div className="mt-3 overflow-x-auto rounded-lg border"><table className="w-full min-w-[680px] text-left text-xs"><thead className="bg-muted text-muted-foreground"><tr>{['TA', 'Required updates', 'On-time updates', 'Compliance', 'KPI status'].map(label => <th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y">{rows.map(row => <tr key={row.key}><td className="px-3 py-2.5 font-medium">{row.label}</td><td className="px-3 py-2.5 tabular-nums">{row.requiredUpdates}</td><td className="px-3 py-2.5 tabular-nums">{row.onTimeUpdates}</td><td className="px-3 py-2.5"><Score value={row.compliance} /></td><td className="px-3 py-2.5"><span className={cn('inline-flex rounded-md px-2 py-1 font-semibold', scoreTone(row.compliance))}>{row.kpiStatus}</span></td></tr>)}</tbody></table></div></div>}</MaximizableCard>
 }
 
 export default function DataComplianceDashboard() {
@@ -124,7 +147,10 @@ export default function DataComplianceDashboard() {
   const view = searchParams.get('view') === 'report' ? 'report' : 'chart'
   const asOf = manilaToday()
   const cutoff = 'yesterday' as const
-  const region = searchParams.get('region') ?? ''
+  const islandParam = searchParams.get('island') ?? ''
+  const island = islandParam === 'all' ? ALL_ISLANDS : islandParam
+  const regionParam = searchParams.get('region') ?? ''
+  const region = regionParam === 'all' ? ALL_REGIONS : regionParam
   const farmParam = searchParams.get('farmId') ?? ''
   const farm = farmParam === 'all' ? ALL_FARMS : farmParam
   const ta = searchParams.get('taId') ?? ''
@@ -159,21 +185,28 @@ export default function DataComplianceDashboard() {
     return () => { cancelled = true }
   }, [blocked, owner])
 
-  const selectionKey = `${owner}:${scope}:${region}:${farm}`
+  const selectionKey = `${owner}:${scope}:${island}:${region}:${farm}`
   const current = result?.key === selectionKey ? result : null
   const data = current?.data
   const catalog = useMemo(() => catalogResult?.owner === owner ? catalogResult.data : [], [catalogResult, owner])
   const catalogLoading = Boolean(owner) && catalogResult?.owner !== owner
-  const regions = PHILIPPINE_REGIONS
-  const farmOptions = useMemo(() => catalog.filter(item => item.region === region), [catalog, region])
+  const islands = useMemo(() => [...new Set([...FARM_ISLANDS, ...catalog.map(item => item.island).filter(Boolean)])], [catalog])
+  const regions = useMemo(() => {
+    if (!island || island === ALL_ISLANDS) return [...new Set([...PHILIPPINE_REGIONS, ...catalog.map(item => item.region).filter(Boolean)])]
+    if (FARM_ISLANDS.some(value => value === island)) return [...new Set([...PHILIPPINE_REGIONS_BY_ISLAND[island as FarmIslandGroup], ...catalog.filter(item => item.island === island).map(item => item.region).filter(Boolean)])]
+    return [...new Set(catalog.filter(item => item.island === island).map(item => item.region))]
+  }, [catalog, island])
+  const farmOptions = useMemo(() => catalog.filter(item => (island === ALL_ISLANDS || item.island === island) && (region === ALL_REGIONS || item.region === region)), [catalog, island, region])
+  const islandFilter = island === ALL_ISLANDS ? '' : island
+  const regionFilter = region === ALL_REGIONS ? '' : region
   const farmFilter = farm === ALL_FARMS ? '' : farm
-  const refreshReport = useCallback(async (nextRegion = region, nextFarm = farm) => {
-    if (!owner || !nextRegion || !nextFarm || activeRequestKeyRef.current) return
+  const refreshReport = useCallback(async (nextIsland = island, nextRegion = region, nextFarm = farm) => {
+    if (!owner || !nextIsland || !nextRegion || !nextFarm || activeRequestKeyRef.current) return
     const selectedFarmIds = nextFarm === ALL_FARMS
-      ? catalog.filter(item => item.region === nextRegion).map(item => item.id)
+      ? catalog.filter(item => (nextIsland === ALL_ISLANDS || item.island === nextIsland) && (nextRegion === ALL_REGIONS || item.region === nextRegion)).map(item => item.id)
       : [Number(nextFarm)]
     if (!selectedFarmIds.length || selectedFarmIds.some(id => !Number.isInteger(id) || id <= 0)) return
-    const key = `${owner}:${scope}:${nextRegion}:${nextFarm}`
+    const key = `${owner}:${scope}:${nextIsland}:${nextRegion}:${nextFarm}`
     activeRequestKeyRef.current = key
     setLoading(true)
     try {
@@ -185,35 +218,44 @@ export default function DataComplianceDashboard() {
       activeRequestKeyRef.current = null
       setLoading(false)
     }
-  }, [catalog, farm, owner, region, scope])
+  }, [catalog, farm, island, owner, region, scope])
 
   useEffect(() => {
-    if (catalogLoading || !region || !farm || result?.key === selectionKey) return
-    if (!regions.some(value => value === region)) return
+    if (catalogLoading || !island || !region || !farm || result?.key === selectionKey) return
+    if (island !== ALL_ISLANDS && !islands.some(value => value === island)) return
+    if (region !== ALL_REGIONS && !regions.some(value => value === region)) return
     const validFarm = farm === ALL_FARMS
       ? farmOptions.length > 0
       : farmOptions.some(item => String(item.id) === farm)
-    if (validFarm) void refreshReport(region, farm)
-  }, [catalogLoading, farm, farmOptions, refreshReport, region, regions, result?.key, selectionKey])
+    if (validFarm) void refreshReport(island, region, farm)
+  }, [catalogLoading, farm, farmOptions, island, islands, refreshReport, region, regions, result?.key, selectionKey])
 
   const allRows = useMemo(() => !data ? [] : data.sources.map(source => buildComplianceRow(source, asOf, cutoff)).filter((row): row is ComplianceRow => row !== null), [data, asOf, cutoff])
-  const rows = useMemo(() => filterComplianceRows(allRows, { region, farm: farmFilter, ta, cycle, status })
-    .sort((a, b) => b.daysLate - a.daysLate || a.farmName.localeCompare(b.farmName) || a.buildingName.localeCompare(b.buildingName)), [allRows, region, farmFilter, ta, cycle, status])
+  const rows = useMemo(() => filterComplianceRows(allRows, { island: islandFilter, region: regionFilter, farm: farmFilter, ta, cycle, status })
+    .sort((a, b) => b.daysLate - a.daysLate || a.farmName.localeCompare(b.farmName) || a.buildingName.localeCompare(b.buildingName)), [allRows, islandFilter, regionFilter, farmFilter, ta, cycle, status])
   const summary = complianceSummary(rows)
   const overdueRows = rows.filter(row => row.status === 'overdue')
   const delayedFarmNames = [...new Map(overdueRows.map(row => [row.farmId, row.farmName])).values()].sort()
   const delayedTaNames = [...new Map(overdueRows.flatMap(row => row.assignedTas.map(user => [user.id, user.name] as const))).values()].sort()
   const longestDelayRows = overdueRows.filter(row => row.daysLate === summary.longestDelay)
     .map(row => `${row.farmName} / ${row.buildingName} / Cycle ${row.cycleLabel}`)
-  const { tas, hasUnassigned } = complianceFilterOptions(data?.farms ?? [], region, farmFilter)
-  const cycles = [...new Map(allRows.filter(row => (!farmFilter || String(row.farmId) === farmFilter) && (!region || row.region === region)).map(row => [row.cycleKey, `${row.farmName} · ${row.cycleLabel}`])).entries()]
-  const context = `As of ${asOf} · ${region} · ${farm === ALL_FARMS ? 'All Farms' : catalog.find(item => String(item.id) === farm)?.name || 'Selected farm'} · ${ta === 'unassigned' ? 'Unassigned' : tas.find(user => String(user.id) === ta)?.name || 'All TAs'} · ${cycles.filter(([id]) => cycle.includes(id)).map(([, label]) => label).join(', ') || 'All cycles'} · Includes current, past open and closed cycles · ${status ? COMPLIANCE_LABELS[status as ComplianceStatus] : 'All statuses'} · Growing through ${cutoff}`
+  const { tas, hasUnassigned } = complianceFilterOptions(data?.farms ?? [], islandFilter, regionFilter, farmFilter)
+  const cycles = [...new Map(allRows.filter(row => (!farmFilter || String(row.farmId) === farmFilter) && (!islandFilter || row.island === islandFilter) && (!regionFilter || row.region === regionFilter)).map(row => [row.cycleKey, `${row.farmName} · ${row.cycleLabel}`])).entries()]
+  const context = `As of ${asOf} · ${island === ALL_ISLANDS ? 'All Island Groups' : island} · ${region === ALL_REGIONS ? 'All Regions' : region} · ${farm === ALL_FARMS ? 'All Farms' : catalog.find(item => String(item.id) === farm)?.name || 'Selected farm'} · ${ta === 'unassigned' ? 'Unassigned' : tas.find(user => String(user.id) === ta)?.name || 'All TAs'} · ${cycles.filter(([id]) => cycle.includes(id)).map(([, label]) => label).join(', ') || 'All cycles'} · Includes current, past open and closed cycles · ${status ? COMPLIANCE_LABELS[status as ComplianceStatus] : 'All statuses'} · Growing through ${cutoff}`
   const ready = Boolean(data && rows.length)
   const regionGroups = groupCompliance(rows, 'region')
   const farmGroups = groupCompliance(rows, 'farm')
   const taGroups = groupCompliance(rows, 'ta')
+  const islandAccuracyData = dataAccuracyBy(rows, 'island')
+  const islandAccuracyMap = new Map(islandAccuracyData.map(item => [item.key, item]))
+  const islandAccuracy = (island === ALL_ISLANDS ? islands : [island]).filter(Boolean).map(label => islandAccuracyMap.get(label) ?? {
+    key: label, label, total: 0, placement: null, growing: null, harvest: null, cleanup: null, overallUpdated: null,
+  })
+  const summaryAccuracy = dataAccuracyBy(rows.map(row => ({ ...row, island: 'Summary' })), 'island')[0] ?? null
+  const farmScorecardRows = farmDataScorecards(rows)
+  const taScorecardRows = taMonthlyCompliance(rows, asOf)
   function resetFilters() {
-    updateQuery({ region: null, farmId: null, taId: null, cycle: null, status: null })
+    updateQuery({ island: null, region: null, farmId: null, taId: null, cycle: null, status: null })
   }
   function drillDown(by: 'region' | 'farm' | 'ta', key: string) {
     if (by === 'region') updateQuery({ region: key, taId: null, cycle: null, view: 'report' })
@@ -223,7 +265,7 @@ export default function DataComplianceDashboard() {
   async function exportExcel() {
     if (!ready) return
     setExporting(true)
-    try { await exportReportWorkbook(complianceReportSheets(rows, context, new Date().toISOString()), `broiler-data-compliance-${asOf}.xlsx`) }
+    try { await exportReportWorkbook(complianceReportSheets(rows, context, new Date().toISOString(), asOf), `broiler-data-compliance-${asOf}.xlsx`) }
     catch (error) { toast.error(errorText(error)) }
     finally { setExporting(false) }
   }
@@ -231,23 +273,24 @@ export default function DataComplianceDashboard() {
 
   return <main className="space-y-4 p-3 sm:p-5">
     <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><h1 className="text-2xl font-semibold tracking-tight">Broiler Data Compliance</h1><p className="mt-1 text-sm text-muted-foreground">Monitor data updates across regions, farms and buildings.</p></div>
-      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void refreshReport()} disabled={!region || !farm || loading || catalogLoading}><RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Refreshing…' : 'Refresh'}</Button><Button variant="outline" disabled={!ready} onClick={() => printReport()} title="Open print dialog and choose Save as PDF"><FileText className="size-4" />Export PDF</Button><Button variant="outline" disabled={!ready || exporting} onClick={() => void exportExcel()}><FileSpreadsheet className="size-4" />{exporting ? 'Exporting…' : 'Export Excel'}</Button></div>
+      <div><h1 className="text-2xl font-semibold tracking-tight">Broiler Data Compliance</h1><p className="mt-1 text-sm text-muted-foreground">Monitor data accuracy and update timeliness by island, region, farm and TA.</p></div>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void refreshReport()} disabled={!island || !region || !farm || loading || catalogLoading}><RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Refreshing…' : 'Refresh'}</Button><Button variant="outline" disabled={!ready} onClick={() => printReport()} title="Open print dialog and choose Save as PDF"><FileText className="size-4" />Export PDF</Button><Button variant="outline" disabled={!ready || exporting} onClick={() => void exportExcel()}><FileSpreadsheet className="size-4" />{exporting ? 'Exporting…' : 'Export Excel'}</Button></div>
     </header>
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{data ? `Loaded ${timestamp(data.loadedAt)} · Asia/Manila` : catalogLoading ? 'Loading available Broiler farms…' : 'Select a region and farm to load the report.'}</p><Tabs value={view} onValueChange={value => updateQuery({ view: value === 'report' ? 'report' : null })}><TabsList><TabsTrigger value="report" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><FileText className="size-4" />Report View</TabsTrigger><TabsTrigger value="chart" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><BarChart3 className="size-4" />Chart View</TabsTrigger></TabsList></Tabs></div>
-    <section aria-label="Report filters" className="grid gap-4 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5">
-      <div className="flex items-center justify-between gap-3 border-b pb-3 sm:col-span-2 xl:col-span-5">
-        <div><h2 className="text-sm font-semibold">Report filters</h2><p className="mt-0.5 text-xs text-muted-foreground">Choose a region and farm first; the report loads automatically.</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{data ? `Loaded ${timestamp(data.loadedAt)} · Asia/Manila` : catalogLoading ? 'Loading available Broiler farms…' : 'Select an island group, region and farm to load the report.'}</p><Tabs value={view} onValueChange={value => updateQuery({ view: value === 'report' ? 'report' : null })}><TabsList><TabsTrigger value="report" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><FileText className="size-4" />Report View</TabsTrigger><TabsTrigger value="chart" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><BarChart3 className="size-4" />Chart View</TabsTrigger></TabsList></Tabs></div>
+    <section aria-label="Report filters" className="grid gap-4 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-6">
+      <div className="flex items-center justify-between gap-3 border-b pb-3 sm:col-span-2 xl:col-span-6">
+        <div><h2 className="text-sm font-semibold">Report filters</h2><p className="mt-0.5 text-xs text-muted-foreground">Choose the geographic scope and farm; the report loads automatically.</p></div>
         <Button variant="ghost" size="sm" onClick={resetFilters} title="Clear all filters"><X className="size-4" />Clear filters</Button>
       </div>
-      <Filter label="Region" value={region} onChange={value => updateQuery({ region: value || null, farmId: null, taId: null, cycle: null })}><option value="">Select a region</option>{regions.map(value => <option key={value}>{value}</option>)}</Filter>
-      <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-muted-foreground"><SearchableCombobox label="Farm" required items={farmOptions.length ? [{ code: ALL_FARMS, name: 'All Farms' }, ...farmOptions.map(item => ({ code: String(item.id), name: item.name }))] : []} value={farm} onValueChange={value => updateQuery({ farmId: value === ALL_FARMS ? 'all' : value || null, taId: null, cycle: null })} placeholder={region ? 'Select a farm' : 'Select a region first'} disabled={!region || loading} className="w-full" /></div>
+      <Filter label="Island Group" value={island} onChange={value => updateQuery({ island: value === ALL_ISLANDS ? 'all' : value || null, region: null, farmId: null, taId: null, cycle: null })}><option value="">Select an island group</option><option value={ALL_ISLANDS}>All Island Groups</option>{islands.map(value => <option key={value}>{value}</option>)}</Filter>
+      <Filter label="Region" value={region} disabled={!island} onChange={value => updateQuery({ region: value === ALL_REGIONS ? 'all' : value || null, farmId: null, taId: null, cycle: null })}><option value="">Select a region</option><option value={ALL_REGIONS}>All Regions</option>{regions.map(value => <option key={value}>{value}</option>)}</Filter>
+      <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-muted-foreground"><SearchableCombobox label="Farm" required items={farmOptions.length ? [{ code: ALL_FARMS, name: 'All Farms' }, ...farmOptions.map(item => ({ code: String(item.id), name: item.name }))] : []} value={farm} onValueChange={value => updateQuery({ farmId: value === ALL_FARMS ? 'all' : value || null, taId: null, cycle: null })} placeholder={region ? 'Select a farm' : 'Select a region first'} disabled={!island || !region || loading} className="w-full" /></div>
       <Filter label="Assigned TA" value={ta} onChange={value => updateQuery({ taId: value || null })}><option value="">All TAs</option>{tas.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}{hasUnassigned && <option value="unassigned">Unassigned</option>}</Filter>
       <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-muted-foreground"><SearchableCombobox multiple label="Cycle" items={cycles.map(([code, name]) => ({ code, name }))} value={cycle} onValueChange={value => updateQuery({ cycle: value })} placeholder="All cycles" className="w-full" /></div>
       <Filter label="Status" value={status} onChange={value => updateQuery({ status: value || null })}><option value="">All statuses</option>{FILTER_STATUSES.map(value => <option key={value} value={value}>{COMPLIANCE_LABELS[value]}</option>)}</Filter>
     </section>
     {loading && !current && <div role="status" aria-label="Loading compliance dashboard" className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-28 rounded-xl" />)}</div><div className="grid gap-4 xl:grid-cols-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-72 rounded-xl" />)}</div></div>}
-    {!loading && !current && !catalogResult?.error && <section className="rounded-xl border bg-card p-8 text-center"><RefreshCw className="mx-auto mb-3 size-8 text-muted-foreground" /><h2 className="font-medium">Select a region and farm</h2><p className="mt-1 text-sm text-muted-foreground">The compliance report loads automatically after both selections are complete.</p></section>}
+    {!loading && !current && !catalogResult?.error && <section className="rounded-xl border bg-card p-8 text-center"><RefreshCw className="mx-auto mb-3 size-8 text-muted-foreground" /><h2 className="font-medium">Select an island group, region and farm</h2><p className="mt-1 text-sm text-muted-foreground">Use All Island Groups, All Regions or All Farms when you need a broader scorecard.</p></section>}
     {catalogResult?.owner === owner && catalogResult.error && <section role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-5"><h2 className="font-semibold">Farm choices could not be loaded</h2><p className="mt-1 text-sm">{catalogResult.error}</p></section>}
     {current?.error && <section role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-5"><h2 className="font-semibold">The report could not be loaded</h2><p className="mt-1 text-sm">{current.error}</p><p className="mt-2 text-xs text-muted-foreground">No partial KPI totals are displayed. Use Refresh to retry.</p></section>}
     {data && <div ref={reportRef} className="space-y-4 text-foreground">
@@ -314,6 +357,8 @@ export default function DataComplianceDashboard() {
       <section className="rounded-lg border bg-card p-3 text-xs text-muted-foreground"><p><strong>Daily reporting deadline:</strong> Growing entries are expected through yesterday; today is not counted as overdue.</p><p className="mt-1">{COMPLIANCE_RULE}</p><p className="mt-1">{summary.review} need review · {summary.notDue} not yet due (excluded from the KPI). Assigned TAs are associated User accounts; Admin and Super Admin accounts are excluded. Shared farms count once in overall KPIs and once for each TA in TA summaries.</p><details className="mt-2"><summary className="cursor-pointer">Report definitions and coverage</summary><p className="mt-2">{COMPLIANCE_HISTORY_NOTE} All totals count building-cycle records. When several cycles are selected, the same building can appear more than once. Farms are limited to active, approved Broiler farms visible to your account.</p><p className="mt-1">Delay is the number of reporting days from the oldest missing required date through the selected cutoff, inclusive. Zero saved measurements count as entries; empty or voided rows do not.</p></details></section>
       {data.warnings.length > 0 && <ul role="alert" className="rounded-lg border p-3 text-xs">{data.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {!rows.length ? <section className="rounded-xl border bg-card p-12 text-center"><BarChart3 className="mx-auto mb-3 size-8 text-muted-foreground" /><h2 className="font-medium">No matching building cycles</h2><p className="mt-1 text-sm text-muted-foreground">Adjust the filters or cycle scope. Only records available to your account are included.</p></section> : <>
+        <DataAccuracyTable rows={islandAccuracy} summary={summaryAccuracy} summaryLabel={island === ALL_ISLANDS ? 'National' : 'Selected scope'} />
+        <div className="grid gap-4 xl:grid-cols-2 print:grid-cols-2"><FarmScorecard rows={farmScorecardRows} /><TaScorecard rows={taScorecardRows} /></div>
         {view === 'chart' ? <div className="grid gap-4 xl:grid-cols-2 print:grid-cols-2">
           <ComplianceBarChart title="Compliance by Region" description="Updated ÷ assessed building-cycles" data={regionGroups} series={[{ key: 'compliance', label: 'Compliance %', color: 'var(--primary)' }]} percent onSelect={key => drillDown('region', key)} exportContext={context} />
           <ComplianceBarChart title="Overdue Buildings by TA" description="Unassigned records are shown separately from named TAs" data={taGroups.filter(row => row.overdue > 0)} series={[{ key: 'short', label: '1–2 days', color: 'var(--chart-4)' }, { key: 'medium', label: '3–5 days', color: 'var(--chart-1)' }, { key: 'long', label: '6+ days', color: 'var(--destructive)' }]} onSelect={key => drillDown('ta', key)} exportContext={context} />

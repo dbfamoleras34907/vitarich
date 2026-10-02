@@ -15,6 +15,7 @@ export const COMPLIANCE_HISTORY_NOTE = 'Evaluated from currently saved records, 
 export type ComplianceSource = {
   farmId: number
   farmName: string
+  island: string
   region: string
   ta: string | null
   assignedTas: FarmAssignedUser[]
@@ -123,7 +124,7 @@ export function buildComplianceRow(source: ComplianceSource, asOf: string, cutof
     : assessed.some(value => value.status === 'review') ? 'review'
       : assessed.some(value => value.status === 'updated') ? 'updated' : 'not-due'
   return {
-    farmId: source.farmId, farmName: source.farmName, region: source.region, ta: source.ta, assignedTas: source.assignedTas,
+    farmId: source.farmId, farmName: source.farmName, island: source.island, region: source.region, ta: source.ta, assignedTas: source.assignedTas,
     cycleKey: source.cycleKey, cycleLabel: source.cycleLabel, cycleStatus: source.cycleStatus, closedAt: source.closedAt,
     building,
     key: `${source.farmId}:${source.cycleKey}:${building.flockCardId}`, buildingId: building.buildingWarehouseId,
@@ -148,12 +149,12 @@ export function complianceSummary(rows: ComplianceRow[]) {
   }
 }
 
-export function groupCompliance(rows: ComplianceRow[], by: 'region' | 'farm' | 'ta') {
+export function groupCompliance(rows: ComplianceRow[], by: 'island' | 'region' | 'farm' | 'ta') {
   const groups = new Map<string, { label: string; rows: ComplianceRow[] }>()
   for (const row of rows) {
     const entries = by === 'ta'
       ? row.assignedTas.length ? row.assignedTas.map(user => ({ key: String(user.id), label: user.name })) : [{ key: 'unassigned', label: 'Unassigned' }]
-      : [{ key: by === 'farm' ? String(row.farmId) : row.region, label: by === 'farm' ? row.farmName : row.region }]
+      : [{ key: by === 'farm' ? String(row.farmId) : by === 'island' ? row.island : row.region, label: by === 'farm' ? row.farmName : by === 'island' ? row.island : row.region }]
     for (const { key, label } of entries) {
       const group = groups.get(key) ?? { label, rows: [] }
       group.rows.push(row)
@@ -172,8 +173,9 @@ function matchesSelection(value: string, selection: string | string[]) {
   return Array.isArray(selection) ? !selection.length || selection.includes(value) : !selection || selection === value
 }
 
-export function filterComplianceRows(rows: ComplianceRow[], filters: { region: string; farm: string | string[]; ta: string; cycle: string | string[]; status: string }) {
-  return rows.filter(row => (!filters.region || row.region === filters.region)
+export function filterComplianceRows(rows: ComplianceRow[], filters: { island?: string; region: string; farm: string | string[]; ta: string; cycle: string | string[]; status: string }) {
+  return rows.filter(row => (!filters.island || row.island === filters.island)
+    && (!filters.region || row.region === filters.region)
     && matchesSelection(String(row.farmId), filters.farm)
     && matchesSelection(row.cycleKey, filters.cycle)
     && (!filters.status || row.status === filters.status)
@@ -185,11 +187,130 @@ export function filterComplianceRows(rows: ComplianceRow[], filters: { region: s
     })
 }
 
-export function complianceFilterOptions(catalog: ComplianceFarm[], region: string, farm: string | string[]) {
-  const farms = catalog.filter(item => !region || item.region === region)
+export function complianceFilterOptions(catalog: ComplianceFarm[], island: string, region: string, farm: string | string[]) {
+  const farms = catalog.filter(item => (!island || item.island === island) && (!region || item.region === region))
   const selectedFarms = farms.filter(item => matchesSelection(String(item.id), farm))
   const tas = [...new Map(selectedFarms.flatMap(item => item.assignedTas.map(user => [String(user.id), user] as const))).values()]
     .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id)
-  return { regions: [...new Set(catalog.map(item => item.region))].sort(), farms, tas,
+  return { islands: [...new Set(catalog.map(item => item.island))].sort(), regions: [...new Set(catalog.filter(item => !island || item.island === island).map(item => item.region))].sort(), farms, tas,
     hasUnassigned: selectedFarms.some(item => !item.assignedTas.length) }
+}
+
+const percentage = (numerator: number, denominator: number) => denominator ? numerator / denominator * 100 : null
+
+export type DataAccuracyRow = {
+  key: string
+  label: string
+  total: number
+  placement: number | null
+  growing: number | null
+  harvest: number | null
+  cleanup: number | null
+  overallUpdated: number | null
+}
+
+/** Stage coverage proxy; it measures saved/up-to-date records, not field-value correctness. */
+export function dataAccuracyBy(rows: ComplianceRow[], by: 'island' | 'farm'): DataAccuracyRow[] {
+  const groups = new Map<string, { label: string; rows: ComplianceRow[] }>()
+  for (const row of rows) {
+    const key = by === 'farm' ? String(row.farmId) : row.island
+    const label = by === 'farm' ? row.farmName : row.island
+    const group = groups.get(key) ?? { label, rows: [] }
+    group.rows.push(row)
+    groups.set(key, group)
+  }
+  return [...groups].map(([key, group]) => {
+    const total = group.rows.length
+    const stageScore = (stage: ComplianceStage) => percentage(group.rows.filter(row => row.stages[stage].status === 'updated').length, total)
+    const updatedStages = group.rows.reduce((sum, row) => sum + COMPLIANCE_STAGES.filter(stage => row.stages[stage].status === 'updated').length, 0)
+    return {
+      key,
+      label: group.label,
+      total,
+      placement: stageScore('placement'),
+      growing: stageScore('growing'),
+      harvest: stageScore('harvest'),
+      cleanup: stageScore('cleanup'),
+      overallUpdated: percentage(updatedStages, total * COMPLIANCE_STAGES.length),
+    }
+  }).sort((a, b) => a.label.localeCompare(b.label))
+}
+
+export type FarmDataScorecard = DataAccuracyRow & {
+  island: string
+  currentStage: string
+  latestData: string | null
+  updateStatus: 'Updated' | 'Not Updated'
+}
+
+export function farmDataScorecards(rows: ComplianceRow[]): FarmDataScorecard[] {
+  const accuracy = dataAccuracyBy(rows, 'farm')
+  return accuracy.map(score => {
+    const farmRows = rows.filter(row => String(row.farmId) === score.key)
+    const latestData = latest(farmRows.flatMap(row => COMPLIANCE_STAGES.map(stage => row.stages[stage].latestDate)))
+    const currentStage = [...COMPLIANCE_STAGES].reverse().find(stage => farmRows.some(row => row.stages[stage].latestDate === latestData))
+    return {
+      ...score,
+      island: farmRows[0]?.island ?? 'Island not set',
+      currentStage: currentStage ? currentStage[0].toUpperCase() + currentStage.slice(1) : 'Not started',
+      latestData,
+      updateStatus: farmRows.some(row => row.status === 'overdue') ? 'Not Updated' : 'Updated',
+    }
+  })
+}
+
+export type TaMonthlyCompliance = {
+  key: string
+  label: string
+  requiredUpdates: number
+  onTimeUpdates: number
+  compliance: number | null
+  kpiStatus: 'Meets' | 'Below Target' | 'Needs Improvement' | 'Not assessed'
+}
+
+function manilaDateTime(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  return manilaToday(date)
+}
+
+/** Current-month timeliness based on initial createdAt timestamps and required activity dates. */
+export function taMonthlyCompliance(rows: ComplianceRow[], asOf: string, target = 95): TaMonthlyCompliance[] {
+  if (!complianceDate(asOf)) throw new Error('Choose a valid reporting date.')
+  const month = asOf.slice(0, 7)
+  const dueThrough = shiftComplianceDate(asOf, -1)
+  const groups = new Map<string, { label: string; required: number; onTime: number }>()
+  for (const row of rows) {
+    const obligations: { dueDate: string; createdAt?: string }[] = []
+    const start = complianceDate(row.building.startDate)
+    if (start?.startsWith(month) && start <= dueThrough) {
+      const placement = row.building.placements
+        .filter(item => !item.isVoided && item.status === 'Posted')
+        .sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))[0]
+      obligations.push({ dueDate: start, createdAt: placement?.createdAt })
+    }
+    if (start && row.stages.growing.status !== 'review' && row.stages.growing.status !== 'not-due') {
+      const recorded = activeGrowingLines(row.building)
+        .filter(line => Number.isInteger(line.age) && line.age >= 1)
+        .map(line => ({ dueDate: shiftComplianceDate(start, line.age), createdAt: line.createdAt }))
+      const missing = row.stages.growing.missingDates.map(dueDate => ({ dueDate }))
+      const byDate = new Map([...recorded, ...missing].filter(item => item.dueDate.startsWith(month) && item.dueDate <= dueThrough).map(item => [item.dueDate, item]))
+      obligations.push(...byDate.values())
+    }
+    for (const ta of row.assignedTas) {
+      const group = groups.get(String(ta.id)) ?? { label: ta.name, required: 0, onTime: 0 }
+      group.required += obligations.length
+      group.onTime += obligations.filter(item => {
+        const savedDate = manilaDateTime(item.createdAt)
+        return Boolean(savedDate && savedDate <= item.dueDate)
+      }).length
+      groups.set(String(ta.id), group)
+    }
+  }
+  return [...groups].map(([key, group]) => {
+    const compliance = percentage(group.onTime, group.required)
+    const kpiStatus: TaMonthlyCompliance['kpiStatus'] = compliance === null ? 'Not assessed' : compliance >= target ? 'Meets' : compliance >= 85 ? 'Below Target' : 'Needs Improvement'
+    return { key, label: group.label, requiredUpdates: group.required, onTimeUpdates: group.onTime, compliance, kpiStatus }
+  }).sort((a, b) => (b.compliance ?? -1) - (a.compliance ?? -1) || a.label.localeCompare(b.label))
 }

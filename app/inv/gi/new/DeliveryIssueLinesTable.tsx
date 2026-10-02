@@ -1,11 +1,13 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { PackageCheck, Trash2 } from 'lucide-react'
+import { PackageCheck, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
@@ -53,6 +55,8 @@ type DeliveryIssueLinesTableProps = {
   showVariance?: boolean
   lockedQuantityEditable?: boolean
   allowDuplicateBuildings?: boolean
+  enableMobileLineModal?: boolean
+  canEdit?: boolean
   showTransportFields?: boolean
   onPasteRows?: (rows: DeliveryPasteRow[], startRow: number) => Promise<void>
   enableCopyDown?: boolean
@@ -103,6 +107,8 @@ export default function DeliveryIssueLinesTable({
   showVariance = false,
   lockedQuantityEditable = false,
   allowDuplicateBuildings = false,
+  enableMobileLineModal = false,
+  canEdit = true,
   showTransportFields = false,
   onPasteRows,
   enableCopyDown = false,
@@ -130,6 +136,9 @@ export default function DeliveryIssueLinesTable({
 }: DeliveryIssueLinesTableProps) {
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [pasting, setPasting] = useState(false)
+  const [mobileLineGroupKey, setMobileLineGroupKey] = useState<string | null>(null)
+  const [mobileLineSnapshot, setMobileLineSnapshot] = useState<GoodsIssueLine[] | null>(null)
+  const [mobileLineIsNew, setMobileLineIsNew] = useState(false)
   const spreadsheetEnabled = excelAppearance && showTransportFields && Boolean(onPasteRows)
   const allocationGroups = useMemo(() => {
     const groups = new Map<string, GoodsIssueLine[]>()
@@ -211,8 +220,84 @@ export default function DeliveryIssueLinesTable({
     } : current)
   }
 
+  const openMobileLineEditor = (line: GoodsIssueLine, isNew = false) => {
+    setMobileLineSnapshot(issue.lines.map(candidate => ({ ...candidate })))
+    setMobileLineGroupKey(getAllocationGroupKey(line))
+    setMobileLineIsNew(isNew)
+  }
+
+  const addMobileLine = () => {
+    const line = newLine()
+    setIssue(current => current ? { ...current, lines: [...current.lines, line] } : current)
+    setMobileLineSnapshot(issue.lines.map(candidate => ({ ...candidate })))
+    setMobileLineGroupKey(getAllocationGroupKey(line))
+    setMobileLineIsNew(true)
+  }
+
+  const closeMobileLineEditor = (save: boolean) => {
+    if (!save && mobileLineSnapshot) {
+      setIssue(current => current ? { ...current, lines: mobileLineSnapshot } : current)
+    }
+    setMobileLineGroupKey(null)
+    setMobileLineSnapshot(null)
+    setMobileLineIsNew(false)
+  }
+
+  const saveMobileLineEditor = () => {
+    if (!mobileLine) return
+    if (!mobileLine.fromWarehouseCode) {
+      toast.error(`Select a ${warehouseLabel.toLowerCase()}.`)
+      return
+    }
+    if (!mobileLine.itemCode) {
+      toast.error('Select an item.')
+      return
+    }
+    if (mobileQuantity < 1 && !(showVariance && mobileQuantity === 0 && canCleanupAtZero(mobileLine))) {
+      toast.error(`${quantityLabel} must be at least 1.`)
+      return
+    }
+    if (!mobileLine.altUom) {
+      toast.error('Select a UOM.')
+      return
+    }
+    if ((itemNeedsBatch(mobileLine) || lineHasPlacementBatchOptions(mobileLine)) && !mobileBatchSummary) {
+      toast.error('Select a batch.')
+      return
+    }
+    if (showTransportFields && (!mobileLine.deliveredDate || !mobileLine.haulerName?.trim()
+      || !mobileLine.plateNumber?.trim() || !mobileLine.destination?.trim()
+      || !mobileLine.liveSalesCustomerName?.trim() || mobileLine.truckSeal === null || mobileLine.truckSeal === undefined)) {
+      toast.error('Complete the required delivery and transport details.')
+      return
+    }
+    closeMobileLineEditor(true)
+  }
+
+  const mobileLine = mobileLineGroupKey
+    ? issue.lines.find(line => getAllocationGroupKey(line) === mobileLineGroupKey) ?? null
+    : null
+  const mobileFlockState = mobileLine ? lineFlockCardInfo[String(mobileLine.id)] : undefined
+  const mobileItems = mobileLine ? getItemsForLine(mobileLine) : []
+  const mobileQuantity = mobileLine
+    ? mobileLine.requestedAltQty ?? issue.lines
+      .filter(line => getAllocationGroupKey(line) === mobileLineGroupKey)
+      .reduce((sum, line) => sum + Number(line.altQty || 0), 0)
+    : 0
+  const mobileBatchSummary = mobileLine
+    ? issue.lines.filter(line => getAllocationGroupKey(line) === mobileLineGroupKey && line.batchNumber)
+      .map(line => `${line.batchNumber} (${formatQuantity(line.altQty)})`).join(', ')
+    : ''
+
   return (
     <>
+    {enableMobileLineModal && issue.status === 'Draft' && (
+      <div className="flex justify-end border-b bg-muted/20 p-2 md:hidden">
+        <Button type="button" size="sm" onClick={addMobileLine} disabled={!canEdit}>
+          <Plus className="size-4" /> Add Line
+        </Button>
+      </div>
+    )}
     {spreadsheetEnabled && <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
       <p className="text-xs text-muted-foreground">Right-click an editable cell and choose Copy down, or press Ctrl+Down, to fill the rows below. Paste Excel cells to add extra rows automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
       <Button type="button" size="sm" variant="outline" onClick={async () => {
@@ -296,7 +381,7 @@ export default function DeliveryIssueLinesTable({
         </colgroup>}
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="w-[44px] border-r px-2 py-2 text-center">#</th>
+            <th className="w-[92px] border-r px-2 py-2 text-center md:w-[44px]"><span className="md:hidden">Actions</span><span className="hidden md:inline">#</span></th>
             {spreadsheetEnabled && <th className="border-r px-3 py-2">Delivered Date {requiredMark}</th>}
             <th className="w-[240px] border-r px-3 py-2">{warehouseLabel} {requiredMark}</th>
             <th className="w-[13%] border-r px-3 py-2">Flock Card</th>
@@ -383,8 +468,23 @@ export default function DeliveryIssueLinesTable({
               .join(', ')
             return (
               <tr key={line.id} data-copy-down-row={index} className="border-t odd:bg-white even:bg-stone-50/70 hover:bg-stone-50">
-                <td className="border-r p-0 text-center align-middle text-stone-500">
-                  {index + 1}
+                <td className="border-r p-1 text-center align-middle text-stone-500">
+                  <div className="flex items-center justify-center gap-1">
+                    <span className="hidden min-w-5 md:inline">{index + 1}</span>
+                    {enableMobileLineModal && (
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        className="text-primary md:hidden"
+                        onClick={() => openMobileLineEditor(line)}
+                        disabled={!canEdit || activeDocumentIsPosted}
+                        aria-label={`Edit row ${index + 1}`}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </td>
                 {spreadsheetEnabled && <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'deliveredDate')}>
                   <Input type="date" value={line.deliveredDate ?? ''} required readOnly={activeDocumentIsPosted}
@@ -763,6 +863,118 @@ export default function DeliveryIssueLinesTable({
       </table>
     </div>
     </fieldset>
+
+    <Dialog open={Boolean(mobileLine)} onOpenChange={open => !open && closeMobileLineEditor(false)}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto md:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{mobileLineIsNew ? 'Add' : 'Edit'} {showHarvestWeight ? 'Harvest & Delivery' : 'Clean up'} Line</DialogTitle>
+          <DialogDescription>Complete the line details, then save your changes.</DialogDescription>
+        </DialogHeader>
+        {mobileLine && (
+          <div className="grid gap-3 md:grid-cols-2">
+            {showTransportFields && (
+              <div className="space-y-1.5">
+                <Label required>Delivered Date</Label>
+                <Input type="date" value={mobileLine.deliveredDate ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { deliveredDate: event.target.value })} />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label required>{warehouseLabel}</Label>
+              <select
+                value={mobileLine.fromWarehouseCode}
+                disabled={lockCycleCloseout && !allowBuildingSelection}
+                onChange={event => void selectLineWarehouse(mobileLine, event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm md:h-8"
+              >
+                <option value="">Select {warehouseLabel.toLowerCase()}...</option>
+                {farmWarehouses.map(warehouse => <option key={warehouse.id} value={warehouse.whse_code ?? ''}>{warehouse.whse_code} - {warehouse.whse_name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Flock Card</Label>
+              <Input readOnly value={mobileLine.flockCardNo || mobileFlockState?.info?.cardNo || ''} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cycle</Label>
+              <Input readOnly value={formatBroilerCycleNumbers(mobileLine.cycleMask ? mobileLine : mobileFlockState?.info ?? {})} />
+            </div>
+            <div className="space-y-1.5">
+              <Label required>Item</Label>
+              <select
+                value={mobileLine.itemCode}
+                disabled={lockCycleCloseout}
+                onChange={event => void selectItem(mobileLine, event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm md:h-8"
+              >
+                <option value="">Select item...</option>
+                {mobileItems.map(item => <option key={item.id} value={item.item_code ?? ''}>{item.item_code} - {item.item_name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label required>{quantityLabel}</Label>
+              <Input
+                type="number"
+                min={showVariance && !canCleanupAtZero(mobileLine) ? 1 : 0}
+                step="any"
+                value={mobileQuantity}
+                readOnly={lockCycleCloseout && !lockedQuantityEditable}
+                onChange={event => {
+                  const requestedAltQty = Math.max(numberValue(event.target.value), 0)
+                  updateLine(mobileLine.id, {
+                    requestedAltQty,
+                    ...(!mobileLine.batchNumber ? {
+                      altQty: requestedAltQty,
+                      baseQty: calculateBaseQty(requestedAltQty, mobileLine.altUom, mobileLine.baseUom),
+                    } : {}),
+                  })
+                }}
+                onBlur={() => onTransferQuantityChange(mobileLine, mobileQuantity)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label required>Batch</Label>
+              <Button type="button" variant="outline" className="w-full justify-start" disabled={lockCycleCloseout || !canOpenBatchSelector(mobileLine)} onClick={() => openBatchSelector(mobileLine)}>
+                <PackageCheck className="size-4" />
+                <span className="truncate">{mobileBatchSummary || 'Select batches'}</span>
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              <Label required>UOM</Label>
+              <select
+                value={mobileLine.altUom}
+                disabled={lockCycleCloseout || !mobileLine.baseUom}
+                onChange={event => updateAllocationGroup(mobileLineGroupKey!, {
+                  altUom: event.target.value,
+                  baseQty: calculateBaseQty(mobileQuantity, event.target.value, mobileLine.baseUom),
+                })}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm md:h-8"
+              >
+                <option value="">Select UOM...</option>
+                {getGroupUoms(mobileLine.baseUom).map(option => <option key={`${option.groupId}-${option.uomCode}`} value={option.uomCode}>{option.uomCode}</option>)}
+              </select>
+            </div>
+            {showHarvestWeight && <>
+              <div className="space-y-1.5"><Label>Age</Label><Input type="number" min="0" value={mobileLine.harvestAge ?? mobileFlockState?.info?.age ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { harvestAge: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
+              <div className="space-y-1.5"><Label>{bodyWeightLabel}</Label><Input type="number" min="0" step="any" value={mobileLine.averageLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { averageLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
+              <div className="space-y-1.5"><Label>Net Live Weight</Label><Input type="number" min="0" step="any" value={mobileLine.netLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { netLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
+              {showTsDrNumber && <div className="space-y-1.5"><Label>TS/DR #</Label><Input value={mobileLine.tsDrNo ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { tsDrNo: event.target.value })} /></div>}
+            </>}
+            {showTransportFields && <>
+              <div className="space-y-1.5"><Label required>Hauler Name</Label><Input value={mobileLine.haulerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { haulerName: event.target.value })} /></div>
+              <div className="space-y-1.5"><Label required>Plate Number</Label><Input value={mobileLine.plateNumber ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { plateNumber: event.target.value })} /></div>
+              <div className="space-y-1.5"><Label required>Destination</Label><Select value={mobileLine.destination ?? ''} onValueChange={value => updateAllocationGroup(mobileLineGroupKey!, { destination: value, liveSalesCustomerName: '' })}><SelectTrigger className="w-full"><SelectValue placeholder="Select destination" /></SelectTrigger><SelectContent><SelectItem value="Dressing Plant">Dressing Plant</SelectItem><SelectItem value="Live Sales">Live Sales</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5"><Label required>Destination Details</Label><Input value={mobileLine.liveSalesCustomerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { liveSalesCustomerName: event.target.value })} /></div>
+              <div className="space-y-1.5"><Label required>Truck Seal</Label><Input type="number" value={mobileLine.truckSeal ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { truckSeal: event.target.value === '' ? null : Number(event.target.value) })} /></div>
+            </>}
+            {showLineRemarks && <div className="space-y-1.5 md:col-span-2"><Label>Remarks</Label><Input value={mobileLine.lineRemarks ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { lineRemarks: event.target.value })} /></div>}
+          </div>
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => closeMobileLineEditor(false)}>Cancel</Button>
+          <Button type="button" onClick={saveMobileLineEditor}>{mobileLineIsNew ? <Plus className="size-4" /> : <Pencil className="size-4" />}{mobileLineIsNew ? 'Add Line' : 'Save Changes'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }

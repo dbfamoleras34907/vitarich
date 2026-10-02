@@ -5,8 +5,8 @@ import { Activity, Bird, CalendarDays, ChevronRight, Droplets, HeartPulse, Refre
 import { toast } from 'sonner'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import CycleReportLayout from '@/app/brd/cycle-master/[cycleId]/Layout'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -42,19 +42,22 @@ function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
 function MetricCard({ title, icon: Icon, onClick, children, note }: {
   title: string; icon: typeof Bird; onClick: () => void; children: ReactNode; note?: string
 }) {
-  return <button type="button" onClick={onClick} title={note} className="group flex min-h-32 min-w-0 flex-col rounded-lg border border-stone-200 bg-card p-3 text-left transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-primary dark:border-border dark:hover:bg-muted group-data-[compact=true]/dashboard:min-h-0 group-data-[compact=true]/dashboard:flex-row group-data-[compact=true]/dashboard:flex-wrap group-data-[compact=true]/dashboard:items-baseline group-data-[compact=true]/dashboard:gap-x-4 group-data-[compact=true]/dashboard:gap-y-1 group-data-[compact=true]/dashboard:rounded-none group-data-[compact=true]/dashboard:border-0 group-data-[compact=true]/dashboard:bg-transparent group-data-[compact=true]/dashboard:px-1 group-data-[compact=true]/dashboard:py-1.5">
-    <span className="mb-4 flex w-full items-center gap-2 text-xs font-medium group-data-[compact=true]/dashboard:mb-0 group-data-[compact=true]/dashboard:w-36 group-data-[compact=true]/dashboard:shrink-0">
-      <span className="rounded-md bg-sidebar-accent p-1.5 text-primary group-data-[compact=true]/dashboard:hidden"><Icon className="size-3.5" /></span>
-      {title}<ChevronRight className="ml-auto size-3.5 text-muted-foreground group-hover:text-primary" />
+  return <button type="button" onClick={onClick} title={note} className="group flex min-h-20 min-w-0 flex-col rounded-md border bg-card p-2.5 text-left shadow-[var(--starbucks-card-shadow)] transition-[border-color,background-color] hover:border-primary/40 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-primary">
+    <span className="flex w-full min-w-0 items-center gap-2 text-xs font-semibold">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-primary">
+        <Icon className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1 leading-4">{title}</span>
+      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
     </span>
-    <span className="grid w-full grid-cols-2 gap-3 group-data-[compact=true]/dashboard:flex group-data-[compact=true]/dashboard:w-auto group-data-[compact=true]/dashboard:flex-wrap group-data-[compact=true]/dashboard:gap-x-5 group-data-[compact=true]/dashboard:gap-y-1">{children}</span>
-    {note && <span className="mt-3 group-data-[compact=true]/dashboard:sr-only text-[10px] leading-relaxed text-muted-foreground">{note}</span>}
+    <span className="mt-2 flex w-full min-w-0 flex-wrap gap-x-4 gap-y-1 border-t pt-2">{children}</span>
+    {note && <span className="sr-only">{note}</span>}
   </button>
 }
 
 function Metric({ label, value, unit }: { label: string; value: ReactNode; unit?: string }) {
-  return <span className="min-w-0 group-data-[compact=true]/dashboard:inline-flex group-data-[compact=true]/dashboard:flex-wrap group-data-[compact=true]/dashboard:items-baseline group-data-[compact=true]/dashboard:gap-x-1"><span className="mb-1 block text-[10px] text-muted-foreground group-data-[compact=true]/dashboard:mb-0 group-data-[compact=true]/dashboard:after:content-[':']">{label}</span>
-    <span className="block break-words text-lg group-data-[compact=true]/dashboard:text-xs font-medium tabular-nums leading-tight">{value}{unit && <span className="ml-1 text-xs font-normal text-muted-foreground">{unit}</span>}</span></span>
+  return <span className="min-w-0 flex-1 basis-[7rem]"><span className="block truncate text-[10px] leading-3 text-muted-foreground">{label}</span>
+    <span className="mt-0.5 block break-words text-xs font-semibold leading-4 tabular-nums">{value}{unit && <span className="ml-1 font-normal text-muted-foreground">{unit}</span>}</span></span>
 }
 
 const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join(', ') || '—'
@@ -108,7 +111,7 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
   ]
   return <aside className="min-w-0 self-start rounded-lg border border-stone-200 bg-card p-3 dark:border-border lg:sticky lg:top-3">
     <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold"><Activity className="size-4 text-primary" />Cycle Details</h2>
-    <dl className="space-y-2.5 group-data-[compact=true]/dashboard:space-y-1 text-[11px]">{details.map(([label, value]) => <div key={label} className="flex items-baseline gap-1.5">
+    <dl className="space-y-1 text-[11px]">{details.map(([label, value]) => <div key={label} className="flex items-baseline gap-1.5">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <span className="min-w-2 flex-1 border-b border-dotted border-border" aria-hidden="true" />
       <dd className="max-w-[60%] break-words text-right font-medium tabular-nums">{value}</dd>
@@ -130,7 +133,6 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
   const [selectedBuilding, setSelectedBuilding] = useState('')
   const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(initialFarmId && initialCycleId ? { farmId: initialFarmId, key: `${initialCycleKind}:${initialCycleId}` } : null)
   const [tab, setTab] = useState<DetailTab>('overview')
-  const [compact, setCompact] = useState(false)
   const [reload, setReload] = useState(0)
   const [catalog, setCatalog] = useState<{ data: CycleDashboardCatalog; owner: string } | null>(null)
   const [result, setResult] = useState<{ data: CycleDashboardData | null; error: string; farmId: number; loadedAt: string; revision: number; owner: string; cycleKey: string } | null>(null)
@@ -204,21 +206,17 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
 
   if (blocked) return <div className="m-4 flex items-center gap-2 rounded-md border p-4 text-sm"><ShieldAlert className="size-4" />You do not have permission to view Cycle Dashboard.</div>
 
-  return <main data-compact={compact} className="group/dashboard min-h-[calc(100vh-4rem)] text-stone-950 dark:text-foreground">
-    <header className="mt-2 flex flex-wrap items-center justify-between gap-3 print:hidden">
+  return <PageShell className="print:p-0">
+    <PageHeader className="print:hidden">
       <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Dashboard" />
-      <div className="flex items-center gap-3">
-        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-xs font-medium">
-          <Switch checked={compact} onCheckedChange={setCompact} aria-label="Compact view" className="data-[state=checked]:bg-[#006241]" />
-          Compact view
-        </label>
-      <Button type="button" variant="outline" className="h-9 gap-2 rounded-lg px-3 text-xs" onClick={() => setReload(value => value + 1)} disabled={loading} aria-label="Refresh Cycle Dashboard">
+      <PageHeaderActions>
+      <Button type="button" variant="outline" size="sm" onClick={() => setReload(value => value + 1)} disabled={loading} aria-label="Refresh Cycle Dashboard">
         <RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Loading...' : 'Refresh'}
       </Button>
-      </div>
-    </header>
-    <div className="mt-3 min-w-0 space-y-3 pb-4 group-data-[compact=true]/dashboard:mt-2 group-data-[compact=true]/dashboard:space-y-2">
-      <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 group-data-[compact=true]/dashboard:p-2 dark:border-border dark:bg-muted/30 print:hidden sm:grid-cols-2 lg:grid-cols-[minmax(0,420px)_minmax(0,360px)]">
+      </PageHeaderActions>
+    </PageHeader>
+    <div className="min-w-0 space-y-2 pb-4">
+      <div className="grid gap-2 rounded-md border bg-muted/30 p-2 print:hidden sm:grid-cols-2 lg:grid-cols-[minmax(0,420px)_minmax(0,360px)]">
         <SearchableCombobox className="w-full min-w-0 [&_label]:text-[11px]" inputClassName="h-9 text-xs" label="Farm" value={farmId ? String(farmId) : ''}
           items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
           onValueChange={value => { setSelectedFarm(value); setCycleSelection(null); setSelectedBuilding(''); setTab('overview') }} disabled={!farmsReady} />
@@ -241,7 +239,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
           : !data?.selectedCycle ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No cycles found for this farm.</div>
           : !buildings?.length ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No buildings found for this cycle.</div>
             : <>
-              <div className="min-w-0 space-y-2 rounded-xl border border-stone-200 bg-card p-3 group-data-[compact=true]/dashboard:p-2 dark:border-border print:hidden">
+              <div className="min-w-0 space-y-2 rounded-md border bg-card p-2 print:hidden">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
                   <div className="flex min-w-0 max-w-full items-center gap-2">
                     <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Building</span>
@@ -279,13 +277,13 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
                 </div>}
               </div>
 
-              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="min-w-0 space-y-3 pt-3 group-data-[compact=true]/dashboard:pt-2">
+              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="min-w-0 space-y-2 pt-2">
               {!cycles.length ? <div className="rounded-lg border bg-card p-12 text-center"><h2 className="text-sm font-medium">No records in this cycle</h2><p className="mt-2 text-xs text-muted-foreground">{title} has no non-void placement in {data.selectedCycle.label}.</p></div> : <>
-                <div id="cycle-details-panel" role="tabpanel" aria-labelledby={`detail-tab-${tab}`} className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)] group-data-[compact=true]/dashboard:gap-2 lg:group-data-[compact=true]/dashboard:grid-cols-[220px_minmax(0,1fr)]">
+                <div id="cycle-details-panel" role="tabpanel" aria-labelledby={`detail-tab-${tab}`} className="grid items-start gap-2 lg:grid-cols-[220px_minmax(0,1fr)]">
                   <CycleDetails cycles={cycles} farmName={farm.name} buildingName={title} />
-                  <div className="min-w-0 space-y-4 group-data-[compact=true]/dashboard:space-y-2">
+                  <div className="min-w-0 space-y-2">
                     {tab !== 'overview' ? <TransactionDetails tab={tab} cycles={cycles} /> : <>
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 group-data-[compact=true]/dashboard:flex group-data-[compact=true]/dashboard:flex-col group-data-[compact=true]/dashboard:gap-0">
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <MetricCard title="Placement" icon={Bird} onClick={() => drillDown('placement')}><Metric label="Total good birds" value={formatNumber(metrics.placed, 0)} unit="birds" /></MetricCard>
                         <MetricCard title="Population" icon={Activity} onClick={() => drillDown('growing')} note={`Growing population (${formatNumber(metrics.population, 0)}) - mortality (${formatNumber(metrics.mortality, 0)}) - thinning (${formatNumber(metrics.thinning, 0)}) - harvest (${formatNumber(metrics.deliveredHeads, 0)}) - clean-up (${formatNumber(metrics.cleanupHeads, 0)}).`}><Metric label="Remaining birds" value={formatNumber(metrics.remaining, 0)} /></MetricCard>
                         <MetricCard title="Age" note="Maximum displayed age: 45 days." icon={CalendarDays} onClick={() => drillDown('growing')}><Metric label="Calendar" value={ageRange(metrics.calendarAges)} unit="days" /><Metric label="Posted Growing" value={ageRange(metrics.postedAges)} unit="days" /></MetricCard>
@@ -312,5 +310,5 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
       </TabsContent>
     </Tabs>
     </div>
-  </main>
+  </PageShell>
 }

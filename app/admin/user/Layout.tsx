@@ -1,34 +1,24 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { Customer, usersColumn } from '@/lib/types'
-import { ClipboardSignature, Plus, RefreshCw } from 'lucide-react'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
+import { RefreshCw } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
-import { GetUserList, GetUsers, insertUser } from './api'
+import { GetUserList } from './api'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { NewUser } from './NewUser'
-import { DataTable } from '@/components/ui/DataTable'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import DynamicTable from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
 
 export default function Layout() {
-  const { setValue, getValue } = useGlobalContext()
+  const { setValue } = useGlobalContext()
 
   const [data, setData] = useState<RowDataKey[]>([])
   const [loading, setLoading] = useState(false)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(10)
-  const [totalCount, setTotalCount] = useState(0)
   const route = useRouter()
-  const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
 
 
   const tableColumnsx: ColumnConfig[] = useMemo(
@@ -45,30 +35,11 @@ export default function Layout() {
   )
 
 
-  const [form, setForm] = useState<Partial<Customer>>({
-    firstname: '',
-    middlename: '',
-    lastname: '',
-    email: '',
-  })
-
-  const handleChange = (key: keyof Customer, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-
   const handleReset = async () => {
-    setForm({
-      firstname: '',
-      middlename: '',
-      lastname: '',
-      email: '',
-    })
     setLoading(true)
     try {
       const res = await GetUserList()
       setData(res)
-      setTotalCount(res.length)
     } catch (error) {
       toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
         ? error.message : 'Unable to load users. Please try again.')
@@ -81,29 +52,28 @@ export default function Layout() {
   useEffect(() => {
     handleReset()
     route.prefetch('/admin/user/new')
-  }, [])
+  }, [route])
 
 
   useEffect(() => {
     setValue("loading_g", loading)
-  }, [loading,])
+  }, [loading, setValue])
 
   return (
-    <div>
-      <div className='px-4 mt-2 flex justify-between items-center'>
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName='Admin'
           CurrentPageName='Users'
         />
-        <div className='flex gap-2'>
-          <Button variant='secondary' onClick={handleReset}>
+        <PageHeaderActions>
+          <Button size="icon-sm" variant='secondary' onClick={handleReset} aria-label="Refresh users">
             <RefreshCw className='h-4 w-4' />
           </Button>
           <NewUser />
-        </div>
-      </div>
-      <div className="px-4 mt-2">
-        <DynamicTable
+        </PageHeaderActions>
+      </PageHeader>
+      <DynamicTable
           actionsFirst
           loading={loading}
           initialFilters={[]} // show all records
@@ -145,9 +115,8 @@ export default function Layout() {
             },
           }))}
 
-          data={data}
-        />
-      </div>
-    </div >
+        data={data}
+      />
+    </PageShell>
   )
 }

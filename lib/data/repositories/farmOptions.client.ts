@@ -7,6 +7,7 @@ export type BroilerFarmOption = {
   code: string
   name: string
   address: string | null
+  island: string | null
   administrative_region: string | null
 }
 
@@ -103,7 +104,7 @@ export async function listBroilerFarmOptions(
   options: { requireComplete?: boolean } = {},
 ): Promise<BroilerFarmOption[]> {
   const { data, error, count } = await activeApprovedFarmsQuery(
-    db.from('farms').select('id, code, name, address, administrative_region', options.requireComplete ? { count: 'exact' } : undefined),
+    db.from('farms').select('id, code, name, address, island, administrative_region', options.requireComplete ? { count: 'exact' } : undefined),
   )
     .eq('farm_type', 'BR')
     .order('name', { ascending: true })
@@ -116,6 +117,7 @@ export async function listBroilerFarmOptions(
     code: String(farm.code ?? ''),
     name: String(farm.name ?? ''),
     address: farm.address ? String(farm.address) : null,
+    island: farm.island ? String(farm.island).trim() : null,
     administrative_region: farm.administrative_region ? String(farm.administrative_region).trim() : null,
   })).filter(farm => Number.isInteger(farm.id) && farm.id > 0 && farm.name)
 }

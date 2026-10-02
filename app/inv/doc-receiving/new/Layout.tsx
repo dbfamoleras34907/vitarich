@@ -11,6 +11,7 @@ import {
   List,
   Loader2,
   PackageCheck,
+  Pencil,
   Plus,
   Undo2,
   Save,
@@ -42,6 +43,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { FormTable } from '@/components/ui/form-table'
 import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
+import { PageHeader, PageHeaderActions, PageSection, PageShell } from '@/components/ui/page-layout'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -565,42 +567,42 @@ type NewGoodsReceiveProps = {
 
 function GoodsReceiveLoadingShell() {
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
-        <div className="h-6 w-56 rounded bg-stone-200" />
-        <div className="h-9 w-24 rounded-md bg-stone-100" />
+    <PageShell>
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-6 w-56 rounded bg-muted" />
+        <div className="h-8 w-24 rounded-md bg-muted" />
       </div>
 
-      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-y-3 p-5">
+      <PageSection className="flex min-h-[calc(100vh-8rem)] flex-col">
+        <div className="grid gap-y-2 p-3">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-              <div className="h-4 w-20 rounded bg-stone-200" />
-              <div className="h-9 rounded-md bg-stone-100" />
+            <div key={index} className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+              <div className="h-3 w-20 rounded bg-muted" />
+              <div className="h-8 rounded-md bg-muted" />
             </div>
           ))}
         </div>
 
-        <div className="border-t p-5">
-          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="border-b border-stone-200 bg-white px-3 py-3">
-              <div className="h-5 w-48 rounded bg-stone-200" />
-              <div className="mt-2 h-4 w-20 rounded bg-stone-100" />
+        <div className="border-t p-3">
+          <div className="overflow-hidden rounded-md border bg-card">
+            <div className="border-b bg-muted/20 px-3 py-2">
+              <div className="h-4 w-48 rounded bg-muted" />
+              <div className="mt-1.5 h-3 w-20 rounded bg-muted" />
             </div>
 
             <div className="space-y-2 p-3">
               {Array.from({ length: 5 }).map((_, index) => (
                 <div key={index} className="grid grid-cols-[40px_2fr_1fr_1fr_1fr_1fr_1fr_56px] gap-3">
                   {Array.from({ length: 8 }).map((__, cellIndex) => (
-                    <div key={cellIndex} className="h-9 rounded bg-stone-100" />
+                    <div key={cellIndex} className="h-8 rounded bg-muted" />
                   ))}
                 </div>
               ))}
             </div>
           </div>
         </div>
-      </section>
-    </main>
+      </PageSection>
+    </PageShell>
   )
 }
 
@@ -643,6 +645,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [forceDocDetailsModal, setForceDocDetailsModal] = useState(false)
   const [docDetailsModalOpen, setDocDetailsModalOpen] = useState(false)
   const [modalDocDetailRow, setModalDocDetailRow] = useState<DocDetailRow | null>(null)
+  const [modalDocDetailEditingId, setModalDocDetailEditingId] = useState<DocDetailRow['id'] | null>(null)
   const [hatcheryTextModalOpen, setHatcheryTextModalOpen] = useState(false)
   const [hatcheryText, setHatcheryText] = useState('')
   const [hatcheryTextTarget, setHatcheryTextTarget] = useState<{ kind: 'row'; rowId: number | string } | { kind: 'modal' } | null>(null)
@@ -1817,7 +1820,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   const addDocDetailsUsingModal = () => {
+    setModalDocDetailEditingId(null)
     setModalDocDetailRow(newDocDetailRow(receipt.receiveDate))
+    setDocDetailsModalOpen(true)
+  }
+
+  const editDocDetailsUsingModal = (row: DocDetailRow) => {
+    setModalDocDetailEditingId(row.id)
+    setModalDocDetailRow({ ...row })
     setDocDetailsModalOpen(true)
   }
 
@@ -1993,12 +2003,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
 
-    setDocDetailRows(current => [...current, normalizeDocDetailRow(modalDocDetailRow, receipt.receiveDate)])
+    const normalizedRow = normalizeDocDetailRow(modalDocDetailRow, receipt.receiveDate)
+    setDocDetailRows(current => modalDocDetailEditingId === null
+      ? [...current, normalizedRow]
+      : current.map(row => row.id === modalDocDetailEditingId ? normalizedRow : row))
     if (modalDocDetailRow.receive_date) {
       setReceipt(current => current ? { ...current, receiveDate: modalDocDetailRow.receive_date } : current)
     }
     setDocDetailsModalOpen(false)
     setModalDocDetailRow(null)
+    setModalDocDetailEditingId(null)
   }
 
   const selectFarm = (farmId: string) => {
@@ -2220,8 +2234,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   })[0] ?? ''
 
   return (
-    <main className="min-h-[calc(100vh-80rem)]">
-      <div className="mx-4 mt-4 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
@@ -2229,8 +2243,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           FirstPreviewsPageLink="/inv/doc-receiving"
           CurrentPageName={isPostMode ? 'Post DOC Placement' : 'New DOC Placement'}
         />
-        <div className='flex items-center gap-2'>
-          <Button type="button" variant="outline" onClick={() => router.push('/inv/doc-receiving')}>
+        <PageHeaderActions>
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push('/inv/doc-receiving')}>
             <List className="size-4" />
             DOC Placement List
           </Button>
@@ -2257,10 +2271,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               }, receipt.receiveDate)
               setDocDetailRows(rows => current ? rows.map(row => row.id === current.id ? next : row) : [...rows, next])
             }} />
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <section className="m-3 mt-6 flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+      <PageSection className="flex min-h-[calc(100vh-8rem)] flex-col">
         <div className="flex flex-col items-start gap-1 p-5">
           <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">DOC Placement No.</label>
@@ -2406,6 +2420,16 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   <tr key={row.id} className="odd:bg-card even:bg-secondary/40">
                     <td className="px-1 py-1 align-top">
                       <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => editDocDetailsUsingModal(row)}
+                          disabled={!canEditDocDetails}
+                          className="inline-flex size-8 items-center justify-center rounded-md text-primary transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Edit DOC detail row"
+                          title="Edit DOC detail row"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => removeDocDetailRow(row.id)}
@@ -2605,7 +2629,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             onOpenChange={open => {
               if (!open && cycleModalOpen) return
               setDocDetailsModalOpen(open)
-              if (!open) setModalDocDetailRow(null)
+              if (!open) {
+                setModalDocDetailRow(null)
+                setModalDocDetailEditingId(null)
+              }
             }}
           >
             <DialogContent
@@ -2615,9 +2642,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               }}
             >
               <DialogHeader>
-                <DialogTitle>Add DOC Details Line</DialogTitle>
+                <DialogTitle>{modalDocDetailEditingId === null ? 'Add DOC Details Line' : 'Edit DOC Details Line'}</DialogTitle>
                 <DialogDescription>
-                  Complete the receiving details below. The line is added only after you confirm.
+                  Complete the receiving details below. Changes apply only after you confirm.
                 </DialogDescription>
               </DialogHeader>
 
@@ -2728,13 +2755,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setDocDetailsModalOpen(false)}
+                  onClick={() => {
+                    setDocDetailsModalOpen(false)
+                    setModalDocDetailRow(null)
+                    setModalDocDetailEditingId(null)
+                  }}
                 >
                   Cancel
                 </Button>
                 <Button type="button" onClick={confirmModalDocDetail}>
-                  <Plus className="size-4" />
-                  Add Line
+                  {modalDocDetailEditingId === null ? <Plus className="size-4" /> : <Pencil className="size-4" />}
+                  {modalDocDetailEditingId === null ? 'Add Line' : 'Save Changes'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -3313,7 +3344,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             )}
           </div>
         </div>
-      </section>
+      </PageSection>
 
       <CycleInformationModal
         open={cycleModalOpen}
@@ -3401,6 +3432,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   )
 }
