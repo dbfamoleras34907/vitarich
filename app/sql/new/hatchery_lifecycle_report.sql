@@ -17,7 +17,7 @@ begin
       raise exception 'Hatchery Lifecycle Report prerequisite table public.% is missing.', required_table;
     end if;
   end loop;
-
+-- 
   if not exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'recieving' and column_name = 'farm_id'
