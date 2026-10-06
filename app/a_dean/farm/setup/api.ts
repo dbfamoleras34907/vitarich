@@ -2,6 +2,7 @@ import { db } from '@/lib/Supabase/supabaseClient'
 import type { WarehouseData } from '@/lib/types'
 import { getWarehouses } from '../../warehouse/api'
 import { resolveFarmWarehouseAssociations } from '@/lib/data/repositories/farmWarehouseAssociations'
+import { isUniqueConstraintViolation } from '@/lib/data/errors/postgres'
 
 export type FarmSetupFormData = Record<string, string>
 
@@ -59,18 +60,59 @@ export type FarmSetupApprovalResult = {
 
 export type FarmSetupResult = {
   farmId: number | null
+  farmCode: string | null
   approval: FarmSetupApprovalResult
 }
 
-async function insertFarmSetup(payload: FarmSetupPayload): Promise<number> {
-  const { data, error } = await db.rpc('insert_farm_setup_wizard', { payload })
+const FARM_CODE_PREFIX = 'FRM'
+const FARM_CODE_PAD = 6
+const MAX_FARM_CODE_ATTEMPTS = 25
 
-  if (error) {
-    console.error('insert_farm_setup_wizard error:', error)
-    throw new Error(error.message)
+function nextFarmCode(code: string) {
+  const match = code.match(/^FRM(\d+)$/i)
+  const nextNumber = match ? Number(match[1]) + 1 : 1
+  return formatCode(FARM_CODE_PREFIX, nextNumber, FARM_CODE_PAD)
+}
+
+async function insertFarmSetup(payload: FarmSetupPayload): Promise<{
+  farmId: number
+  farmCode: string
+  payload: FarmSetupPayload
+}> {
+  let farmCode = await generateNextCode('v_last_farm_code', FARM_CODE_PREFIX, FARM_CODE_PAD)
+  let lastDuplicateError: unknown = null
+
+  for (let attempt = 0; attempt < MAX_FARM_CODE_ATTEMPTS; attempt += 1) {
+    const payloadWithFarmCode: FarmSetupPayload = {
+      ...payload,
+      farm: {
+        ...payload.farm,
+        code: farmCode,
+      },
+    }
+    const { data, error } = await db.rpc('insert_farm_setup_wizard', {
+      payload: payloadWithFarmCode,
+    })
+
+    if (!error) {
+      return {
+        farmId: Number(data),
+        farmCode,
+        payload: payloadWithFarmCode,
+      }
+    }
+
+    if (!isUniqueConstraintViolation(error, 'farms_code_key')) {
+      console.error('insert_farm_setup_wizard error:', error)
+      throw new Error(error.message)
+    }
+
+    lastDuplicateError = error
+    farmCode = nextFarmCode(farmCode)
   }
 
-  return Number(data)
+  console.error('insert_farm_setup_wizard exhausted farm code retries:', lastDuplicateError)
+  throw new Error('Unable to assign the next available farm code. Please try again.')
 }
 
 export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSetupResult> {
@@ -93,11 +135,13 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
       approval_status: approvalRequired ? 'pending' : 'approved',
     },
   }
-  const farmId = await insertFarmSetup(payloadWithApprovalStatus)
+  const insertedFarm = await insertFarmSetup(payloadWithApprovalStatus)
+  const { farmId, farmCode, payload: persistedPayload } = insertedFarm
 
   if (!approvalRequired) {
     return {
       farmId,
+      farmCode,
       approval: approvalCheck,
     }
   }
@@ -105,8 +149,8 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
   const { data: approvalData, error: approvalError } = await db.rpc('submit_for_approval', {
     p_document_type: 'farm_setup_wizard',
     p_document_id: farmId,
-    p_document_no: payload.farm.code || payload.farm.name || null,
-    p_payload: payloadWithApprovalStatus,
+    p_document_no: farmCode,
+    p_payload: persistedPayload,
     p_remarks: 'Farm setup submitted for approval.',
   })
 
@@ -129,6 +173,7 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
 
     return {
       farmId,
+      farmCode,
       approval,
     }
   }
@@ -142,6 +187,7 @@ export async function createFarmSetup(payload: FarmSetupPayload): Promise<FarmSe
 
   return {
     farmId,
+    farmCode,
     approval,
   }
 }

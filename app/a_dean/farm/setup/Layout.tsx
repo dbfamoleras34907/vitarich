@@ -38,7 +38,6 @@ import { voidFarm } from '../api'
 import { useGlobalDefaults } from '@/lib/Defaults/GlobalDefaults'
 import {
   createFarmSetup,
-  generateNextCode,
   getFarmSetup,
   updateFarmSetup,
   type FarmSetupPayload,
@@ -107,7 +106,7 @@ const STEPS = [
 ]
 
 const farmFields: FieldConfig[] = [
-  { code: 'code', label: 'Farm Code', readOnly: true, required: true },
+  { code: 'code', label: 'Farm Code', placeholder: 'Assigned automatically when saved', readOnly: true, required: true },
   { code: 'name', label: 'Farm Name', placeholder: 'Farm site name', required: true },
   { code: 'tin', label: 'TIN No.', placeholder: 'Registered TIN', required: true },
   { code: 'tel', label: 'Telephone No.', placeholder: 'Site landline', required: true },
@@ -711,7 +710,7 @@ export default function Layout() {
     // manufacture missing address segments just to manage warehouse assignments.
     const requiredFarmFields = isEditMode
       ? farmFields.filter((field) => ['code', 'name'].includes(field.code))
-      : farmFields
+      : farmFields.filter((field) => field.code !== 'code')
     const requiredAddressFields = isEditMode
       ? addressFields.filter((field) => ['address', 'province'].includes(field.code))
       : addressFields
@@ -894,7 +893,7 @@ export default function Layout() {
       const result = await createFarmSetup(payload)
 
       if (result.approval?.required) {
-        toast.success(`Farm setup created as pending approval. Request #${result.approval.request_id ?? ''}`)
+        toast.success(`${result.farmCode ?? 'Farm'} created as pending approval. Request #${result.approval.request_id ?? ''}`)
         router.push(
           compact(farmData.farm_type).toUpperCase() === 'BR' && result.farmId
             ? `/brd/settings/farm-setup?farmId=${result.farmId}`
@@ -907,7 +906,7 @@ export default function Layout() {
         throw new Error('Farm setup did not return a farm id.')
       }
 
-      toast.success('Farm setup completed.')
+      toast.success(`${result.farmCode ?? 'Farm setup'} completed.`)
       router.push(
         compact(farmData.farm_type).toUpperCase() === 'BR'
           ? `/brd/settings/farm-setup?farmId=${result.farmId}`
@@ -1016,13 +1015,10 @@ export default function Layout() {
         )
         return
       }
-
-      const code = await generateNextCode('v_last_farm_code', 'FRM', 6)
-      setFarmData((prev) => ({ ...prev, code }))
     } catch (error) {
       toast.error(error instanceof Error
         ? error.message
-        : isEditMode ? 'Unable to load farm.' : 'Unable to generate farm code.')
+        : 'Unable to load farm.')
     } finally {
       setLoadingFarm(false)
     }
@@ -1037,7 +1033,10 @@ export default function Layout() {
   const summary = `${structures.filter((draft) => draft.data.warehouse_type === 'Building').length} Buildings · ${structures.filter((draft) => draft.data.warehouse_type === 'Warehouse').length} Warehouses · ${warehouseDrafts.filter(isPenDraft).length} Pens`
   const farmField = (code: string) => {
     const field = farmFields.find((item) => item.code === code)!
-    return <TextField key={code} field={field} value={farmData[code] ?? ''} onChange={updateFarm} />
+    const displayedField = code === 'code' && !isEditMode
+      ? { ...field, required: false }
+      : field
+    return <TextField key={code} field={displayedField} value={farmData[code] ?? ''} onChange={updateFarm} />
   }
 
   return (
@@ -1117,7 +1116,7 @@ export default function Layout() {
                     {FARM_PROFILE_FIELDS.map((field) => (
                       <div key={field.code}><dt className="text-xs text-muted-foreground">{field.label}</dt><dd className="mt-1">{farmData[field.code] || 'Not set'}</dd></div>
                     ))}
-                    <div><dt className="text-xs text-muted-foreground">Farm</dt><dd className="mt-1 font-medium">{farmData.name}</dd><dd className="text-xs text-muted-foreground">{farmData.code} · {selectedFarmType?.label}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Farm</dt><dd className="mt-1 font-medium">{farmData.name}</dd><dd className="text-xs text-muted-foreground">{farmData.code || 'Code assigned on save'} · {selectedFarmType?.label}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Location</dt><dd className="mt-1">{locationPreview || 'Not set'}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Contact</dt><dd className="mt-1">{farmData.contact_person || 'Not set'}</dd><dd className="text-xs text-muted-foreground">{[farmData.contact_number, farmData.tel].filter(Boolean).join(' · ')}</dd></div>
                   </dl>

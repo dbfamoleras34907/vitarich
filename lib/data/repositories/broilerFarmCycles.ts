@@ -6,6 +6,7 @@ export type FarmCycleMasterRow = {
   id: number
   farmId: number
   cycleNumber: number
+  cycleKey: string
   cycleMask: string | null
   startDate: string | null
   status: BroilerFarmCycleStatus
@@ -26,6 +27,7 @@ export type SelectableBroilerFarmCycle = {
   id: number
   farmId: number
   cycleNumber: number
+  cycleKey: string
   cycleMask: string | null
   status: Extract<BroilerFarmCycleStatus, 'Saved' | 'Past Open'>
   displayStatus: Extract<BroilerFarmCycleDisplayStatus, 'Current Cycle' | 'Past Open Cycle'>
@@ -55,6 +57,7 @@ type FarmCycleDbRow = {
   id: number
   farm_id: number
   cycle_no: number
+  cycle_key: string
   cycle_mask: string | null
   status: BroilerFarmCycleStatus
   created_at: string
@@ -84,31 +87,6 @@ type FlockCardCycleRow = {
   status: string | null
 }
 
-export type StandaloneBuildingCycleOption = {
-  id: number
-  cycleLabel: string
-  cycleMask: string | null
-  buildingName: string
-  status: string
-  createdAt: string | null
-}
-
-export async function getStandaloneBuildingCycleOptions(farmId: number, options: { requireComplete?: boolean } = {}): Promise<StandaloneBuildingCycleOption[]> {
-  if (!Number.isInteger(farmId) || farmId <= 0) return []
-  const { data, error, count } = await db.from('flock_card')
-    .select('id, cycle_no, cycle_mask, building_name, building_code, status, created_at', options.requireComplete ? { count: 'exact' } : undefined)
-    .eq('farm_id', farmId).is('farm_cycle_id', null).eq('void', '1')
-    .order('start_date', { ascending: false }).order('id', { ascending: false })
-  if (error) throw error
-  assertCompleteRead({ data, count }, 'Standalone cycle catalog')
-  return (data ?? []).map(row => ({
-    id: Number(row.id), cycleLabel: String(row.cycle_no ?? ''),
-    cycleMask: row.cycle_mask ?? null,
-    buildingName: String(row.building_name || row.building_code || ''), status: String(row.status ?? ''),
-    createdAt: row.created_at ?? null,
-  }))
-}
-
 export type CycleMasterListRow = Omit<FarmCycleMasterRow, 'cycleNumber' | 'status' | 'createdAt'> & {
   kind: 'farm' | 'building'
   buildingName?: string
@@ -118,31 +96,8 @@ export type CycleMasterListRow = Omit<FarmCycleMasterRow, 'cycleNumber' | 'statu
 }
 
 export async function getCycleMasterListRows(farmId: number, options: { requireComplete?: boolean } = {}): Promise<CycleMasterListRow[]> {
-  const [farmCycles, standaloneCycles] = await Promise.all([
-    getFarmCycleMasterRows(farmId, options),
-    getStandaloneBuildingCycleOptions(farmId, options),
-  ])
-  return [
-    ...farmCycles.map(cycle => ({ ...cycle, kind: 'farm' as const })),
-    ...standaloneCycles.map(cycle => ({
-      id: cycle.id,
-      kind: 'building' as const,
-      buildingName: cycle.buildingName,
-      farmId,
-      cycleNumber: `${cycle.cycleLabel} - ${cycle.buildingName}`,
-      cycleMask: cycle.cycleMask,
-      startDate: null,
-      status: cycle.status,
-      displayStatus: (cycle.status === 'Saved' ? 'Current Cycle' : cycle.status === 'Closed' ? 'Closed Cycle' : 'Cancelled Cycle') as BroilerFarmCycleDisplayStatus,
-      createdAt: cycle.createdAt,
-      closedAt: null,
-      closedByName: null,
-      reopenedAt: null,
-      reopenedByName: null,
-      participatingBuildings: 1,
-      openBuildings: cycle.status === 'Saved' ? 1 : 0,
-    })),
-  ]
+  const farmCycles = await getFarmCycleMasterRows(farmId, options)
+  return farmCycles.map(cycle => ({ ...cycle, kind: 'farm' as const }))
 }
 
 export async function getFarmCycleMasterRows(
@@ -153,7 +108,7 @@ export async function getFarmCycleMasterRows(
 
   let cycleQuery = db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at, closed_by, reopened_at, reopened_by', options.requireComplete ? { count: 'exact' } : undefined)
+    .select('id, farm_id, cycle_no, cycle_key, cycle_mask, status, created_at, closed_at, closed_by, reopened_at, reopened_by', options.requireComplete ? { count: 'exact' } : undefined)
     .eq('farm_id', farmId)
     .order('cycle_no', { ascending: false })
 
@@ -163,6 +118,18 @@ export async function getFarmCycleMasterRows(
   if (cycleResult.error) throw cycleResult.error
   assertCompleteRead(cycleResult, 'Farm cycle catalog')
   const cycles = (cycleResult.data ?? []) as FarmCycleDbRow[]
+
+  const cardResult = await db
+    .from('flock_card')
+    .select('farm_cycle_id, building_whse_id, status, start_date', { count: 'exact' })
+    .eq('farm_id', farmId)
+    .eq('void', '1')
+  if (cardResult.error) throw cardResult.error
+  assertCompleteRead(cardResult, 'Cycle Master building ownership')
+  const cards = (cardResult.data ?? []) as FlockCardCycleRow[]
+  if (cards.some(card => card.status === 'Saved' && card.farm_cycle_id == null)) {
+    throw new Error('This farm has active buildings without a Cycle Master link. Repair the existing cycle ownership to load its buildings; do not create another placement.')
+  }
   if (cycles.length === 0) return []
 
   const actorIds = Array.from(new Set(cycles.flatMap(cycle => [cycle.closed_by, cycle.reopened_by]).filter((id): id is string => Boolean(id))))
@@ -171,15 +138,6 @@ export async function getFarmCycleMasterRows(
     : { data: [], error: null }
   if (actorResult.error) throw actorResult.error
   const actors = new Map(((actorResult.data ?? []) as CycleActorRow[]).map(actor => [actor.auth_id, actor]))
-
-  const cardResult = await db
-    .from('flock_card')
-    .select('farm_cycle_id, building_whse_id, status, start_date')
-    .eq('farm_id', farmId)
-    .eq('void', '1')
-
-  if (cardResult.error) throw cardResult.error
-  const cards = (cardResult.data ?? []) as FlockCardCycleRow[]
 
   return cycles.map(cycle => {
     const cycleCards = cards.filter(card => Number(card.farm_cycle_id) === Number(cycle.id))
@@ -196,6 +154,7 @@ export async function getFarmCycleMasterRows(
       id: Number(cycle.id),
       farmId: Number(cycle.farm_id),
       cycleNumber: Number(cycle.cycle_no),
+      cycleKey: cycle.cycle_key || String(cycle.cycle_no),
       cycleMask: cycle.cycle_mask ?? null,
       startDate: cycleCards.map(card => card.start_date).filter((date): date is string => !!date).sort()[0] ?? null,
       status: cycle.status,
@@ -220,6 +179,7 @@ export async function getSelectableBroilerFarmCycles(farmId: number): Promise<Se
       id: row.id,
       farmId: row.farmId,
       cycleNumber: row.cycleNumber,
+      cycleKey: row.cycleKey,
       cycleMask: row.cycleMask,
       status: row.status,
       displayStatus: (row.status === 'Saved' ? 'Current Cycle' : 'Past Open Cycle') as SelectableBroilerFarmCycle['displayStatus'],

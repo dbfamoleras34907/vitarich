@@ -1784,18 +1784,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     try {
       const excluded = await isDocCycleBuildingExcluded(receipt.farmId, Number(building.id))
       setCycleIsExcluded(excluded)
-      if (excluded) {
-        setCycleForm(current => ({ ...current, cycleNumber: '' }))
-      } else {
-        const [farmCycle, activeCycles] = await Promise.all([
-          previewDocFarmCycle(receipt.farmId),
-          getFarmCycleMasterRows(receipt.farmId, { status: 'Saved' }),
-        ])
-        setCycleForm(current => ({
-          ...current, cycleNumber: farmCycle.cycleNumber, farmCycleId: farmCycle.id ? String(farmCycle.id) : '',
-          farmCycleStartDate: activeCycles.find(cycle => cycle.id === farmCycle.id)?.startDate ?? null
-        }))
-      }
+      const [farmCycle, activeCycles] = await Promise.all([
+        previewDocFarmCycle(receipt.farmId),
+        getFarmCycleMasterRows(receipt.farmId, { status: 'Saved' }),
+      ])
+      setCycleForm(current => ({
+        ...current, cycleNumber: excluded ? '' : farmCycle.cycleNumber, farmCycleId: farmCycle.id ? String(farmCycle.id) : '',
+        farmCycleStartDate: activeCycles.find(cycle => cycle.id === farmCycle.id)?.startDate ?? null
+      }))
     } catch (error) {
       toast.error(`Unable to calculate Cycle Count: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
@@ -1898,8 +1894,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       toast.error('Complete the Cycle / Age Start and Breed.')
       return
     }
-    if (cycleIsExcluded && !cycleForm.cycleNumber.trim()) {
-      toast.error('Enter the Cycle Count for the exempted building.')
+    if (!cycleForm.cycleNumber.trim()) {
+      toast.error('Enter the Cycle # before creating the cycle.')
       return
     }
 
@@ -1910,12 +1906,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     setSavingCycle(true)
     try {
-      const farmCycle = cycleIsExcluded
-        ? null
-        : cycleForm.farmCycleId
+      const farmCycle = cycleForm.farmCycleId
           ? { id: Number(cycleForm.farmCycleId), cycleNumber: cycleForm.cycleNumber }
           : await ensureActiveDocFarmCycle(receipt.farmId)
-      const createdCycleNumber = farmCycle?.cycleNumber ?? cycleForm.cycleNumber
+      const createdCycleNumber = cycleIsExcluded ? cycleForm.cycleNumber : farmCycle.cycleNumber
       const createdCycleMask = formatCycleMask(createdCycleNumber, cycleForm.startDate)
       const saved = await saveFlockCardPlacement({
         farmId: receipt.farmId,
@@ -3353,7 +3347,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age={Math.min(calculateCycleRange(cycleForm.startDate, today()), 45)}
         saving={savingCycle}
         cycleNumberEditable={cycleIsExcluded}
-        farmCycle={!cycleIsExcluded}
         farmId={receipt?.farmId ?? null}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}

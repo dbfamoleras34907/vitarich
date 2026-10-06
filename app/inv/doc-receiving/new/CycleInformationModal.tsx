@@ -37,7 +37,6 @@ type CycleInformationModalProps = {
   age: number
   saving: boolean
   cycleNumberEditable: boolean
-  farmCycle: boolean
   farmId: number | null
   onOpenChange: (open: boolean) => void
   onFormChange: (changes: Partial<CycleInformationForm>) => void
@@ -52,21 +51,27 @@ export default function CycleInformationModal({
   age,
   saving,
   cycleNumberEditable,
-  farmCycle,
   farmId,
   onOpenChange,
   onFormChange,
   onCancel,
   onCreate,
 }: CycleInformationModalProps) {
+  const cycleNumber = formatCycleMask(
+    form.cycleNumber,
+    form.farmCycleStartDate && form.farmCycleStartDate < form.startDate
+      ? form.farmCycleStartDate
+      : form.startDate,
+  ) || form.cycleNumber.trim()
+
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title={farmCycle ? 'Create Farm Cycle' : 'Create Building Cycle'}
+      title="Create Farm Cycle"
       description={
         building
-          ? `${building.code} - ${building.name} does not have an active cycle${farmCycle ? ' and will use the active farm cycle.' : '.'}`
+          ? `${building.code} - ${building.name} does not have an active cycle and will use the farm Cycle Master.`
           : 'Complete the cycle information for the selected building.'
       }
       className="max-w-2xl"
@@ -87,17 +92,17 @@ export default function CycleInformationModal({
                   className="bg-stone-50"
                 />
               </div>
-              {farmCycle && <BroilerCycleSelect
+              <BroilerCycleSelect
                 farmId={farmId}
                 value={form.farmCycleId}
                 onValueChange={(cycleId, cycle) => onFormChange({
                   farmCycleId: cycleId,
-                  cycleNumber: cycle ? String(cycle.cycleNumber) : form.cycleNumber,
+                  cycleNumber: cycle && !cycleNumberEditable ? cycle.cycleKey : form.cycleNumber,
                   farmCycleStartDate: cycle?.startDate ?? null,
                 })}
                 contentPositionerZIndex={310}
-              />}
-              {!farmCycle && <div className="space-y-2">
+              />
+              {cycleNumberEditable && <div className="space-y-2">
                 <Label>Cycle Count</Label>
                 <Input
                   type={cycleNumberEditable ? 'text' : 'number'}
@@ -108,12 +113,13 @@ export default function CycleInformationModal({
                 />
               </div>}
               <div className="space-y-2">
-                <Label>Cycle Number</Label>
+                <Label required>Cycle #</Label>
                 <Input
-                  value={formatCycleMask(form.cycleNumber, form.farmCycleStartDate && form.farmCycleStartDate < form.startDate ? form.farmCycleStartDate : form.startDate)}
+                  value={cycleNumber}
                   readOnly
                   className="bg-stone-50"
                 />
+                {!cycleNumber && <p role="alert" className="text-xs text-destructive">Cycle # is required.</p>}
               </div>
               <div className="space-y-2">
                 <Label required>Cycle Start</Label>
@@ -156,7 +162,7 @@ export default function CycleInformationModal({
           <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" disabled={saving} onClick={onCreate}>
+          <Button type="button" disabled={saving || !cycleNumber || !form.startDate || !form.breed.trim()} onClick={onCreate}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             {saving ? 'Creating...' : 'Create Cycle'}
           </Button>

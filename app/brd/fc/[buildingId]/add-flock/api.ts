@@ -265,12 +265,20 @@ export type ActiveDocFarmCycle = {
   status: string;
 };
 
+async function getDocFarmCycleCount(id: number, fallback: unknown) {
+  const { data, error } = await db.from("doc_farm_cycles")
+    .select("cycle_key, cycle_no").eq("id", id).maybeSingle();
+  if (error) throwDbError(error, "Unable to read the farm Cycle Count");
+  return String(data?.cycle_key ?? data?.cycle_no ?? fallback ?? "");
+}
+
 export async function ensureActiveDocFarmCycle(farmId: number): Promise<ActiveDocFarmCycle> {
   const { data, error } = await db.rpc("ensure_active_doc_farm_cycle", { p_farm_id: farmId });
   if (error) throwDbError(error, "Unable to create the farm cycle");
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.id) throw new Error("Unable to create the farm cycle: missing cycle id");
-  return { id: Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+  const id = Number(row.id);
+  return { id, cycleNumber: await getDocFarmCycleCount(id, row.cycle_no), status: String(row.status) };
 }
 
 export async function previewDocFarmCycle(farmId: number): Promise<Omit<ActiveDocFarmCycle, "id"> & { id: number | null }> {
@@ -278,7 +286,8 @@ export async function previewDocFarmCycle(farmId: number): Promise<Omit<ActiveDo
   if (error) throwDbError(error, "Unable to calculate the farm Cycle Count");
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.cycle_no) throw new Error("Unable to calculate the farm Cycle Count");
-  return { id: row.id == null ? null : Number(row.id), cycleNumber: String(row.cycle_no), status: String(row.status) };
+  const id = row.id == null ? null : Number(row.id);
+  return { id, cycleNumber: id ? await getDocFarmCycleCount(id, row.cycle_no) : String(row.cycle_no), status: String(row.status) };
 }
 
 export async function isDocCycleBuildingExcluded(farmId: number, buildingWarehouseId: number) {
@@ -587,6 +596,17 @@ export async function saveFlockCardPlacement(
   payload: FlockCardPlacementPayload,
 ): Promise<SavedFlockCardPlacement> {
   const userId = await getSessionUserId();
+  const previousPlacement = payload.id ? await getFlockCardPlacement(Number(payload.id)) : null;
+  if (payload.id && !previousPlacement) {
+    throw new Error("Unable to save flock card: the saved placement no longer exists");
+  }
+  // Editing flock information must never clear its existing master ownership.
+  if (previousPlacement) {
+    payload = { ...payload, farmCycleId: previousPlacement.farmCycleId };
+    if (!payload.farmCycleId) {
+      throw new Error("This existing flock card is missing its Cycle Master link. Repair its cycle ownership before editing.");
+    }
+  }
   if (!payload.id && !payload.farmCycleId && payload.farmId && payload.buildingWarehouseId) {
     const excluded = await isDocCycleBuildingExcluded(payload.farmId, payload.buildingWarehouseId);
     if (excluded) {
@@ -599,16 +619,15 @@ export async function saveFlockCardPlacement(
       if (duplicate.error) throwDbError(duplicate.error, "Unable to validate Cycle Count");
       if ((duplicate.data ?? []).length > 0) throw new Error("Cycle Count already exists for this building.");
     }
+    const master = await ensureActiveDocFarmCycle(payload.farmId);
+    payload = { ...payload, farmCycleId: master.id, cycleNumber: excluded ? payload.cycleNumber : master.cycleNumber };
   }
+  if (!payload.farmCycleId) throw new Error("A Cycle Master is required for this building.");
   const cardNo = payload.cardNo?.trim() || nextCardNo();
   const cycleNumber = payload.id
     ? payload.cycleNumber
     : payload.cycleNumber?.trim() || await getNextCycleCount(payload);
   const headerPayload = placementPayloadToRow({ ...payload, cycleNumber }, userId, cardNo);
-  const previousPlacement = payload.id ? await getFlockCardPlacement(Number(payload.id)) : null;
-  if (payload.id && !previousPlacement) {
-    throw new Error("Unable to save flock card: the saved placement no longer exists");
-  }
   const originsToSave = payload.origins
     ? getAddedPlacementOrigins(payload.origins, previousPlacement?.origins ?? [])
     : [];
