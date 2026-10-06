@@ -8,7 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { requestWorkspaceTimelineSql, type WorkspaceTimelineSql } from '@/lib/data/repositories/workspaceTimelineSql'
+import { getDefaultTimelineSqlPeriod, getTimelineSqlWeeks } from '@/lib/data/repositories/workspaceTimelineSqlPeriod'
 
 export default function TimelineSqlDialog() {
   const [open, setOpen] = useState(false)
@@ -16,6 +18,9 @@ export default function TimelineSqlDialog() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<WorkspaceTimelineSql | null>(null)
   const [error, setError] = useState('')
+  const [period, setPeriod] = useState(getDefaultTimelineSqlPeriod)
+  const weeks = getTimelineSqlWeeks(period.month)
+  const selectedWeek = weeks.find(week => week.start === period.weekStart)
   const requestRef = useRef<AbortController | null>(null)
 
   useEffect(() => () => requestRef.current?.abort(), [])
@@ -32,13 +37,13 @@ export default function TimelineSqlDialog() {
 
   const loadSql = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (loading) return
+    if (loading || !selectedWeek) return
     const controller = new AbortController()
     requestRef.current = controller
     setLoading(true)
     setError('')
     try {
-      const data = await requestWorkspaceTimelineSql(password, controller.signal)
+      const data = await requestWorkspaceTimelineSql(password, period, controller.signal)
       if (!controller.signal.aborted) {
         setResult(data)
         setPassword('')
@@ -87,7 +92,7 @@ export default function TimelineSqlDialog() {
         <DialogHeader>
           <DialogTitle>Timeline SQL</DialogTitle>
           <DialogDescription>
-            August 31–September 4, 2026 · 6 tickets · 45 hours. Prepared for user 1 and Broiler project 4.
+            {selectedWeek?.label ?? 'Choose a month and week'} · 6 tickets · 45 hours. Prepared for user 1 and Broiler project 4.
           </DialogDescription>
         </DialogHeader>
         {result ? (
@@ -96,6 +101,7 @@ export default function TimelineSqlDialog() {
             <Label htmlFor="timeline-sql-preview">SQL</Label>
             <Textarea id="timeline-sql-preview" readOnly value={result.sql} spellCheck={false} className="h-[50vh] min-h-64 font-mono text-xs whitespace-pre" />
             <DialogFooter>
+              <Button variant="outline" onClick={() => { setResult(null); setError('') }}>Change week</Button>
               <Button variant="outline" onClick={() => void copySql()}><Copy className="mr-2 h-4 w-4" />Copy SQL</Button>
               <Button onClick={downloadSql}><Download className="mr-2 h-4 w-4" />Download SQL</Button>
             </DialogFooter>
@@ -103,13 +109,30 @@ export default function TimelineSqlDialog() {
         ) : (
           <form onSubmit={loadSql} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="timeline-sql-month">Month</Label>
+              <Input id="timeline-sql-month" type="month" min="1900-01" max="9999-12" value={period.month} disabled={loading} required onChange={event => {
+                const month = event.target.value
+                setPeriod({ month, weekStart: getTimelineSqlWeeks(month)[0]?.start ?? '' })
+                setError('')
+              }} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timeline-sql-week">Week of the month</Label>
+              <Select value={period.weekStart} disabled={loading || !weeks.length} onValueChange={weekStart => { setPeriod(current => ({ ...current, weekStart })); setError('') }}>
+                <SelectTrigger id="timeline-sql-week" className="w-full"><SelectValue placeholder="Choose a week" /></SelectTrigger>
+                <SelectContent className="z-[220]">{weeks.map(week => <SelectItem key={week.start} value={week.start}>{week.label}</SelectItem>)}</SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Full Monday–Friday workweeks, including dates in an adjacent month.</p>
+            </div>
+            <p className="text-sm text-muted-foreground">Reuses the existing six-ticket template with dates shifted to your selected week. Ticket descriptions are not generated from that week’s Git activity.</p>
+            <div className="space-y-2">
               <Label htmlFor="timeline-sql-password">Password</Label>
               <Input id="timeline-sql-password" type="password" autoComplete="off" value={password} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={loading} aria-invalid={Boolean(error)} aria-describedby={error ? 'timeline-sql-error' : undefined} />
             </div>
             {error && <p id="timeline-sql-error" role="alert" className="text-sm text-destructive">{error}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={loading || !password}>
+              <Button type="submit" disabled={loading || !password || !selectedWeek}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Generate SQL
               </Button>
             </DialogFooter>

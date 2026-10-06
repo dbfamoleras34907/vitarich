@@ -8,6 +8,15 @@ export type BroilerGrowingHeaderSnapshot = {
 
 const normalizeCardNo = (value: string) => value.trim().toUpperCase()
 
+export async function getGrowingHarvestBlocker(farmId: number, cardNo: string): Promise<string | null> {
+  const result = await db.rpc('get_brd_fc_posted_harvest', {
+    p_farm_id: farmId,
+    p_card_no: cardNo,
+  })
+  if (result.error) throw new Error(result.error.message)
+  return typeof result.data === 'string' && result.data ? result.data : null
+}
+
 export async function reverseBroilerGrowing(growingId: number, reason: string): Promise<void> {
   if (!Number.isSafeInteger(growingId) || growingId <= 0 || !reason.trim()) {
     throw new Error('A Growing record and reversal reason are required.')

@@ -3,6 +3,7 @@ export type DocDetailsImportRow = {
   receiveTime: string
   productionDate: string
   docSource: string
+  hatchery: string
   building: string
   hatcheryRef: string
   averageDocWeight: string
@@ -20,6 +21,7 @@ const HEADERS = [
   'Time Receive',
   'Production Date',
   'DOC Source',
+  'Hatchery',
   'Building',
   'Hatchery Ref',
   'Average DOC Weight',
@@ -114,6 +116,7 @@ export function parseDocDetailsImport(data: unknown[][]) {
       receiveTime: timeValue(cell(row, 'Time Receive')),
       productionDate: dateValue(cell(row, 'Production Date')),
       docSource: textValue(cell(row, 'DOC Source')),
+      hatchery: textValue(cell(row, 'Hatchery')),
       building: textValue(cell(row, 'Building')),
       hatcheryRef: textValue(cell(row, 'Hatchery Ref')),
       averageDocWeight: numericValue(cell(row, 'Average DOC Weight')),
@@ -128,6 +131,7 @@ export function parseDocDetailsImport(data: unknown[][]) {
 
     if (!parsed.productionDate) issues.push(`Row ${rowNumber}: Production Date is required.`)
     if (!parsed.docSource) issues.push(`Row ${rowNumber}: DOC Source is required.`)
+    if (!parsed.hatchery) issues.push(`Row ${rowNumber}: Hatchery is required.`)
     if (!parsed.building) issues.push(`Row ${rowNumber}: Building is required.`)
     if (parsed.receiveDate && !isValidDate(parsed.receiveDate)) {
       issues.push(`Row ${rowNumber}: Date Receive must use YYYY-MM-DD or M/D/YYYY.`)

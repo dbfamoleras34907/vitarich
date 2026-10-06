@@ -10,9 +10,19 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Undo2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,26 +31,41 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
+import { formatNumber } from '@/lib/utils/numberFormat'
 import {
   GoodsReceipt,
   getGoodsReceipts,
-  getReceiptItemSummary,
+  reverseGoodsReceipt,
 } from './api'
+import type { GoodsReceiptDateField } from './api'
 
 type GoodsReceiptTableRow = Record<string, unknown> & {
   id: number | null
   grNo: string
-  itemDescription: string
   vendor: string
   farmName: string
   receiveDate: string
+  createdDate: string
+  totalReceived: number
+  goodReceived: number
+  doaReceived: number
+  rejectReceived: number
+  shortCount: number
   status: string
   receipt: GoodsReceipt
 }
@@ -50,11 +75,15 @@ export default function GoodsReceiveHistory() {
   const { setCollapsed } = useSidebar()
   const canView = usePermission('/inv/doc-receiving/view')
   const canInsert = usePermission('/inv/doc-receiving/insert')
+  const canVoid = !usePermission('/inv/doc-receiving/void')
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [loading, setLoading] = useState(true)
   const [farmId, setFarmId] = useState<string | number>('')
   const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [dateField, setDateField] = useState<GoodsReceiptDateField>('createdDate')
+  const [reverseTarget, setReverseTarget] = useState<GoodsReceipt | null>(null)
+  const [reversing, setReversing] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -64,6 +93,7 @@ export default function GoodsReceiveHistory() {
         farmId: farmId || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        dateField,
       }))
     } catch (error) {
       toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -71,7 +101,24 @@ export default function GoodsReceiveHistory() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, farmId])
+  }, [dateField, dateFrom, dateTo, farmId])
+
+  const handleReverse = async () => {
+    if (!reverseTarget?.id || reverseTarget.status !== 'Posted' || !canVoid) return
+
+    setReversing(true)
+    try {
+      await reverseGoodsReceipt(reverseTarget.id)
+      toast('DOC Placement reversed successfully.')
+      setReverseTarget(null)
+      await refresh()
+    } catch (error) {
+      toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : 'Unable to reverse DOC Placement.')
+    } finally {
+      setReversing(false)
+    }
+  }
 
   useEffect(() => {
     router.prefetch('/inv/doc-receiving/new')
@@ -84,13 +131,20 @@ export default function GoodsReceiveHistory() {
   const rows = useMemo<GoodsReceiptTableRow[]>(
     () =>
       receipts.map(receipt => {
+        const summary = receipt.receivingSummary ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 }
+
         return {
           id: receipt.id,
           grNo: receipt.grNo,
-          itemDescription: getReceiptItemSummary(receipt),
           vendor: receipt.vendor || '-',
           farmName: receipt.farmName || '-',
           receiveDate: receipt.receiveDate,
+          createdDate: receipt.createdAt ? format(new Date(receipt.createdAt), 'yyyy-MM-dd') : '-',
+          totalReceived: summary.total,
+          goodReceived: summary.good,
+          doaReceived: summary.doa,
+          rejectReceived: summary.reject,
+          shortCount: summary.shortCount,
           status: receipt.status,
           receipt,
         }
@@ -108,10 +162,15 @@ export default function GoodsReceiveHistory() {
         )
 
       },
-      { key: 'itemDescription', label: 'Item Description' },
+      { key: 'createdDate', label: 'Created Date' },
+      { key: 'receiveDate', label: 'Date Received' },
       { key: 'vendor', label: 'Vendor' },
       { key: 'farmName', label: 'Farm' },
-      { key: 'receiveDate', label: 'Date Received' },
+      { key: 'totalReceived', label: 'Total', align: 'right', render: row => formatNumber(row.totalReceived) },
+      { key: 'goodReceived', label: 'Good', align: 'right', render: row => formatNumber(row.goodReceived) },
+      { key: 'doaReceived', label: 'DAO', align: 'right', render: row => formatNumber(row.doaReceived) },
+      { key: 'rejectReceived', label: 'Reject', align: 'right', render: row => formatNumber(row.rejectReceived) },
+      { key: 'shortCount', label: 'Short Count', align: 'right', render: row => formatNumber(row.shortCount) },
       {
         key: 'status',
         label: 'Status',
@@ -157,6 +216,18 @@ export default function GoodsReceiveHistory() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                disabled={!canVoid || row.receipt.status !== 'Posted' || reversing}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (!canVoid || row.receipt.status !== 'Posted' || reversing) return
+                  setReverseTarget(row.receipt)
+                }}
+              >
+                <Undo2 className="size-4" />
+                Reverse
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
                 disabled={canInsert}
                 onClick={event => {
                   event.stopPropagation()
@@ -172,7 +243,7 @@ export default function GoodsReceiveHistory() {
         ),
       },
     ],
-    [canInsert, canView, router],
+    [canInsert, canView, canVoid, reversing, router],
   )
 
   const openNewGoodsReceipt = () => {
@@ -181,30 +252,27 @@ export default function GoodsReceiveHistory() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] text-stone-950">
-      <div className="mt-2 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
           CurrentPageName="DOC Placement"
         />
 
-        <div className='flex gap-2'>
-          <div className="flex justify-end">
-            <Button variant="outline" className="gap-2" onClick={refresh} disabled={loading}>
+        <PageHeaderActions>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
-          </div>
-
-          <Button type="button" onClick={openNewGoodsReceipt} disabled={canInsert}>
+          <Button type="button" size="sm" onClick={openNewGoodsReceipt} disabled={canInsert}>
             <Plus className="size-4" />
             New DOC Placement
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <div className=" mt-4 space-y-3">
-        <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+      <div className="space-y-3">
+        <div className="grid gap-2 rounded-md border bg-muted/30 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px_180px]">
           <DefaultFarmComboBox
             label="Farm"
             value={farmId}
@@ -233,6 +301,19 @@ export default function GoodsReceiveHistory() {
               onChange={event => setDateTo(event.target.value)}
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="doc-receiving-date-field">Search Date By</Label>
+            <Select value={dateField} onValueChange={value => setDateField(value as GoodsReceiptDateField)}>
+              <SelectTrigger id="doc-receiving-date-field" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="receiveDate">Received Date</SelectItem>
+                <SelectItem value="createdDate">Created Date</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <DynamicTable
@@ -252,6 +333,26 @@ export default function GoodsReceiveHistory() {
           }}
         />
       </div>
-    </main>
+
+      <Dialog open={reverseTarget !== null} onOpenChange={open => !reversing && !open && setReverseTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse this DOC Placement?</DialogTitle>
+            <DialogDescription>
+              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked if its consolidated batch is already used in Growing inventory.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={reversing}>Cancel</Button>
+            </DialogClose>
+            <Button type="button" variant="destructive" onClick={handleReverse} disabled={reversing || !canVoid}>
+              <Undo2 className="size-4" />
+              {reversing ? 'Reversing...' : 'Confirm Reverse'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageShell>
   )
 }

@@ -1,3 +1,4 @@
+import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
@@ -283,18 +284,15 @@ async function replaceLines(id: number, lines: BreederDispatchInput["lines"], us
 }
 
 export async function createBreederDispatch(input: BreederDispatchInput, post = false) {
-  await validateInput(input); const userId = await currentUserId(); const { lines, ...header } = input;
-  const { data, error } = await db.from(HEADER_TABLE).insert({ ...header, document_no: documentNo(), created_by: userId, status: "Draft" }).select("id").single();
-  if (error) throw error;
-  try { await replaceLines(data.id, lines, userId); if (post) await postBreederDispatch(data.id); return getBreederDispatchById(data.id); }
-  catch (saveError) { await db.from(HEADER_TABLE).delete().eq("id", data.id).eq("status", "Draft"); throw saveError; }
+  await validateInput(input);
+  const id = await saveBreederDispatchTransaction(null, input, documentNo(), post);
+  return getBreederDispatchById(id);
 }
 
 export async function updateBreederDispatch(id: number, input: BreederDispatchInput, post = false) {
-  await validateInput(input); const userId = await currentUserId(); const { lines, ...header } = input;
-  const { error } = await db.from(HEADER_TABLE).update({ ...header, updated_by: userId }).eq("id", id).eq("status", "Draft");
-  if (error) throw error;
-  await replaceLines(id, lines, userId); if (post) await postBreederDispatch(id); return getBreederDispatchById(id);
+  await validateInput(input);
+  await saveBreederDispatchTransaction(id, input, null, post);
+  return getBreederDispatchById(id);
 }
 
 export async function postBreederDispatch(id: number) {

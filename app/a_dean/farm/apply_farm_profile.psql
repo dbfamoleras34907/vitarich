@@ -3,8 +3,8 @@
 -- Relative includes resolve from this file, regardless of the working directory.
 \set ON_ERROR_STOP on
 begin;
-\ir farm_profile_columns.sql
-\ir farm_void_rls.sql
-\ir setup/insert_farm_setup_wizard.sql
-\ir setup/update_farm_setup_wizard.sql
+\ir ../../sql/updated/farm_profile_columns.sql
+\ir ../../sql/updated/farm_void_rls.sql
+\ir ../../sql/updated/insert_farm_setup_wizard.sql
+\ir ../../sql/updated/update_farm_setup_wizard.sql
 commit;

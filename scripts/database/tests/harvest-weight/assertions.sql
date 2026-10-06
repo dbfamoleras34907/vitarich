@@ -1,11 +1,12 @@
 set role authenticated;
 do $$
 declare
- d jsonb := '{"giNo":"HARVEST-TEST","farmId":1,"status":"Draft","lines":[{"id":"new","allocationGroupKey":"group-1","itemCode":"DOC","altQty":5,"baseQty":5,"altUom":"PCS","baseUom":"PCS","netLiveWeight":12.5}]}'::jsonb;
+ d jsonb := '{"giNo":"HARVEST-TEST","farmId":1,"status":"Draft","lines":[{"id":"new","allocationGroupKey":"group-1","harvestAge":40,"itemCode":"DOC","altQty":5,"baseQty":5,"altUom":"PCS","baseUom":"PCS","netLiveWeight":12.5}]}'::jsonb;
  r jsonb;
 begin
  r := save_br_delivery_transaction(d);
  assert (r->'lines'->0->>'net_live_weight')::numeric = 12.5, 'weight persisted';
+ assert (r->'lines'->0->>'harvest_age')::integer = 40, 'age persisted';
  assert r->'header'->>'farm_code' = 'FARM-A', 'canonical farm';
  d := jsonb_set(d, '{id}', r->'header'->'id');
  d := jsonb_set(d, '{lines,0,id}', r->'lines'->0->'id');
@@ -15,6 +16,12 @@ begin
  perform save_br_delivery_transaction(d);
  d := jsonb_set(d, '{lines,0,netLiveWeight}', '12.5');
  perform save_br_delivery_transaction(d);
+ begin
+   perform save_br_delivery_transaction(jsonb_set(d, '{lines,0,harvestAge}', '-1'));
+   raise exception 'negative age accepted';
+ exception when raise_exception then
+   if sqlerrm = 'negative age accepted' then raise; end if;
+ end;
  begin
    perform save_br_delivery_transaction(jsonb_set(d, '{lines,0,netLiveWeight}', '-1'));
    raise exception 'negative accepted';
@@ -41,6 +48,7 @@ do $$ begin
  assert (select count(*) from notification_outbox where event_key = 'BR_DELIVERY_EDITED') = 2;
  assert (select count(*) from notification_outbox where event_key = 'BR_DELIVERY_POSTED') = 1;
  assert (select net_live_weight from br_delivery_lines where void = '1') = 12.5;
+ assert (select harvest_age from br_delivery_lines where void = '1') = 40;
  assert (select bool_and(farm_id = 1 and recipient_farm_id = 1) from notification_outbox);
 end $$;
-select 'PASS: persistence, canonical farm, protected outbox trigger, edit retries, A-B-A edits, rejected negative weight, invalid farm, post retry';
+select 'PASS: age and weight persistence, canonical farm, protected outbox trigger, edit retries, A-B-A edits, rejected negative values, invalid farm, post retry';

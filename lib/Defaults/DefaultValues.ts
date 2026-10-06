@@ -1096,7 +1096,7 @@ export const NavFolders: NavFolder[] = [
             url: "/brd/cycle-master",
             view: true,
             insert: false,
-            edit: false,
+            edit: true,
             approval: false,
           },
 
@@ -1144,6 +1144,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            void: true,
             approval: false,
           },
 
@@ -1156,6 +1157,7 @@ export const NavFolders: NavFolder[] = [
             view: true,
             insert: true,
             edit: true,
+            void: true,
             approval: false,
           },
 
@@ -1179,6 +1181,16 @@ export const NavFolders: NavFolder[] = [
             type: "Report",
             title: "Clean Up Report",
             url: "/brd/cu/report",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+          {
+            id: 83,
+            type: "Report",
+            title: "Data Compliance",
+            url: "/brd/data-compliance",
             view: true,
             insert: false,
             edit: false,

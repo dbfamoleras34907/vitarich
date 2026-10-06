@@ -1,3 +1,4 @@
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask';
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from "@/lib/data/repositories/broilerGrowing";
@@ -44,7 +45,9 @@ export type FarmOriginDocDetail = {
 
 export type FlockCardListInfo = {
   id: number;
+  farmCycleId: number | null;
   cardNo: string;
+  cycleMask?: string;
   age: number;
   actualAge?: number | null;
   growingId?: number | null;
@@ -100,7 +103,10 @@ type WarehouseMasterRow = {
 
 type FlockCardListRow = {
   id: number;
+  farm_cycle_id: number | null;
   card_no: string | null;
+  cycle_mask?: string | null;
+  doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null;
   building_id: number | null;
   building_whse_id: number | null;
   building_key: string | null;
@@ -335,7 +341,7 @@ export async function getFarmInfoForFlockCard(
 
 export async function getFarmBuildingsForFlockCard(
   farmId: number,
-  options: { includePlacementInventory?: boolean } = {},
+  options: { includePlacementInventory?: boolean; farmCycleId?: number | null } = {},
 ): Promise<FarmBuildingListRow[]> {
   if (!Number.isFinite(farmId)) return [];
 
@@ -354,6 +360,16 @@ export async function getFarmBuildingsForFlockCard(
       .map(getAssociatedWarehouseCode)
       .filter(Boolean),
   ));
+
+  let flockCardQuery = db
+    .from("flock_card")
+    .select("id, farm_cycle_id, card_no, cycle_mask, doc_farm_cycles(cycle_mask), building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
+    .eq("farm_id", farmId)
+    .eq("void", "1")
+    .eq("status", "Saved")
+    .order("start_date", { ascending: false })
+    .order("id", { ascending: false });
+  if (options.farmCycleId != null) flockCardQuery = flockCardQuery.eq("farm_cycle_id", options.farmCycleId);
 
   const directWarehouseQueries = [
     db
@@ -378,14 +394,7 @@ export async function getFarmBuildingsForFlockCard(
         .eq("is_active", true)
         .in("whse_code", associatedWarehouseCodes)
       : Promise.resolve({ data: [], error: null }),
-    db
-      .from("flock_card")
-      .select("id, card_no, building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
-      .eq("farm_id", farmId)
-      .eq("void", "1")
-      .eq("status", "Saved")
-      .order("start_date", { ascending: false })
-      .order("id", { ascending: false }),
+    flockCardQuery,
   ] as const;
 
   const [
@@ -491,7 +500,9 @@ export async function getFarmBuildingsForFlockCard(
 
     return {
       id: cardId,
+      farmCycleId: card.farm_cycle_id == null ? null : Number(card.farm_cycle_id),
       cardNo: String(card.card_no ?? "").trim(),
+      cycleMask: getBroilerCycleDisplay(card),
       age: startDate ? calculateFlockAgeFromStartDate(startDate) : Number(card.age ?? 0),
       actualAge: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.actualAge ?? null,
       growingId: getBroilerGrowingHeader(growingHeaders, String(card.card_no ?? ""))?.id ?? null,
@@ -595,7 +606,15 @@ export async function getFarmBuildingsForFlockCard(
     }];
   }));
 
-  return [...warehouseRows, ...flockCardOnlyRows.flat()].sort((left, right) =>
+  const uniqueRowsByWarehouseId = new Map<number, FarmBuildingListRow>();
+  for (const row of [...warehouseRows, ...flockCardOnlyRows.flat()]) {
+    const warehouseId = Number(row.id ?? 0);
+    if (warehouseId > 0 && !uniqueRowsByWarehouseId.has(warehouseId)) {
+      uniqueRowsByWarehouseId.set(warehouseId, row);
+    }
+  }
+
+  return Array.from(uniqueRowsByWarehouseId.values()).sort((left, right) =>
     left.code.localeCompare(right.code) || left.name.localeCompare(right.name)
   );
 }

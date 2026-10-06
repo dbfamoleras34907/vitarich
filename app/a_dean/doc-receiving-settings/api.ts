@@ -138,5 +138,10 @@ export async function saveDocCycleExcludedBuildingIds(farmId: number, buildingId
     p_building_whse_ids: buildingIds,
   })
   if (error) throw error
-  return getDocCycleExcludedBuildingIds(farmId)
+  const savedIds = await getDocCycleExcludedBuildingIds(farmId)
+  const requestedIds = new Set(buildingIds)
+  if (savedIds.length !== requestedIds.size || savedIds.some(id => !requestedIds.has(id))) {
+    throw new Error('Excluded Cycle Buildings did not match the requested selection after saving. Refresh the settings and try again. If this continues, the database save function or access policies need to be checked.')
+  }
+  return savedIds
 }

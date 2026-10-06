@@ -6,6 +6,7 @@ import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from
 import { toast } from 'sonner'
 
 import SearchableCombobox from '@/components/SearchableCombobox'
+import BroilerCycleSelect from '@/components/broiler/BroilerCycleSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } from '@/components/ui/page-layout'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
@@ -63,6 +65,7 @@ import {
 } from '@/app/inv/gr/new/api'
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
+import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -121,6 +124,8 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   triggeredBy: 'GI',
   issueDate: today(),
   farmId: null,
+  farmCycleId: null,
+  farmCycleMask: '',
   farmCode: '',
   farmName: '',
   fromWarehouseId: null,
@@ -188,13 +193,14 @@ const canSearchLineInventory = (line: Pick<GoodsIssueLine, 'itemCode' | 'fromWar
 
 const getLineFlockCardLookupKey = (
   farmId: number | null | undefined,
-  line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode'>,
+  farmCycleId: number | null | undefined,
+  line: Pick<GoodsIssueLine, 'fromWarehouseId' | 'fromWarehouseCode' | 'flockCardId'>,
 ) => {
   const normalizedFarmId = Number(farmId ?? 0)
   const buildingCode = line.fromWarehouseCode.trim().toUpperCase()
   if (!Number.isFinite(normalizedFarmId) || normalizedFarmId <= 0 || !buildingCode) return ''
 
-  return `${normalizedFarmId}|${line.fromWarehouseId ?? ''}|${buildingCode}`
+  return `${normalizedFarmId}|${farmCycleId ?? ''}|${line.fromWarehouseId ?? ''}|${buildingCode}|${line.flockCardId ?? ''}`
 }
 
 const getFarmWarehouseCodes = (farm?: GoodsReceiptFarm | null) => {
@@ -249,6 +255,12 @@ const clearWarehouseSensitiveLineData = (
   warehouse: Pick<WarehouseData, 'id' | 'whse_code' | 'whse_name'> | null,
 ): GoodsIssueLine => ({
   ...line,
+  flockCardId: undefined,
+  flockCardNo: undefined,
+  cycleNumber: undefined,
+  cycleMask: undefined,
+  harvestAge: undefined,
+  averageLiveWeight: undefined,
   fromWarehouseId: warehouse?.id ?? null,
   fromWarehouseCode: warehouse?.whse_code ?? '',
   fromWarehouseName: warehouse?.whse_name ?? '',
@@ -296,22 +308,22 @@ type NewGoodsIssueProps = {
 
 function GoodsIssueLoadingShell() {
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
-        <div className="h-6 w-56 rounded bg-stone-200" />
-        <div className="h-9 w-24 rounded-md bg-stone-100" />
+    <PageShell>
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-6 w-56 rounded bg-muted" />
+        <div className="h-8 w-24 rounded-md bg-muted" />
       </div>
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+      <PageSection>
+        <div className="grid gap-x-8 gap-y-2 p-3 lg:grid-cols-2">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="grid items-center gap-2 sm:grid-cols-[112px_minmax(0,300px)]">
-              <div className="h-4 w-20 rounded bg-stone-200" />
-              <div className="h-9 rounded-md bg-stone-100" />
+            <div key={index} className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+              <div className="h-3 w-20 rounded bg-muted" />
+              <div className="h-8 rounded-md bg-muted" />
             </div>
           ))}
         </div>
-      </section>
-    </main>
+      </PageSection>
+    </PageShell>
   )
 }
 
@@ -583,7 +595,7 @@ export default function NewGoodsIssue({
           triggeredBy === 'BR-CU' || Boolean(deliverySettings?.batch_auto_selection),
         )
 
-        const farmKey = String(issue.farmId)
+        const farmKey = `${issue.farmId}:${issue.farmCycleId ?? ''}`
         const shouldInitializeBuildings =
           !loadingReferences &&
           !issue.id &&
@@ -593,6 +605,7 @@ export default function NewGoodsIssue({
 
         const availableCards = await getAvailableDeliveryFlockCards({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
           allowHarvestEmptied: triggeredBy === 'BR-CU',
         })
@@ -656,6 +669,7 @@ export default function NewGoodsIssue({
     duplicateId,
     farmWarehouses,
     issue?.farmId,
+    issue?.farmCycleId,
     issue?.id,
     issue?.status,
     loadingReferences,
@@ -665,26 +679,13 @@ export default function NewGoodsIssue({
   ])
 
   const lineWarehouseSignature = useMemo(
-    () => issue?.lines
-      .map(line => `${line.id}:${line.fromWarehouseId ?? ''}:${line.fromWarehouseCode}`)
-      .join('|') ?? '',
+    () => JSON.stringify(issue?.lines.map(line => ({ id: String(line.id), fromWarehouseId: line.fromWarehouseId,
+      fromWarehouseCode: line.fromWarehouseCode, flockCardId: line.flockCardId })) ?? []),
     [issue?.lines],
   )
 
   const lineWarehouseLookups = useMemo(
-    () => lineWarehouseSignature
-      .split('|')
-      .filter(Boolean)
-      .map(value => {
-        const [id, rawWarehouseId, ...warehouseCodeParts] = value.split(':')
-        const warehouseId = Number(rawWarehouseId)
-
-        return {
-          id,
-          fromWarehouseId: Number.isFinite(warehouseId) && warehouseId > 0 ? warehouseId : null,
-          fromWarehouseCode: warehouseCodeParts.join(':'),
-        }
-      }),
+    () => JSON.parse(lineWarehouseSignature) as Array<Pick<GoodsIssueLine, 'id' | 'fromWarehouseId' | 'fromWarehouseCode' | 'flockCardId'>>,
     [lineWarehouseSignature],
   )
 
@@ -718,6 +719,7 @@ export default function NewGoodsIssue({
       try {
         const summaries = await getCleanupCycleSummaries({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           cleanupDocumentId: issue.id,
           buildings,
         })
@@ -735,7 +737,7 @@ export default function NewGoodsIssue({
 
     void loadCleanupSummaries()
     return () => { cancelled = true }
-  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups])
+  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, lineWarehouseLookups])
 
   useEffect(() => {
     let cancelled = false
@@ -750,6 +752,7 @@ export default function NewGoodsIssue({
       try {
         const info = await getDeliveryFlockCardInfo({
           farmId: issue.farmId,
+          farmCycleId: issue.farmCycleId,
           buildingWarehouseId: issue.fromWarehouseId,
           buildingCode: issue.fromWarehouseCode,
         })
@@ -771,11 +774,11 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
+  }, [issue?.farmCycleId, issue?.farmId, issue?.fromWarehouseCode, issue?.fromWarehouseId, showFlockCardInformation, usesLineWarehouse])
 
   useEffect(() => {
-    if (isCleanup) lineFlockCardCacheRef.current = {}
-  }, [isCleanup, issue?.id])
+    if (isBroilerCycleIssue) lineFlockCardCacheRef.current = {}
+  }, [isBroilerCycleIssue, issue?.id, issue?.status])
 
   useEffect(() => {
     let cancelled = false
@@ -793,19 +796,41 @@ export default function NewGoodsIssue({
       const activeLineIds = new Set(lineWarehouseLookups.map(line => String(line.id)))
       const missingLookups = new Map<string, {
         farmId: number
+        farmCycleId: number | null
         buildingWarehouseId: number | null
         buildingCode: string
+        flockCardId?: number | null
       }>()
 
+      const applyHarvestDefaults = () => {
+        if (triggeredBy !== 'BR-DR') return
+        setIssue(current => current ? {
+          ...current,
+          lines: current.lines.map(line => {
+            const lookupKey = getLineFlockCardLookupKey(current.farmId, current.farmCycleId, line)
+            const info = lookupKey ? lineFlockCardCacheRef.current[lookupKey]?.info : null
+            const age = line.harvestAge === undefined ? info?.age : line.harvestAge
+            const averageLiveWeight = line.averageLiveWeight === undefined && age != null
+              ? info?.bodyWeightsByAge[String(age)] ?? null
+              : line.averageLiveWeight
+            return age == null
+              ? line
+              : { ...line, harvestAge: age, averageLiveWeight }
+          }),
+        } : current)
+      }
+
       lineWarehouseLookups.forEach(line => {
-        const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+        const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
         const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
 
         if (lookupKey && !cached) {
           missingLookups.set(lookupKey, {
             farmId: Number(issue.farmId),
+            farmCycleId: issue.farmCycleId,
             buildingWarehouseId: line.fromWarehouseId,
             buildingCode: line.fromWarehouseCode,
+            flockCardId: line.flockCardId ?? (issue.status === 'Draft' ? undefined : null),
           })
         }
       })
@@ -815,7 +840,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
 
           nextState[id] = cached
@@ -834,7 +859,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           nextBatches[id] = cached?.placementBatches ?? current[id] ?? []
         })
@@ -850,7 +875,7 @@ export default function NewGoodsIssue({
 
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           nextLoading[id] = Boolean(lookupKey && !cached)
         })
@@ -862,16 +887,21 @@ export default function NewGoodsIssue({
         return nextLoading
       })
 
-      if (missingLookups.size === 0) return
+      if (missingLookups.size === 0) {
+        applyHarvestDefaults()
+        return
+      }
 
       const infoResults = await Promise.all(
         Array.from(missingLookups.entries()).map(async ([lookupKey, params]) => {
           try {
             const info = await getDeliveryFlockCardInfo({
               farmId: params.farmId,
+              farmCycleId: params.farmCycleId,
               buildingWarehouseId: params.buildingWarehouseId,
               buildingCode: params.buildingCode,
               cleanupDocumentId: isCleanup ? issue.id : null,
+              flockCardId: params.flockCardId,
             })
             return { lookupKey, info }
           } catch (error) {
@@ -890,17 +920,19 @@ export default function NewGoodsIssue({
         }
       })
 
+      applyHarvestDefaults()
+
       setLineFlockCardInfo(() => {
         const updated: Record<string, { loading: boolean; info: GoodsIssueFlockCardInfo | null }> = {}
         lineWarehouseLookups.forEach(line => {
           const id = String(line.id)
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           updated[id] = { loading: false, info: cached?.info ?? null }
         })
         infoResults.forEach(result => {
           const matchingLines = linesWithBuildings.filter(line =>
-            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+            getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line) === result.lookupKey,
           )
           matchingLines.forEach(line => {
             updated[String(line.id)] = { loading: false, info: result.info }
@@ -943,7 +975,7 @@ export default function NewGoodsIssue({
       setLinePlacementBatches(() => {
         const updated: Record<string, DeliveryPlacementBatch[]> = {}
         lineWarehouseLookups.forEach(line => {
-          const lookupKey = getLineFlockCardLookupKey(issue.farmId, line)
+          const lookupKey = getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line)
           const cached = lookupKey ? lineFlockCardCacheRef.current[lookupKey] : null
           updated[String(line.id)] = cached?.placementBatches ?? []
         })
@@ -953,7 +985,7 @@ export default function NewGoodsIssue({
         const updated = { ...current }
         placementResults.forEach(result => {
           const matchingLines = linesWithBuildings.filter(line =>
-            getLineFlockCardLookupKey(issue.farmId, line) === result.lookupKey,
+            getLineFlockCardLookupKey(issue.farmId, issue.farmCycleId, line) === result.lookupKey,
           )
           matchingLines.forEach(line => {
             updated[String(line.id)] = false
@@ -968,7 +1000,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [isCleanup, issue?.farmId, issue?.id, lineWarehouseLookups, showFlockCardInformation, usesLineWarehouse])
+  }, [isCleanup, issue?.farmCycleId, issue?.farmId, issue?.id, issue?.status, lineWarehouseLookups, showFlockCardInformation, triggeredBy, usesLineWarehouse])
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -1087,7 +1119,8 @@ export default function NewGoodsIssue({
     )
 
   const getDefaultAltUom = useCallback((groupCode: string) =>
-    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms])
+    uomGroups.find(group => group.code === groupCode)?.defaultUomCode ??
+    getGroupUoms(groupCode)[0]?.uomCode ?? '', [getGroupUoms, uomGroups])
 
   const refreshLineOnHand = async (line: GoodsIssueLine) => {
     if (!canSearchLineInventory(line)) return
@@ -1133,6 +1166,8 @@ export default function NewGoodsIssue({
       farmId: farm?.id ?? null,
       farmCode: farm?.code ?? '',
       farmName: farm?.name ?? '',
+      farmCycleId: null,
+      farmCycleMask: '',
       fromWarehouseId: autoSelectedWarehouse?.id ?? null,
       fromWarehouseCode: autoSelectedWarehouse?.whse_code ?? '',
       fromWarehouseName: autoSelectedWarehouse?.whse_name ?? '',
@@ -1336,7 +1371,8 @@ export default function NewGoodsIssue({
     const availableAltQty = baseQtyPerAltQty > 0 ? Number(batch?.onHandQty || 0) / baseQtyPerAltQty : 0
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
-    if (altQty <= 0 && !(isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied)) {
+    const zeroCleanup = isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied && altQty === 0
+    if (altQty <= 0 && !zeroCleanup) {
       toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
     }
@@ -1349,6 +1385,7 @@ export default function NewGoodsIssue({
       batchNumber: batch?.batchNumber ?? '',
       manufacturingDate: batch?.manufacturingDate ?? '',
       expiryDate: batch?.expiryDate ?? '',
+      ...(zeroCleanup ? { requestedAltQty: 0 } : {}),
       altQty,
       altUom,
       baseQty: calculateBaseQty(altQty, altUom, baseUom),
@@ -1491,16 +1528,35 @@ export default function NewGoodsIssue({
     setPastingDelivery(true)
     try {
       const placementLookups = new Map<string, Promise<DeliveryPlacementBatch[]>>()
+      const flockInfoLookups = new Map<string, Promise<GoodsIssueFlockCardInfo | null>>()
+      const getPasteFlockInfo = (buildingWarehouseId: number | null, buildingCode: string) => {
+        const lookupKey = `${buildingWarehouseId ?? ''}|${buildingCode.trim().toUpperCase()}`
+        let lookup = flockInfoLookups.get(lookupKey)
+        if (!lookup) {
+          lookup = getDeliveryFlockCardInfo({
+            farmId: snapshot.farmId!,
+            farmCycleId: snapshot.farmCycleId,
+            buildingWarehouseId,
+            buildingCode,
+          })
+          flockInfoLookups.set(lookupKey, lookup)
+        }
+        return lookup
+      }
       const lines = await prepareDeliveryPaste({
         lines: issue.lines, rows, startRow, newLine, getAllocationGroupKey,
         warehouses: deliveryFarmWarehouses, items, getDefaultAltUom, getGroupUoms, calculateBaseQty,
         getBatchRuleId: line => getBatchRuleForLine(line)?.id ?? null,
+        getAverageLiveWeight: async (line, age) => {
+          const info = await getPasteFlockInfo(line.fromWarehouseId, line.fromWarehouseCode)
+          return info?.bodyWeightsByAge[String(age)] ?? null
+        },
         getPlacementBatches: warehouse => {
           const code = warehouse.whse_code ?? ''
           let lookup = placementLookups.get(code)
           if (!lookup) {
             lookup = (async () => {
-              const info = await getDeliveryFlockCardInfo({ farmId: snapshot.farmId!, buildingWarehouseId: warehouse.id ?? null, buildingCode: code })
+              const info = await getPasteFlockInfo(warehouse.id ?? null, code)
               if (!info) throw new Error('The building has no eligible flock card.')
               return getDeliveryFlockCardPlacementBatches({ flockCardId: info.id, farmId: info.farmId, buildingWarehouseId: info.buildingWarehouseId, buildingCode: info.buildingCode, cycleNumber: info.cycleNumber })
             })()
@@ -1519,6 +1575,16 @@ export default function NewGoodsIssue({
 
     const processedGroups = new Set<string>()
     issue.lines.forEach(line => {
+      // Reconcile drafts that selected an empty harvest batch before the requested
+      // quantity was reset, including a line selected while batches were loading.
+      if (line.batchNumber && line.altQty === 0 && line.baseQty === 0 && line.requestedAltQty !== 0 &&
+        linePlacementBatches[String(line.id)]?.some(batch => batch.harvestEmptied &&
+          batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber)) {
+        setIssue(current => current ? { ...current, lines: current.lines.map(candidate =>
+          candidate.id === line.id ? { ...candidate, requestedAltQty: 0 } : candidate),
+        } : current)
+        return
+      }
       if (!line.fromWarehouseCode || !line.itemCode || line.batchNumber) return
       const groupKey = `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
       if (processedGroups.has(groupKey)) return
@@ -1657,6 +1723,10 @@ export default function NewGoodsIssue({
       toast('Please select a farm.')
       return
     }
+    if (isBroilerCycleIssue && !issue.farmCycleId) {
+      toast('Please select a cycle.')
+      return
+    }
     if (!usesLineWarehouse && (!issue.fromWarehouseId || !issue.fromWarehouseCode)) {
       toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
@@ -1691,6 +1761,13 @@ export default function NewGoodsIssue({
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
     if (triggeredBy === 'BR-DR') {
+      const invalidAgeLine = linesToSave.find(line =>
+        line.harvestAge == null || !Number.isInteger(Number(line.harvestAge)) || Number(line.harvestAge) < 0,
+      )
+      if (invalidAgeLine) {
+        toast(`Line ${getDocumentLineNumber(invalidAgeLine)}: Age is required and must be a whole number, zero or greater.`)
+        return
+      }
       try {
         linesToSave.forEach(line => deliveryDateValue(line.deliveredDate ?? ''))
       } catch (error) {
@@ -1737,10 +1814,15 @@ export default function NewGoodsIssue({
       try {
         const ageShortage = await (triggeredBy === 'BR-CU' ? getBrCleanupAgeShortage : getBrDeliveryAgeShortage)({
           farmId: Number(issue.farmId),
+          farmCycleId: issue.farmCycleId,
           lines: linesToSave,
         })
         if (ageShortage) {
-          const currentAgeText = !ageShortage.hasFlockCard
+          const currentAgeText = triggeredBy === 'BR-DR'
+            ? ageShortage.currentAge === null
+              ? 'has no Harvest age'
+              : `has a Harvest age of only ${ageShortage.currentAge} day${ageShortage.currentAge === 1 ? '' : 's'}`
+            : !ageShortage.hasFlockCard
             ? 'has no saved flock card'
             : ageShortage.currentAge === null
               ? 'has no mortality input to determine its actual age'
@@ -1967,8 +2049,9 @@ export default function NewGoodsIssue({
           <div className='flex items-center gap-1'>
             <Input value={issue.giNo} readOnly className="bg-stone-50" />
             <span className={getInventoryStatusBadgeClass(issue.status)}>
-              {issue.status}
+              {isBroilerCycleIssue && issue.status === 'Cancelled' ? 'Void' : issue.status}
             </span>
+            {isCleanup && <CleanupReversalButton documentId={issue.id} documentNo={issue.giNo} status={issue.status} onReversed={() => router.push('/brd/cu')} />}
           </div>
 
         )
@@ -2003,6 +2086,31 @@ export default function NewGoodsIssue({
         />
       ),
     },
+    ...(isBroilerCycleIssue
+      ? [{
+          key: 'cycle',
+          label: '',
+          content: (
+            issue.status === 'Draft' ? (
+              <BroilerCycleSelect
+                farmId={issue.farmId}
+                value={issue.farmCycleId == null ? '' : String(issue.farmCycleId)}
+                onValueChange={(cycleId, cycle) => setIssue(current => current ? {
+                  ...current,
+                  farmCycleId: cycleId ? Number(cycleId) : null,
+                  farmCycleMask: cycle?.cycleMask ?? '',
+                  lines: current.lines.map(line => clearWarehouseSensitiveLineData(line, null)),
+                } : current)}
+              />
+            ) : (
+              <div className="space-y-2">
+                <Label>Cycle</Label>
+                <Input value={issue.farmCycleMask || issue.lines[0]?.cycleMask || '-'} readOnly className="bg-muted/40" />
+              </div>
+            )
+          ),
+        }]
+      : []),
 
     {
       key: 'status',
@@ -2055,8 +2163,8 @@ export default function NewGoodsIssue({
   ]
 
   return (
-    <main className="min-h-[calc(100vh-4rem)]  text-stone-950">
-      <div className="flex items-center justify-between gap-3 px-4 mt-4">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName={parentLabel}
           SecondPreviewPageLink={parentLink}
@@ -2064,17 +2172,19 @@ export default function NewGoodsIssue({
           FirstPreviewsPageLink={basePath}
           CurrentPageName={formLabel ?? (isPostMode ? `Post ${documentPrefix}` : `New ${documentPrefix}`)}
         />
-        <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
-          <List className="size-4" />
-          {listLabel} List
-        </Button>
-      </div>
+        <PageHeaderActions>
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push(basePath)}>
+            <List className="size-4" />
+            {listLabel} List
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <PageSection>
         <GoodsIssueHeaderSection fields={headerComponentList} />
 
-        <div className="border-t p-5">
-          <Tabs defaultValue="lines" className="space-y-3">
+        <div className="border-t p-3">
+          <Tabs defaultValue="lines" className="space-y-2">
             {isCleanup && (
               <TabsList>
                 <TabsTrigger value="lines">Clean up Lines</TabsTrigger>
@@ -2088,10 +2198,10 @@ export default function NewGoodsIssue({
               <Button type="button" variant="outline" size="sm" onClick={() => setDeliverySettingsRetry(value => value + 1)}>Retry</Button>
             </div>
           )}
-          <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-3 py-3">
+          <section className="overflow-hidden rounded-md border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2.5">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="text-base font-semibold">Issue Lines</h2>
+                <h2 className="text-sm font-semibold">Issue Lines</h2>
                 {usesLineWarehouse && showFlockCardInformation && !deliverySettingsError && (
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
@@ -2130,7 +2240,9 @@ export default function NewGoodsIssue({
                 showRemainingOnHand={triggeredBy === 'BR-DR'}
                 showVariance={showLineVariance}
                 lockedQuantityEditable={lockedLineQuantityEditable}
-                allowDuplicateBuildings={triggeredBy === 'BR-DR'}
+                 allowDuplicateBuildings={triggeredBy === 'BR-DR'}
+                 enableMobileLineModal={triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'}
+                 canEdit={canSave}
                 showTransportFields={triggeredBy === 'BR-DR'}
                 onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
                 enableCopyDown={triggeredBy === 'BR-DR' && canSave}
@@ -2381,7 +2493,7 @@ export default function NewGoodsIssue({
             </div>
             )}
 
-            {(!isCleanup || canEditDraft) && <div className="flex justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3">
+            {(!isCleanup || canEditDraft) && <div className={`${usesBroilerLineLayout ? 'hidden md:flex' : 'flex'} justify-end gap-2 border-t border-stone-200 bg-stone-50 px-3 py-3`}>
               <Input
                 type="number"
                 min="1"
@@ -2451,7 +2563,7 @@ export default function NewGoodsIssue({
                             <tr key={row.flockCardId} className="border-t odd:bg-white even:bg-stone-50/70">
                               <td className="border-r px-3 py-3 font-medium">{row.buildingName || row.buildingCode}</td>
                               <td className="border-r px-3 py-3">{row.flockCard || '-'}</td>
-                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleCount || '-'}</td>
+                              <td className="border-r px-3 py-3 text-right tabular-nums">{row.cycleMask || '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{row.age ?? '-'}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalPlacement)}</td>
                               <td className="border-r px-3 py-3 text-right tabular-nums">{formatQuantity(row.totalMortality)}</td>
@@ -2837,7 +2949,7 @@ export default function NewGoodsIssue({
             </div>
 
             {canEditDraft ? (
-              <div className={`w-full ${showRemarksInActionRow ? 'flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between' : ''}`}>
+              <PageActionBar className={`w-full border-0 p-0 ${showRemarksInActionRow ? 'sm:justify-between' : ''}`}>
                 {showRemarksInActionRow && (
                   <div className="w-full space-y-2 sm:max-w-xl">
                     <Label htmlFor="goods-issue-remarks">Remarks</Label>
@@ -2867,13 +2979,13 @@ export default function NewGoodsIssue({
                     </Button>
                   )}
                 </div>
-              </div>
+              </PageActionBar>
             ) : (
-              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+              <p className="text-sm text-muted-foreground">This document is already posted and cannot be edited.</p>
             )}
           </div>
         </div>
-      </section>
+      </PageSection>
 
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
         <DialogContent>
@@ -2884,21 +2996,21 @@ export default function NewGoodsIssue({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
             {isCleanup ? (
               <div className="space-y-2">
                 <div className="flex justify-between gap-3">
-                  <span className="text-stone-500">Total Clean up Quantity</span>
+                  <span className="text-muted-foreground">Total Clean up Quantity</span>
                   <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-stone-500">Total Variance</span>
+                  <span className="text-muted-foreground">Total Variance</span>
                   <span className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</span>
                 </div>
               </div>
             ) : (
               <div className="flex justify-between gap-3">
-                <span className="text-stone-500">Total Base Quantity</span>
+                <span className="text-muted-foreground">Total Base Quantity</span>
                 <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
               </div>
             )}
@@ -2925,6 +3037,6 @@ export default function NewGoodsIssue({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   )
 }

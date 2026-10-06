@@ -35,6 +35,8 @@ begin
     raise exception 'You do not have permission to create farms.';
   end if;
 
+  perform public.validate_farm_profile_payload(payload->'farm');
+
   farm_address := nullif(
     concat_ws(
       ', ',

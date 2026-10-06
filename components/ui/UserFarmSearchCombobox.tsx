@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SearchableCombobox from "@/components/SearchableCombobox";
-import { Check } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { listBroilerFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 
@@ -66,6 +67,7 @@ export default function UserFarmSearchCombobox({
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
   const [broilerFarms, setBroilerFarms] = useState<UserFarm[] | null>(null);
+  const [buttonSearch, setButtonSearch] = useState("");
 
   useEffect(() => {
     if (farmType !== "BR") return;
@@ -118,11 +120,34 @@ export default function UserFarmSearchCombobox({
     ?? filteredFarms.find(farm => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
 
+  const visibleButtonFarms = useMemo(() => {
+    const query = buttonSearch.trim().toLocaleLowerCase();
+    if (!query) return filteredFarms;
+
+    return filteredFarms.filter((farm) =>
+      `${farm.code} ${farm.name}`.toLocaleLowerCase().includes(query)
+    );
+  }, [buttonSearch, filteredFarms]);
+
   if (display === "buttons") {
     return (
-      <div className={className} role="group" aria-label={label}>
-        <div className="flex w-full flex-wrap gap-2">
-          {filteredFarms.map((farm) => {
+      <div className={className}>
+        <div className="relative mb-2">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={buttonSearch}
+            onChange={(event) => setButtonSearch(event.target.value)}
+            placeholder="Search farms..."
+            aria-label={`Search ${label}`}
+            className="h-9 pl-9"
+          />
+        </div>
+        <div className="flex w-full flex-wrap gap-2" role="group" aria-label={label}>
+          {visibleButtonFarms.map((farm) => {
             const isSelected = String(farm.id) === selectedValue;
 
             return (
@@ -143,8 +168,10 @@ export default function UserFarmSearchCombobox({
             );
           })}
         </div>
-        {!filteredFarms.length && (
-          <p className="text-sm text-muted-foreground">No farms available</p>
+        {!visibleButtonFarms.length && (
+          <p className="text-sm text-muted-foreground">
+            {filteredFarms.length ? "No farms match your search" : "No farms available"}
+          </p>
         )}
       </div>
     );

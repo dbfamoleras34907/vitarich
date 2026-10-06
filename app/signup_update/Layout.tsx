@@ -14,6 +14,7 @@ import { db } from "@/lib/Supabase/supabaseClient"
 import { DefaultGenders, islandGrouplist, regionList } from "@/lib/Defaults/DefaultValues"
 import { PERSONAL_INFORMATION_FIELDS, validatePersonalInformation, type PersonalInformation } from "@/lib/auth/personalInformation"
 import { savePersonalInformation, getRegistrationStatus } from "@/lib/data/repositories/registration"
+import { useGlobalDefaults } from "@/lib/Defaults/GlobalDefaults"
 
 function errorMessage(error: unknown) {
   return error && typeof error === "object" && "message" in error && typeof error.message === "string"
@@ -22,6 +23,7 @@ function errorMessage(error: unknown) {
 
 export default function Layout() {
   const router = useRouter()
+  const { setGlobals } = useGlobalDefaults()
   const [form, setForm] = useState<PersonalInformation>({})
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -80,6 +82,7 @@ export default function Layout() {
     setLoading(true)
     try {
       await savePersonalInformation(form)
+      await setGlobals({ autoSelectSingleFarm: true })
       toast.success("Your information has been saved.")
       router.replace("/init")
     } catch (error) {

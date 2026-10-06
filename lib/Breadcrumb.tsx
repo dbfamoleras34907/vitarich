@@ -39,48 +39,43 @@ const Breadcrumb = ({
   }, [CurrentPageName, FirstPreviewsPageName]);
 
   return (
-    <nav aria-label="Breadcrumb" className="flex flex-col">
-      
-      {/* Page Title - Always Visible */}
-      <h1 className="pb-1 text-2xl font-semibold text-[var(--starbucks-green)]">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 flex-col-reverse gap-0.5">
+      <h1 className="truncate text-xl font-semibold leading-6 tracking-tight text-foreground">
         {CurrentPageName}
       </h1>
 
-      {/* Breadcrumb Links - Hidden on md and smaller */}
-      <ol className="hidden items-center gap-2 whitespace-nowrap text-sm text-muted-foreground md:flex">
-        
+      <ol className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] leading-4 text-muted-foreground">
         {SecondPreviewPageName && (
           <>
-            <li>
+            <li className="min-w-0 truncate">
               <Link
                 href={SecondPreviewPageLink || "#"}
-                className="transition-colors hover:text-primary hover:underline"
+                className="transition-colors hover:text-primary"
               >
                 {SecondPreviewPageName}
               </Link>
             </li>
-            <span>/</span>
+            <li aria-hidden="true">/</li>
           </>
         )}
 
         {FirstPreviewsPageName && (
           <>
-            <li>
+            <li className="min-w-0 truncate">
               <Link
                 href={FirstPreviewsPageLink || "#"}
-                className="transition-colors hover:text-primary hover:underline"
+                className="transition-colors hover:text-primary"
               >
                 {FirstPreviewsPageName}
               </Link>
             </li>
-            <span>/</span>
+            <li aria-hidden="true">/</li>
           </>
         )}
 
-        <li className="font-semibold text-foreground" aria-current="page">
+        <li className="min-w-0 truncate font-medium text-foreground" aria-current="page">
           {CurrentPageName}
         </li>
-
       </ol>
     </nav>
   );

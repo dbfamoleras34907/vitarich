@@ -10,7 +10,8 @@ Apply these files in order before releasing the UI:
 
 1. `app/admin/notifications/notification_system.sql` (updated centralized source verifier).
 2. `app/brd/dr/alter_br_delivery_lines_add_net_live_weight.sql`.
-3. `app/brd/dr/save_br_delivery_transaction.sql`.
+3. `app/sql/new/alter_growing_harvest_age.sql`.
+4. `app/sql/updated/save_br_delivery_transaction.sql`.
 
 Target database deployment has not been performed. The notification catalog intentionally keeps `BR_DELIVERY.ruleActivationReady` false until target farm constraints, authenticated saves, and dispatcher behavior are verified. The new non-null farm check is NOT VALID for historical rows, but enforces new inserts and updates; the existing farm foreign key remains authoritative.
 

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
+import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
@@ -25,6 +26,8 @@ import {
   GoodsIssue,
 } from './api'
 import DeliveryReceipt from '@/app/brd/dr/DeliveryReceipt'
+import BroilerIssueReversalButton from '@/app/brd/BroilerIssueReversalButton'
+import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
 type GoodsIssueHistoryConfig = {
   triggeredBy: string
@@ -124,6 +127,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const { setCollapsed } = useSidebar()
   const cannotView = usePermission(`${config.permissionPath}/view`)
   const cannotInsert = usePermission(`${config.permissionPath}/insert`)
+  const conVoid = usePermission(`${config.permissionPath}/void`)
   const defaultFarmId = config.useDefaultFarm
     ? normalizeFarmId(getValue('DefaultFarmId'))
     : null
@@ -134,6 +138,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
+  const [reversalIssue, setReversalIssue] = useState<GoodsIssue | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -168,6 +173,9 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         id: issue.id,
         giNo: issue.giNo,
         itemDescription: getIssueItemSummary(issue),
+        cycleReference: [...new Set(issue.lines.map(line =>
+          `${line.fromWarehouseName || line.fromWarehouseCode || 'Building'}: ${formatBroilerCycleNumbers(line)}`,
+        ))].join('\n') || '—',
         farmName: issue.farmName || '-',
         issueDate: issue.issueDate,
         warehouse: config.showWarehouseName
@@ -195,13 +203,17 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       { key: 'farmName', label: 'Farm' },
       { key: 'issueDate', label: config.triggeredBy === 'BR-DR' ? 'Posting Date' : 'Issue Date' },
       { key: 'warehouse', label: 'Warehouse' },
+      ...(['BR-CU', 'BR-DR'].includes(config.triggeredBy) ? [{
+        key: 'cycleReference', label: 'Cycle #',
+        render: (row: GoodsIssueTableRow) => <span className="whitespace-pre-line text-xs">{String(row.cycleReference)}</span>,
+      }] : []),
       { key: 'issueQty', label: 'Issue Qty', align: 'center' },
       {
         key: 'status',
         label: 'Status',
         render: row => (
           <span className={getInventoryStatusBadgeClass(row.status)}>
-            {row.status}
+            {['BR-CU', 'BR-DR'].includes(config.triggeredBy) && row.status === 'Cancelled' ? 'Void' : row.status}
           </span>
         ),
         align: 'center',
@@ -226,6 +238,12 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-48">
+                {['BR-CU', 'BR-DR'].includes(config.triggeredBy) && row.status === 'Posted' && (
+                  <DropdownMenuItem disabled={row.id === null || conVoid} onSelect={() => setReversalIssue(row.issue)}>
+                    <RefreshCw className="size-4" />
+                    Reverse
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   disabled={row.id === null || cannotView}
                   onSelect={() => {
@@ -270,6 +288,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     [
       cannotInsert,
       cannotView,
+      conVoid,
       config.basePath,
       config.documentPrefix,
       config.triggeredBy,
@@ -287,29 +306,26 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] text-stone-950">
-      <div className="mt-2 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName={config.parentLabel}
           CurrentPageName={config.title}
         />
 
-        <div className="flex gap-2">
-          <div className="flex justify-end">
-            <Button variant="outline" className="gap-2" onClick={refresh} disabled={loading}>
+        <PageHeaderActions>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
-          </div>
-
-          <Button type="button" onClick={openNewGoodsIssue} disabled={cannotInsert}>
+          <Button type="button" size="sm" onClick={openNewGoodsIssue} disabled={cannotInsert}>
             <Plus className="size-4" />
             New {config.documentPrefix}
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         {config.showFarmFilter && (
           <div className="w-full sm:max-w-sm">
             <UserFarmSearchCombobox
@@ -339,6 +355,15 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         />
       </div>
 
+      {reversalIssue && <BroilerIssueReversalButton
+        kind={config.triggeredBy === 'BR-DR' ? 'harvest' : 'cleanup'}
+        documentId={reversalIssue.id}
+        documentNo={reversalIssue.giNo}
+        status={reversalIssue.status}
+        open
+        onOpenChange={open => { if (!open) setReversalIssue(null) }}
+        onReversed={() => { void refresh() }}
+      />}
       <DeliveryReceipt
         deliveryId={receiptDeliveryId}
         triggeredBy={config.triggeredBy}
@@ -348,6 +373,6 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           if (!open) setReceiptDeliveryId(null)
         }}
       />
-    </main>
+    </PageShell>
   )
 }

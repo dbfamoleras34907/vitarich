@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,6 +29,7 @@ const newRow = (key: number): ConversionFormRow => ({
 })
 
 export default function NewUomConversionLayout() {
+  const requestId = useRef<string | null>(null)
   const router = useRouter()
   const params = useParams<{ id?: string }>()
   const groupId = params.id ? Number(params.id) : null
@@ -37,7 +38,7 @@ export default function NewUomConversionLayout() {
   const [loadingUoms, setLoadingUoms] = useState(true)
   const [saving, setSaving] = useState(false)
   const [nextKey, setNextKey] = useState(2)
-  const [form, setForm] = useState({ code: '', name: '', base_uom_id: '', remarks: '' })
+  const [form, setForm] = useState({ code: '', name: '', base_uom_id: '', default_uom_id: '', remarks: '' })
   const [rows, setRows] = useState<ConversionFormRow[]>([newRow(1)])
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function NewUomConversionLayout() {
       const data = await getUomGroupById(groupId) as {
         code: string
         name: string
+        default_uom_id: number | null
         base_uom_id: number
         remarks: string | null
         conversions: Array<{
@@ -69,6 +71,7 @@ export default function NewUomConversionLayout() {
         code: data.code,
         name: data.name,
         base_uom_id: String(data.base_uom_id),
+        default_uom_id: String(data.default_uom_id ?? data.base_uom_id),
         remarks: data.remarks || '',
       })
       setRows(
@@ -94,6 +97,12 @@ export default function NewUomConversionLayout() {
     () => uoms.find(uom => String(uom.id) === form.base_uom_id),
     [form.base_uom_id, uoms]
   )
+
+  const defaultUomOptions = uoms.filter(uom =>
+    String(uom.id) === form.base_uom_id || rows.some(row => row.uom_id === String(uom.id))
+  )
+  const defaultUomId = defaultUomOptions.some(uom => String(uom.id) === form.default_uom_id)
+    ? form.default_uom_id : form.base_uom_id
 
   const availableUoms = (currentRow: ConversionFormRow) => {
     const selectedElsewhere = new Set(
@@ -133,10 +142,13 @@ export default function NewUomConversionLayout() {
 
     setSaving(true)
     try {
+      requestId.current ??= crypto.randomUUID()
       const payload = {
+        request_id: requestId.current,
         code: form.code,
         name: form.name,
         base_uom_id: Number(form.base_uom_id),
+        default_uom_id: Number(defaultUomId),
         remarks: form.remarks,
         conversions: [
           { uom_id: Number(form.base_uom_id), base_qty: 1, remarks: 'Base Unit' },
@@ -178,7 +190,7 @@ export default function NewUomConversionLayout() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div className="space-y-2">
                 <Label required>Group Code</Label>
                 <Input
@@ -216,6 +228,20 @@ export default function NewUomConversionLayout() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label required>Default UoM</Label>
+                <Select value={defaultUomId}
+                  onValueChange={value => setForm(prev => ({ ...prev, default_uom_id: value }))}
+                  disabled={loadingUoms || !form.base_uom_id}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {defaultUomOptions.map(uom => (
+                      <SelectItem key={uom.id} value={String(uom.id)}>{uom.code} - {uom.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-stone-500">Preselected when this group is used. Base UoM still controls conversion quantities.</p>
               </div>
             </div>
 

@@ -27,8 +27,8 @@ export function validateRegistrationProfile(input: RegistrationProfile) {
   if (!REGISTRATION_FMS_TYPES.some((option) => option.code === input.fms_type)) {
     return "FMS Type is required. Choose Broiler, Breeder, or Hatchery."
   }
-  if (typeof input.farm_id !== "number" || !Number.isSafeInteger(input.farm_id) || input.farm_id <= 0) {
-    return "Farm is required. Choose a farm."
+  if (input.farm_id != null && (typeof input.farm_id !== "number" || !Number.isSafeInteger(input.farm_id) || input.farm_id <= 0)) {
+    return "Choose a valid farm or leave it blank."
   }
   return validatePersonalInformation(input)
 }

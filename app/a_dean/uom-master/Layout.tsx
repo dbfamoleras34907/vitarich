@@ -31,7 +31,7 @@ export default function UomMasterLayout() {
         sortable: false,
         searchable: false,
         render: row => (
-          <div className="flex justify-end gap-2">
+          <div className="flex  gap-2">
             <Button
               variant="outline"
               disabled={canEdit}

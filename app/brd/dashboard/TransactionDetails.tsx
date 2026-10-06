@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { ArrowUpRight } from 'lucide-react'
 import type { DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
 import { activeGrowingLines, goodBirdPlacements, growingWaterLiters, movementQuantity } from '@/lib/broiler/cycleDashboard'
 import { usePermission } from '@/hooks/usePermission'
@@ -18,10 +19,10 @@ export const formatNumber = (value: number | null | undefined, digits = 2) => va
 export const formatDate = (value: string) => value ? value.slice(0, 10) : '—'
 
 function DocumentLink({ href, children, blocked }: { href: string; children: ReactNode; blocked: boolean }) {
-  return blocked ? <>{children}</> : <Link href={href} className="text-primary underline underline-offset-2">{children}</Link>
+  return blocked ? <>{children}</> : <Link href={href} className="inline-flex items-center gap-1 text-primary underline underline-offset-2">{children}<ArrowUpRight aria-label="Open document" className="size-3.5 shrink-0 text-amber-500" /></Link>
 }
 
-export default function TransactionDetails({ tab, cycles }: { tab: Exclude<DetailTab, 'overview'>; cycles: DashboardCycleBuilding[] }) {
+export default function TransactionDetails({ tab, cycles, includeAllPlacementRecords = false }: { tab: Exclude<DetailTab, 'overview'>; cycles: DashboardCycleBuilding[]; includeAllPlacementRecords?: boolean }) {
   const placementBlocked = usePermission('/inv/doc-receiving/view')
   const growingBlocked = usePermission('/brd/fc/view')
   const reportBlocked = usePermission('/brd/fc/report/view')
@@ -37,7 +38,7 @@ export default function TransactionDetails({ tab, cycles }: { tab: Exclude<Detai
   const rawRows: { key: string; cells: ReactNode[] }[] = cycles.flatMap(building => {
     const prefix = [building.buildingName || building.buildingCode, building.cycleNumber]
     const growingLink = <DocumentLink href={`/brd/fc/report?cardNo=${encodeURIComponent(building.cardNo)}`} blocked={growingBlocked && reportBlocked}>{building.growingNumber || building.cardNo}</DocumentLink>
-    if (tab === 'placement') return goodBirdPlacements(building.placements).map((row, index) => ({
+    if (tab === 'placement') return (includeAllPlacementRecords ? building.placements : goodBirdPlacements(building.placements)).map((row, index) => ({
       key: `${building.flockCardId}-${row.id}-${index}`, cells: [...prefix,
         <DocumentLink key="doc" href={`/inv/doc-receiving/post?id=${row.documentId}`} blocked={placementBlocked}>{row.documentNo}</DocumentLink>,
         formatDate(row.receiveDate), formatDate(row.productionDate), row.vendor || '—',
@@ -70,7 +71,7 @@ export default function TransactionDetails({ tab, cycles }: { tab: Exclude<Detai
       <div className="max-h-[65vh] overflow-auto">
         <table className="w-full border-collapse whitespace-nowrap text-xs">
           <thead className="sticky top-0 bg-muted"><tr>{headers[tab].map(header => <th key={header} className="border-b px-3 py-2 text-left font-medium">{header}</th>)}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 tabular-nums group-data-[compact=true]/dashboard:px-2 group-data-[compact=true]/dashboard:py-1">{cell}</td>)}</tr>)}</tbody>
+          <tbody>{rows.map(row => <tr key={row.key} className="border-b last:border-0 hover:bg-muted/40">{row.cells.map((cell, index) => <td key={index} className="px-2 py-1 tabular-nums">{cell}</td>)}</tr>)}</tbody>
         </table>
       </div>}
   </section>

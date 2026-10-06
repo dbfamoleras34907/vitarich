@@ -20,6 +20,7 @@ export type GoodsReceiptOpenFlockBuilding = {
   warehouseName: string
   cardNo: string
   flockCode: string
+  cycleNumber?: string
   cycleAge: number
 }
 
@@ -77,6 +78,7 @@ export type GoodsReceiptExistingBatch = {
 }
 
 export type UomGroupOption = {
+  defaultUomCode: string
   id: number
   code: string
   name: string
@@ -93,6 +95,7 @@ export type UomConversionOption = {
 
 export type GoodsReceiptPrefetchReferences = {
   farms: GoodsReceiptFarm[]
+  hatcheryFarms: GoodsReceiptFarm[]
   openFlockBuildings: GoodsReceiptOpenFlockBuilding[]
   uomGroups: UomGroupOption[]
   conversions: UomConversionOption[]
@@ -160,6 +163,7 @@ type ConversionGroupRecord = {
   id: number
   code: string
   name: string
+  default_uom: { code: string } | { code: string }[] | null
   base_uom: { code: string } | { code: string }[] | null
   conversions: Array<{
     base_qty: number
@@ -204,6 +208,7 @@ const buildUomOptions = (data: unknown) => {
       id: group.id,
       code: group.code,
       name: group.name,
+      defaultUomCode: singleRelation(group.default_uom)?.code ?? baseUom.code,
       baseUomCode: baseUom.code,
     }]
   })
@@ -266,10 +271,23 @@ const getActiveFarmsByCodes = async (farmCodes: string[]) => {
   return (data ?? []) as GoodsReceiptFarm[]
 }
 
+const getActiveHatcheryFarms = async () => {
+  const { data, error } = await activeApprovedFarmsQuery(
+    db.from('farms').select('*'),
+  )
+    .eq('farm_type', 'HA')
+    .order('code')
+
+  if (error) throw error
+
+  return (data ?? []) as GoodsReceiptFarm[]
+}
+
 export async function getGoodsReceiptReferences() {
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
+  const hatcheryFarmsQuery = getActiveHatcheryFarms()
 
-  const [itemsResult, warehousesResult, assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
+  const [itemsResult, warehousesResult, assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
     db
       .from('items')
       .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, sub_item_group_id, sub_item_group_level_1_id, sub_item_group_level_2_id, sub_item_group_level_3_id, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
@@ -281,12 +299,14 @@ export async function getGoodsReceiptReferences() {
       .eq('is_active', true)
       .order('whse_code'),
     assignedFarmCodesQuery,
+    hatcheryFarmsQuery,
     db
       .from('uom_groups')
       .select(`
         id,
         code,
         name,
+        default_uom:uom_master_data!uom_groups_default_uom_id_fkey(code),
         base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
         conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
           base_qty,
@@ -336,6 +356,7 @@ export async function getGoodsReceiptReferences() {
     items: (itemsResult.data ?? []) as Items[],
     warehouses: warehouseRows,
     farms: await getActiveFarmsByCodes(assignedFarmCodes),
+    hatcheryFarms,
     openFlockBuildings: buildOpenFlockBuildings(
       (openFlockCardsResult.data ?? []) as OpenFlockCardRow[],
       warehouseRows,
@@ -350,15 +371,18 @@ export async function getGoodsReceiptReferences() {
 
 export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptPrefetchReferences> {
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
+  const hatcheryFarmsQuery = getActiveHatcheryFarms()
 
-  const [assignedFarmCodes, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, warehousesResult, openFlockCardsResult] = await Promise.all([
+  const [assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, warehousesResult, openFlockCardsResult] = await Promise.all([
     assignedFarmCodesQuery,
+    hatcheryFarmsQuery,
     db
       .from('uom_groups')
       .select(`
         id,
         code,
         name,
+        default_uom:uom_master_data!uom_groups_default_uom_id_fkey(code),
         base_uom:uom_master_data!uom_groups_base_uom_id_fkey(code),
         conversions:uom_group_conversions!uom_group_conversions_uom_group_id_fkey(
           base_qty,
@@ -410,6 +434,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
 
   return {
     farms: await getActiveFarmsByCodes(assignedFarmCodes),
+    hatcheryFarms,
     openFlockBuildings: buildOpenFlockBuildings(
       (openFlockCardsResult.data ?? []) as OpenFlockCardRow[],
       warehouseRows,

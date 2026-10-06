@@ -46,7 +46,7 @@ export default function VnmList() {
 
   const rows = useMemo<VnmListRow[]>(() => documents.map(document => ({
     id: Number(document.id), documentNo: document.documentNo, farm: document.farmName || document.farmCode,
-    cycle: document.fmsType === 'Breeder' ? 'N/A' : document.cycleNo ? String(document.cycleNo) : '-', createdDate: document.createdDate,
+    cycle: document.fmsType === 'Breeder' ? 'N/A' : document.cycleMask || '-', createdDate: document.createdDate,
     warehouse: document.storageWarehouseName || document.storageWarehouseCode,
     medication: document.lines.length === 0 ? '-' : document.lines.length === 1 ? document.lines[0].medicationName : `${document.lines[0].medicationName} +${document.lines.length - 1} more`,
     quantity: document.lines.reduce((total, line) => total + Number(line.baseQuantity || 0), 0), status: document.status,

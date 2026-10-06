@@ -359,7 +359,25 @@ begin
       -- Each module integration must provide an authoritative verifier. The
       -- first integration accepts only the same DOC Placement posting version
       -- that was atomically stamped by the source-table trigger.
-      if v_event.module_key = 'USER_REGISTRATION' then
+      if v_event.dedupe_key like 'RECEIVING_FLOW:%' then
+        if not public.receiving_flow_event_valid(v_event) then
+          update public.notification_outbox set status='invalid',processed_at=now(),processing_started_at=null,
+            last_error='Receiving flow event does not match its persisted revision and canonical farm.' where id=v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'UOM_GROUP' then
+        select exists (
+          select 1 from public.uom_groups g where g.id::text = v_event.entity_id
+            and v_event.entity_type = 'uom_groups'
+            and v_event.event_key in ('UOM_GROUP_POSTED', 'UOM_GROUP_EDITED', 'UOM_GROUP_VOIDED')
+            and v_event.farm_id is null and v_event.recipient_farm_id is null
+        ) into v_source_valid;
+        if not coalesce(v_source_valid, false) then
+          update public.notification_outbox set status = 'invalid', processed_at = now(), processing_started_at = null,
+            last_error = 'UoM group event does not match its shared master source.' where id = v_event.id;
+          continue;
+        end if;
+      elsif v_event.module_key = 'USER_REGISTRATION' then
         select exists (
           select 1 from public.users registered
           where registered.id::text = v_event.entity_id
@@ -467,7 +485,7 @@ begin
           continue;
         end if;
       elsif v_event.module_key = 'BR_CLEANUP'
-            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED') then
+            and v_event.event_key in ('BR_CLEANUP_POSTED', 'BR_CLEANUP_EDITED', 'BR_CLEANUP_VOIDED') then
         select exists (
           select 1 from public.br_cleanup delivery
           join public.farms farm on farm.id = delivery.farm_id
@@ -478,6 +496,7 @@ begin
             and v_event.fms_type = 'Broiler'
             and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
             and (v_event.event_key <> 'BR_CLEANUP_POSTED' or delivery.status = 'Posted')
+            and (v_event.event_key <> 'BR_CLEANUP_VOIDED' or (delivery.status = 'Cancelled' and to_jsonb(delivery)->>'reversed_at' is not null))
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox
@@ -487,7 +506,7 @@ begin
           continue;
         end if;
       elsif v_event.module_key = 'BR_DELIVERY'
-            and v_event.event_key in ('BR_DELIVERY_POSTED', 'BR_DELIVERY_EDITED') then
+            and v_event.event_key in ('BR_DELIVERY_POSTED', 'BR_DELIVERY_EDITED', 'BR_DELIVERY_VOIDED') then
         select exists (
           select 1 from public.br_delivery delivery
           join public.farms farm on farm.id = delivery.farm_id
@@ -498,6 +517,7 @@ begin
             and v_event.fms_type = 'Broiler'
             and upper(btrim(farm.farm_type)) in ('BR', 'BROILER')
             and (v_event.event_key <> 'BR_DELIVERY_POSTED' or delivery.status = 'Posted')
+            and (v_event.event_key <> 'BR_DELIVERY_VOIDED' or (delivery.status = 'Cancelled' and to_jsonb(delivery)->>'reversed_at' is not null))
         ) into v_source_valid;
         if not coalesce(v_source_valid, false) then
           update public.notification_outbox
@@ -1064,6 +1084,7 @@ as $$
 declare
   v_fms_type text;
 begin
+  if to_regclass('public.receiving_flow_event_state') is not null then return new; end if;
   if lower(btrim(coalesce(new.status, ''))) in ('posted', 'received')
      and lower(btrim(coalesce(old.status, ''))) not in ('posted', 'received') then
     v_fms_type := case lower(btrim(coalesce(new.fms_type, '')))
@@ -1207,6 +1228,7 @@ security definer
 set search_path = public
 as $$
 begin
+  if to_regclass('public.receiving_flow_event_state') is not null then return new; end if;
   if new.status = 'Posted' and old.status is distinct from 'Posted' then
     insert into public.notification_outbox (
       module_key,

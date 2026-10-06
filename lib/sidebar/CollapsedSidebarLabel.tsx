@@ -37,10 +37,12 @@ export default function CollapsedSidebarLabel() {
   if (!collapsed || !email || HIDDEN_ROUTES.has(pathname)) return null
 
   return (
-    <div className="hidden h-6 w-full shrink-0 items-center justify-center gap-2 text-xs text-muted-foreground md:flex print:hidden">
-      <span className="max-w-[42vw] truncate font-medium text-foreground">{email}</span>
-      <span aria-hidden="true">•</span>
-      <span className="max-w-[42vw] truncate">Default Farm: {defaultFarmName}</span>
+    <div className="hidden  h-6 w-full shrink-0 items-center justify-center gap-2 text-xs text-muted-foreground md:flex print:hidden">
+      <div className="">
+        <span className="max-w-[42vw] truncate font-medium text-foreground">{email}</span>
+        <span aria-hidden="true">•</span>
+        <span className="max-w-[42vw] truncate">Default Farm: {defaultFarmName}</span>3
+      </div>
     </div>
   )
 }

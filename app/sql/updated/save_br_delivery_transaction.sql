@@ -1,4 +1,6 @@
--- Apply notification_system.sql and alter_br_delivery_lines_add_net_live_weight.sql first.
+-- Apply notification_system.sql, alter_br_delivery_lines_add_net_live_weight.sql,
+-- app/sql/new/alter_growing_harvest_age.sql, and
+-- app/sql/new/alter_br_delivery_lines_add_average_live_weight.sql first.
 begin;
 
 create or replace function public.save_br_delivery_transaction(p_document jsonb)
@@ -13,6 +15,7 @@ declare
   v_existing_status text;
   v_target_status text := coalesce(nullif(trim(p_document->>'status'), ''), 'Draft');
   v_farm_id bigint := nullif(p_document->>'farmId', '')::bigint;
+  v_farm_cycle_id bigint := nullif(p_document->>'farmCycleId', '')::bigint;
   v_farm_code text;
   v_farm_name text;
   v_line jsonb;
@@ -45,6 +48,39 @@ begin
     raise exception 'Harvest & Delivery requires at least one line.';
   end if;
 
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'lines') input(line)
+    where nullif(input.line->>'harvestAge', '') is null
+       or (input.line->>'harvestAge') !~ '^[0-9]+$'
+  ) then
+    raise exception 'Every Harvest & Delivery line requires an Age that is a whole number, zero or greater.';
+  end if;
+
+  if v_farm_cycle_id is null or not exists (
+    select 1 from public.doc_farm_cycles cycle
+    where cycle.id = v_farm_cycle_id and cycle.farm_id = v_farm_id
+      and cycle.status in ('Saved', 'Past Open')
+  ) then
+    raise exception 'Harvest & Delivery requires a Current Cycle or Past Open Cycle for the selected farm.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'lines') input(line)
+    where not exists (
+      select 1 from public.flock_card card
+      where card.farm_cycle_id = v_farm_cycle_id and card.farm_id = v_farm_id
+        and card.void = '1' and card.status = 'Saved'
+        and (
+          card.building_whse_id = nullif(input.line->>'fromWarehouseId', '')::bigint
+          or upper(btrim(card.building_code)) = upper(btrim(input.line->>'fromWarehouseCode'))
+        )
+    )
+  ) then
+    raise exception 'Every Harvest & Delivery building must belong to the selected open cycle.';
+  end if;
+
   if nullif(p_document->>'id', '') is not null then
     v_document_id := (p_document->>'id')::bigint;
 
@@ -67,6 +103,7 @@ begin
       gi_no = trim(p_document->>'giNo'),
       issue_date = (now() at time zone 'Asia/Manila')::date,
       farm_id = v_farm_id,
+      farm_cycle_id = v_farm_cycle_id,
       farm_code = nullif(trim(v_farm_code), ''),
       farm_name = nullif(trim(v_farm_name), ''),
       from_warehouse_id = nullif(p_document->>'fromWarehouseId', '')::bigint,
@@ -82,6 +119,7 @@ begin
       gi_no,
       issue_date,
       farm_id,
+      farm_cycle_id,
       farm_code,
       farm_name,
       from_warehouse_id,
@@ -95,6 +133,7 @@ begin
       trim(p_document->>'giNo'),
       (now() at time zone 'Asia/Manila')::date,
       v_farm_id,
+      v_farm_cycle_id,
       nullif(trim(v_farm_code), ''),
       nullif(trim(v_farm_name), ''),
       nullif(p_document->>'fromWarehouseId', '')::bigint,
@@ -134,6 +173,8 @@ begin
       set
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
+        harvest_age = (v_line->>'harvestAge')::integer,
+        average_live_weight = nullif(v_line->>'averageLiveWeight', '')::numeric,
         net_live_weight = nullif(v_line->>'netLiveWeight', '')::numeric,
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
         delivered_date = nullif(v_line->>'deliveredDate', '')::date,
@@ -164,6 +205,8 @@ begin
         br_delivery_id,
         line_no,
         allocation_group_key,
+        harvest_age,
+        average_live_weight,
         net_live_weight,
         ts_dr_no,
         delivered_date,
@@ -192,6 +235,8 @@ begin
         v_document_id,
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
+        (v_line->>'harvestAge')::integer,
+        nullif(v_line->>'averageLiveWeight', '')::numeric,
         nullif(v_line->>'netLiveWeight', '')::numeric,
         nullif(trim(v_line->>'tsDrNo'), ''),
         nullif(v_line->>'deliveredDate', '')::date,
@@ -271,7 +316,7 @@ create or replace function public.enqueue_br_delivery_event()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 declare
-  v_event_key text := case when new.status = 'Posted' then 'BR_DELIVERY_POSTED' else 'BR_DELIVERY_EDITED' end;
+  v_event_key text := case when new.status = 'Cancelled' and to_jsonb(new)->>'reversed_at' is not null then 'BR_DELIVERY_VOIDED' when new.status = 'Posted' then 'BR_DELIVERY_POSTED' else 'BR_DELIVERY_EDITED' end;
 begin
   insert into public.notification_outbox (
     module_key, event_key, entity_type, entity_id, document_no, fms_type,
@@ -282,7 +327,7 @@ begin
     'BR_DELIVERY', v_event_key, 'br_delivery', new.id::text, new.gi_no, 'Broiler',
     new.farm_id, new.farm_id, auth.uid(), '/brd/dr/post?id=' || new.id,
     'Menus', 'Harvest & Delivery/view',
-    case when new.status = 'Posted' then 'Harvest & Delivery posted' else 'Harvest & Delivery edited' end,
+    case when new.status = 'Cancelled' then 'Harvest & Delivery reversed' when new.status = 'Posted' then 'Harvest & Delivery posted' else 'Harvest & Delivery edited' end,
     'Harvest & Delivery {document_no} was saved by {initiator_name}.', 'normal',
     jsonb_build_object('revision', new.notification_revision),
     v_event_key || ':' || new.id || ':' || new.notification_revision, now()

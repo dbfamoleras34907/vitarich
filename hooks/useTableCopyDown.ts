@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
-import { useConfirm } from '@/lib/ConfirmProvider'
 
-type CopyRange = { row: number; column: number; bottom: number }
+type CopyRange = { row: number; column: number; bottom: number; sourceValue?: unknown }
 
 type Options<T, C> = {
   rows: T[]
@@ -16,19 +15,13 @@ type Options<T, C> = {
 
 /** Shared fill-handle behavior for tables with data-copy-down-row on their cells. */
 export function useTableCopyDown<T, C>(options: Options<T, C>) {
-  const confirm = useConfirm()
   const latest = useRef(options)
   const drag = useRef<CopyRange | null>(null)
   const origin = useRef<Options<T, C> | null>(null)
   const pending = useRef(false)
-  const mounted = useRef(false)
   const [range, setRange] = useState<CopyRange | null>(null)
 
   useEffect(() => { latest.current = options })
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false }
-  }, [])
 
   const cancel = () => {
     drag.current = null
@@ -61,18 +54,13 @@ export function useTableCopyDown<T, C>(options: Options<T, C>) {
     const targets = snapshot.rows.slice(selection.row + 1, selection.bottom + 1)
       .filter(row => snapshot.isEditable(column, row))
     if (!targets.length) return
-    const value = snapshot.getValue(column, source)
+    const value = selection.sourceValue === undefined
+      ? snapshot.getValue(column, source)
+      : selection.sourceValue
     pending.current = true
     try {
-      const accepted = await confirm({
-        title: 'Are you sure you want to copy down?',
-        description: `This will replace the values in ${targets.length} editable cell${targets.length === 1 ? '' : 's'} below.`,
-        confirmText: 'Copy down',
-        cancelText: 'Cancel',
-      })
       const current = latest.current
-      // Sorting, filtering, refreshing or editing while confirming invalidates the selection.
-      if (accepted && mounted.current && !current.disabled
+      if (!current.disabled
         && current.rows === snapshot.rows && current.columns === snapshot.columns
         && current.isEditable(column, source)
         && targets.every(row => current.isEditable(column, row))) {
@@ -119,10 +107,10 @@ export function useTableCopyDown<T, C>(options: Options<T, C>) {
   })
 
   return {
-    copyToBottom: (row: number, column: number) => {
+    copyToBottom: (row: number, column: number, sourceValue?: unknown) => {
       if (pending.current || options.disabled) return
       origin.current = options
-      drag.current = { row, column, bottom: options.rows.length - 1 }
+      drag.current = { row, column, bottom: options.rows.length - 1, sourceValue }
       void finish()
     },
     getHandleProps,

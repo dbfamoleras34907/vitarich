@@ -1,15 +1,22 @@
 'use client'
 
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
+import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
 export type GoodsIssueLine = {
+  flockCardId?: number | null
+  flockCardNo?: string | null
+  cycleNumber?: string | null
+  cycleMask?: string | null
   id: number | string
   allocationGroupKey?: string
+  averageLiveWeight?: number | null
   netLiveWeight?: number | null
+  harvestAge?: number | null
   tsDrNo?: string
   deliveredDate?: string
   haulerName?: string
@@ -44,6 +51,8 @@ export type GoodsIssue = {
   triggeredBy: string
   issueDate: string
   farmId: number | null
+  farmCycleId: number | null
+  farmCycleMask: string
   farmCode: string
   farmName: string
   fromWarehouseId: number | null
@@ -65,6 +74,7 @@ type GoodsIssueRow = {
   gi_no: string
   issue_date: string
   farm_id: number | null
+  farm_cycle_id?: number | null
   farm_code: string | null
   farm_name: string | null
   from_warehouse_id: number | null
@@ -105,7 +115,9 @@ type GoodsIssueItemRow = {
   from_warehouse_name: string | null
   void: string
   allocation_group_key?: string | null
+  average_live_weight?: number | null
   net_live_weight?: number | null
+  harvest_age?: number | null
   ts_dr_no?: string | null
   delivered_date?: string | null
   hauler_name?: string | null
@@ -195,7 +207,9 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
       ? `legacy:${row.br_delivery_id}:${String(row.from_warehouse_code ?? '').trim().toUpperCase()}:${row.item_code.trim().toUpperCase()}`
       : `line:${row.id}`
   ),
+  averageLiveWeight: row.average_live_weight == null ? undefined : Number(row.average_live_weight),
   netLiveWeight: row.net_live_weight == null ? null : Number(row.net_live_weight),
+  harvestAge: row.harvest_age == null ? null : Number(row.harvest_age),
   tsDrNo: row.ts_dr_no ?? '',
   deliveredDate: row.delivered_date ?? legacyHeader?.issue_date ?? '',
   haulerName: row.hauler_name ?? legacyHeader?.hauler_name ?? '',
@@ -229,6 +243,8 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   triggeredBy: row.triggered_by ?? 'GI',
   issueDate: row.issue_date,
   farmId: row.farm_id,
+  farmCycleId: row.farm_cycle_id ?? null,
+  farmCycleMask: '',
   farmCode: row.farm_code ?? '',
   farmName: row.farm_name ?? '',
   fromWarehouseId: row.from_warehouse_id,
@@ -482,6 +498,12 @@ export async function getGoodsIssues(
 
   if (itemError) throw itemError
 
+  if (usesDedicatedIssueTables(triggeredBy)) {
+    const items = (itemRows ?? []) as GoodsIssueItemRow[]
+    return loadBroilerIssueCycles(issues.map(issue =>
+      toIssue(issue, items.filter(item => Number(item.br_delivery_id ?? item.br_cleanup_id) === issue.id)),
+    ))
+  }
   const items = (itemRows ?? []) as GoodsIssueListItemRow[]
   return issues.map(issue =>
     toIssueListItem(issue, items.filter(item => getListLineHeaderId(item) === issue.id)),
@@ -508,7 +530,8 @@ export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise
 
   if (itemError) throw itemError
 
-  return toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  const issue = toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  return usesDedicatedIssueTables(triggeredBy) ? (await loadBroilerIssueCycles([issue]))[0] : issue
 }
 
 async function validateOnHand(lines: GoodsIssueLine[]) {
@@ -538,6 +561,7 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
       giNo: issue.giNo,
       issueDate: issue.issueDate,
       farmId: issue.farmId,
+      farmCycleId: issue.farmCycleId,
       fromWarehouseId: issue.fromWarehouseId,
       fromWarehouseCode: issue.fromWarehouseCode,
       fromWarehouseName: issue.fromWarehouseName,
@@ -599,6 +623,7 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     gi_no: issue.giNo,
     issue_date: issue.issueDate,
     farm_id: issue.farmId,
+    farm_cycle_id: issue.farmCycleId,
     farm_code: issue.farmCode || null,
     farm_name: issue.farmName || null,
     from_warehouse_id: issue.fromWarehouseId,

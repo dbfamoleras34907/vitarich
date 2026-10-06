@@ -14,7 +14,7 @@ const mocks = {
   '@/lib/Supabase/supabaseClient': { db: { from(table) {
     const result = { data: table === 'flock_card' ? cards : [], error: null }
     const query = { then(resolve) { return Promise.resolve(result).then(resolve) } }
-    for (const method of ['select', 'eq', 'order']) query[method] = () => query
+    for (const method of ['select', 'eq', 'order', 'in']) query[method] = () => query
     return query
   } } },
   '@/lib/data/repositories/brCleanup': {
@@ -55,6 +55,12 @@ async function run() {
   const batches = await mod.exports.getDeliveryFlockCardPlacementBatches({ flockCardId: 1, buildingCode: 'B1', allowHarvestEmptied: true })
   assert.equal(batches[0].onHandQty, 0)
   assert.equal(batches[0].harvestEmptied, true)
+  const historical = await mod.exports.getDeliveryFlockCardInfo({ farmId: 1, buildingWarehouseId: 2, buildingCode: 'B2', flockCardId: 2 })
+  assert.equal(historical.id, 2, 'historical lookup uses resolved cycle identity')
+  const missing = await mod.exports.getDeliveryFlockCardInfo({ farmId: 1, buildingWarehouseId: 2, buildingCode: 'B2', flockCardId: 999 })
+  assert.equal(missing, null, 'missing historical cycle does not fall back to an active cycle')
+  const unresolved = await mod.exports.getDeliveryFlockCardInfo({ farmId: 1, buildingWarehouseId: 2, buildingCode: 'B2', flockCardId: null })
+  assert.equal(unresolved, null, 'unresolved posted cycle stays unknown')
   console.log('Cleanup building selection regressions passed.')
 }
 run().catch(error => { console.error(error); process.exitCode = 1 })

@@ -14,3 +14,7 @@ warehouse item selection without Feed Group, wrong warehouse rejection, feed inv
 native `jsonb[]` farm warehouse associations (regression for SQLSTATE 42846),
 request retry deduplication, changed-payload rejection, and rollback of an edit
 when a later age fails. Assertions also check notification outbox counts.
+
+The former Posted Harvest guard fixture and assertions are retained only as
+historical regression evidence. Do not run or deploy them: current behavior
+intentionally keeps Growing editable after Harvest.

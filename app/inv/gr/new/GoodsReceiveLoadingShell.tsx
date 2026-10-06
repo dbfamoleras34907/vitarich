@@ -1,39 +1,41 @@
+import { PageSection, PageShell } from '@/components/ui/page-layout'
+
 export default function GoodsReceiveLoadingShell() {
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-stone-50/40 pb-8 text-stone-950">
-      <div className="mx-4 mt-8 flex items-center justify-between gap-3">
-        <div className="h-6 w-56 rounded bg-stone-200" />
-        <div className="h-9 w-24 rounded-md bg-stone-100" />
+    <PageShell>
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-6 w-56 rounded bg-muted" />
+        <div className="h-8 w-24 rounded-md bg-muted" />
       </div>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
+      <PageSection>
+        <div className="grid gap-x-8 gap-y-2 p-3 lg:grid-cols-2">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-              <div className="h-4 w-20 rounded bg-stone-200" />
-              <div className="h-9 rounded-md bg-stone-100" />
+            <div key={index} className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+              <div className="h-3 w-20 rounded bg-muted" />
+              <div className="h-8 rounded-md bg-muted" />
             </div>
           ))}
         </div>
 
-        <div className="border-t p-5">
-          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-            <div className="border-b border-stone-200 bg-white px-3 py-3">
-              <div className="h-5 w-48 rounded bg-stone-200" />
-              <div className="mt-2 h-4 w-20 rounded bg-stone-100" />
+        <div className="border-t p-3">
+          <div className="overflow-hidden rounded-md border bg-card">
+            <div className="border-b bg-muted/20 px-3 py-2">
+              <div className="h-4 w-48 rounded bg-muted" />
+              <div className="mt-1.5 h-3 w-20 rounded bg-muted" />
             </div>
             <div className="space-y-2 p-3">
               {Array.from({ length: 5 }).map((_, index) => (
                 <div key={index} className="grid grid-cols-[40px_2fr_1fr_1fr_1fr_1fr_1fr_56px] gap-3">
                   {Array.from({ length: 8 }).map((__, cellIndex) => (
-                    <div key={cellIndex} className="h-9 rounded bg-stone-100" />
+                    <div key={cellIndex} className="h-8 rounded bg-muted" />
                   ))}
                 </div>
               ))}
             </div>
           </div>
         </div>
-      </section>
-    </main>
+      </PageSection>
+    </PageShell>
   )
 }

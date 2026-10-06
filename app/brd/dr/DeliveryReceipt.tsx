@@ -1,4 +1,5 @@
 'use client'
+import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Printer } from 'lucide-react'
@@ -140,7 +141,7 @@ export default function DeliveryReceipt({
                     <span className="font-semibold">{isCleanup ? 'Date' : 'Posting Date'}</span>
                     <span className="border-b border-black">{formatDate(delivery.issueDate)}</span>
                     <span className="font-semibold">Status</span>
-                    <span className="border-b border-black">{delivery.status}</span>
+                    <span className="border-b border-black">{['BR-CU', 'BR-DR'].includes(triggeredBy) && delivery.status === 'Cancelled' ? 'Void' : delivery.status}</span>
                   </div>
                 </div>
               </header>
@@ -171,6 +172,7 @@ export default function DeliveryReceipt({
                       <th className="border border-black px-2 py-2 text-left">Description</th>
                       <th className="border border-black px-2 py-2 text-left">Batch</th>
                       <th className="border border-black px-2 py-2 text-left">Building</th>
+                      <th className="border border-black px-2 py-2 text-left">Cycle #</th>
                       {!isCleanup && <>
                         <th className="border border-black px-2 py-2 text-left">Delivered Date</th>
                         <th className="border border-black px-2 py-2 text-left">Hauler Name</th>
@@ -192,6 +194,7 @@ export default function DeliveryReceipt({
                         <td className="border border-black px-2 py-2">{line.description || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.batchNumber || '-'}</td>
                         <td className="border border-black px-2 py-2">{line.fromWarehouseCode || '-'}</td>
+                        <td className="border border-black px-2 py-2">{formatBroilerCycleNumbers(line)}</td>
                         {!isCleanup && <>
                           <td className="border border-black px-2 py-2">{formatDate(line.deliveredDate ?? '')}</td>
                           <td className="border border-black px-2 py-2">{line.haulerName || '-'}</td>
@@ -211,8 +214,8 @@ export default function DeliveryReceipt({
                     ))}
                     {isCleanup && variancePostings.map((posting, index) => {
                       const matchingLine = delivery.lines.find(line =>
-                        line.itemCode === posting.itemCode && line.batchNumber === posting.batchNumber,
-                      ) ?? delivery.lines.find(line => line.itemCode === posting.itemCode)
+                        line.itemCode === posting.itemCode && line.batchNumber === posting.batchNumber && line.fromWarehouseCode === posting.warehouseCode,
+                      )
                       return (
                         <tr key={`variance-${posting.id}`}>
                           <td className="border border-black px-2 py-2 text-center">{delivery.lines.length + index + 1}</td>
@@ -221,6 +224,7 @@ export default function DeliveryReceipt({
                           <td className="border border-black px-2 py-2">{matchingLine?.description || '-'}</td>
                           <td className="border border-black px-2 py-2">{posting.batchNumber || '-'}</td>
                           <td className="border border-black px-2 py-2">{posting.warehouseCode || '-'}</td>
+                          <td className="border border-black px-2 py-2">{formatBroilerCycleNumbers(matchingLine ?? {})}</td>
                           <td className="border border-black px-2 py-2 text-right tabular-nums">{formatQuantity(posting.qty)}</td>
                           <td className="border border-black px-2 py-2 text-center">{matchingLine?.baseUom || '-'}</td>
                           <td className="border border-black px-2 py-2">{matchingLine?.lineRemarks || '-'}</td>
@@ -228,14 +232,14 @@ export default function DeliveryReceipt({
                       )
                     })}
                     <tr>
-                      <td colSpan={isCleanup ? 6 : 9} className="border border-black px-2 py-2 text-right font-bold uppercase">{isCleanup ? 'Total Clean up' : 'Total'}</td>
+                      <td colSpan={isCleanup ? 7 : 11} className="border border-black px-2 py-2 text-right font-bold uppercase">{isCleanup ? 'Total Clean up' : 'Total'}</td>
                       <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalQuantity)}</td>
                       <td className="border border-black px-2 py-2" />
                       {isCleanup && <td className="border border-black px-2 py-2" />}
                     </tr>
                     {isCleanup && (
                       <tr>
-                        <td colSpan={6} className="border border-black px-2 py-2 text-right font-bold uppercase">Total Variance</td>
+                        <td colSpan={7} className="border border-black px-2 py-2 text-right font-bold uppercase">Total Variance</td>
                         <td className="border border-black px-2 py-2 text-right font-bold tabular-nums">{formatQuantity(totalVariance)}</td>
                         <td className="border border-black px-2 py-2" />
                         <td className="border border-black px-2 py-2" />

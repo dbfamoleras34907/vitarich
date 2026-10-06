@@ -9,13 +9,15 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
 ## Selection and data
 
 - Default to the user's working default farm, resolved only within assigned farms.
-- Keep the breadcrumb and compact Refresh toolbar separate from navigation.
-  The toolbar's **Compact view** switch reduces card padding, section spacing,
-  details-column width, chart height, and transaction-row padding. It adds a fourth
-  metric column on wide screens without hiding values. Standard view is the default;
-  the switch preserves current selections and applies while the page remains open.
-  Farm and Cycle share a context panel, side-by-side from tablet widths and stacked
-  on mobile. Primary navigation uses **Farm View / Records** segmented tabs.
+- Keep the breadcrumb and compact Refresh toolbar separate from navigation. The
+  dashboard always uses the system's single compact density; there is no density
+  switch or relaxed alternative. Compact rows preserve every value while reducing
+  card padding, section spacing, details-column width, chart height, and transaction
+  row padding. The eight overview metric groups remain separate compact cards so
+  each operational category is visually distinct without returning to oversized
+  dashboard spacing. Farm and Cycle share a context panel, side-by-side from tablet
+  widths and stacked on mobile. Primary navigation uses **Farm View / Records**
+  segmented tabs.
 - Group the green segmented Building selector and selected building/cycle/status
   in one compact navigation card. Process tabs use soft green filled selected states.
   Building and process controls scroll horizontally on narrow screens, retain keyboard
@@ -29,7 +31,7 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   precise detail error separately. Additional warehouse/standalone-cycle lookup
   failures produce explicit warnings without hiding valid farm cycles or their
   persisted participating buildings.
-- Building tabs follow building-code order. Initially select the first open building
+- Building tabs display names (falling back to codes when unnamed) and follow building-code order. Initially select the first open building
   in the selected cycle, then the first participating building if all are closed.
   All Buildings totals and charts include only that selected cycle.
 - Empty buildings show **No records in this cycle**. Closed buildings retain their
@@ -61,6 +63,11 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   flock origin batches or the farm DOC receiving settings, with DOA/reject/short
   counts retained as columns.
 - Mortality, depletion, and remaining birds share `getBroilerDepletionSummary`
+  with mortality percentage based on cumulative deaths / total Actual Received
+  good birds from posted, non-void receipts × 100. All Buildings divides combined
+  deaths by combined receipt totals, not the average of building percentages.
+  Missing or zero placement totals leave the percentage unavailable.
+  Depletion and remaining birds share the same helper
   with Flock Card Report. Dashboard remaining birds subtract mortality, thinning,
   posted harvest heads, and posted clean-up heads from the Growing population.
   The Population card shows the formula and its component values.

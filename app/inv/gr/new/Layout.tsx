@@ -23,10 +23,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FormTable, FormTableFooter } from '@/components/ui/form-table'
+import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } from '@/components/ui/page-layout'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
-import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
@@ -42,7 +42,6 @@ import {
   GoodsReceiptBatchRule,
   GoodsReceiptBatchSeries,
   GoodsReceiptExistingBatch,
-  GoodsReceiptPrefetchReferences,
   getGoodsReceiptReferences,
   GoodsReceiptFarm,
   GoodsReceiptItemGroup,
@@ -61,14 +60,12 @@ import { exportGoodsReceiptLinesTemplate } from './goodsReceiptLinesTemplate'
 import {
   FMS_TYPE_OPTIONS,
   addMonthsToDate,
-  asArray,
   buildBatchNumber,
   duplicateReceipt,
   emptyReceipt,
   formatBatchDatePart,
   formatDateTime,
   formatQuantity,
-  getCachedWarehouses,
   getAssociatedWarehouseCode,
   getDefaultReceivingWarehouse,
   getFarmFmsType,
@@ -89,7 +86,6 @@ type NewGoodsReceiveProps = {
 export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { getValue } = useGlobalContext()
   const { setCollapsed } = useSidebar()
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
@@ -135,31 +131,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           return
         }
 
-        const cachedItems = asArray<Items>(getValue('itemmaster'))
-          .filter(item => item.void === 1 || item.void == null)
-        const cachedWarehouses = getCachedWarehouses(getValue('warehouses'))
-          .filter(warehouse => !('is_active' in warehouse) || warehouse.is_active !== false)
-        const cachedGrReferences = getValue('goodsReceiptReferences') as GoodsReceiptPrefetchReferences | undefined
-        const cachedReferencesHaveFarmMetadata = (cachedGrReferences?.farms ?? []).every(
-          farm => typeof farm.farm_type !== 'undefined',
-        )
-        const canUseCachedReferences = cachedItems.length > 0 &&
-          cachedWarehouses.length > 0 &&
-          Boolean(cachedGrReferences?.uomGroups && cachedGrReferences.conversions && cachedGrReferences.itemGroups) &&
-          cachedReferencesHaveFarmMetadata
-
-        const referencesPromise = canUseCachedReferences
-          ? Promise.resolve({
-              items: cachedItems,
-              warehouses: cachedWarehouses,
-              farms: cachedGrReferences?.farms ?? [],
-              uomGroups: cachedGrReferences?.uomGroups ?? [],
-              conversions: cachedGrReferences?.conversions ?? [],
-              itemGroups: cachedGrReferences?.itemGroups ?? [],
-              batchRules: cachedGrReferences?.batchRules ?? [],
-              batchSeries: cachedGrReferences?.batchSeries ?? [],
-            })
-          : getGoodsReceiptReferences()
+        // UoM defaults are editable master data. The persisted global cache
+        // can outlive an edit (or deployment), so load current references here.
+        const referencesPromise = getGoodsReceiptReferences()
 
         const [references, savedReceipt, grNo] = await Promise.all([
           referencesPromise,
@@ -197,7 +171,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [duplicateId, getValue, isPostMode, receiptId, router])
+  }, [duplicateId, isPostMode, receiptId, router])
 
   const totalQuantity = useMemo(
     () => receipt?.lines.reduce(
@@ -644,6 +618,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const selectedGroupCode = selectedGroup?.code ?? conversions.find(option =>
         option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
       )?.groupCode ?? ''
+      const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
       const requestedAltUom = row.altUom.toUpperCase()
       const selectedConversion = conversions.find(option =>
         option.groupCode.toUpperCase() === selectedGroupCode.toUpperCase() &&
@@ -651,7 +626,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       )
       const altUom = row.altUom
         ? selectedConversion?.uomCode ?? ''
-        : selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+        : resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
 
       if (!selectedGroupCode) {
         parsed.issues.push(`Row ${rowNumber}: Item Code "${row.itemCode}" has no configured UoM group.`)
@@ -932,7 +907,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const selectedGroupCode = selectedGroup?.code ?? conversions.find(
       option => option.uomCode.toUpperCase() === unitMeasure.toUpperCase(),
     )?.groupCode ?? ''
-    const uom = selectedGroup?.baseUomCode || unitMeasure || inventoryUom
+    const resolvedGroup = uomGroups.find(group => group.code === selectedGroupCode)
+    const uom = resolvedGroup?.defaultUomCode || resolvedGroup?.baseUomCode || unitMeasure || inventoryUom
     const nextLineChanges: Partial<GoodsReceiptLine> = {
       itemId: item.id,
       itemCode: item.item_code || '',
@@ -1154,8 +1130,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }
 
   return (
-    <main className="min-h-[calc(100vh-80rem)]">
-      <div className="mx-4 mt-4 flex items-center justify-between gap-3">
+    <PageShell>
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
@@ -1163,16 +1139,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           FirstPreviewsPageLink="/inv/gr"
           CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
         />
-        <Button type="button" variant="outline" onClick={() => router.push('/inv/gr')}>
-          <List className="size-4" />
-          GR List
-        </Button>
-      </div>
+        <PageHeaderActions>
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push('/inv/gr')}>
+            <List className="size-4" />
+            GR List
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="grid gap-x-16 gap-y-3 p-5 lg:grid-cols-2">
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">GR No.</label>
+      <PageSection>
+        <div className="grid gap-x-8 gap-y-2 p-3 lg:grid-cols-2">
+          <div className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+            <label className="text-xs font-medium">GR No.</label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
@@ -1181,8 +1159,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">Vendor</label>
+          <div className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+            <label className="text-xs font-medium">Vendor</label>
             <Input
               value={receipt.vendor}
               onChange={event => setReceipt(current => current ? { ...current, vendor: event.target.value } : current)}
@@ -1190,12 +1168,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             />
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)]">
-            <label className="text-sm font-semibold">FMS Type</label>
+          <div className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)]">
+            <label className="text-xs font-medium">FMS Type</label>
             <select
               value={receipt.fmsType}
               disabled
-              className="h-9 w-full rounded-md border bg-stone-100 px-3 text-sm text-stone-700 outline-none disabled:cursor-not-allowed disabled:opacity-100"
+              className="h-10 w-full rounded-md border bg-muted px-3 text-sm text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-100 md:h-8"
             >
               <option value="">Select FMS type...</option>
               {FMS_TYPE_OPTIONS.map(option => (
@@ -1206,8 +1184,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </select>
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
-            <label className="text-sm font-semibold">Farm</label>
+          <div className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-xs font-medium">Farm</label>
             <SearchableCombobox
               items={farmOptions}
               value={receipt.farmId == null ? '' : String(receipt.farmId)}
@@ -1217,17 +1195,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               className="w-full"
             />
             {!loadingReferences && farms.length === 0 && (
-              <p className="text-xs text-stone-500">No assigned farms available.</p>
+              <p className="text-xs text-muted-foreground">No assigned farms available.</p>
             )}
           </div>
 
-          <div className="grid items-center gap-2 sm:grid-cols-[96px_minmax(0,300px)] lg:col-span-2">
-            <label className="text-sm font-semibold">Default WH</label>
+          <div className="grid items-center gap-1.5 sm:grid-cols-[88px_minmax(0,300px)] lg:col-span-2">
+            <label className="text-xs font-medium">Default WH</label>
             <select
               value={receipt.defaultWarehouseId ?? ''}
               disabled={loadingReferences || !receipt.farmId}
               onChange={event => applyDefaultWarehouse(event.target.value)}
-              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-stone-200"
+              className="h-10 w-full rounded-md border bg-card px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/15 md:h-8"
             >
               <option value="">
                 {loadingReferences
@@ -1243,7 +1221,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               ))}
             </select>
             {!loadingReferences && Boolean(receipt.farmId) && farmWarehouses.length === 0 && (
-              <p className="text-xs text-stone-500">No warehouses associated with this farm.</p>
+              <p className="text-xs text-muted-foreground">No warehouses associated with this farm.</p>
             )}
           </div>
         </div>
@@ -1455,7 +1433,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 conversion.groupCode === groupCode &&
                                 conversion.uomCode.toUpperCase() === line.altUom.toUpperCase(),
                             )
-                            const altUom = altUomIsAvailable ? line.altUom : ''
+                            const altUom = getSelectedGroup(groupCode)?.defaultUomCode || (altUomIsAvailable ? line.altUom : '')
 
                             updateLine(line.id, {
                               baseUom: groupCode,
@@ -1937,10 +1915,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
           </BatchDetailsDialog>
 
-          <div className="mt-6 flex flex-col items-end gap-4">
-            <div className="w-full rounded-xl border p-4 sm:w-[34rem] mx-4">
+          <div className="mt-3 flex flex-col items-end gap-3 px-3">
+            <div className="w-full rounded-md border bg-muted/20 p-3 sm:w-[28rem]">
               <h3 className="text-sm font-semibold">Receiving Summary</h3>
-              <div className="mt-3 flex justify-between text-sm">
+              <div className="mt-2 flex justify-between text-xs">
                 <span>Total Base Quantity</span>
                 <span className="font-medium tabular-nums">
                   {totalQuantity.toLocaleString('en-PH', { maximumFractionDigits: 6 })}
@@ -1949,7 +1927,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
             </div>
 
             {canEditDraft ? (
-              <div className="flex flex-wrap justify-end gap-2 mx-4 mb-4">
+              <PageActionBar className="w-full border-0 bg-transparent p-0 pb-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -1965,13 +1943,13 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     {saving ? 'Posting...' : 'Post Document'}
                   </Button>
                 )}
-              </div>
+              </PageActionBar>
             ) : (
-              <p className="text-sm text-stone-500">This document is already posted and cannot be edited.</p>
+              <p className="pb-3 text-sm text-muted-foreground">This document is already posted and cannot be edited.</p>
             )}
           </div>
         </div>
-      </section>
+      </PageSection>
 
       <PostGoodsReceiptDialog
         open={postConfirmOpen}
@@ -1984,6 +1962,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           setPostConfirmOpen(false)
         }}
       />
-    </main>
+    </PageShell>
   )
 }

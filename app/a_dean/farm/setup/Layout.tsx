@@ -35,6 +35,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { usePermission } from '@/hooks/usePermission'
 import { voidFarm } from '../api'
+import { useGlobalDefaults } from '@/lib/Defaults/GlobalDefaults'
 import {
   createFarmSetup,
   generateNextCode,
@@ -522,6 +523,7 @@ function StructureWorkspace({
 
 export default function Layout() {
   const router = useRouter()
+  const { setGlobals } = useGlobalDefaults()
   const params = useParams<{ farmid?: string }>()
   const farmId = Number(params?.farmid ?? 0)
   const isEditMode = Number.isFinite(farmId) && farmId > 0
@@ -719,10 +721,14 @@ export default function Layout() {
     const missingAddress = requiredAddressFields.filter(
       (field) => field.required && !compact(addressData[field.code])
     )
+    const missingProfile = FARM_PROFILE_FIELDS.filter(
+      (field) => field.required && !compact(farmData[field.code])
+    )
 
-    if (missingFarm.length || missingAddress.length || !compact(farmData.farm_type)) {
+    if (missingFarm.length || missingProfile.length || missingAddress.length || !compact(farmData.farm_type)) {
       const missingLabels = [
         ...missingFarm.map((field) => field.label),
+        ...missingProfile.map((field) => field.label),
         ...missingAddress.map((field) => field.label),
         ...(!compact(farmData.farm_type) ? ['Farm Type'] : []),
       ]
@@ -962,6 +968,7 @@ export default function Layout() {
     setVoiding(true)
     try {
       await voidFarm(farmId)
+      await setGlobals()
       toast.success('Farm voided successfully.')
       router.push('/a_dean/farm')
     } catch (error) {
@@ -1058,7 +1065,7 @@ export default function Layout() {
                     {FARM_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
                   </InlineSelect>
                   {FARM_PROFILE_FIELDS.map((field) => (
-                    <InlineSelect key={field.code} label={field.label} value={farmData[field.code] ?? ''} placeholder={`Select ${field.label.toLowerCase()}`} onValueChange={(value) => updateFarm(field.code, value)}>
+                    <InlineSelect key={field.code} label={field.label} required={field.required} value={farmData[field.code] ?? ''} placeholder={`Select ${field.label.toLowerCase()}`} onValueChange={(value) => updateFarm(field.code, value)}>
                       {field.options.map((value) => <SelectItem key={value} value={value} className="whitespace-normal">{value}</SelectItem>)}
                     </InlineSelect>
                   ))}

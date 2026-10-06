@@ -1,11 +1,10 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import { Checkbox } from '@/components/ui/checkbox'
 import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from '@/components/ui/UserFarmSearchCombobox'
 import { usePermission } from '@/hooks/usePermission'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -90,6 +89,9 @@ export default function DocReceivingSettingsLayout({
   const [savedForm, setSavedForm] = useState<FormState>(emptyForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const loadRequest = useRef(0)
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([])
   const [excludedBuildingIds, setExcludedBuildingIds] = useState<number[]>([])
@@ -103,8 +105,8 @@ export default function DocReceivingSettingsLayout({
   const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : '')
 
   const canSave = useMemo(
-    () => !saving && Boolean(activeFarmId) && (settings?.id ? !canEdit : !canAdd),
-    [activeFarmId, canAdd, canEdit, saving, settings?.id],
+    () => !loading && !loadFailed && !saving && Boolean(activeFarmId) && (settings?.id ? !canEdit : !canAdd),
+    [activeFarmId, canAdd, canEdit, loading, loadFailed, saving, settings?.id],
   )
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(savedForm) ||
     JSON.stringify([...excludedBuildingIds].sort((a, b) => a - b)) !== JSON.stringify([...savedExcludedBuildingIds].sort((a, b) => a - b)),
@@ -115,12 +117,18 @@ export default function DocReceivingSettingsLayout({
   )
 
   const fetchData = useCallback(async () => {
+    const request = ++loadRequest.current
     setLoading(true)
+    setLoadFailed(false)
+    setSaveError(null)
     try {
-      const [storedSettings, nextItems] = await Promise.all([
+      const [storedSettings, nextItems, rows, excludedIds] = await Promise.all([
         getDocReceivingSettings(Number(activeFarmId), { usePreviousFarmDefaults }),
         getDocItemOptions(),
+        activeFarmId ? getFarmBuildingsForFlockCard(Number(activeFarmId)) : Promise.resolve([]),
+        getDocCycleExcludedBuildingIds(Number(activeFarmId)),
       ])
+      if (request !== loadRequest.current) return
       const farmId = Number(activeFarmId)
       const nextSettings = storedSettings ?? (
         useConfiguredDefaults && Number.isFinite(farmId) && farmId > 0
@@ -132,37 +140,29 @@ export default function DocReceivingSettingsLayout({
       setForm(nextForm)
       setSavedForm(nextForm)
       setItems(nextItems)
+      setBuildings(rows.filter(row => row.source === 'WAREHOUSE' && row.status === 'Active'))
+      setExcludedBuildingIds(excludedIds)
+      setSavedExcludedBuildingIds(excludedIds)
     } catch (error) {
+      if (request !== loadRequest.current) return
+      setLoadFailed(true)
       toast('Error: ' + errorMessage(error, 'Unable to load DOC receiving settings'))
       setSettings(null)
       setForm(emptyForm)
       setSavedForm(emptyForm)
       setItems([])
+      setBuildings([])
+      setExcludedBuildingIds([])
+      setSavedExcludedBuildingIds([])
     } finally {
-      setLoading(false)
+      if (request === loadRequest.current) setLoading(false)
     }
   }, [activeFarmId, useConfiguredDefaults, usePreviousFarmDefaults])
 
   useEffect(() => {
-    fetchData()
+    void fetchData()
+    return () => { loadRequest.current += 1 }
   }, [fetchData])
-
-  useEffect(() => {
-    const farmId = Number(activeFarmId)
-    if (!farmId) {
-      setBuildings([])
-      setExcludedBuildingIds([])
-      setSavedExcludedBuildingIds([])
-      return
-    }
-    Promise.all([getFarmBuildingsForFlockCard(farmId), getDocCycleExcludedBuildingIds(farmId)])
-      .then(([rows, excludedIds]) => {
-        setBuildings(rows.filter(row => row.source === 'WAREHOUSE' && row.status === 'Active'))
-        setExcludedBuildingIds(excludedIds)
-        setSavedExcludedBuildingIds(excludedIds)
-      })
-      .catch(error => toast('Error: ' + errorMessage(error, 'Unable to load cycle exclusion settings')))
-  }, [activeFarmId])
 
   useEffect(() => {
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -184,25 +184,31 @@ export default function DocReceivingSettingsLayout({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    setSaveError(null)
+
+    const reportError = (message: string) => {
+      setSaveError(message)
+      toast('Error: ' + message)
+    }
 
     if (!activeFarmId) {
-      toast('Please select a farm.')
+      reportError('Please select a farm.')
       return
     }
 
     if (!form.goodDoc || !form.daoDoc || !form.rejectDoc) {
-      toast('Please select Good DOC, DAO DOC, and Reject DOC items.')
+      reportError('Please select Good DOC, DAO DOC, and Reject DOC items.')
       return
     }
 
     const selectedDocIds = [form.goodDoc, form.daoDoc, form.rejectDoc]
     if (new Set(selectedDocIds).size !== selectedDocIds.length) {
-      toast('Good DOC, DAO DOC, and Reject DOC must be different items.')
+      reportError('Good DOC, DAO DOC, and Reject DOC must be different items.')
       return
     }
 
     if (!canSave) {
-      toast(settings?.id ? 'You do not have permission to edit this setting.' : 'You do not have permission to add this setting.')
+      reportError(settings?.id ? 'You do not have permission to edit this setting.' : 'You do not have permission to add this setting.')
       return
     }
 
@@ -213,18 +219,18 @@ export default function DocReceivingSettingsLayout({
         ? await updateDocReceivingSettings(settings.id, payload)
         : await addDocReceivingSettings(payload)
 
-      const savedExclusions = await saveDocCycleExcludedBuildingIds(Number(activeFarmId), excludedBuildingIds)
-
       setSettings(saved)
       const nextForm = toForm(saved)
       setForm(nextForm)
       setSavedForm(nextForm)
+
+      const savedExclusions = await saveDocCycleExcludedBuildingIds(Number(activeFarmId), excludedBuildingIds)
       setExcludedBuildingIds(savedExclusions)
       setSavedExcludedBuildingIds(savedExclusions)
       toast('DOC Placement settings saved')
       onSaved?.()
     } catch (error) {
-      toast('Error: ' + errorMessage(error, 'Unable to save DOC receiving settings'))
+      reportError(errorMessage(error, 'Unable to save DOC receiving settings'))
     } finally {
       setSaving(false)
     }
@@ -283,13 +289,23 @@ export default function DocReceivingSettingsLayout({
                 const id = Number(building.id)
                 const checked = excludedBuildingIds.includes(id)
                 return <label key={building.key} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 hover:bg-stone-50">
-                  <Checkbox checked={checked} disabled={loading || saving || canEdit} onCheckedChange={value => setExcludedBuildingIds(current => value === true ? [...new Set([...current, id])] : current.filter(entry => entry !== id))} />
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    checked={checked}
+                    disabled={!canSave}
+                    onChange={event => {
+                      const nextChecked = event.currentTarget.checked
+                      setExcludedBuildingIds(current => nextChecked ? [...new Set([...current, id])] : current.filter(entry => entry !== id))
+                    }}
+                  />
                   <span className="text-sm">{building.code} - {building.name}</span>
                 </label>
               })}
             </div>
           </SettingRow>
         </SettingsCategory>
+        {saveError ? <p role="alert" className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{saveError}</p> : null}
       </form>
     </main>
   )

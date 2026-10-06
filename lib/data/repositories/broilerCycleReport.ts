@@ -1,9 +1,15 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getDocReceivingSettings } from '@/app/a_dean/doc-receiving-settings/api'
+import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
 
 export type BroilerCycleStage = 'placement' | 'growing' | 'delivery' | 'cleanup'
 
-export type CyclePlacementRecord = {
+export type CycleEncodingMetadata = {
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type CyclePlacementRecord = CycleEncodingMetadata & {
   id: number
   documentId: number
   documentNo: string
@@ -25,7 +31,7 @@ export type CyclePlacementRecord = {
   isVoided: boolean
 }
 
-export type CycleGrowingLine = {
+export type CycleGrowingLine = CycleEncodingMetadata & {
   id: number
   age: number
   mortalityAm: number
@@ -54,7 +60,7 @@ export type CycleGrowingLine = {
   hasWeight: boolean
 }
 
-export type CycleMovementRecord = {
+export type CycleMovementRecord = CycleEncodingMetadata & {
   id: number
   documentId: number
   documentNo: string
@@ -98,6 +104,7 @@ export type BroilerCycleBuilding = {
 export type BroilerCycleReport = {
   id: number
   cycleNumber: number
+  cycleMask: string
   status: string
   farmId: number
   farmCode: string
@@ -120,6 +127,7 @@ const normalized = (value: unknown) => textValue(value).toUpperCase()
 export type BroilerCycleReportOptions = {
   postedOnly?: boolean
   openBuildingsOnly?: boolean
+  requireComplete?: boolean
 }
 
 function throwQueryError(error: unknown, context: string): never {
@@ -170,7 +178,7 @@ export async function getBroilerCycleReport(
 
   const cycleResult = await db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, status, created_at, closed_at')
+    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at')
     .eq('id', cycleId)
     .maybeSingle()
   if (cycleResult.error) throwQueryError(cycleResult.error, 'Unable to load the farm cycle')
@@ -184,7 +192,7 @@ async function loadCycleGrowingLines(growingIds: number[]): Promise<UnknownRow[]
   const rows: UnknownRow[] = []
   for (let offset = 0; growingIds.length; offset += 500) {
     const result = await db.from('brd_fc_line')
-      .select('id, fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, extra, void')
+      .select('id, fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, extra, void, created_at, updated_at')
       .in('fc_id', growingIds).order('age').order('id').range(offset, offset + 499)
     if (result.error) throwQueryError(result.error, 'Unable to load Growing lines')
     rows.push(...(result.data ?? []) as UnknownRow[])
@@ -201,7 +209,7 @@ async function loadCycleMovements(farmId: number, stage: 'delivery' | 'cleanup',
   const lines: UnknownRow[] = []
   for (let offset = 0; ; offset += 500) {
     let query = db.from(cleanup ? 'br_cleanup' : 'br_delivery')
-      .select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks')
+      .select('id, gi_no, issue_date, from_warehouse_id, from_warehouse_code, status, remarks, created_at, updated_at')
       .eq('farm_id', farmId).order('id').range(offset, offset + 499)
     if (postedOnly) query = query.eq('status', 'Posted')
     const result = await query
@@ -243,11 +251,11 @@ export async function getBroilerOpenBuildingCycleReport(farmId: number, flockCar
 }
 
 export async function getBroilerBuildingCycleReport(
-  farmId: number, flockCardId: number, options: { openBuildingsOnly?: boolean } = {},
+  farmId: number, flockCardId: number, options: { openBuildingsOnly?: boolean; requireComplete?: boolean } = {},
 ) {
   if (!Number.isInteger(farmId) || farmId <= 0 || !Number.isInteger(flockCardId) || flockCardId <= 0) return null
   const report = await loadBroilerCycleReport(0, { farm_id: farmId, status: 'Saved' },
-    { postedOnly: true, openBuildingsOnly: options.openBuildingsOnly }, flockCardId)
+    { postedOnly: true, openBuildingsOnly: options.openBuildingsOnly, requireComplete: options.requireComplete }, flockCardId)
   if (report.buildings.length) report.status = report.buildings[0].status
   return report.buildings.length ? report : null
 }
@@ -256,8 +264,9 @@ async function loadBroilerCycleReport(
   cycleId: number, cycle: UnknownRow, options: BroilerCycleReportOptions, standaloneCardId?: number,
 ): Promise<BroilerCycleReport> {
   const farmId = numberValue(cycle.farm_id)
+  const countOptions = options.requireComplete ? { count: 'exact' as const } : undefined
   let cardQuery = db.from('flock_card')
-    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, start_date, breed, animal_qty, status, remarks, void')
+    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, cycle_mask, start_date, breed, animal_qty, status, remarks, void', countOptions)
   if (options.postedOnly || standaloneCardId) cardQuery = cardQuery.eq('farm_id', farmId)
   cardQuery = standaloneCardId
     ? cardQuery.eq('id', standaloneCardId).is('farm_cycle_id', null)
@@ -268,6 +277,7 @@ async function loadBroilerCycleReport(
   ])
   if (farmResult.error) throwQueryError(farmResult.error, 'Unable to load the cycle farm')
   if (cardResult.error) throwQueryError(cardResult.error, 'Unable to load participating Buildings')
+  assertCompleteRead(cardResult, 'Building records')
 
   const cards = ((cardResult.data ?? []) as UnknownRow[]).filter(card =>
     !options.openBuildingsOnly || (textValue(card.void) === '1' && card.status === 'Saved'))
@@ -277,6 +287,7 @@ async function loadBroilerCycleReport(
     return {
       id: cycleId,
       cycleNumber: numberValue(cycle.cycle_no),
+      cycleMask: textValue(cycle.cycle_mask),
       status: textValue(cycle.status),
       farmId,
       farmCode: textValue(farm.code),
@@ -290,22 +301,25 @@ async function loadBroilerCycleReport(
   const [originResult, placementResult, growingHeaderResult] = await Promise.all([
     db
       .from('flock_card_origin')
-      .select('id, fc_id, item_code, item_name, batch_no, animal_qty, void')
+      .select('id, fc_id, item_code, item_name, batch_no, animal_qty, void', countOptions)
       .in('fc_id', cardIds),
     db
       .from('goods_receipt_doc')
-      .select('id, goods_reciept_id, line_no, flock_card_id, receive_date, receive_time, mnf_date, transfer_slip, quantity_received, actual_received, short_count, doa_quantity, reject_count, void')
+      .select('id, goods_reciept_id, line_no, flock_card_id, receive_date, receive_time, mnf_date, transfer_slip, quantity_received, actual_received, short_count, doa_quantity, reject_count, void, created_at, updated_at', countOptions)
       .in('flock_card_id', cardIds)
       .order('receive_date'),
     db
       .from('brd_fc')
-      .select('id, fc_no, card_no, status, void')
+      .select('id, fc_no, card_no, status, void', countOptions)
       .in('card_no', cards.map(card => textValue(card.card_no)).filter(Boolean))
       .order('id', { ascending: false }),
   ])
   if (originResult.error) throwQueryError(originResult.error, 'Unable to load placement batches')
   if (placementResult.error) throwQueryError(placementResult.error, 'Unable to load DOC Placement records')
   if (growingHeaderResult.error) throwQueryError(growingHeaderResult.error, 'Unable to load Growing records')
+  assertCompleteRead(originResult, 'Placement batches')
+  assertCompleteRead(placementResult, 'Placement records')
+  assertCompleteRead(growingHeaderResult, 'Growing documents')
 
   const origins = (originResult.data ?? []) as UnknownRow[]
   const placements = (placementResult.data ?? []) as UnknownRow[]
@@ -318,10 +332,10 @@ async function loadBroilerCycleReport(
 
   const [receiptHeaderResult, receiptItemResult, growingLines, deliveryData, cleanupData, docSettings] = await Promise.all([
     receiptIds.length
-      ? db.from('goods_receipt').select('id, gr_no, vendor, status').in('id', receiptIds)
+      ? db.from('goods_receipt').select('id, gr_no, vendor, status', countOptions).in('id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
     receiptIds.length
-      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_id, item_code, description, batch_number, void').in('goods_reciept_id', receiptIds)
+      ? db.from('goods_receipt_items').select('goods_reciept_id, doc_line_no, item_id, item_code, description, batch_number, void', countOptions).in('goods_reciept_id', receiptIds)
       : Promise.resolve({ data: [], error: null }),
     loadCycleGrowingLines(growingIds),
     loadCycleMovements(farmId, 'delivery', options.postedOnly === true),
@@ -330,6 +344,8 @@ async function loadBroilerCycleReport(
   ])
   if (receiptHeaderResult.error) throwQueryError(receiptHeaderResult.error, 'Unable to load DOC Placement headers')
   if (receiptItemResult.error) throwQueryError(receiptItemResult.error, 'Unable to load DOC Placement items')
+  assertCompleteRead(receiptHeaderResult, 'Placement headers')
+  assertCompleteRead(receiptItemResult, 'Placement items')
 
   const receiptHeaders = (receiptHeaderResult.data ?? []) as UnknownRow[]
   const receiptItems = (receiptItemResult.data ?? []) as UnknownRow[]
@@ -362,6 +378,8 @@ async function loadBroilerCycleReport(
         return matchedItems.map(item => ({
           id: numberValue(row.id),
           documentId: numberValue(row.goods_reciept_id),
+          createdAt: textValue(row.created_at),
+          updatedAt: textValue(row.updated_at),
           documentNo: textValue(header.gr_no),
           status: textValue(header.status),
           vendor: textValue(header.vendor),
@@ -393,6 +411,8 @@ async function loadBroilerCycleReport(
         .map(line => ({
           id: numberValue(line.id),
           documentId: numberValue(header.id),
+          createdAt: textValue(header.created_at),
+          updatedAt: textValue(header.updated_at),
           documentNo: textValue(header.gi_no),
           date: textValue(cleanup ? header.issue_date : line.delivered_date ?? header.issue_date),
           status: textValue(header.status),
@@ -412,7 +432,7 @@ async function loadBroilerCycleReport(
 
     return {
       flockCardId,
-      cycleLabel: textValue(card.cycle_no) || textValue(cycle.cycle_no),
+      cycleLabel: textValue(cycle.cycle_mask) || textValue(card.cycle_mask),
       cardNo,
       flockCode: textValue(card.flock_code),
       buildingWarehouseId: numberValue(card.building_whse_id) || null,
@@ -437,6 +457,8 @@ async function loadBroilerCycleReport(
           return {
             id: numberValue(row.id),
             age: numberValue(row.age),
+            createdAt: textValue(row.created_at),
+            updatedAt: textValue(row.updated_at),
             mortalityAm: numberValue(row.mort_am),
             mortalityPm: numberValue(row.mort_pm),
             mortalityTotal: numberValue(row.mort_total),
@@ -471,6 +493,7 @@ async function loadBroilerCycleReport(
   return {
     id: cycleId,
     cycleNumber: numberValue(cycle.cycle_no),
+    cycleMask: textValue(cycle.cycle_mask),
     status: textValue(cycle.status),
     farmId,
     farmCode: textValue(farm.code),

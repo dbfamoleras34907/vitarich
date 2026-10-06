@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { reverseBroilerGrowing } from "@/lib/data/repositories/broilerGrowing";
+import { getGrowingHarvestBlocker, reverseBroilerGrowing } from "@/lib/data/repositories/broilerGrowing";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Building2,
-  BarChart3,
   CalendarDays,
   FileSpreadsheet,
   Hash,
@@ -19,7 +18,17 @@ import {
   UsersRound,
 } from "lucide-react";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import BroilerCycleSelect from "@/components/broiler/BroilerCycleSelect";
 import { Button } from "@/components/ui/button";
+import {
+  CompactMetric,
+  PageHeader,
+  PageSection,
+  PageSectionDescription,
+  PageSectionHeader,
+  PageSectionTitle,
+  PageShell,
+} from "@/components/ui/page-layout";
 import {
   Table,
   TableBody,
@@ -28,7 +37,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { usePermission } from "@/hooks/usePermission";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { getUserFarms } from "@/app/admin/user/new/api";
@@ -132,10 +140,8 @@ function compareBuildingsByCode(left: FarmBuildingListRow, right: FarmBuildingLi
 export default function Layout() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
-  const flockCardViewBlocked = usePermission("/brd/fc/view");
-  const reportViewBlocked = usePermission("/brd/fc/report/view");
-  const cannotViewReport = flockCardViewBlocked && reportViewBlocked;
   const [selectedFarmId, setSelectedFarmId] = useState("");
+  const [selectedCycleId, setSelectedCycleId] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(false);
@@ -145,6 +151,8 @@ export default function Layout() {
   const [reverseReason, setReverseReason] = useState("");
   const [reversing, setReversing] = useState(false);
   const [reverseError, setReverseError] = useState("");
+  const [checkingReverseHarvest, setCheckingReverseHarvest] = useState(false);
+  const [reverseHarvestBlocker, setReverseHarvestBlocker] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   const farmMaster = useMemo(() => {
@@ -196,6 +204,8 @@ export default function Layout() {
     [effectiveSelectedFarmId, farms],
   );
 
+  useEffect(() => { setSelectedCycleId(""); }, [effectiveSelectedFarmId]);
+
   const farmOptions = useMemo(
     () => farms.map(farm => ({
       code: String(farm.id),
@@ -245,7 +255,8 @@ export default function Layout() {
   }, [assignedFarmCodes.length, sessionUser?.id]);
 
   useEffect(() => {
-    if (!selectedFarm) {
+    if (!selectedFarm || !selectedCycleId) {
+      setBuildings([]);
       return;
     }
 
@@ -257,7 +268,7 @@ export default function Layout() {
       setBuildingError("");
 
       try {
-        const rows = await getFarmBuildingsForFlockCard(farmId);
+        const rows = await getFarmBuildingsForFlockCard(farmId, { farmCycleId: Number(selectedCycleId) });
         if (!cancelled) setBuildings(rows);
       } catch (error) {
         console.error(error);
@@ -275,10 +286,34 @@ export default function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [selectedFarm, refreshVersion]);
+  }, [selectedCycleId, selectedFarm, refreshVersion]);
+
+  useEffect(() => {
+    if (!reverseTarget) return;
+    let cancelled = false;
+
+    async function checkHarvest() {
+      try {
+        if (!selectedFarm?.id || !reverseTarget?.flockCard?.cardNo) {
+          throw new Error("Unable to identify the farm and flock cycle. Refresh the building list.");
+        }
+        const documentNo = await getGrowingHarvestBlocker(selectedFarm.id, reverseTarget.flockCard.cardNo);
+        if (!cancelled) setReverseHarvestBlocker(documentNo
+          ? `Reverse Growing is blocked by posted Harvest & Delivery ${documentNo}. Reverse all posted harvests for this building and cycle first.`
+          : "");
+      } catch (error) {
+        if (!cancelled) setReverseHarvestBlocker(`Unable to verify harvests. ${error instanceof Error ? error.message : "Close and try again."}`);
+      } finally {
+        if (!cancelled) setCheckingReverseHarvest(false);
+      }
+    }
+
+    void checkHarvest();
+    return () => { cancelled = true; };
+  }, [reverseTarget, selectedFarm?.id]);
 
   async function confirmReverseGrowing() {
-    if (reversing || !reverseTarget?.flockCard?.growingId || !reverseReason.trim()) return;
+    if (reversing || checkingReverseHarvest || reverseHarvestBlocker || !reverseTarget?.flockCard?.growingId || !reverseReason.trim()) return;
     setReversing(true);
     setReverseError("");
     try {
@@ -310,6 +345,7 @@ export default function Layout() {
 
   function openFlockCardSheet(building: FarmBuildingListRow) {
     if (!selectedFarm) return;
+    if (!building.flockCard || Number(building.flockCard.animalQty) <= 0) return;
 
     setOpeningAction(`growing:${building.key}`);
 
@@ -336,16 +372,9 @@ export default function Layout() {
     router.push("/brd/fc/new");
   }
 
-  function openFlockCardReport(building: FarmBuildingListRow) {
-    const cardNo = building.flockCard?.cardNo?.trim();
-    if (!cardNo) return;
-
-    router.push(`/brd/fc/report?cardNo=${encodeURIComponent(cardNo)}`);
-  }
-
   return (
-    <main className="min-h-[calc(100vh-4rem)] pb-8 text-stone-950 dark:bg-background dark:text-foreground">
-      <div className="flex items-center justify-between gap-3 px-4 mt-4">
+    <PageShell className="pb-6">
+      <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Breeder"
           SecondPreviewPageLink="/brd"
@@ -353,57 +382,41 @@ export default function Layout() {
           FirstPreviewsPageLink="/brd/fc"
           CurrentPageName="Growing & Farm Condition"
         />
-      </div>
+      </PageHeader>
 
-      <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
-        <div className="border-b bg-muted/30 px-5 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              <label className="text-sm font-semibold">Farm</label>
-              <SearchableCombobox
-                items={farmOptions}
-                value={effectiveSelectedFarmId}
-                onValueChange={setSelectedFarmId}
-                placeholder="Select farm..."
-                showCode
-                className="w-full min-w-[280px] lg:w-[420px]"
+      <PageSection>
+        <div className="border-b bg-muted/25 p-3">
+          <div className="grid gap-3 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)] lg:items-end">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Farm</label>
+                <SearchableCombobox
+                  items={farmOptions}
+                  value={effectiveSelectedFarmId}
+                  onValueChange={setSelectedFarmId}
+                  placeholder="Select farm..."
+                  showCode
+                  className="w-full"
+                />
+              </div>
+              <BroilerCycleSelect
+                farmId={selectedFarm?.id}
+                value={selectedCycleId}
+                onValueChange={cycleId => setSelectedCycleId(cycleId)}
+                className="w-full"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Building2 className="size-3.5" />
-                  Buildings
-                </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{loadingBuildings ? "..." : formatNumber(visibleBuildings.length)}</div>
-              </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Hash className="size-3.5" />
-                  Occupied
-                </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatNumber(occupiedCount)}</div>
-              </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <UsersRound className="size-3.5" />
-                  Birds
-                </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatNumber(totalBirdCount)}</div>
-              </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <CalendarDays className="size-3.5" />
-                  First start
-                </div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{formatDateValue(nextStartDate)}</div>
-              </div>
+              <CompactMetric icon={<Building2 />} label="Buildings" value={loadingBuildings ? "..." : formatNumber(visibleBuildings.length)} />
+              <CompactMetric icon={<Hash />} label="Occupied" value={formatNumber(occupiedCount)} />
+              <CompactMetric icon={<UsersRound />} label="Birds" value={formatNumber(totalBirdCount)} />
+              <CompactMetric icon={<CalendarDays />} label="First start" value={formatDateValue(nextStartDate)} />
             </div>
           </div>
         </div>
 
-        <div className="flex">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4 xl:grid-cols-[0.85fr_0.8fr_0.75fr_1.1fr_3fr]">
           {[
             ["Farm code", selectedFarm?.code || "-"],
             ["Company", "Vitarich"],
@@ -411,62 +424,72 @@ export default function Layout() {
             ["Contact", selectedFarm?.contact_person || "-"],
             ["Location", selectedFarm?.address || "-"],
           ].map(([label, value]) => (
-            <div key={label} className="border-r px-5 py-3 last:border-r-0">
-              <div className="text-xs font-medium uppercase text-muted-foreground">{label}</div>
-              <div className="mt-1 truncate font-medium">{value}</div>
+            <div
+              key={label}
+              className={label === "Location" ? "col-span-2 min-w-0 bg-card px-3 py-2 sm:col-span-4 xl:col-span-1" : "min-w-0 bg-card px-3 py-2"}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+              <div className="mt-0.5 break-words text-xs font-medium leading-4" title={value}>{value}</div>
             </div>
           ))}
         </div>
-      </section>
+      </PageSection>
 
-      <section className="m-3 mt-5 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
-        <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-3">
+      <PageSection>
+        <PageSectionHeader>
           <div>
-            <h2 className="text-sm font-semibold">Buildings</h2>
-            <p className="text-xs text-muted-foreground">Active flock placements for the selected farm.</p>
+            <PageSectionTitle>Buildings</PageSectionTitle>
+            <PageSectionDescription>Flock placements for the selected farm and cycle.</PageSectionDescription>
           </div>
-        </div>
+          {!loadingBuildings && selectedFarm && visibleBuildings.length > 0 ? (
+            <span className="shrink-0 rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              {visibleBuildings.length} {visibleBuildings.length === 1 ? "building" : "buildings"}
+            </span>
+          ) : null}
+        </PageSectionHeader>
 
         {loadingBuildings ? (
-          <div className="flex items-center justify-center gap-2 bg-white px-4 py-10 text-sm text-muted-foreground dark:bg-card">
+          <div className="flex items-center justify-center gap-2 bg-card px-4 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading buildings...
           </div>
         ) : buildingError ? (
-          <div className="bg-white p-4 dark:bg-card">
+          <div className="bg-card p-3">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
             {buildingError}
             </div>
           </div>
         ) : !selectedFarm ? (
-          <div className="flex flex-col items-center justify-center gap-2 bg-white px-4 py-12 text-center text-sm text-muted-foreground dark:bg-card">
+          <div className="flex flex-col items-center justify-center gap-2 bg-card px-4 py-8 text-center text-sm text-muted-foreground">
             <Search className="size-5" />
             Select a farm first.
           </div>
         ) : visibleBuildings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 bg-white px-4 py-12 text-center text-sm text-muted-foreground dark:bg-card">
+          <div className="flex flex-col items-center justify-center gap-2 bg-card px-4 py-8 text-center text-sm text-muted-foreground">
             <Search className="size-5" />
             No buildings found.
           </div>
         ) : (
           <>
-            <Table className="min-w-[1120px] bg-white dark:bg-card">
+            <Table className="min-w-[1020px] bg-card text-xs">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[260px] text-right">Action</TableHead>
-                  <TableHead className="w-[220px]">Building</TableHead>
-                  <TableHead className="w-[100px]">Cycle Age</TableHead>
-                  <TableHead className="w-[90px]">Age</TableHead>
-                  <TableHead className="w-[140px]">Start date</TableHead>
-                  <TableHead>Code</TableHead>
-                  <TableHead className="w-[130px] text-right">Count</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
+                  <TableHead className="w-[250px]">Actions</TableHead>
+                  <TableHead>Building</TableHead>
+                  <TableHead>Cycle Number</TableHead>
+                  <TableHead>Cycle Age</TableHead>
+                  <TableHead>Actual Age</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>Flock Code</TableHead>
+                  <TableHead className="text-right">Birds</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visibleBuildings.map((building, index) => {
                   const flockCard = building.flockCard;
                   const hasFlockCard = Boolean(flockCard);
+                  const hasDocs = Number(flockCard?.animalQty ?? 0) > 0;
                   const displayStatus = flockCard ? "Occupied" : building.status;
                   const canOpenCard = hasFlockCard && !isActiveBuildingStatus(displayStatus);
                   const growingActionKey = `growing:${building.key}`;
@@ -479,32 +502,28 @@ export default function Layout() {
                       key={`${building.key || "building"}:${building.id ?? building.code}:${building.flockCard?.id ?? "empty"}:${index}`}
                     >
                       <TableCell>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex gap-1.5">
                           {Number(sessionUser?.user_type) === 1 && flockCard?.growingId ? (
-                            <Button type="button" size="sm" variant="outline"
+                            <Button type="button" size="xs" variant="outline"
                               className="text-destructive" disabled={openingAction !== null || reversing}
-                              onClick={() => { setReverseTarget(building); setReverseReason(""); setReverseError(""); }}>
+                              onClick={() => {
+                                setCheckingReverseHarvest(true);
+                                setReverseHarvestBlocker("");
+                                setReverseTarget(building);
+                                setReverseReason("");
+                                setReverseError("");
+                              }}>
                               Reverse Growing
                             </Button>
                           ) : null}
-                          {/* {hasFlockCard && !cannotViewReport ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openFlockCardReport(building)}
-                            >
-                              <BarChart3 className="size-4" />
-                              Report
-                            </Button>
-                          ) : null} */}
                           {canOpenCard ? (
                             <Button
                               type="button"
-                              size="sm"
+                              size="xs"
                               variant="outline"
                               onClick={() => openFlockCardSheet(building)}
-                              disabled={openingAction !== null}
+                              disabled={openingAction !== null || !hasDocs}
+                              title={!hasDocs ? "Growing is unavailable because the DOC count is zero." : undefined}
                               aria-busy={openingGrowing}
                             >
                               {openingGrowing ? (
@@ -517,7 +536,7 @@ export default function Layout() {
                           ) : null}
                           <Button
                             type="button"
-                            size="sm"
+                            size="xs"
                             variant="outline"
                             onClick={() => openFlockForm(building)}
                             disabled={openingAction !== null}
@@ -535,9 +554,10 @@ export default function Layout() {
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
-                        <div className="truncate text-base font-semibold">{building.code || index + 1}</div>
-                        <div className="truncate text-xs text-muted-foreground">{building.name || "-"}</div>
+                        <div className="truncate text-sm font-semibold">{building.name || "-"}</div>
+                        <div className="truncate text-[10px] text-muted-foreground" >{building.code || index + 1}</div>
                       </TableCell>
+                      <TableCell>{flockCard?.cycleMask || "-"}</TableCell>
                       <TableCell className="font-medium">{flockCard ? `${flockCard.age}d` : "-"}</TableCell>
                       <TableCell className="font-medium">
                         {flockCard?.actualAge !== null && flockCard?.actualAge !== undefined
@@ -563,12 +583,12 @@ export default function Layout() {
                 })}
               </TableBody>
             </Table>
-            <div className="py-6 text-center text-sm font-medium">
-              Showing {visibleBuildings.length} of {buildings.length}
+            <div className="border-t bg-muted/10 px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+              Showing {visibleBuildings.length} of {buildings.length} buildings
             </div>
           </>
         )}
-      </section>
+      </PageSection>
 
       <Dialog open={reverseTarget !== null} onOpenChange={open => { if (!open && !reversing) setReverseTarget(null); }}>
         <DialogContent showCloseButton={!reversing}>
@@ -581,17 +601,19 @@ export default function Layout() {
             </DialogDescription>
           </DialogHeader>
           <label htmlFor="reverse-growing-reason" className="text-sm font-medium">Reason</label>
-          <Textarea id="reverse-growing-reason" value={reverseReason} disabled={reversing} maxLength={1000}
+          {checkingReverseHarvest && <p role="status" className="text-sm text-muted-foreground">Checking harvests for this building and cycle…</p>}
+          {reverseHarvestBlocker && <p role="alert" className="text-sm text-destructive">{reverseHarvestBlocker}</p>}
+          <Textarea id="reverse-growing-reason" value={reverseReason} disabled={reversing || checkingReverseHarvest || Boolean(reverseHarvestBlocker)} maxLength={1000}
             onChange={event => setReverseReason(event.target.value)} placeholder="Enter the reason for reversal" />
           {reverseError && <p role="alert" className="text-sm text-destructive">{reverseError}</p>}
           <DialogFooter>
             <Button variant="outline" disabled={reversing} onClick={() => setReverseTarget(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={reversing || !reverseReason.trim()} onClick={() => void confirmReverseGrowing()}>
+            <Button variant="destructive" disabled={reversing || checkingReverseHarvest || Boolean(reverseHarvestBlocker) || !reverseReason.trim()} onClick={() => void confirmReverseGrowing()}>
               {reversing ? "Reversing..." : "Confirm Reverse Growing"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   );
 }
