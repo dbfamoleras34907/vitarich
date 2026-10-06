@@ -1895,7 +1895,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       return
     }
     if (!cycleForm.cycleNumber.trim()) {
-      toast.error('Enter the Cycle # before creating the cycle.')
+      toast.error('Enter the Cycle Count before creating the cycle.')
       return
     }
 
@@ -3347,7 +3347,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age={Math.min(calculateCycleRange(cycleForm.startDate, today()), 45)}
         saving={savingCycle}
         cycleNumberEditable={cycleIsExcluded}
-        farmId={receipt?.farmId ?? null}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}
         onCancel={() => {

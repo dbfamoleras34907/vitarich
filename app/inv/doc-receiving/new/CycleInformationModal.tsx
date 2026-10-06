@@ -11,7 +11,6 @@ import type { FarmBuildingListRow } from '@/app/brd/fc/api'
 import { flockCardBreedComboOptions } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import { Modal } from '@/lib/Moda'
 import { formatCycleMask } from '@/lib/broiler/cycleMask'
-import BroilerCycleSelect from '@/components/broiler/BroilerCycleSelect'
 
 const expectedCycleEndDate = (startDate: string) => {
   const [year, month, day] = startDate.split('-').map(Number)
@@ -37,7 +36,6 @@ type CycleInformationModalProps = {
   age: number
   saving: boolean
   cycleNumberEditable: boolean
-  farmId: number | null
   onOpenChange: (open: boolean) => void
   onFormChange: (changes: Partial<CycleInformationForm>) => void
   onCancel: () => void
@@ -51,7 +49,6 @@ export default function CycleInformationModal({
   age,
   saving,
   cycleNumberEditable,
-  farmId,
   onOpenChange,
   onFormChange,
   onCancel,
@@ -71,7 +68,9 @@ export default function CycleInformationModal({
       title="Create Farm Cycle"
       description={
         building
-          ? `${building.code} - ${building.name} does not have an active cycle and will use the farm Cycle Master.`
+          ? cycleNumberEditable
+            ? `${building.code} - ${building.name} is excluded from the farm Cycle Master. Enter its Cycle Count.`
+            : `${building.code} - ${building.name} does not have an active cycle. Its Cycle Count is assigned automatically from the farm Cycle Master.`
           : 'Complete the cycle information for the selected building.'
       }
       className="max-w-2xl"
@@ -92,26 +91,19 @@ export default function CycleInformationModal({
                   className="bg-stone-50"
                 />
               </div>
-              <BroilerCycleSelect
-                farmId={farmId}
-                value={form.farmCycleId}
-                onValueChange={(cycleId, cycle) => onFormChange({
-                  farmCycleId: cycleId,
-                  cycleNumber: cycle && !cycleNumberEditable ? cycle.cycleKey : form.cycleNumber,
-                  farmCycleStartDate: cycle?.startDate ?? null,
-                })}
-                contentPositionerZIndex={310}
-              />
-              {cycleNumberEditable && <div className="space-y-2">
-                <Label>Cycle Count</Label>
+              <div className="space-y-2">
+                <Label required>Cycle Count</Label>
                 <Input
-                  type={cycleNumberEditable ? 'text' : 'number'}
+                  type="text"
                   value={form.cycleNumber}
                   readOnly={!cycleNumberEditable}
                   className={!cycleNumberEditable ? 'bg-stone-50' : undefined}
                   onChange={event => onFormChange({ cycleNumber: event.target.value })}
+                  placeholder={cycleNumberEditable ? 'Enter Cycle Count' : 'Assigned automatically'}
+                  required
                 />
-              </div>}
+                {!form.cycleNumber.trim() && <p role="alert" className="text-xs text-destructive">Cycle Count is required.</p>}
+              </div>
               <div className="space-y-2">
                 <Label required>Cycle #</Label>
                 <Input
