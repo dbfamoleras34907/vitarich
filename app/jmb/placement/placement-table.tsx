@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChevronDown,
   Egg,
+  Eye,
   FileSpreadsheet,
   Hash,
   Loader2,
@@ -39,6 +40,7 @@ import {
   listBreederCycles,
   listBuildingHistory,
   listFarmLocationLookup,
+  listPlacementIdsWithPostedActivity,
   listPlacements,
   getUserInfo,
   type BreederFarm,
@@ -59,16 +61,6 @@ function formatDate(value?: string | null) {
   });
 }
 
-function endingCount(row: Placement) {
-  const female =
-    row.f_endingbalance ??
-    row.f_beg - row.f_doa - row.f_reject - row.f_shortcount;
-  const male =
-    row.m_endingbalance ??
-    row.m_beg - row.m_doa - row.m_reject - row.m_shortcount;
-  return Number(female) + Number(male);
-}
-
 function formatNumber(value: number) {
   return value.toLocaleString("en-PH");
 }
@@ -80,6 +72,9 @@ export default function PlacementTable() {
   const [breederCycles, setBreederCycles] = useState<BreederCycle[]>([]);
   const [buildingHistory, setBuildingHistory] = useState<BuildingHistoryRow[]>(
     [],
+  );
+  const [lockedPlacementIds, setLockedPlacementIds] = useState<Set<number>>(
+    () => new Set(),
   );
   const [farms, setFarms] = useState<BreederFarm[]>([]);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
@@ -108,11 +103,17 @@ export default function PlacementTable() {
           locationRows,
           defaultFarmRows,
         ]) => {
-          const historyRows = await listBuildingHistory(placementRows);
+          const [historyRows, activityLocks] = await Promise.all([
+            listBuildingHistory(placementRows),
+            listPlacementIdsWithPostedActivity(placementRows),
+          ]);
           if (cancelled) return;
           setPlacements(placementRows);
           setBreederCycles(cycleRows);
           setBuildingHistory(historyRows);
+          setLockedPlacementIds(
+            activityLocks ?? new Set(placementRows.map((placement) => placement.id)),
+          );
           setFarms(farmRows);
           setLocations(locationRows);
           const defaultFarmId = defaultFarmRows[0]?.id;
@@ -182,6 +183,26 @@ export default function PlacementTable() {
       ),
     [buildingHistory, effectiveFarmId],
   );
+  const activeCycleHistoryKeys = useMemo(
+    () =>
+      new Set(
+        breederCycles
+          .filter(
+            (cycle) =>
+              String(cycle.farm_id) === effectiveFarmId &&
+              cycle.status.toLowerCase() === "active",
+          )
+          .map(
+            (cycle) =>
+              `${cycle.farm_id}:${cycle.building_id}:cycle:${cycle.cycle_no}`,
+          ),
+      ),
+    [breederCycles, effectiveFarmId],
+  );
+  const actualInventoryByCycle = useMemo(
+    () => new Map(selectedFarmHistory.map((record) => [record.key, record.total_birds])),
+    [selectedFarmHistory],
+  );
   const occupiedCount = useMemo(
     () =>
       new Set(selectedFarmPlacements.map((placement) => placement.building_id))
@@ -190,11 +211,10 @@ export default function PlacementTable() {
   );
   const totalBirdCount = useMemo(
     () =>
-      selectedFarmPlacements.reduce(
-        (sum, placement) => sum + endingCount(placement),
-        0,
-      ),
-    [selectedFarmPlacements],
+      selectedFarmHistory
+        .filter((record) => activeCycleHistoryKeys.has(record.key))
+        .reduce((sum, record) => sum + record.total_birds, 0),
+    [activeCycleHistoryKeys, selectedFarmHistory],
   );
   const firstStartDate = useMemo(
     () =>
@@ -209,9 +229,10 @@ export default function PlacementTable() {
     building: FarmLocationLookup,
     placement?: Placement,
     cycleNo?: number,
+    viewOnly = false,
   ) {
     if (placement) {
-      router.push(`/jmb/placement/new?id=${placement.id}`);
+      router.push(`/jmb/placement/new?id=${placement.id}${viewOnly ? "&view=1" : ""}`);
       return;
     }
 
@@ -284,7 +305,7 @@ export default function PlacementTable() {
               <div className="rounded-md border bg-background px-3 py-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                   <UsersRound className="size-3.5" />
-                  Birds
+                  Actual Inventory
                 </div>
                 <div className="mt-1 text-lg font-semibold tabular-nums">
                   {loading ? "..." : formatNumber(totalBirdCount)}
@@ -365,7 +386,7 @@ export default function PlacementTable() {
                   <TableHead className="w-32.5">Start Date</TableHead>
                   <TableHead className="w-32.5">Cycle #</TableHead>
                   <TableHead>Remarks</TableHead>
-                  <TableHead className="w-35 text-right">Total Birds</TableHead>
+                  <TableHead className="w-35 text-right">Actual Inventory</TableHead>
                   <TableHead className="w-32.5">Status</TableHead>
                   <TableHead className="w-64 text-right">Actions</TableHead>
                 </TableRow>
@@ -409,10 +430,12 @@ export default function PlacementTable() {
                       b.placement_date.localeCompare(a.placement_date) ||
                       b.id - a.id,
                   )[0];
-                  const totalBirds = rows.reduce(
-                    (sum, row) => sum + endingCount(row),
-                    0,
-                  );
+                  const actualInventory = cycleNo == null
+                    ? undefined
+                    : actualInventoryByCycle.get(
+                        `${effectiveFarmId}:${building.building_id}:cycle:${cycleNo}`,
+                      );
+                  const editLocked = rows.some((row) => lockedPlacementIds.has(row.id));
                   return (
                     <TableRow key={building.building_id}>
                       <TableCell>
@@ -430,7 +453,9 @@ export default function PlacementTable() {
                         {latest?.remarks || "-"}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
-                        {rows.length ? totalBirds.toLocaleString("en-PH") : "-"}
+                        {rows.length && actualInventory != null
+                          ? actualInventory.toLocaleString("en-PH")
+                          : "-"}
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
@@ -449,26 +474,44 @@ export default function PlacementTable() {
                               <FileSpreadsheet className="size-4" /> Population Records
                             </Button>
                           ) : null}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              openPlacement(
-                                building,
-                                latest,
-                                cycleNo ?? nextCycleNo,
-                              )
-                            }
-                            className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                          >
-                            {latest ? (
-                              <Pencil className="size-4" />
-                            ) : (
-                              <Plus className="size-4" />
-                            )}
-                            {latest ? "Edit/View" : "New Placement"}
-                          </Button>
+                          {latest && editLocked ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                openPlacement(
+                                  building,
+                                  latest,
+                                  cycleNo ?? nextCycleNo,
+                                  true,
+                                )
+                              }
+                            >
+                              <Eye className="size-4" /> View Placement
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                openPlacement(
+                                  building,
+                                  latest,
+                                  cycleNo ?? nextCycleNo,
+                                )
+                              }
+                              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                            >
+                              {latest ? (
+                                <Pencil className="size-4" />
+                              ) : (
+                                <Plus className="size-4" />
+                              )}
+                              {latest ? "Edit Placement" : "New Placement"}
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -524,7 +567,7 @@ export default function PlacementTable() {
                       Short Count
                     </TableHead>
                     <TableHead className="text-right">
-                      Total Birds
+                      Actual Inventory
                     </TableHead>
                     <TableHead className="text-right">
                       Total Egg Production
