@@ -51,6 +51,7 @@ security invoker
 set search_path = public
 as $$
 declare
+-- 
   v_changed_building bigint;
 begin
   if p_farm_id is null then

@@ -79,6 +79,7 @@ export default function CycleMasterLayout() {
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [rows, setRows] = useState<CycleMasterListRow[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [actionTarget, setActionTarget] = useState<{ row: CycleMasterListRow; action: 'close' | 'reopen' } | null>(null)
   const [savingAction, setSavingAction] = useState(false)
   const [pastCycleOpen, setPastCycleOpen] = useState(false)
@@ -97,6 +98,7 @@ export default function CycleMasterLayout() {
 
   const loadRows = useCallback(async () => {
     const farmId = Number(activeFarmId)
+    setLoadError('')
     if (!farmId) {
       setRows([])
       return
@@ -106,6 +108,7 @@ export default function CycleMasterLayout() {
       setRows(await getCycleMasterListRows(farmId))
     } catch (error) {
       setRows([])
+      setLoadError(errorMessage(error))
       toast.error(errorMessage(error))
     } finally {
       setLoading(false)
@@ -233,6 +236,8 @@ export default function CycleMasterLayout() {
                 <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
               ) : !activeFarmId ? (
                 <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">Select a farm to view its cycles.</TableCell></TableRow>
+              ) : loadError ? (
+                <TableRow><TableCell colSpan={9}><p role="alert" className="py-3 text-destructive">{loadError}</p></TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">No farm cycles found.</TableCell></TableRow>
               ) : rows.map(row => (

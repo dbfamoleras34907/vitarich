@@ -728,6 +728,16 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 84,
+            type: "Report",
+            title: "Hatchery Lifecycle Report",
+            url: "/report/hatchery-lifecycle",
+            view: true,
+            insert: false,
+            edit: false,
+          },
+
+          {
             id: 24,
             type: "Report",
             title: "Machine Monitoring",

@@ -178,7 +178,7 @@ export async function getBroilerCycleReport(
 
   const cycleResult = await db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, cycle_mask, status, created_at, closed_at')
+    .select('id, farm_id, cycle_no, cycle_key, cycle_mask, status, created_at, closed_at')
     .eq('id', cycleId)
     .maybeSingle()
   if (cycleResult.error) throwQueryError(cycleResult.error, 'Unable to load the farm cycle')
@@ -245,7 +245,7 @@ async function loadCycleMovements(farmId: number, stage: 'delivery' | 'cleanup',
   return { headers, lines }
 }
 
-/** Excluded Buildings own an open placement cycle without doc_farm_cycles. */
+/** Compatibility for saved building links: resolve the authoritative Cycle Master. */
 export async function getBroilerOpenBuildingCycleReport(farmId: number, flockCardId: number) {
   return getBroilerBuildingCycleReport(farmId, flockCardId, { openBuildingsOnly: true })
 }
@@ -254,23 +254,25 @@ export async function getBroilerBuildingCycleReport(
   farmId: number, flockCardId: number, options: { openBuildingsOnly?: boolean; requireComplete?: boolean } = {},
 ) {
   if (!Number.isInteger(farmId) || farmId <= 0 || !Number.isInteger(flockCardId) || flockCardId <= 0) return null
-  const report = await loadBroilerCycleReport(0, { farm_id: farmId, status: 'Saved' },
-    { postedOnly: true, openBuildingsOnly: options.openBuildingsOnly, requireComplete: options.requireComplete }, flockCardId)
-  if (report.buildings.length) report.status = report.buildings[0].status
-  return report.buildings.length ? report : null
+  const { data: card, error } = await db.from('flock_card')
+    .select('farm_cycle_id').eq('farm_id', farmId).eq('id', flockCardId).maybeSingle()
+  if (error) throwQueryError(error, 'Unable to load the building cycle')
+  if (!card) return null
+  if (!card.farm_cycle_id) throw new Error('This building is missing its Cycle Master link. Repair the existing cycle ownership.')
+  const report = await getBroilerCycleReport(Number(card.farm_cycle_id), { ...options, postedOnly: true })
+  if (!report || report.farmId !== farmId) return null
+  return { ...report, buildings: report.buildings.filter(building => building.flockCardId === flockCardId) }
 }
 
 async function loadBroilerCycleReport(
-  cycleId: number, cycle: UnknownRow, options: BroilerCycleReportOptions, standaloneCardId?: number,
+  cycleId: number, cycle: UnknownRow, options: BroilerCycleReportOptions,
 ): Promise<BroilerCycleReport> {
   const farmId = numberValue(cycle.farm_id)
   const countOptions = options.requireComplete ? { count: 'exact' as const } : undefined
   let cardQuery = db.from('flock_card')
     .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, cycle_mask, start_date, breed, animal_qty, status, remarks, void', countOptions)
-  if (options.postedOnly || standaloneCardId) cardQuery = cardQuery.eq('farm_id', farmId)
-  cardQuery = standaloneCardId
-    ? cardQuery.eq('id', standaloneCardId).is('farm_cycle_id', null)
-    : cardQuery.eq('farm_cycle_id', cycleId)
+  if (options.postedOnly) cardQuery = cardQuery.eq('farm_id', farmId)
+  cardQuery = cardQuery.eq('farm_cycle_id', cycleId)
   const [farmResult, cardResult] = await Promise.all([
     db.from('farms').select('id, code, name').eq('id', farmId).maybeSingle(),
     cardQuery.order('building_name').order('start_date'),

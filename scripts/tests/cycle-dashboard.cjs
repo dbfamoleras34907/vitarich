@@ -216,10 +216,12 @@ async function main() {
   assert.equal(historical.buildings.length, 3, 'Default Cycle Master report still includes historical buildings')
   assert(historical.buildings[0].placements.some(row => row.status === 'Draft'))
   assert.equal(getBroilerDepletionSummary(100, [{ mortalityTotal: 2, thinningTotal: 1, depletionTotal: 3 }]).currentLiveBirds, 97)
-  const standalone = await getBroilerOpenBuildingCycleReport(1, 13)
-  assert.equal(standalone.buildings[0].cycleLabel, '', 'Do not display raw legacy cycle counts as masked numbers')
-  assert.equal(await getBroilerOpenBuildingCycleReport(2, 13), null, 'Standalone cycles must belong to the requested farm')
-  assert.equal(await getBroilerOpenBuildingCycleReport(1, 10), null, 'Farm-owned cycles cannot be loaded as standalone')
+  await assert.rejects(() => getBroilerOpenBuildingCycleReport(1, 13), /missing its Cycle Master link/)
+  assert.equal(await getBroilerOpenBuildingCycleReport(2, 13), null, 'Building links must belong to the requested farm')
+  const linkedBuildingReport = await getBroilerOpenBuildingCycleReport(1, 10)
+  assert.equal(linkedBuildingReport.id, 1, 'Old building links resolve to a real master')
+  assert.equal(linkedBuildingReport.buildings.length, 1)
+  assert.equal(linkedBuildingReport.buildings[0].flockCardId, 10)
 
   const itemTables = structuredClone(tables)
   itemTables.doc_rec_settings = [{ farm_id: 1, good_doc: 500, void: '1' }]
@@ -255,10 +257,9 @@ async function main() {
     './farmOptions.client': { listAssignedUserFarmOptions: async () => allowed ? [{ id: 1 }] : [] },
     './broilerFarmCycles': {
       getFarmCycleMasterRows: async () => { queried++; return farmCycleRows },
-      getStandaloneBuildingCycleOptions: async () => [{ id: 13, cycleLabel: 'Backlog Cycle 7', buildingName: 'Building 2', status: 'Closed' }],
     },
     './broilerFlockCards': { getFarmBuildingsForFlockCard: async (_farmId, options) => { assert.equal(options.includePlacementInventory, false); return [{ id: 99, code: 'B0', name: 'Empty' }, { id: 100, code: 'B1', name: 'Building 1' }, { id: 103, code: 'B2', name: 'Building 2', flockCard: { id: 13 } }] } },
-    './broilerCycleReport': { getBroilerBuildingCycleReport: async () => ({ ...standalone, status: 'Closed', buildings: standalone.buildings.map(building => ({ ...building, status: 'Closed' })) }), getBroilerCycleReport: async (id, options) => {
+    './broilerCycleReport': { getBroilerCycleReport: async (id, options) => {
       requests.push(id)
       assert.equal(options.postedOnly, true); assert.notEqual(options.openBuildingsOnly, true)
       return id === 1 ? report : id === 2 ? closedReport : id === 3 ? { ...report, id: 3, status: 'Cancelled', buildings: [] } : { ...report, farmId: 2 }
@@ -275,16 +276,15 @@ async function main() {
   const recalled = await getBroilerCycleDashboard(1, { cycleKey: 'farm:1' })
   assert.equal(recalled.selectedCycle.key, 'farm:1')
   assert.equal(recalled.buildings[1].cycles[0].cycleNumber, '09260007')
-  const standaloneRecall = await getBroilerCycleDashboard(1, { cycleKey: 'building:13' })
-  assert.equal(standaloneRecall.buildings[2].cycles[0].cycleNumber, '')
-  assert.equal(standaloneRecall.buildings[1].cycles.length, 0)
+  await assert.rejects(() => getBroilerCycleDashboard(1, { cycleKey: 'building:13' }), /does not belong/)
+  assert(dashboard.cycleOptions.every(cycle => cycle.kind === 'farm'), 'Only persisted master cycles are selectable')
   assert.equal((await getBroilerCycleDashboard(1, { cycleKey: 'farm:3' })).selectedCycle.status, 'Cancelled')
   await assert.rejects(() => getBroilerCycleDashboard(1, { cycleKey: 'farm:4' }), /selected cycle for this farm/)
   const countBeforeInvalid = requests.length
   await assert.rejects(() => getBroilerCycleDashboard(1, { cycleKey: 'farm:999' }), /does not belong/)
   assert.equal(requests.length, countBeforeInvalid, 'Validate recalled cycle ownership before loading it')
   farmCycleRows = []
-  assert.equal((await getBroilerCycleDashboard(1)).selectedCycle.key, 'building:13', 'Use latest standalone cycle only when the farm has no numbered cycles')
+  assert.equal((await getBroilerCycleDashboard(1)).selectedCycle, null, 'Do not manufacture a cycle when the master is missing')
   const queryCount = queried
   allowed = false
   await assert.rejects(() => getBroilerCycleDashboard(1, { onCatalogLoaded: () => assert.fail('Denied users must not receive cycle metadata') }), /active assignment/)
@@ -325,15 +325,19 @@ async function main() {
   }), /Simulated Growing detail failure/)
   assert.equal(failedDetailCatalogs.at(-1).selectedCycle.label, 'Cycle 09260001', 'A failed transaction query must not remove the closed cycle from the selector')
 
-  const standaloneFailureLoader = loader({ ...closedMocks,
-    './broilerFarmCycles': {
-      getFarmCycleMasterRows: async () => closedCycleRows,
-      getStandaloneBuildingCycleOptions: async () => { throw { message: 'Simulated standalone lookup failure' } },
-    },
-  })
-  const withStandaloneFailure = await standaloneFailureLoader('lib/data/repositories/broilerCycleDashboard.ts').getBroilerCycleDashboard(1)
-  assert.equal(withStandaloneFailure.selectedCycle.label, 'Cycle 09260001')
-  assert(withStandaloneFailure.warnings.some(warning => warning.includes('Simulated standalone lookup failure')))
+  const brokenLoader = loader({ ...closedMocks, '@/lib/Supabase/supabaseClient': { db: database(tables) } })
+  await assert.rejects(() => brokenLoader('lib/data/repositories/broilerFarmCycles.ts').getCycleMasterListRows(1), /active buildings without a Cycle Master link/)
+  const repairedTables = structuredClone(tables)
+  repairedTables.flock_card = [
+    { ...tables.flock_card[0] },
+    { ...tables.flock_card[3], farm_cycle_id: 1 },
+  ]
+  const repairedRepo = loader({ ...closedMocks, '@/lib/Supabase/supabaseClient': { db: database(repairedTables) } })('lib/data/repositories/broilerFarmCycles.ts')
+  const repairedRows = await repairedRepo.getCycleMasterListRows(1)
+  assert.equal(repairedRows.length, 1, 'Regular and excluded buildings share one master')
+  assert.equal(repairedRows[0].participatingBuildings, 2)
+  assert.equal(repairedRows[0].openBuildings, 2)
+  assert.equal((await repairedRepo.getSelectableBroilerFarmCycles(1))[0].id, repairedRows[0].id, 'Growing uses the same master')
   console.log('Cycle Dashboard tests passed: posting filters, latest/closed cycle recall, cycle isolation, lineage, weighted totals, age at close, access guards, pagination, and report compatibility.')
 }
 module.exports = { loader, database }

@@ -75,7 +75,9 @@ print dialog. Bar charts have PNG downloads. Both themes use shared UI tokens.
 The shared repository reuses the active, approved Broiler farm catalog, Farm
 profiles, Cycle Master catalogs and Cycle Report lineage. `farms.id` remains the
 key; Island Group and Region are read from the Farm profile. Current cycles exclude
-Past Open; selecting all cycles includes Past Open and Closed plus standalone cycles.
+Past Open; selecting all cycles includes persisted Past Open and Closed masters.
+Excluded buildings remain participants in their master. Unlinked active cards are
+reported as an ownership error rather than counted as standalone cycles.
 The signed-in Supabase client preserves existing RLS. Three farms load concurrently;
 any query failure blocks the complete report rather than publishing partial KPIs.
 All totals describe visible records, not an unrestricted organization-wide audit.

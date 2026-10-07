@@ -1,6 +1,6 @@
-import { getFarmCycleMasterRows, getStandaloneBuildingCycleOptions } from './broilerFarmCycles'
+import { getFarmCycleMasterRows } from './broilerFarmCycles'
 import { getFarmBuildingsForFlockCard } from './broilerFlockCards'
-import { getBroilerCycleReport, getBroilerBuildingCycleReport, type BroilerCycleBuilding } from './broilerCycleReport'
+import { getBroilerCycleReport, type BroilerCycleBuilding } from './broilerCycleReport'
 import { listAssignedUserFarmOptions } from './farmOptions.client'
 
 export type DashboardCycleBuilding = BroilerCycleBuilding & {
@@ -62,32 +62,17 @@ export async function getBroilerCycleDashboard(
   // Publish the exact Cycle Master list before any unrelated detail query.
   options.onCatalogLoaded?.({ farmId, cycleOptions: [...cycleOptions], selectedCycle: selectCycle() })
 
-  const [buildingsResult, standaloneResult] = await Promise.allSettled([
+  const [buildingsResult] = await Promise.allSettled([
     getFarmBuildingsForFlockCard(farmId, { includePlacementInventory: false }),
-    getStandaloneBuildingCycleOptions(farmId),
   ])
   const warnings: string[] = []
   const buildings = buildingsResult.status === 'fulfilled' ? buildingsResult.value : []
   if (buildingsResult.status === 'rejected') warnings.push(`Additional farm buildings could not be loaded: ${queryMessage(buildingsResult.reason)}`)
-  if (standaloneResult.status === 'rejected') warnings.push(`Standalone building cycles could not be loaded: ${queryMessage(standaloneResult.reason)}`)
-  const standaloneCycles = standaloneResult.status === 'fulfilled' ? standaloneResult.value : []
-  cycleOptions.push(...standaloneCycles.map(cycle => ({
-      key: `building:${cycle.id}`, kind: 'building' as const, id: cycle.id,
-      label: `${cycle.cycleMask || "-"} - ${cycle.buildingName}`, status: cycle.status,
-    })))
   let selectedCycle = selectCycle()
   options.onCatalogLoaded?.({ farmId, cycleOptions: [...cycleOptions], selectedCycle })
-  if (!farmCycles.length && standaloneResult.status === 'rejected') {
-    throw new Error(warnings.join(' '))
-  }
-  if (options.cycleKey?.startsWith('building:') && standaloneResult.status === 'rejected') {
-    throw new Error(`Unable to load the selected standalone cycle: ${queryMessage(standaloneResult.reason)}`)
-  }
   if (options.cycleKey && !selectedCycle) throw new Error('This cycle does not belong to the selected farm or is no longer available.')
 
-  const report = !selectedCycle ? null : selectedCycle.kind === 'farm'
-    ? await getBroilerCycleReport(selectedCycle.id, { postedOnly: true })
-    : await getBroilerBuildingCycleReport(farmId, selectedCycle.id)
+  const report = selectedCycle ? await getBroilerCycleReport(selectedCycle.id, { postedOnly: true }) : null
   if (selectedCycle && (!report || report.farmId !== farmId)) {
     throw new Error('Unable to load the selected cycle for this farm. Refresh and select the cycle again.')
   }

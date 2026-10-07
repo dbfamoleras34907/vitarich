@@ -24,11 +24,10 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   navigation, and preserve farm/cycle/building context when changing processes.
 - Default to the latest active farm cycle, falling back to the highest cycle number.
   The Cycle selector recalls closed and cancelled cycles without reopening them.
-- Records opens the existing Cycle Master report for both farm and standalone building
-  cycles, retaining the Cycle Report View permission.
+- Records opens the existing Cycle Master report, retaining the Cycle Report View permission.
 - Publish the Cycle Master list before loading buildings and transaction details.
   Keep that list and its selected cycle visible if a detail query fails; show the
-  precise detail error separately. Additional warehouse/standalone-cycle lookup
+  precise detail error separately. Additional warehouse lookup
   failures produce explicit warnings without hiding valid farm cycles or their
   persisted participating buildings.
 - Building tabs display names (falling back to codes when unnamed) and follow building-code order. Initially select the first open building
@@ -36,9 +35,9 @@ rechecks assignment before requesting farm records and uses the normal RLS clien
   All Buildings totals and charts include only that selected cycle.
 - Empty buildings show **No records in this cycle**. Closed buildings retain their
   true status; void/cancelled placement records do not contribute to metrics.
-- Excluded-building cycles retain their exact text label and can also be recalled,
-  even with a null `farm_cycle_id`. Farm cycles take priority for default selection;
-  when none exist, the newest standalone building cycle is selected.
+- Excluded buildings retain their entered count and belong to the farm's Cycle Master.
+  Unlinked active cards produce an ownership error; no virtual standalone cycles
+  are manufactured. Existing building report links resolve through the card's master.
 - DOC Placement, Delivery and Clean-up require `Posted`, non-void records.
 - Growing has no separate document Post operation. `save_brd_fc_transaction`
   commits daily measurements and inventory together, even when its header remains

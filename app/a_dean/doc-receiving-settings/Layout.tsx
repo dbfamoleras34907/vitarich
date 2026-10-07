@@ -282,8 +282,8 @@ export default function DocReceivingSettingsLayout({
             </SettingRow>
           ))}
         </SettingsCategory>
-        <SettingsCategory title="Cycle Assignment" description="Normal buildings copy the active farm Cycle Count. Excluded buildings manage independent cycles.">
-          <SettingRow label="Excluded Cycle Buildings" description="Select active, empty buildings that must not rely on the farm cycle. A building with an active flock cannot be added or removed until posted Clean up is complete." settingKey="EXCLUDED_CYCLE_BUILDINGS">
+        <SettingsCategory title="Cycle Assignment" description="Every building belongs to Cycle Master. Normal buildings copy its Cycle Count; excluded buildings keep their own Cycle Count.">
+          <SettingRow label="Excluded Cycle Buildings" description="Select active, empty buildings whose Cycle Count is entered separately. They still belong to the farm Cycle Master. A building with an active flock cannot be added or removed until posted Clean up is complete." settingKey="EXCLUDED_CYCLE_BUILDINGS">
             <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-stone-200 p-3">
               {!activeFarmId ? <p className="text-sm text-stone-500">Select a farm first.</p> : buildings.length === 0 ? <p className="text-sm text-stone-500">No active buildings are available.</p> : buildings.map(building => {
                 const id = Number(building.id)

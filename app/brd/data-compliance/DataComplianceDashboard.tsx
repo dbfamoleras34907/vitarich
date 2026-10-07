@@ -361,6 +361,7 @@ export default function DataComplianceDashboard() {
           result: summary.unassigned === summary.total && summary.total > 0 ? '—' : String(summary.tasWithDelays),
           note: 'Unassigned building-cycles are shown separately and do not count as a TA. Admin and Super Admin accounts are excluded from TA assignment.',
         }} />
+        {/*  */}
         <Metric title="Longest Delay" value={summary.overdue ? `${summary.longestDelay} days` : '—'} note="Since oldest missing required date" icon={Clock3} danger={summary.longestDelay > 0} formula={{
           formula: 'Maximum delay days across overdue building-cycles',
           description: 'Finds the largest inclusive day count from the oldest missing required date through yesterday in Asia/Manila.',

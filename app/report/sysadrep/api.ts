@@ -66,10 +66,15 @@ export async function getInventoryTraceabilitySummary({
         )
 
     if (error) {
-        console.error(
-            'Traceability Dashboard Error:',
-            error
-        )
-    }
-    return data ?? []
+            const message = [
+                error.message,
+                error.details,
+                error.hint,
+                error.code ? `Code: ${error.code}` : null,
+            ].filter(Boolean).join(' ')
+
+            throw new Error(message || 'Unable to load the Hatchery System Adoption Report.')
+        }
+
+        return data ?? []
 }

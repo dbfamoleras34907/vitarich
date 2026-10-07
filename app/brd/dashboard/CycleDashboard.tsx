@@ -236,7 +236,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
     {error ? <div role="alert" className="rounded-lg border border-destructive/30 bg-card p-5 text-sm text-destructive">{error}</div>
       : loading ? <CycleDashboardSkeleton />
         : !farm ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No assigned Broiler farms.</div>
-          : !data?.selectedCycle ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No cycles found for this farm.</div>
+          : !data?.selectedCycle ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">This farm does not have a Cycle yet.</div>
           : !buildings?.length ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No buildings found for this cycle.</div>
             : <>
               <div className="min-w-0 space-y-2 rounded-md border bg-card p-2 print:hidden">
@@ -306,7 +306,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
         {loading ? <CycleDashboardSkeleton records />
           : error ? <div role="alert" className="p-6 text-sm text-destructive">{error}</div>
             : data?.selectedCycle ? <CycleReportLayout key={`${farmId}:${data.selectedCycle.key}:${reload}`} requestedCycleId={data.selectedCycle.id} requestedFarmId={farmId} cycleKind={data.selectedCycle.kind} embedded />
-              : <div className="rounded-lg border p-6 text-sm text-muted-foreground">Select a cycle above to view its Cycle Master data.</div>}
+              : <div className="rounded-lg border p-6 text-sm text-muted-foreground">This farm does not have a Cycle yet.</div>}
       </TabsContent>
     </Tabs>
     </div>

@@ -31,6 +31,7 @@ export default function BroilerCycleSelect({
   contentPositionerZIndex,
 }: BroilerCycleSelectProps) {
   const [loaded, setLoaded] = useState<{ farmId: number; cycles: SelectableBroilerFarmCycle[] }>({ farmId: 0, cycles: [] })
+  const [loadError, setLoadError] = useState<{ farmId: number; message: string } | null>(null)
   const valueRef = useRef(value)
   const onValueChangeRef = useRef(onValueChange)
   useEffect(() => { valueRef.current = value }, [value])
@@ -50,13 +51,15 @@ export default function BroilerCycleSelect({
       .then(rows => {
         if (cancelled) return
         setLoaded({ farmId: numericFarmId, cycles: rows })
+        setLoadError(null)
         const selected = rows.find(row => String(row.id) === valueRef.current)
         if (selected) return
         const current = rows.find(row => row.status === 'Saved') ?? null
         onValueChangeRef.current(current ? String(current.id) : '', current)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
+          setLoadError({ farmId: numericFarmId, message: error instanceof Error ? error.message : 'Unable to load Cycle Master. Refresh and try again.' })
           setLoaded({ farmId: numericFarmId, cycles: [] })
           onValueChangeRef.current('', null)
         }
@@ -87,6 +90,7 @@ export default function BroilerCycleSelect({
         className={className}
         contentPositionerZIndex={contentPositionerZIndex}
       />
+      {loadError?.farmId === numericFarmId && <p role="alert" className="text-xs text-destructive">{loadError.message}</p>}
     </div>
   )
 }
