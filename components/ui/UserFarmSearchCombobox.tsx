@@ -133,10 +133,7 @@ export default function UserFarmSearchCombobox({
     return (
       <div className={className}>
         <div className="relative mb-2">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
+          
           <Input
             type="search"
             value={buttonSearch}
