@@ -216,7 +216,7 @@ export async function listBuildingHistory(placements: Placement[]) {
       ? db
           .from("tbl_breeder_daily_performance")
           .select(
-            "placement_id, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female",
+            "placement_id, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female",
           )
           .in("placement_id", placementIds)
           .eq("isactive", true)
@@ -291,6 +291,21 @@ export async function listBuildingHistory(placements: Placement[]) {
     row.culls += numeric(record.cull_male) + numeric(record.cull_female);
     row.kitchen += numeric(record.kitchen_male) + numeric(record.kitchen_female);
     row.condem += numeric(record.condem_male) + numeric(record.condem_female);
+    // Keep this building-level total aligned with Population Record: opening
+    // inventory plus Transfers In, less all depletion and Transfers Out.
+    row.total_birds +=
+      numeric(record.trans_in_male) +
+      numeric(record.trans_in_female) -
+      numeric(record.mc_male) -
+      numeric(record.mc_female) -
+      numeric(record.cull_male) -
+      numeric(record.cull_female) -
+      numeric(record.kitchen_male) -
+      numeric(record.kitchen_female) -
+      numeric(record.condem_male) -
+      numeric(record.condem_female) -
+      numeric(record.trans_out_male) -
+      numeric(record.trans_out_female);
   });
 
   (eggResult.data ?? []).forEach((record) => {
@@ -304,6 +319,8 @@ export async function listBuildingHistory(placements: Placement[]) {
     const row = key ? history.get(key) : undefined;
     if (row) {
       row.total_cleanup +=
+        numeric(record.female_cleanup_qty) + numeric(record.male_cleanup_qty);
+      row.total_birds -=
         numeric(record.female_cleanup_qty) + numeric(record.male_cleanup_qty);
     }
   });
@@ -436,6 +453,80 @@ export async function placementHasGrowingOrLaying(id: number) {
     (result) =>
       result.status === "fulfilled" && Boolean(result.value.data?.length),
   );
+}
+
+/**
+ * A placement becomes immutable once a posted downstream document depends on
+ * its identity or opening balance. Return null when the dependency check cannot
+ * be completed so callers can fail closed instead of exposing Edit.
+ */
+export async function listPlacementIdsWithPostedActivity(
+  placements: Array<Pick<Placement, "id" | "cycle_id">>,
+) {
+  const placementIds = placements
+    .map((placement) => Number(placement.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const cycleIds = Array.from(
+    new Set(
+      placements
+        .map((placement) => Number(placement.cycle_id ?? 0))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  );
+  if (!placementIds.length) return new Set<number>();
+
+  const emptyResult = Promise.resolve({ data: [], error: null });
+  const checks = await Promise.allSettled([
+    db.from(GROWING_TABLE).select("placement_id").in("placement_id", placementIds).eq("isactive", true),
+    db.from(EGG_LAYING_TABLE).select("placement_id").in("placement_id", placementIds).eq("is_active", true),
+    db.from("tbl_breeder_transfer").select("source_placement_id, destination_placement_id").eq("status", "Posted").or(`source_placement_id.in.(${placementIds.join(",")}),destination_placement_id.in.(${placementIds.join(",")})`),
+    cycleIds.length
+      ? db.from("tbl_breeder_cleanup").select("cycle_id").in("cycle_id", cycleIds)
+      : emptyResult,
+    db.from("tbl_brd_dispatch").select("id").eq("status", "Posted"),
+  ]);
+
+  if (checks.some((result) => result.status === "rejected" || Boolean(result.value.error))) return null;
+  const resultRows = (index: number) => {
+    const result = checks[index];
+    return result.status === "fulfilled" ? result.value.data ?? [] : [];
+  };
+  const growing = resultRows(0) as Array<{ placement_id: unknown }>;
+  const laying = resultRows(1) as Array<{ placement_id: unknown }>;
+  const transfers = resultRows(2) as Array<{
+    source_placement_id: unknown;
+    destination_placement_id: unknown;
+  }>;
+  const cleanup = resultRows(3) as Array<{ cycle_id: unknown }>;
+  const dispatchHeaders = resultRows(4) as Array<{ id: unknown }>;
+  const dispatchIds = dispatchHeaders.map((header) => Number(header.id)).filter((id) => Number.isInteger(id) && id > 0);
+  const dispatchLines = dispatchIds.length
+    ? await db.from("tbl_brd_dispatch_line").select("placement_id").in("dispatch_id", dispatchIds).in("placement_id", placementIds)
+    : { data: [], error: null };
+  if (dispatchLines.error) return null;
+
+  const lockedIds = new Set<number>();
+  growing.forEach((row) => lockedIds.add(Number(row.placement_id)));
+  laying.forEach((row) => lockedIds.add(Number(row.placement_id)));
+  transfers.forEach((row) => {
+    const sourceId = Number(row.source_placement_id);
+    const destinationId = Number(row.destination_placement_id);
+    if (placementIds.includes(sourceId)) lockedIds.add(sourceId);
+    if (placementIds.includes(destinationId)) lockedIds.add(destinationId);
+  });
+  dispatchLines.data?.forEach((row) => lockedIds.add(Number(row.placement_id)));
+
+  const placementIdsByCycle = new Map<number, number[]>();
+  placements.forEach((placement) => {
+    const cycleId = Number(placement.cycle_id ?? 0);
+    if (!Number.isInteger(cycleId) || cycleId <= 0) return;
+    placementIdsByCycle.set(cycleId, [...(placementIdsByCycle.get(cycleId) ?? []), placement.id]);
+  });
+  cleanup.forEach((row) => {
+    (placementIdsByCycle.get(Number(row.cycle_id)) ?? []).forEach((id) => lockedIds.add(id));
+  });
+
+  return lockedIds;
 }
 
 export async function getPlacementById(id: number) {

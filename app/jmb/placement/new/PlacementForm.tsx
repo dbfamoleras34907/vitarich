@@ -29,7 +29,7 @@ import {
   listBreederSources,
   listFarmLocationLookup,
   listPlacementHistory,
-  placementHasGrowingOrLaying,
+  listPlacementIdsWithPostedActivity,
   updatePlacement,
   type FarmLocationLookup,
   type PlacementInsert,
@@ -158,17 +158,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function withoutPlacementDate(payload: PlacementInsert) {
-  const {
-    placement_date: placementDate,
-    cycle_id: cycleId,
-    ...rest
-  } = payload;
-  void placementDate;
-  void cycleId;
-  return rest;
-}
-
 function parseClipboardGrid(text: string) {
   return text
     .replace(/\r\n/g, "\n")
@@ -206,14 +195,12 @@ export default function PlacementForm() {
   const farmIdParam = searchParams.get("farmId");
   const buildingIdParam = searchParams.get("buildingId");
   const cycleNoParam = searchParams.get("cycleNo");
-  const isEdit = !!idParam;
+  const isView = searchParams.get("view") === "1";
+  const isEdit = !!idParam && !isView;
+  const isExistingPlacement = !!idParam;
 
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
-  const [hasDependentRecords, setHasDependentRecords] = useState(false);
-  const [dependentPlacementIds, setDependentPlacementIds] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
@@ -339,7 +326,7 @@ export default function PlacementForm() {
   }, []);
 
   useEffect(() => {
-    if (!isEdit) return;
+    if (!isExistingPlacement) return;
 
     const id = Number(idParam);
     if (!Number.isFinite(id)) {
@@ -369,19 +356,16 @@ export default function PlacementForm() {
               }) || left.id - right.id,
           );
         const records = placementRecords.length ? placementRecords : [record];
-        const lockResults = await Promise.all(
-          records.map(async (candidate) => ({
-            id: candidate.id,
-            locked: await placementHasGrowingOrLaying(candidate.id),
-          })),
-        );
+        const lockedIds = await listPlacementIdsWithPostedActivity(records);
         if (!mounted) return;
-
-        const lockedIds = new Set(
-          lockResults.filter((result) => result.locked).map((result) => result.id),
-        );
-        setDependentPlacementIds(lockedIds);
-        setHasDependentRecords(lockedIds.size > 0);
+        if (lockedIds == null && !isView) {
+          throw new Error("Unable to verify whether this placement has posted downstream transactions.");
+        }
+        if (!isView && (lockedIds?.size ?? 0) > 0) {
+          alert("This placement is locked because it has posted downstream transactions. Open Population Records or Transfer History to review it.");
+          router.push("/jmb/placement");
+          return;
+        }
         setForm({
           placement_date: record.placement_date ?? getToday(),
           cycle_no: record.cycle_no == null ? "1" : String(record.cycle_no),
@@ -423,11 +407,11 @@ export default function PlacementForm() {
     return () => {
       mounted = false;
     };
-  }, [idParam, isEdit, router]);
+  }, [idParam, isExistingPlacement, isView, router]);
 
   const totalPens = useMemo(() => rows.length, [rows]);
-  const disabledAll = saving || loadingRecord;
-  const disablePlacementDate = disabledAll || (isEdit && hasDependentRecords);
+  const disabledAll = isView || saving || loadingRecord;
+  const disablePlacementDate = disabledAll;
 
   useEffect(() => {
     const farmId = Number(form.farm_id);
@@ -455,7 +439,7 @@ export default function PlacementForm() {
   }, [form.building_id, form.farm_id]);
 
   useEffect(() => {
-    if (isEdit || !farmIdParam || !buildingIdParam || !locations.length) return;
+    if (isExistingPlacement || !farmIdParam || !buildingIdParam || !locations.length) return;
     const location = locations.find(
       (item) =>
         String(item.farm_id) === farmIdParam &&
@@ -483,7 +467,7 @@ export default function PlacementForm() {
       return nextForm;
     });
     setRows(nextRows);
-  }, [buildingIdParam, cycleNoParam, farmIdParam, isEdit, locations]);
+  }, [buildingIdParam, cycleNoParam, farmIdParam, isExistingPlacement, locations]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
     if (form.source.trim()) values.add(form.source.trim());
@@ -673,6 +657,7 @@ export default function PlacementForm() {
   }
 
   async function onSave() {
+    if (isView) return;
     if (!form.placement_date) {
       alert("Placement date is required.");
       return;
@@ -753,12 +738,7 @@ export default function PlacementForm() {
           rows.map((row, index) => {
             const placementId = row.placement_id as number;
             const payload = payloads[index];
-            return updatePlacement(
-              placementId,
-              dependentPlacementIds.has(placementId)
-                ? withoutPlacementDate(payload)
-                : payload,
-            );
+            return updatePlacement(placementId, payload);
           }),
         );
       } else if (payloads.length === 1) {
@@ -788,7 +768,7 @@ export default function PlacementForm() {
                 Farm / Placement
               </div>
               <h1 className="truncate text-lg font-semibold text-foreground">
-                {isEdit ? "Edit Placement" : "New Placement"}
+                {isView ? "View Placement" : isEdit ? "Edit Placement" : "New Placement"}
               </h1>
               <p className="truncate text-xs text-muted-foreground">
                 {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"}
@@ -806,14 +786,14 @@ export default function PlacementForm() {
                 <X className="size-4" />
                 Cancel
               </Button>
-              <Button
+              {!isView ? <Button
                 type="button"
                 onClick={() => void onSave()}
                 disabled={saving || disabledAll}
               >
                 {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                 Save
-              </Button>
+              </Button> : null}
             </div>
           </div>
 
@@ -858,7 +838,7 @@ export default function PlacementForm() {
             <div className="relative flex min-h-14 items-center gap-3 border-b bg-white px-4 pb-4 pt-2 dark:bg-card">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-foreground">
-                  {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"} &gt; {isEdit ? "Edit Placement" : "New Placement"}
+                  {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"} &gt; {isView ? "View Placement" : isEdit ? "Edit Placement" : "New Placement"}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
                   {totalPens.toLocaleString("en-PH")} pens | Date {form.placement_date || "-"} | Cycle {form.cycle_no || "-"}
@@ -874,7 +854,7 @@ export default function PlacementForm() {
                 <X className="size-4" />
                 Cancel
               </Button>
-              <Button
+              {!isView ? <Button
                 type="button"
                 size="sm"
                 onClick={() => void onSave()}
@@ -882,7 +862,7 @@ export default function PlacementForm() {
               >
                 {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                 Save
-              </Button>
+              </Button> : null}
               <Button
                 type="button"
                 variant="outline"
@@ -931,8 +911,7 @@ export default function PlacementForm() {
                   }
                   disabled={
                     disabledAll ||
-                    !!cycleNoParam ||
-                    (isEdit && hasDependentRecords)
+                    !!cycleNoParam
                   }
                 />
               </div>
