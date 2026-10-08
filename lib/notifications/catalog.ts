@@ -172,6 +172,25 @@ export const notificationCatalog: NotificationCatalog = [
     ],
   },
   {
+    key: NOTIFICATION_MODULE_KEYS.CYCLE_MASTER,
+    ruleActivationReady: false, // Enable after the Force Close SQL is deployed and verified.
+    label: "Cycle Master",
+    description: "Manual Broiler cycle Force Close and reopen actions.",
+    fmsTypes: ["Broiler"],
+    permissionGroup: "Menus",
+    permissionTitle: "Cycle Master/view",
+    baseUrl: "/brd/cycle-master",
+    events: [
+      {
+        key: NOTIFICATION_EVENT_KEYS.CYCLE_MASTER.EDITED,
+        label: "Cycle State Changed",
+        description: "Successful manual Force Close or reopen action.",
+        action: "edited",
+        farmRouting: "document",
+      },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.DOC_RECEIVING,
     ruleActivationReady: false, // Enable after receiving-flow SQL deployment and verification.
     label: "DOC Placement",

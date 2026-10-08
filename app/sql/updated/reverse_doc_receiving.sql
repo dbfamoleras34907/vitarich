@@ -1,5 +1,6 @@
--- Apply after goods_reciept_tables.sql, gr_inventory_postings.sql, and
--- receiving_sources.sql. This is the authoritative DOC Placement Reverse path.
+-- Apply after goods_reciept_tables.sql, gr_inventory_postings.sql,
+-- receiving_sources.sql, and reverse_brd_fc_transaction.sql. This is the
+-- authoritative DOC Placement Reverse path.
 
 alter table public.goods_receipt
   drop constraint if exists goods_reciept_status_check;
@@ -121,7 +122,8 @@ begin
 
   -- Growing operates on the canonical consolidated DOC:F... batch. The
   -- original receipt batch is only the source side of the consolidation and
-  -- must not be used as the Growing reversal blocker.
+  -- must not be used as the Growing reversal blocker. Original Growing rows
+  -- remain in the ledger after reversal, so block only unmatched consumption.
   if exists (
     with doc_batches as (
       select distinct format('DOC:F%s:B%s:%s', v_receipt.farm_id, d.building_warehouse_id, btrim(fc.cycle_no)) as batch_number
@@ -137,7 +139,17 @@ begin
     join doc_batches b on ip.batch_number = b.batch_number
        or ip.ref = b.batch_number
        or ip.ref2 = b.batch_number
-    where ip.source_doc_type like 'BRD_FC%'
+    where ip.source_doc_type in (
+        'BRD_FC_MORT_THIN_USAGE',
+        'BRD_FC_MORT_THIN_TRANSFER_OUT'
+      )
+      and ip.transfer_type = 'OUT'
+      and not exists (
+        select 1
+        from public.inventory_postings reversal
+        where reversal.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
+          and reversal.reverses_posting_id = ip.id
+      )
   ) then
     raise exception 'DOC Placement cannot be reversed because its consolidated batch is already used in Growing inventory.';
   end if;

@@ -176,7 +176,6 @@ export async function getReceivingList({
   const { data, error } = await db
     .from("view_for_classification")
     .select(PENDING_CLASSIFICATION_COLUMNS)
-    .in("farm_id", authorizedFarmIds)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(safeLimit);

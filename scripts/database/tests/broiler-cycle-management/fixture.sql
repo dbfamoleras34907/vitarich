@@ -18,6 +18,7 @@ create table public.farms(
   id bigint primary key,
   code text,
   name text,
+  farm_type text default 'BR',
   associated_warehouses jsonb[]
 );
 create table public.users_farms(users_id bigint, farm_id bigint, void text);
@@ -37,7 +38,7 @@ create table public.doc_farm_cycles(
   farm_id bigint not null references public.farms(id),
   cycle_no bigint not null,
   cycle_mask text,
-  status text not null constraint doc_farm_cycles_status_check
+  status text not null default 'Saved' constraint doc_farm_cycles_status_check
     check (status in ('Saved', 'Closed', 'Cancelled')),
   created_by uuid,
   created_at timestamptz not null default now(),
@@ -76,3 +77,50 @@ create table public.flock_card(
 );
 create table public.br_delivery(id bigint primary key);
 create table public.br_cleanup(id bigint primary key);
+
+create table public.notification_outbox(
+  id uuid primary key default gen_random_uuid(),
+  module_key text not null,
+  event_key text not null,
+  entity_type text not null,
+  entity_id text not null,
+  document_no text,
+  fms_type text,
+  farm_id bigint,
+  recipient_farm_id bigint,
+  actor_auth_id uuid,
+  target_url text,
+  permission_group text not null,
+  permission_title text not null,
+  title text not null,
+  message text not null,
+  priority text not null,
+  posting_version integer,
+  metadata jsonb not null default '{}'::jsonb,
+  dedupe_key text not null unique,
+  status text not null default 'pending',
+  occurred_at timestamptz not null default now(),
+  processing_started_at timestamptz,
+  processed_at timestamptz,
+  last_error text
+);
+
+create function public.process_notification_outbox(p_limit integer default 50)
+returns integer language plpgsql security definer set search_path=public as $$
+declare
+  v_event public.notification_outbox%rowtype;
+  v_processed integer := 0;
+  v_source_valid boolean;
+begin
+  for v_event in select * from public.notification_outbox where status='pending' limit p_limit loop
+    if false then
+      null;
+      elsif v_event.module_key = 'BR_CLEANUP' then
+        null;
+    end if;
+    update public.notification_outbox set status='processed',processed_at=now() where id=v_event.id;
+    v_processed := v_processed + 1;
+  end loop;
+  return v_processed;
+end;
+$$;

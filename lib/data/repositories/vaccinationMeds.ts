@@ -35,7 +35,7 @@ export type VnmCycle = {
   id: number
   cycle_no: number
   cycle_mask: string | null
-  status: 'Saved' | 'Closed' | 'Cancelled'
+  status: 'Saved' | 'Past Open' | 'Closed' | 'Force Closed' | 'Cancelled'
 }
 
 export type VnmCycleBuilding = {

@@ -14,14 +14,16 @@ export type FarmCycleMasterRow = {
   createdAt: string
   closedAt: string | null
   closedByName: string | null
+  forceClosedOn: string | null
+  forceCloseReason: string | null
   reopenedAt: string | null
   reopenedByName: string | null
   participatingBuildings: number
   openBuildings: number
 }
 
-export type BroilerFarmCycleStatus = 'Saved' | 'Past Open' | 'Closed' | 'Cancelled'
-export type BroilerFarmCycleDisplayStatus = 'Current Cycle' | 'Past Open Cycle' | 'Closed Cycle' | 'Cancelled Cycle'
+export type BroilerFarmCycleStatus = 'Saved' | 'Past Open' | 'Closed' | 'Force Closed' | 'Cancelled'
+export type BroilerFarmCycleDisplayStatus = 'Current Cycle' | 'Past Open Cycle' | 'Closed Cycle' | 'Force Closed' | 'Cancelled Cycle'
 
 export type SelectableBroilerFarmCycle = {
   id: number
@@ -46,10 +48,15 @@ export type OpenBroilerPastCycleInput = {
   cycleMonth: string
 }
 
+export type SetBroilerFarmCycleStateInput =
+  | { cycleId: number; action: 'close'; closedOn: string; reason: string }
+  | { cycleId: number; action: 'reopen' }
+
 export const getBroilerFarmCycleDisplayStatus = (status: BroilerFarmCycleStatus): BroilerFarmCycleDisplayStatus => {
   if (status === 'Saved') return 'Current Cycle'
   if (status === 'Past Open') return 'Past Open Cycle'
   if (status === 'Closed') return 'Closed Cycle'
+  if (status === 'Force Closed') return 'Force Closed'
   return 'Cancelled Cycle'
 }
 
@@ -63,6 +70,8 @@ type FarmCycleDbRow = {
   created_at: string
   closed_at: string | null
   closed_by: string | null
+  force_closed_on: string | null
+  force_close_reason: string | null
   reopened_at: string | null
   reopened_by: string | null
 }
@@ -112,7 +121,7 @@ export async function getFarmCycleMasterRows(
 
   let cycleQuery = db
     .from('doc_farm_cycles')
-    .select('id, farm_id, cycle_no, cycle_key, cycle_mask, status, created_at, closed_at, closed_by, reopened_at, reopened_by', options.requireComplete ? { count: 'exact' } : undefined)
+    .select('id, farm_id, cycle_no, cycle_key, cycle_mask, status, created_at, closed_at, closed_by, force_closed_on, force_close_reason, reopened_at, reopened_by', options.requireComplete ? { count: 'exact' } : undefined)
     .eq('farm_id', farmId)
     .order('cycle_no', { ascending: false })
 
@@ -167,6 +176,8 @@ export async function getFarmCycleMasterRows(
       createdAt: cycle.created_at,
       closedAt: cycle.closed_at,
       closedByName: actorName(actors.get(cycle.closed_by ?? '')),
+      forceClosedOn: cycle.force_closed_on,
+      forceCloseReason: cycle.force_close_reason,
       reopenedAt: cycle.reopened_at,
       reopenedByName: actorName(actors.get(cycle.reopened_by ?? '')),
       participatingBuildings,
@@ -193,11 +204,19 @@ export async function getSelectableBroilerFarmCycles(farmId: number): Promise<Se
     .sort((left, right) => left.status === right.status ? right.cycleNumber - left.cycleNumber : left.status === 'Saved' ? -1 : 1)
 }
 
-export async function setBroilerFarmCycleState(cycleId: number, action: 'close' | 'reopen'): Promise<void> {
-  if (!Number.isInteger(cycleId) || cycleId <= 0) throw new Error('Select a valid Broiler cycle.')
+export async function setBroilerFarmCycleState(input: SetBroilerFarmCycleStateInput): Promise<void> {
+  if (!Number.isInteger(input.cycleId) || input.cycleId <= 0) throw new Error('Select a valid Broiler cycle.')
+  const closedOn = input.action === 'close' ? input.closedOn.trim() : ''
+  const reason = input.action === 'close' ? input.reason.trim() : ''
+  if (input.action === 'close' && !/^\d{4}-\d{2}-\d{2}$/.test(closedOn)) throw new Error('Enter a valid closing date.')
+  if (input.action === 'close' && (reason.length < 1 || reason.length > 1000)) {
+    throw new Error('Enter a reason between 1 and 1000 characters.')
+  }
   const { error } = await db.rpc('set_broiler_farm_cycle_state', {
-    p_farm_cycle_id: cycleId,
-    p_action: action,
+    p_farm_cycle_id: input.cycleId,
+    p_action: input.action,
+    p_closed_on: closedOn || null,
+    p_reason: reason || null,
   })
   if (error) throw error
 }
@@ -248,4 +267,4 @@ export async function openBroilerPastCycle(input: OpenBroilerPastCycleInput): Pr
 }
 
 //
-// 
+//

@@ -2,7 +2,9 @@
 
 `Saved` remains the Current Cycle created automatically through DOC Placement. Every building, including an excluded building with its own count, references a persisted Cycle Master. A building has at most one active (`Saved`, non-void) flock card. **Open Past Cycle** creates an empty `Past Open` cycle only when the building has no other active card; duplicate historical-month cycles remain blocked.
 
-A Current Cycle cannot be closed while any linked building flock card is still `Saved`; Cycle Master shows a disabled Close button until every participating building is no longer current. A Past Open Cycle may still be closed directly. Reopening fails transactionally if a participating building already has another active card. Existing Growing, Harvest & Delivery, and Clean Up validations still apply after reopening.
+Cycle Master can manually **Force Close** a Current Cycle or Past Open Cycle even when linked building flock cards remain `Saved` or module transactions are unfinished. The action requires a closing date and 1-1000 character reason, changes the farm cycle status to `Force Closed`, and closes its linked open flock cards so DOC Placement can create the next Current Cycle. Reopening a Force Closed cycle changes it to `Past Open` and reopens only the building cards closed by that Force Close; cards already completed before the action remain closed. Reopening still fails transactionally if a participating building already has another active card. Existing Growing, Harvest & Delivery, and Clean Up validations still apply after reopening.
+
+Force Close and reopen increment the persisted cycle notification revision and enqueue one transactional `CYCLE_MASTER_EDITED` event with `document` routing from `doc_farm_cycles.farm_id`. The event metadata identifies `force_closed` or `reopened`; retries reuse the revision-based dedupe identity. Notification rule activation remains disabled until the SQL is deployed and verified.
 
 Cycle Master management uses `/brd/cycle-master/edit`. The database mutation also checks the authenticated user's active profile and assigned farm; the existing Super Admin permission bypass remains unchanged.
 
@@ -27,6 +29,8 @@ Apply these files to the same Supabase project used by the application:
 Keep the later Clean Up patches in this order because they extend the trigger functions installed by `br_cleanup_tables.sql`.
 
 Apply `app/sql/new/20261005090927_broiler_cycle_master_ownership.sql` **last**, after the cycle-mask migration. The older Cycle Master files are currently archived under `app/sql/old 9/`; do not reapply them after this correction because they restore the superseded exclusion rule. See [ownership repair](broiler-cycle-master-ownership.md) for the RLK preflight and guarded data repair.
+
+Then apply `app/sql/new/20261008110000_force_close_broiler_cycle.sql` after the centralized notification system and ownership migration.
 
 ## Verification
 

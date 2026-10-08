@@ -27,6 +27,7 @@ insert into public.flock_card(farm_id, building_whse_id, cycle_no, status, void)
 values (153, 2010, null, 'Saved', '1'),
        (154, 2011, '1001', 'Saved', '1'), (154, 2012, '1002', 'Saved', '1');
 \ir '../../../../app/sql/new/20261005090927_broiler_cycle_master_ownership.sql'
+\ir '../../../../app/sql/new/20261008110000_force_close_broiler_cycle.sql'
 select * from public.repair_broiler_cycle_master_links(152, array[1,2]::bigint[]);
 do $$ begin
   if exists(select 1 from public.doc_farm_cycles) then raise exception 'Preview mutated master'; end if;
@@ -98,28 +99,36 @@ do $$ declare v_master bigint; begin
     if sqlerrm not like 'The building Cycle Count must match%' then raise; end if;
   end;
   begin
-    perform public.set_broiler_farm_cycle_state(v_master,'close');
-    raise exception 'TEST: closed current cycle';
-  exception when raise_exception then
-    if sqlerrm not like 'Current Cycle cannot be closed%' then raise; end if;
-  end;
-  begin
     perform public.open_broiler_past_cycle(152,2001,(date_trunc('month',current_date)-interval '4 months')::date);
     raise exception 'TEST: opened second active building cycle';
   exception when raise_exception then
     if sqlerrm not like 'This building already has an active cycle%' then raise; end if;
   end;
   if (select count(*) from public.doc_farm_cycles) <> 1 then raise exception 'Failed creation left a master behind'; end if;
+  begin
+    perform public.set_broiler_farm_cycle_state(v_master,'close',current_date,null);
+    raise exception 'TEST: force close accepted missing reason';
+  exception when raise_exception then
+    if sqlerrm not like 'Enter a reason%' then raise; end if;
+  end;
+  if exists(select 1 from public.notification_outbox) then raise exception 'Failed force close emitted an event'; end if;
+  update public.flock_card set status='Closed' where id=2;
+  perform public.set_broiler_farm_cycle_state(v_master,'close',current_date,'Management-approved manual close');
+  if (select status from public.doc_farm_cycles where id=v_master) <> 'Force Closed' then raise exception 'Current cycle was not force closed'; end if;
+  if exists(select 1 from public.flock_card where farm_cycle_id=v_master and status<>'Closed') then raise exception 'Linked open buildings were not closed'; end if;
+  if (select force_close_reason from public.doc_farm_cycles where id=v_master) <> 'Management-approved manual close' then raise exception 'Force-close reason was not persisted'; end if;
 end $$;
--- Closing and reopening preserves membership; reopening over another active
+-- Force closing and reopening preserves membership; reopening over another active
 -- card is rejected and the entire state mutation rolls back.
-update public.flock_card set status='Closed' where farm_id=152;
-select public.set_broiler_farm_cycle_state(id,'close') from public.doc_farm_cycles where farm_id=152;
 select public.set_broiler_farm_cycle_state(id,'reopen') from public.doc_farm_cycles where farm_id=152;
-select public.set_broiler_farm_cycle_state(id,'close') from public.doc_farm_cycles where farm_id=152;
-insert into public.doc_farm_cycles(farm_id,cycle_no,status) values(152,1008,'Saved');
+do $$ begin
+  if (select status from public.flock_card where id=1) <> 'Saved' then raise exception 'Force-closed building was not reopened'; end if;
+  if (select status from public.flock_card where id=2) <> 'Closed' then raise exception 'Previously completed building was incorrectly reopened'; end if;
+end $$;
+select public.set_broiler_farm_cycle_state(id,'close',current_date,'Close again after reopen') from public.doc_farm_cycles where farm_id=152;
+select * from public.ensure_active_doc_farm_cycle(152);
 insert into public.flock_card(farm_id,building_whse_id,cycle_no,farm_cycle_id,status,void)
-select 152,2001,'1008',id,'Saved','1' from public.doc_farm_cycles where cycle_no=1008;
+select 152,2001,cycle_no::text,id,'Saved','1' from public.doc_farm_cycles where farm_id=152 and status='Saved';
 do $$ begin
   begin
     perform public.set_broiler_farm_cycle_state((select id from public.doc_farm_cycles where cycle_key='150-01'),'reopen');
@@ -127,11 +136,19 @@ do $$ begin
   exception when raise_exception then
     if sqlerrm not like 'This building already has an active cycle%' then raise; end if;
   end;
-  if (select status from public.doc_farm_cycles where cycle_key='150-01') <> 'Closed' then raise exception 'Failed reopen changed state'; end if;
+  if (select status from public.doc_farm_cycles where cycle_key='150-01') <> 'Force Closed' then raise exception 'Failed reopen changed state'; end if;
+  if (select count(*) from public.notification_outbox where event_key='CYCLE_MASTER_EDITED') <> 3 then raise exception 'Cycle actions did not emit exactly one event each'; end if;
+  if exists(select 1 from public.notification_outbox where farm_id<>152 or recipient_farm_id<>152) then raise exception 'Cycle notification farm routing is invalid'; end if;
   if has_function_privilege('authenticated','public.repair_broiler_cycle_master_links(bigint,bigint[],boolean)','execute') then
     raise exception 'Authenticated role can run owner-only maintenance';
   end if;
 end $$;
+select public.process_notification_outbox(50);
+do $$ begin
+  if exists(select 1 from public.notification_outbox where status<>'processed') then raise exception 'No-rule dispatch did not complete safely'; end if;
+  if (select count(distinct dedupe_key) from public.notification_outbox) <> 3 then raise exception 'Cycle event dedupe identities are not unique'; end if;
+end $$;
 -- Idempotent deployment.
 \ir '../../../../app/sql/new/20261005090927_broiler_cycle_master_ownership.sql'
+\ir '../../../../app/sql/new/20261008110000_force_close_broiler_cycle.sql'
 select 'Cycle ownership SQL checks passed' as result;

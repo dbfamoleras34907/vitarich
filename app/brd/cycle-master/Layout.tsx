@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -52,6 +53,11 @@ const previousMonthValue = () => {
   return `${year}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
+const todayValue = () => {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 const formatDate = (value: string | null) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -82,6 +88,8 @@ export default function CycleMasterLayout() {
   const [loadError, setLoadError] = useState('')
   const [actionTarget, setActionTarget] = useState<{ row: CycleMasterListRow; action: 'close' | 'reopen' } | null>(null)
   const [savingAction, setSavingAction] = useState(false)
+  const [closeDate, setCloseDate] = useState(todayValue)
+  const [closeReason, setCloseReason] = useState('')
   const [pastCycleOpen, setPastCycleOpen] = useState(false)
   const [pastCycleMonth, setPastCycleMonth] = useState(previousMonthValue)
   const [pastCycleBuildingId, setPastCycleBuildingId] = useState('')
@@ -141,9 +149,12 @@ export default function CycleMasterLayout() {
     if (!actionTarget || actionTarget.row.kind !== 'farm') return
     setSavingAction(true)
     try {
-      await setBroilerFarmCycleState(actionTarget.row.id, actionTarget.action)
-      toast.success(actionTarget.action === 'close' ? 'Cycle closed.' : 'Cycle reopened as Past Open Cycle.')
+      await setBroilerFarmCycleState(actionTarget.action === 'close'
+        ? { cycleId: actionTarget.row.id, action: 'close', closedOn: closeDate, reason: closeReason }
+        : { cycleId: actionTarget.row.id, action: 'reopen' })
+      toast.success(actionTarget.action === 'close' ? 'Cycle force closed.' : 'Cycle reopened as Past Open Cycle.')
       setActionTarget(null)
+      setCloseReason('')
       await loadRows()
     } catch (error) {
       toast.error(errorMessage(error))
@@ -195,7 +206,7 @@ export default function CycleMasterLayout() {
         <div className="flex flex-col gap-3 border-b border-stone-200 p-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold">Cycle Master</h1>
-            <p className="mt-1 text-sm text-muted-foreground">DOC Placement creates the Current Cycle. Cycle Master can create a missing historical cycle, close an open cycle, or reopen a Closed Cycle.</p>
+            <p className="mt-1 text-sm text-muted-foreground">DOC Placement creates the Current Cycle. Cycle Master can create a missing historical cycle, force close an open cycle, or reopen a Closed Cycle.</p>
           </div>
           <div className="flex  gap-2">
             {!editBlocked && (
@@ -265,6 +276,8 @@ export default function CycleMasterLayout() {
                   <TableCell>
                     <div>{formatDate(row.closedAt)}</div>
                     {row.closedByName && <div className="text-xs text-muted-foreground">{row.closedByName}</div>}
+                    {row.forceClosedOn && <div className="text-xs text-muted-foreground">Closing date: {row.forceClosedOn}</div>}
+                    {row.forceCloseReason && <div className="max-w-56 truncate text-xs text-muted-foreground" title={row.forceCloseReason}>{row.forceCloseReason}</div>}
                   </TableCell>
                   <TableCell>
                     <div>{formatDate(row.reopenedAt)}</div>
@@ -272,24 +285,20 @@ export default function CycleMasterLayout() {
                   </TableCell>
                   <TableCell onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
                     {row.kind === 'farm' && !editBlocked && (row.status === 'Saved' || row.status === 'Past Open') && (
-                      <div className="space-y-1">
-                        <span title={row.status === 'Saved' && row.openBuildings > 0 ? 'This cycle is still current for a building.' : undefined}>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={row.status === 'Saved' && row.openBuildings > 0}
-                            onClick={() => setActionTarget({ row, action: 'close' })}
-                          >
-                            <LockKeyhole className="size-3.5" /> Close
-                          </Button>
-                        </span>
-                        {/* {row.status === 'Saved' && row.openBuildings > 0 && (
-                          <div className="text-xs text-muted-foreground">Current in {row.openBuildings} {row.openBuildings === 1 ? 'building' : 'buildings'}</div>
-                        )} */}
-                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setCloseDate(todayValue())
+                          setCloseReason('')
+                          setActionTarget({ row, action: 'close' })
+                        }}
+                      >
+                        <LockKeyhole className="size-3.5" /> Force Close
+                      </Button>
                     )}
-                    {row.kind === 'farm' && !editBlocked && row.status === 'Closed' && (
+                    {row.kind === 'farm' && !editBlocked && (row.status === 'Closed' || row.status === 'Force Closed') && (
                       <Button
                         type="button"
                         size="sm"
@@ -364,21 +373,34 @@ export default function CycleMasterLayout() {
       <Dialog open={Boolean(actionTarget)} onOpenChange={open => !savingAction && !open && setActionTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{actionTarget?.action === 'close' ? 'Close this cycle?' : 'Reopen this cycle?'}</DialogTitle>
+            <DialogTitle>{actionTarget?.action === 'close' ? 'Force Close this cycle?' : 'Reopen this cycle?'}</DialogTitle>
             <DialogDescription>
               {actionTarget?.action === 'close'
-                ? 'A Current Cycle can be closed only after it is no longer current for every participating building. Closing a Past Open Cycle closes its linked open flock cards.'
+                ? 'This closes the cycle and its linked open building cycles even when transactions are unfinished. A new Current Cycle can then be created through DOC Placement.'
                 : 'The cycle will become a Past Open Cycle. Existing module validations still apply.'}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
             Cycle {actionTarget?.row.cycleMask || actionTarget?.row.cycleNumber || '-'}
           </div>
+          {actionTarget?.action === 'close' && (
+            <div className="grid gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="force-close-date">Closing date <span className="text-destructive">*</span></Label>
+                <Input id="force-close-date" type="date" value={closeDate} disabled={savingAction} onChange={event => setCloseDate(event.target.value)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="force-close-reason">Reason / remarks <span className="text-destructive">*</span></Label>
+                <Textarea id="force-close-reason" value={closeReason} maxLength={1000} disabled={savingAction} placeholder="Why is this cycle being force closed?" onChange={event => setCloseReason(event.target.value)} />
+                <p className="text-right text-xs text-muted-foreground">{closeReason.length}/1000</p>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="outline" disabled={savingAction}>Cancel</Button></DialogClose>
-            <Button type="button" disabled={savingAction} onClick={() => void applyCycleAction()}>
+            <Button type="button" disabled={savingAction || (actionTarget?.action === 'close' && (!closeDate || !closeReason.trim()))} onClick={() => void applyCycleAction()}>
               {savingAction && <Loader2 className="size-4 animate-spin" />}
-              {actionTarget?.action === 'close' ? 'Close Cycle' : 'Reopen as Past Open Cycle'}
+              {actionTarget?.action === 'close' ? 'Force Close Cycle' : 'Reopen as Past Open Cycle'}
             </Button>
           </DialogFooter>
         </DialogContent>
