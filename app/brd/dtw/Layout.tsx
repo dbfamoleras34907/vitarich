@@ -153,7 +153,7 @@ export default function Layout() {
           </button>
         </div>
       </PageSection>
-{/*  */}
+
       {validation && (
         <PageSection>
           <PageSectionHeader>

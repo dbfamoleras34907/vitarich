@@ -115,7 +115,6 @@ export function LoginForm({
         <div className="grid gap-3">
           <Label className="text-foreground">Email</Label>
           <div className="relative">
-            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
               inputMode="email"
@@ -143,7 +142,6 @@ export function LoginForm({
             </span>
           </div>
           <div className="relative">
-            <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="password"
               value={password}

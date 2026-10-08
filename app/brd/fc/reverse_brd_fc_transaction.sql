@@ -643,6 +643,10 @@ declare
   v_expected numeric := 0;
   v_inventory_net numeric := 0;
 begin
+  if current_setting('app.broiler_dtw_legacy_allow_mort_thin_imbalance', true) = 'on' then
+    return;
+  end if;
+
   select line.* into v_line
   from public.brd_fc_line line
   where line.id = p_line_id;
