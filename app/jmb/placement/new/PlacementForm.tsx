@@ -15,7 +15,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronUp, Loader2, Paperclip, Save, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Paperclip,
+  Save,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
@@ -29,7 +36,7 @@ import {
   listBreederSources,
   listFarmLocationLookup,
   listPlacementHistory,
-  placementHasGrowingOrLaying,
+  listPlacementIdsWithPostedActivity,
   updatePlacement,
   type FarmLocationLookup,
   type PlacementInsert,
@@ -52,7 +59,10 @@ type PlacementRow = {
   m_avg_bodyw: string;
 };
 
-type PlacementNumericField = Exclude<keyof PlacementRow, "placement_id" | "pen_id" | "pen_no">;
+type PlacementNumericField = Exclude<
+  keyof PlacementRow,
+  "placement_id" | "pen_id" | "pen_no"
+>;
 type PlacementPasteColumn =
   | { kind: "numeric"; field: PlacementNumericField }
   | { kind: "locked" };
@@ -158,17 +168,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function withoutPlacementDate(payload: PlacementInsert) {
-  const {
-    placement_date: placementDate,
-    cycle_id: cycleId,
-    ...rest
-  } = payload;
-  void placementDate;
-  void cycleId;
-  return rest;
-}
-
 function parseClipboardGrid(text: string) {
   return text
     .replace(/\r\n/g, "\n")
@@ -206,14 +205,12 @@ export default function PlacementForm() {
   const farmIdParam = searchParams.get("farmId");
   const buildingIdParam = searchParams.get("buildingId");
   const cycleNoParam = searchParams.get("cycleNo");
-  const isEdit = !!idParam;
+  const isView = searchParams.get("view") === "1";
+  const isEdit = !!idParam && !isView;
+  const isExistingPlacement = !!idParam;
 
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
-  const [hasDependentRecords, setHasDependentRecords] = useState(false);
-  const [dependentPlacementIds, setDependentPlacementIds] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
@@ -339,7 +336,7 @@ export default function PlacementForm() {
   }, []);
 
   useEffect(() => {
-    if (!isEdit) return;
+    if (!isExistingPlacement) return;
 
     const id = Number(idParam);
     if (!Number.isFinite(id)) {
@@ -369,19 +366,20 @@ export default function PlacementForm() {
               }) || left.id - right.id,
           );
         const records = placementRecords.length ? placementRecords : [record];
-        const lockResults = await Promise.all(
-          records.map(async (candidate) => ({
-            id: candidate.id,
-            locked: await placementHasGrowingOrLaying(candidate.id),
-          })),
-        );
+        const lockedIds = await listPlacementIdsWithPostedActivity(records);
         if (!mounted) return;
-
-        const lockedIds = new Set(
-          lockResults.filter((result) => result.locked).map((result) => result.id),
-        );
-        setDependentPlacementIds(lockedIds);
-        setHasDependentRecords(lockedIds.size > 0);
+        if (lockedIds == null && !isView) {
+          throw new Error(
+            "Unable to verify whether this placement has posted downstream transactions.",
+          );
+        }
+        if (!isView && (lockedIds?.size ?? 0) > 0) {
+          alert(
+            "This placement is locked because it has posted downstream transactions. Open Population Records or Transfer History to review it.",
+          );
+          router.push("/jmb/placement");
+          return;
+        }
         setForm({
           placement_date: record.placement_date ?? getToday(),
           cycle_no: record.cycle_no == null ? "1" : String(record.cycle_no),
@@ -423,16 +421,21 @@ export default function PlacementForm() {
     return () => {
       mounted = false;
     };
-  }, [idParam, isEdit, router]);
+  }, [idParam, isExistingPlacement, isView, router]);
 
   const totalPens = useMemo(() => rows.length, [rows]);
-  const disabledAll = saving || loadingRecord;
-  const disablePlacementDate = disabledAll || (isEdit && hasDependentRecords);
+  const disabledAll = isView || saving || loadingRecord;
+  const disablePlacementDate = disabledAll;
 
   useEffect(() => {
     const farmId = Number(form.farm_id);
     const buildingId = Number(form.building_id);
-    if (!Number.isFinite(farmId) || !Number.isFinite(buildingId) || !farmId || !buildingId) {
+    if (
+      !Number.isFinite(farmId) ||
+      !Number.isFinite(buildingId) ||
+      !farmId ||
+      !buildingId
+    ) {
       setHistory([]);
       return;
     }
@@ -451,11 +454,19 @@ export default function PlacementForm() {
         if (!cancelled) setLoadingHistory(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [form.building_id, form.farm_id]);
 
   useEffect(() => {
-    if (isEdit || !farmIdParam || !buildingIdParam || !locations.length) return;
+    if (
+      isExistingPlacement ||
+      !farmIdParam ||
+      !buildingIdParam ||
+      !locations.length
+    )
+      return;
     const location = locations.find(
       (item) =>
         String(item.farm_id) === farmIdParam &&
@@ -483,7 +494,13 @@ export default function PlacementForm() {
       return nextForm;
     });
     setRows(nextRows);
-  }, [buildingIdParam, cycleNoParam, farmIdParam, isEdit, locations]);
+  }, [
+    buildingIdParam,
+    cycleNoParam,
+    farmIdParam,
+    isExistingPlacement,
+    locations,
+  ]);
   const breederSourceOptions = useMemo(() => {
     const values = new Set(sourceOptions);
     if (form.source.trim()) values.add(form.source.trim());
@@ -524,14 +541,16 @@ export default function PlacementForm() {
                   ? clampInteger(value)
                   : field === "f_avg_bodyw" || field === "m_avg_bodyw"
                     ? clampInteger(value)
-                  : value,
+                    : value,
             }
           : row,
       ),
     );
   }
 
-  function handlePlacementGridKeyDown(event: React.KeyboardEvent<HTMLTableElement>) {
+  function handlePlacementGridKeyDown(
+    event: React.KeyboardEvent<HTMLTableElement>,
+  ) {
     const movement: Record<string, [number, number]> = {
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
@@ -545,7 +564,13 @@ export default function PlacementForm() {
     const currentCell = target.closest("td");
     const currentRow = currentCell?.parentElement;
     const tableBody = currentRow?.parentElement;
-    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+    if (
+      !currentCell ||
+      !currentRow ||
+      !tableBody ||
+      tableBody.tagName !== "TBODY"
+    )
+      return;
 
     const tableRows = Array.from(tableBody.querySelectorAll("tr"));
     const rowCells = Array.from(currentRow.querySelectorAll("td"));
@@ -554,9 +579,15 @@ export default function PlacementForm() {
     const nextRow = tableRows[rowIndex + offset[0]];
     let nextColumnIndex = columnIndex + offset[1];
     let nextInput: HTMLInputElement | null = null;
-    while (nextRow && nextColumnIndex >= 0 && nextColumnIndex < rowCells.length) {
+    while (
+      nextRow &&
+      nextColumnIndex >= 0 &&
+      nextColumnIndex < rowCells.length
+    ) {
       const nextCell = nextRow.querySelectorAll("td")[nextColumnIndex];
-      nextInput = nextCell?.querySelector<HTMLInputElement>("input:not([disabled])") ?? null;
+      nextInput =
+        nextCell?.querySelector<HTMLInputElement>("input:not([disabled])") ??
+        null;
       if (nextInput || offset[1] === 0) break;
       nextColumnIndex += offset[1];
     }
@@ -576,12 +607,20 @@ export default function PlacementForm() {
     const currentCell = target.closest("td");
     const currentRow = currentCell?.parentElement;
     const tableBody = currentRow?.parentElement;
-    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+    if (
+      !currentCell ||
+      !currentRow ||
+      !tableBody ||
+      tableBody.tagName !== "TBODY"
+    )
+      return;
 
     const tableRows = Array.from(tableBody.querySelectorAll("tr"));
     const rowCells = Array.from(currentRow.querySelectorAll("td"));
     const startRowIndex = tableRows.indexOf(currentRow as HTMLTableRowElement);
-    const startColumnIndex = rowCells.indexOf(currentCell as HTMLTableCellElement);
+    const startColumnIndex = rowCells.indexOf(
+      currentCell as HTMLTableCellElement,
+    );
     if (startRowIndex < 0 || startColumnIndex < 0) return;
 
     event.preventDefault();
@@ -597,7 +636,8 @@ export default function PlacementForm() {
       if (!targetRow) return;
 
       pastedRow.forEach((rawValue, pastedColumnIndex) => {
-        const column = placementPasteColumns[startColumnIndex + pastedColumnIndex];
+        const column =
+          placementPasteColumns[startColumnIndex + pastedColumnIndex];
         if (!column) return;
         if (column.kind === "locked") {
           skippedLockedCellCount += 1;
@@ -634,9 +674,13 @@ export default function PlacementForm() {
     setRows(nextRows);
     const notes = [
       invalidCellCount ? `${invalidCellCount} invalid skipped` : "",
-      skippedLockedCellCount ? `${skippedLockedCellCount} read-only skipped` : "",
+      skippedLockedCellCount
+        ? `${skippedLockedCellCount} read-only skipped`
+        : "",
     ].filter(Boolean);
-    toast.success(`Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`);
+    toast.success(
+      `Pasted ${changedCellCount} cell${changedCellCount === 1 ? "" : "s"}${notes.length ? `. ${notes.join(", ")}.` : "."}`,
+    );
   }
 
   function renderSourceSelect(
@@ -644,11 +688,7 @@ export default function PlacementForm() {
     onValueChange: (nextValue: string) => void,
   ) {
     return (
-      <Select
-        value={value}
-        onValueChange={onValueChange}
-        disabled={saving}
-      >
+      <Select value={value} onValueChange={onValueChange} disabled={saving}>
         <SelectTrigger className="w-full min-w-0 max-w-full overflow-hidden">
           <SelectValue
             className="truncate"
@@ -673,6 +713,7 @@ export default function PlacementForm() {
   }
 
   async function onSave() {
+    if (isView) return;
     if (!form.placement_date) {
       alert("Placement date is required.");
       return;
@@ -747,18 +788,15 @@ export default function PlacementForm() {
 
       if (isEdit) {
         if (rows.some((row) => row.placement_id == null)) {
-          throw new Error("One or more placement rows are missing their record id.");
+          throw new Error(
+            "One or more placement rows are missing their record id.",
+          );
         }
         await Promise.all(
           rows.map((row, index) => {
             const placementId = row.placement_id as number;
             const payload = payloads[index];
-            return updatePlacement(
-              placementId,
-              dependentPlacementIds.has(placementId)
-                ? withoutPlacementDate(payload)
-                : payload,
-            );
+            return updatePlacement(placementId, payload);
           }),
         );
       } else if (payloads.length === 1) {
@@ -779,89 +817,133 @@ export default function PlacementForm() {
   return (
     <div className="h-screen w-full bg-slate-100 p-4 dark:bg-background">
       <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-white dark:bg-card">
-        <Collapsible open={headerOpen} onOpenChange={setHeaderOpen} className="shrink-0">
+        <Collapsible
+          open={headerOpen}
+          onOpenChange={setHeaderOpen}
+          className="shrink-0"
+        >
           <CollapsibleContent className="overflow-visible">
-        <header className="relative border-b bg-white px-4 pb-6 pt-3 dark:bg-card">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Farm / Placement
-              </div>
-              <h1 className="truncate text-lg font-semibold text-foreground">
-                {isEdit ? "Edit Placement" : "New Placement"}
-              </h1>
-              <p className="truncate text-xs text-muted-foreground">
-                {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"}
-                {form.pen_count ? ` · ${form.pen_count} pen${asNumber(form.pen_count) === 1 ? "" : "s"}` : ""}
-              </p>
-            </div>
+            <header className="relative border-b bg-white px-4 pb-6 pt-3 dark:bg-card">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Farm / Placement
+                  </div>
+                  <h1 className="truncate text-lg font-semibold text-foreground">
+                    {isView
+                      ? "View Placement"
+                      : isEdit
+                        ? "Edit Placement"
+                        : "New Placement"}
+                  </h1>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {form.farm_name || "Select farm"} &gt;{" "}
+                    {form.building_no || "Select building"}
+                    {form.pen_count
+                      ? ` · ${form.pen_count} pen${asNumber(form.pen_count) === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                </div>
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.push("/jmb/placement")}
+                    disabled={saving}
+                  >
+                    <X className="size-4" />
+                    Cancel
+                  </Button>
+                  {!isView ? (
+                    <Button
+                      type="button"
+                      onClick={() => void onSave()}
+                      disabled={saving || disabledAll}
+                    >
+                      {saving ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Save className="size-4" />
+                      )}
+                      Save
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-stretch gap-2 border-t pt-3">
+                <div className="min-w-52.5 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Farm
+                  </div>
+                  <div className="truncate text-sm font-semibold">
+                    {form.farm_name || "Select farm"}
+                  </div>
+                </div>
+                <div className="min-w-47.5 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Building
+                  </div>
+                  <div className="truncate text-sm font-semibold">
+                    {form.building_no || "Select building"}
+                  </div>
+                </div>
+                <div className="min-w-32.5 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Total pens
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums">
+                    {totalPens.toLocaleString("en-PH")}
+                  </div>
+                </div>
+                <div className="min-w-37.5 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Placement date
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums">
+                    {form.placement_date || "-"}
+                  </div>
+                </div>
+                <div className="min-w-35 rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Cycle number
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums">
+                    {form.cycle_no || "-"}
+                  </div>
+                </div>
+              </div>
+
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.push("/jmb/placement")}
-                disabled={saving}
+                size="icon-sm"
+                title="Collapse header"
+                aria-label="Collapse header"
+                onClick={() => setHeaderOpen(false)}
+                className="absolute bottom-0 left-1/2 z-60 -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md hover:bg-accent dark:bg-card"
               >
-                <X className="size-4" />
-                Cancel
+                <ChevronUp className="size-4" />
               </Button>
-              <Button
-                type="button"
-                onClick={() => void onSave()}
-                disabled={saving || disabledAll}
-              >
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Save
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-stretch gap-2 border-t pt-3">
-            <div className="min-w-[210px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">Farm</div>
-              <div className="truncate text-sm font-semibold">{form.farm_name || "Select farm"}</div>
-            </div>
-            <div className="min-w-[190px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">Building</div>
-              <div className="truncate text-sm font-semibold">{form.building_no || "Select building"}</div>
-            </div>
-            <div className="min-w-[130px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">Total pens</div>
-              <div className="text-sm font-semibold tabular-nums">{totalPens.toLocaleString("en-PH")}</div>
-            </div>
-            <div className="min-w-[150px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">Placement date</div>
-              <div className="text-sm font-semibold tabular-nums">{form.placement_date || "-"}</div>
-            </div>
-            <div className="min-w-[140px] rounded-md border bg-slate-50 px-3 py-2 dark:bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground">Cycle number</div>
-              <div className="text-sm font-semibold tabular-nums">{form.cycle_no || "-"}</div>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            title="Collapse header"
-            aria-label="Collapse header"
-            onClick={() => setHeaderOpen(false)}
-            className="absolute bottom-0 left-1/2 z-[60] -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md hover:bg-accent dark:bg-card"
-          >
-            <ChevronUp className="size-4" />
-          </Button>
-        </header>
+            </header>
           </CollapsibleContent>
 
           {!headerOpen ? (
             <div className="relative flex min-h-14 items-center gap-3 border-b bg-white px-4 pb-4 pt-2 dark:bg-card">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-foreground">
-                  {form.farm_name || "Select farm"} &gt; {form.building_no || "Select building"} &gt; {isEdit ? "Edit Placement" : "New Placement"}
+                  {form.farm_name || "Select farm"} &gt;{" "}
+                  {form.building_no || "Select building"} &gt;{" "}
+                  {isView
+                    ? "View Placement"
+                    : isEdit
+                      ? "Edit Placement"
+                      : "New Placement"}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {totalPens.toLocaleString("en-PH")} pens | Date {form.placement_date || "-"} | Cycle {form.cycle_no || "-"}
+                  {totalPens.toLocaleString("en-PH")} pens | Date{" "}
+                  {form.placement_date || "-"} | Cycle {form.cycle_no || "-"}
                 </div>
               </div>
               <Button
@@ -874,15 +956,21 @@ export default function PlacementForm() {
                 <X className="size-4" />
                 Cancel
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void onSave()}
-                disabled={saving || disabledAll}
-              >
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Save
-              </Button>
+              {!isView ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void onSave()}
+                  disabled={saving || disabledAll}
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
+                  Save
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -890,7 +978,7 @@ export default function PlacementForm() {
                 title="Show header details"
                 aria-label="Show header details"
                 onClick={() => setHeaderOpen(true)}
-                className="absolute bottom-0 left-1/2 z-[60] -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md hover:bg-accent dark:bg-card"
+                className="absolute bottom-0 left-1/2 z-60 -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md hover:bg-accent dark:bg-card"
               >
                 <ChevronDown className="size-4" />
               </Button>
@@ -899,7 +987,7 @@ export default function PlacementForm() {
         </Collapsible>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-4 dark:bg-background/40">
-          <div className="mx-auto max-w-[1800px] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm dark:border-border dark:bg-card">
+          <div className="mx-auto max-w-450 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm dark:border-border dark:bg-card">
             <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-2">
                 <RequiredLabel>Placement Date</RequiredLabel>
@@ -929,11 +1017,7 @@ export default function PlacementForm() {
                       cycle_no: clampInteger(e.target.value),
                     }))
                   }
-                  disabled={
-                    disabledAll ||
-                    !!cycleNoParam ||
-                    (isEdit && hasDependentRecords)
-                  }
+                  disabled={disabledAll || !!cycleNoParam}
                 />
               </div>
 
@@ -1014,75 +1098,75 @@ export default function PlacementForm() {
                       </th>
                       <th
                         colSpan={6}
-                        className={`${SheetClasses.group} !bg-pink-100 text-pink-800`}
+                        className={`${SheetClasses.group} bg-pink-100! text-pink-800`}
                       >
                         Female
                       </th>
                       <th
                         colSpan={6}
-                        className={`${SheetClasses.group} !bg-sky-100 text-sky-800`}
+                        className={`${SheetClasses.group} bg-sky-100! text-sky-800`}
                       >
                         Male
                       </th>
                     </tr>
                     <tr>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-pink-50!`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-pink-50!`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-pink-50!`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.shortCount} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount} bg-pink-50!`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.ending} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.ending} bg-pink-50!`}
                       >
                         Ending
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-pink-50`}
+                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} bg-pink-50!`}
                       >
                         AVG Body W
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-sky-50!`}
                       >
                         Total Placement
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-sky-50!`}
                       >
                         DOA
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.count} bg-sky-50!`}
                       >
                         Rejects
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.shortCount} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.shortCount} bg-sky-50!`}
                       >
                         Short Count
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.ending} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.ending} bg-sky-50!`}
                       >
                         Ending
                       </th>
                       <th
-                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-sky-50`}
+                        className={`${SheetClasses.header} ${TableWidths.bodyWeight} bg-sky-50!`}
                       >
                         AVG Body W
                       </th>
@@ -1376,43 +1460,100 @@ export default function PlacementForm() {
               </div>
 
               <div className="overflow-x-auto rounded-md border">
-                <table className="w-full min-w-[1050px] text-sm">
+                <table className="w-full min-w-262.5 text-sm">
                   <thead className="bg-emerald-50">
                     <tr className="border-b">
                       <th className="px-3 py-2 text-left font-medium">Date</th>
-                      <th className="px-3 py-2 text-left font-medium">Cycle #</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Cycle #
+                      </th>
                       <th className="px-3 py-2 text-left font-medium">Pen</th>
-                      <th className="px-3 py-2 text-left font-medium">Source of Birds</th>
-                      <th className="px-3 py-2 text-right font-medium">Female Placement</th>
-                      <th className="px-3 py-2 text-right font-medium">Female Ending</th>
-                      <th className="px-3 py-2 text-right font-medium">Male Placement</th>
-                      <th className="px-3 py-2 text-right font-medium">Male Ending</th>
-                      <th className="px-3 py-2 text-left font-medium">Date Recorded</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Source of Birds
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Placement
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Female Ending
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Placement
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Male Ending
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Date Recorded
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {loadingHistory ? (
-                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">Loading placement history...</td></tr>
+                      <tr>
+                        <td
+                          colSpan={9}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          Loading placement history...
+                        </td>
+                      </tr>
                     ) : history.length ? (
                       history.map((record) => {
-                        const femaleEnding = record.f_endingbalance ?? record.f_beg - record.f_doa - record.f_reject - record.f_shortcount;
-                        const maleEnding = record.m_endingbalance ?? record.m_beg - record.m_doa - record.m_reject - record.m_shortcount;
+                        const femaleEnding =
+                          record.f_endingbalance ??
+                          record.f_beg -
+                            record.f_doa -
+                            record.f_reject -
+                            record.f_shortcount;
+                        const maleEnding =
+                          record.m_endingbalance ??
+                          record.m_beg -
+                            record.m_doa -
+                            record.m_reject -
+                            record.m_shortcount;
                         return (
-                          <tr key={record.id} className="border-b last:border-0">
-                            <td className="px-3 py-2 tabular-nums">{formatHistoryDate(record.placement_date)}</td>
-                            <td className="px-3 py-2 font-medium tabular-nums">{record.cycle_no ?? "-"}</td>
+                          <tr
+                            key={record.id}
+                            className="border-b last:border-0"
+                          >
+                            <td className="px-3 py-2 tabular-nums">
+                              {formatHistoryDate(record.placement_date)}
+                            </td>
+                            <td className="px-3 py-2 font-medium tabular-nums">
+                              {record.cycle_no ?? "-"}
+                            </td>
                             <td className="px-3 py-2">{record.pen_no}</td>
-                            <td className="px-3 py-2">{record.f_source ?? record.m_source ?? ""}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(record.f_beg)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(femaleEnding)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(record.m_beg)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{formatHistoryNumber(maleEnding)}</td>
-                            <td className="px-3 py-2 tabular-nums">{formatHistoryDate(record.created_at)}</td>
+                            <td className="px-3 py-2">
+                              {record.f_source ?? record.m_source ?? ""}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatHistoryNumber(record.f_beg)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatHistoryNumber(femaleEnding)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatHistoryNumber(record.m_beg)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatHistoryNumber(maleEnding)}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">
+                              {formatHistoryDate(record.created_at)}
+                            </td>
                           </tr>
                         );
                       })
                     ) : (
-                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">No placement history found.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={9}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          No placement history found.
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -1421,7 +1562,6 @@ export default function PlacementForm() {
           </div>
         </div>
       </div>
-
     </div>
   );
 }
