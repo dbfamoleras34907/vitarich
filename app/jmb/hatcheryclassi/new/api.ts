@@ -27,7 +27,7 @@ export type HatchClassification = {
   hairline: number | null;
   farm_name: string | null;
 };
- 
+
 export type HatchClassificationRow = HatchClassificationInsert & {
   id: number;
   created_at: string;
@@ -36,9 +36,61 @@ export type HatchClassificationRow = HatchClassificationInsert & {
   updated_by: string | null;
 };
 
-export type HatchForClassificationRow = ReceivingListRow & {
-  id: number;
+export type HatchClassificationListRow = Pick<
+  HatchClassificationRow,
+  | "id"
+  | "date_classify"
+  | "br_no"
+  | "farm_id"
+  | "farm_code"
+  | "good_egg"
+  | "trans_crack"
+  | "hatc_crack"
+  | "trans_condemn"
+  | "hatc_condemn"
+  | "thin_shell"
+  | "pee_wee"
+  | "small"
+  | "jumbo"
+  | "d_yolk"
+  | "misshapen"
+  | "leakers"
+  | "dirties"
+  | "hairline"
+  | "ttl_count"
+>;
+
+export type HatchForClassificationRow = Pick<
+  ReceivingListRow,
+  | "id"
+  | "created_at"
+  | "dr_num"
+  | "brdr_ref_no"
+  | "actual_count"
+  | "farm_id"
+  | "farm_name"
+  | "plate_no"
+  | "driver"
+  | "voyage_no"
+  | "shipped_via"
+>;
+
+export type HatchClassificationListOptions = {
+  farmIds: readonly number[];
+  limit?: number;
 };
+
+const PENDING_CLASSIFICATION_LIMIT = 50;
+const CLASSIFICATION_LIST_COLUMNS =
+  "id,date_classify,br_no,farm_id,farm_code,good_egg,trans_crack,hatc_crack,trans_condemn,hatc_condemn,thin_shell,pee_wee,small,jumbo,d_yolk,misshapen,leakers,dirties,hairline,ttl_count";
+const PENDING_CLASSIFICATION_COLUMNS =
+  "id,created_at,dr_num,brdr_ref_no,actual_count,farm_id,farm_name,plate_no,driver,voyage_no,shipped_via";
+
+function normalizedFarmIds(farmIds: readonly number[]) {
+  return Array.from(
+    new Set(farmIds.filter((farmId) => Number.isInteger(farmId) && farmId > 0)),
+  );
+}
 
 // build
 export async function createHatchClassification(
@@ -95,25 +147,40 @@ export type HatchClassificationUpdate = Partial<
 > & {
   updated_at?: string;
 };
-export async function listHatchClassification(limit = 50) {
+export async function listHatchClassification({
+  farmIds,
+  limit = PENDING_CLASSIFICATION_LIMIT,
+}: HatchClassificationListOptions) {
+  const authorizedFarmIds = normalizedFarmIds(farmIds);
+  if (!authorizedFarmIds.length) return [];
+
+  const safeLimit = Math.min(Math.max(1, limit), PENDING_CLASSIFICATION_LIMIT);
   const { data, error } = await db
     .from("hatch_classification")
-    .select("*")
+    .select(CLASSIFICATION_LIST_COLUMNS)
+    .in("farm_id", authorizedFarmIds)
     .order("id", { ascending: false })
-    .limit(limit);
-
-  console.log("hatch_classification =>", { data, error });
+    .limit(safeLimit);
   if (error) throw new Error(error.message);
-  return (data ?? []) as HatchClassificationRow[];
+  return (data ?? []) as HatchClassificationListRow[];
 }
-export async function getReceivingList(limit = 100) {
+
+export async function getReceivingList({
+  farmIds,
+  limit = PENDING_CLASSIFICATION_LIMIT,
+}: HatchClassificationListOptions) {
+  const authorizedFarmIds = normalizedFarmIds(farmIds);
+  if (!authorizedFarmIds.length) return [];
+
+  const safeLimit = Math.min(Math.max(1, limit), PENDING_CLASSIFICATION_LIMIT);
   const { data, error } = await db
     .from("view_for_classification")
-    .select("*")
+    .select(PENDING_CLASSIFICATION_COLUMNS)
+    .in("farm_id", authorizedFarmIds)
     .order("created_at", { ascending: false })
-    .limit(limit);
-  console.log("view_for_classification =>", { data, error });
+    .order("id", { ascending: false })
+    .limit(safeLimit);
   if (error) throw error;
 
-  return data as ReceivingListRow[];
+  return (data ?? []) as HatchForClassificationRow[];
 }
