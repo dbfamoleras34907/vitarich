@@ -142,7 +142,7 @@ export default function Layout() {
         <PageSectionHeader>
           <div><PageSectionTitle>Import mode</PageSectionTitle><PageSectionDescription>One mode applies to the complete workbook.</PageSectionDescription></div>
         </PageSectionHeader>
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid gap-2 md:grid-cols-2  max-w-2xl  m-4">
           <button type="button" aria-pressed={mode === 'standard'} onClick={() => { setMode('standard'); setValidation(null) }} className={`min-h-11 rounded-md border p-3 text-left ${mode === 'standard' ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
             <span className="block text-sm font-medium">Standard</span>
             <span className="block text-xs text-muted-foreground">Requires normal fields, valid calculations, and sufficient inventory.</span>

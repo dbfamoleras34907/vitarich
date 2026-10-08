@@ -131,7 +131,7 @@ export async function getFarmCycleMasterRows(
   if (cardResult.error) throw cardResult.error
   assertCompleteRead(cardResult, 'Cycle Master building ownership')
   const cards = (cardResult.data ?? []) as FlockCardCycleRow[]
-  if (cards.some(card => card.status === 'Saved' && card.farm_cycle_id == null)) {
+  if (options.validateOwnership !== false && cards.some(card => card.status === 'Saved' && card.farm_cycle_id == null)) {
     throw new Error('This farm does not have a Cycle yet.')
   }
   if (cycles.length === 0) return []
@@ -247,4 +247,4 @@ export async function openBroilerPastCycle(input: OpenBroilerPastCycleInput): Pr
   if (error) throw error
 }
 
-// 
+//
