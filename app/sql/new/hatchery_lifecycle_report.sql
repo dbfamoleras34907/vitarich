@@ -156,6 +156,13 @@ begin
     join filtered_receiving receiving on receiving.id = item.docentry
     group by item.docentry
   ),
+  receiving_item_records as materialized (
+    select item.docentry as receiving_id,
+      jsonb_agg(to_jsonb(item) order by item.id) as records
+    from public.recieving_items item
+    join filtered_receiving receiving on receiving.id = item.docentry
+    group by item.docentry
+  ),
   receiving_line_references as materialized (
     select distinct receiving.id as receiving_id, btrim(item.brdr_ref_no) as reference
     from filtered_receiving receiving
@@ -205,9 +212,17 @@ begin
       receiving.report_status = 'voided' as voided,
       quantity.quantity, quantity.uom,
       receiving.farm_id as origin_farm_id, null::bigint as destination_farm_id,
-      jsonb_build_object('label', 'Hatchery Receiving', 'receivingDate', receiving.doc_date) as metadata
+      jsonb_build_object(
+        'label', 'Hatchery Receiving',
+        'table', 'recieving',
+        'header', to_jsonb(receiving_record),
+        'itemsTable', 'recieving_items',
+        'items', coalesce(item_records.records, '[]'::jsonb)
+      ) as metadata
     from filtered_receiving receiving
+    join public.recieving receiving_record on receiving_record.id = receiving.id
     left join receiving_quantities quantity on quantity.receiving_id = receiving.id
+    left join receiving_item_records item_records on item_records.receiving_id = receiving.id
     left join receiving_reference_labels reference_label on reference_label.receiving_id = receiving.id
 
     union all
@@ -219,7 +234,11 @@ begin
       case when coalesce((to_jsonb(classification)->>'is_active')::boolean, true) then 'Active' else 'Voided' end,
       not coalesce((to_jsonb(classification)->>'is_active')::boolean, true),
       classification.good_egg::numeric, 'EGG', classification.farm_id, null::bigint,
-      jsonb_build_object('label', 'Egg Classification', 'breederReference', classification.br_no)
+      jsonb_build_object(
+        'label', 'Egg Classification',
+        'table', 'hatch_classification',
+        'record', to_jsonb(classification) - 'receiving_id'
+      )
     from classifications classification
 
     union all
@@ -228,7 +247,11 @@ begin
       'Storage ' || storage.id::text, storage.classi_ref_no, storage.created_at::timestamptz,
       case when btrim(coalesce(to_jsonb(storage)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(storage)->>'void', '1')) = '0', null::numeric, null::text,
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Egg Storage')
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Egg Storage',
+        'table', 'egg_storage_mngt',
+        'record', to_jsonb(storage)
+      )
     from classifications classification
     join public.egg_storage_mngt storage
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(storage.classi_ref_no, '')), E'\\s*,\\s*'))
@@ -239,7 +262,11 @@ begin
       'Pre-Warming ' || warming.id::text, warming.egg_ref_no, warming.created_at::timestamptz,
       case when coalesce(warming.is_active, true) then 'Active' else 'Voided' end,
       not coalesce(warming.is_active, true), null::numeric, null::text,
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Egg Pre-Warming')
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Egg Pre-Warming',
+        'table', 'egg_pre_warming',
+        'record', to_jsonb(warming)
+      )
     from classifications classification
     join public.egg_pre_warming warming
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(warming.egg_ref_no, '')), E'\\s*,\\s*'))
@@ -250,7 +277,11 @@ begin
       'Setter ' || setter.id::text, setter.ref_no, setter.created_at::timestamptz,
       case when btrim(coalesce(to_jsonb(setter)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(setter)->>'void', '1')) = '0', setter.qty_set_egg::numeric, 'EGG',
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Egg Setter', 'machine', setter.machine_id)
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Egg Setter',
+        'table', 'setter_incubation_process',
+        'record', to_jsonb(setter)
+      )
     from classifications classification
     join public.setter_incubation_process setter
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(setter.ref_no, '')), E'\\s*,\\s*'))
@@ -261,7 +292,11 @@ begin
       'Transfer ' || transfer.id::text, transfer.ref_no, transfer.created_at::timestamptz,
       case when btrim(coalesce(to_jsonb(transfer)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(transfer)->>'void', '1')) = '0', transfer.total_egg_transfer::numeric, 'EGG',
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Egg Transfer')
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Egg Transfer',
+        'table', 'egg_transfer_process',
+        'record', to_jsonb(transfer)
+      )
     from classifications classification
     join public.egg_transfer_process transfer
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(transfer.ref_no, '')), E'\\s*,\\s*'))
@@ -272,7 +307,11 @@ begin
       'Hatcher ' || hatcher.id::text, hatcher.egg_ref, hatcher.created_at::timestamptz,
       case when btrim(coalesce(to_jsonb(hatcher)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(hatcher)->>'void', '1')) = '0', hatcher.total_egg::numeric, 'EGG',
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Egg Hatcher', 'machine', hatcher.machine_no)
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Egg Hatcher',
+        'table', 'egg_hatchery_process',
+        'record', to_jsonb(hatcher)
+      )
     from classifications classification
     join public.egg_hatchery_process hatcher
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(hatcher.egg_ref, '')), E'\\s*,\\s*'))
@@ -284,7 +323,11 @@ begin
       pullout.egg_ref_no, pullout.created_at::timestamptz,
       case when btrim(coalesce(to_jsonb(pullout)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(pullout)->>'void', '1')) = '0', pullout.chicks_hatched::numeric, 'CHICK',
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Chick Pullout', 'machine', pullout.machine_no)
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Chick Pullout',
+        'table', 'chick_pullout_process',
+        'record', to_jsonb(pullout)
+      )
     from classifications classification
     join public.chick_pullout_process pullout
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(pullout.egg_ref_no, '')), E'\\s*,\\s*'))
@@ -314,7 +357,11 @@ begin
         coalesce((to_jsonb(grading)->>'infertile_good')::numeric, 0) +
         coalesce((to_jsonb(grading)->>'infertile_bad')::numeric, 0)
       ), 'CHICK',
-      classification.farm_id, null::bigint, jsonb_build_object('label', 'Chick Grading', 'batchCode', grading.batch_code)
+      classification.farm_id, null::bigint, jsonb_build_object(
+        'label', 'Chick Grading',
+        'table', 'chick_grading_process',
+        'record', to_jsonb(grading)
+      )
     from classifications classification
     join public.chick_grading_process grading
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(grading.egg_ref_no, '')), E'\\s*,\\s*'))
@@ -326,7 +373,13 @@ begin
       case when not coalesce(dispatch.is_active, true) then 'Voided' else dispatch.status end,
       not coalesce(dispatch.is_active, true), item.qty::numeric, item.uom::text,
       classification.farm_id, dispatch.destination_farm_id,
-      jsonb_build_object('label', 'DOC Dispatch', 'destinationFarmCode', dispatch.destination_farm_code, 'item', item.sku_name)
+      jsonb_build_object(
+        'label', 'DOC Dispatch',
+        'table', 'dispatch_doc',
+        'header', to_jsonb(dispatch),
+        'itemsTable', 'dispatch_doc_item',
+        'item', to_jsonb(item)
+      )
     from classifications classification
     join public.chick_grading_process grading
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(grading.egg_ref_no, '')), E'\\s*,\\s*'))
@@ -341,12 +394,57 @@ begin
       case when btrim(coalesce(to_jsonb(disposal)->>'void', '1')) = '0' then 'Voided' else 'Active' end,
       btrim(coalesce(to_jsonb(disposal)->>'void', '1')) = '0', item.qty::numeric, item.uom::text,
       classification.farm_id, null::bigint,
-      jsonb_build_object('label', 'Disposal', 'item', item.sku)
+      jsonb_build_object(
+        'label', 'Disposal',
+        'table', 'disposal',
+        'header', to_jsonb(disposal),
+        'itemsTable', 'disposal_item',
+        'item', to_jsonb(item)
+      )
     from classifications classification
     join public.chick_grading_process grading
       on classification.classi_ref_no = any(regexp_split_to_array(btrim(coalesce(grading.egg_ref_no, '')), E'\\s*,\\s*'))
     join public.disposal disposal on disposal.batch_code = grading.batch_code and disposal.farm_id = classification.farm_id
     join public.disposal_item item on item.disposal_id = disposal.id
+  ),
+  linked_nodes as materialized (
+    select node.*,
+      case
+        when node.stage = 'Receiving' then null
+        when node.stage = 'Classification' then 'RECEIVING:' || node.receiving_id::text
+        else parent.node_key
+      end as parent_node_key
+    from all_nodes node
+    left join lateral (
+      select candidate.node_key
+      from all_nodes candidate
+      where candidate.receiving_id = node.receiving_id
+        and candidate.stage = case node.stage
+          when 'Storage' then 'Classification'
+          when 'Pre-Warming' then 'Storage'
+          when 'Setter' then 'Pre-Warming'
+          when 'Transfer' then 'Setter'
+          when 'Hatcher' then 'Transfer'
+          when 'Pullout' then 'Hatcher'
+          when 'Chick Grading' then 'Pullout'
+          when 'Dispatch' then 'Chick Grading'
+          when 'Disposal' then 'Chick Grading'
+        end
+        and (
+          (node.stage in ('Dispatch', 'Disposal') and candidate.document_no = node.reference)
+          or (
+            node.stage not in ('Dispatch', 'Disposal')
+            and nullif(btrim(candidate.reference), '') = nullif(btrim(node.reference), '')
+          )
+        )
+        and (
+          node.occurred_at is null
+          or candidate.occurred_at is null
+          or candidate.occurred_at <= node.occurred_at
+        )
+      order by candidate.occurred_at desc nulls last, candidate.document_id desc, candidate.line_id desc nulls last
+      limit 1
+    ) parent on node.stage not in ('Receiving', 'Classification')
   ),
   stage_summary as materialized (
     select receiving.farm_id, receiving.ta_id, node.stage,
@@ -401,6 +499,7 @@ begin
       coalesce(to_jsonb(review.messages), '[]'::jsonb) as needs_review,
       coalesce(jsonb_agg(jsonb_build_object(
         'nodeKey', node.node_key,
+        'parentNodeKey', node.parent_node_key,
         'stage', node.stage,
         'stageOrder', node.stage_order,
         'documentId', node.document_id,
@@ -416,9 +515,14 @@ begin
         'destinationFarmId', node.destination_farm_id,
         'destinationFarmName', destination.name,
         'metadata', node.metadata
-      ) order by node.stage_order, node.occurred_at, node.document_id, node.line_id) filter (where node.node_key is not null), '[]'::jsonb) as nodes
+      ) order by node.stage_order, node.occurred_at, node.document_id, node.line_id) filter (where node.node_key is not null), '[]'::jsonb) as nodes,
+      coalesce(jsonb_agg(jsonb_build_object(
+        'fatherNodeKey', node.parent_node_key,
+        'childNodeKey', node.node_key
+      ) order by node.stage_order, node.occurred_at, node.document_id, node.line_id)
+        filter (where node.parent_node_key is not null), '[]'::jsonb) as edges
     from paged_receiving receiving
-    left join all_nodes node on node.receiving_id = receiving.id
+    left join linked_nodes node on node.receiving_id = receiving.id
     left join public.farms destination on destination.id = node.destination_farm_id
     left join review_flags review on review.receiving_id = receiving.id
     left join receiving_reference_labels reference_label on reference_label.receiving_id = receiving.id
@@ -426,7 +530,7 @@ begin
       receiving.report_status, receiving.dr_num, receiving.brdr_ref_no, reference_label.references, review.messages
   )
   select jsonb_build_object(
-    'apiVersion', 1,
+    'apiVersion', 3,
     'filters', jsonb_build_object(
       'dateFrom', v_date_from,
       'dateTo', v_date_to,

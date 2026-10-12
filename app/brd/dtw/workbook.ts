@@ -229,8 +229,8 @@ const formula = (value: string) => `<formula1>${sanitizeTextContent(value)}</for
 const listFormula = (column: string, count: number) =>
   `'Dropdown Lists'!$${column}$2:$${column}$${Math.max(2, count + 1)}`
 const buildingListFormula = (buildingCount: number) => {
-  const farmRange = listFormula('B', buildingCount)
-  return `OFFSET('Dropdown Lists'!$C$2,MATCH($B2,${farmRange},0)-1,0,COUNTIF(${farmRange},$B2),1)`
+  const farmRange = listFormula('C', buildingCount)
+  return `OFFSET('Dropdown Lists'!$E$2,MATCH($B2,${farmRange},0)-1,0,COUNTIF(${farmRange},$B2),1)`
 }
 
 export const createBroilerDtwDropdownFeature = (
@@ -246,7 +246,7 @@ export const createBroilerDtwDropdownFeature = (
           const validations = [
             `<dataValidation type="list" allowBlank="0" showErrorMessage="0" sqref="B2:B2001">${formula(listFormula('A', farmCount))}</dataValidation>`,
             `<dataValidation type="list" allowBlank="0" showErrorMessage="0" sqref="C2:C2001">${formula(buildingListFormula(buildingCount))}</dataValidation>`,
-            `<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="D2:D2001">${formula(listFormula('D', cycleCount))}</dataValidation>`,
+            `<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="D2:D2001">${formula(listFormula('G', cycleCount))}</dataValidation>`,
           ]
           const markup = `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`
           return insertElementMarkupAccordingToOrderOfSiblings(xml, markup, getOrderOfSiblings('xl/worksheets/sheet{id}.xml', 'worksheet') ?? [], 'worksheet')
@@ -258,11 +258,18 @@ export const createBroilerDtwDropdownFeature = (
 
 export async function exportBroilerDtwTemplate(references: BroilerDtwReferences) {
   const farmLabel = new Map(references.farms.map(farm => [farm.code, `${farm.code} - ${farm.name}`]))
-  const farms = references.farms.map(farm => `${farm.code} - ${farm.name}`)
+  const farms = references.farms.map(farm => ({ id: farm.id, label: `${farm.code} - ${farm.name}` }))
   const buildings = references.buildings
-    .map(building => [farmLabel.get(building.farmCode) ?? building.farmCode, `${building.code} - ${building.name}`] as const)
-    .sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]))
-  const cycles = references.cycles.filter(cycle => cycle.cycleKey.toUpperCase().startsWith('LEGACY-')).map(cycle => cycle.cycleKey).sort()
+    .map(building => ({
+      farmId: building.farmId,
+      farmLabel: farmLabel.get(building.farmCode) ?? building.farmCode,
+      id: building.id,
+      label: `${building.code} - ${building.name}`,
+    }))
+    .sort((left, right) => left.farmLabel.localeCompare(right.farmLabel) || left.label.localeCompare(right.label))
+  const cycles = references.cycles
+    .filter(cycle => cycle.cycleKey.toUpperCase().startsWith('LEGACY-'))
+    .sort((left, right) => left.cycleKey.localeCompare(right.cycleKey))
   const sheets = (Object.keys(DTW_SHEETS) as SheetKey[]).map(key => ({
     data: [HEADERS[key].map((header, index) => fieldHeaderCell(header, DTW_FIELD_BEHAVIORS[key][index]))],
     sheet: DTW_SHEETS[key],
@@ -295,13 +302,18 @@ export async function exportBroilerDtwTemplate(references: BroilerDtwReferences)
     },
     {
       data: [
-        ['Farms', 'Building Farm', 'Buildings', 'Existing Legacy Cycles'].map(headerCell),
+        ['Farms', 'Farm ID', 'Building Farm', 'Building Farm ID', 'Buildings', 'Building ID', 'Existing Legacy Cycles', 'Existing Legacy Cycle ID', 'Existing Legacy Cycle Farm ID'].map(headerCell),
         ...Array.from({ length: Math.max(farms.length, buildings.length, cycles.length, 1) }, (_, index) => [
-          farms[index] ?? '', buildings[index]?.[0] ?? '', buildings[index]?.[1] ?? '', cycles[index] ?? '',
+          farms[index]?.label ?? '', farms[index]?.id ?? '',
+          buildings[index]?.farmLabel ?? '', buildings[index]?.farmId ?? '', buildings[index]?.label ?? '', buildings[index]?.id ?? '',
+          cycles[index]?.cycleKey ?? '', cycles[index]?.id ?? '', cycles[index]?.farmId ?? '',
         ].map(value => ({ value, ...border }))),
       ],
       sheet: 'Dropdown Lists',
-      columns: [{ width: 38 }, { width: 38 }, { width: 42 }, { width: 56 }],
+      columns: [
+        { width: 38 }, { width: 14 }, { width: 38 }, { width: 18 }, { width: 42 },
+        { width: 14 }, { width: 56 }, { width: 24 }, { width: 30 },
+      ],
       stickyRowsCount: 1,
       showGridLines: false,
     },

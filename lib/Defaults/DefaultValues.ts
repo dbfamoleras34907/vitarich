@@ -748,6 +748,21 @@ export const NavFolders: NavFolder[] = [
           },
         ],
       },
+      {
+        group: "Settings",
+        children: [
+          {
+            id: 86,
+            type: "Module",
+            title: "Extract Data",
+            url: "/a_dean/hatchery/extract-data",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+        ],
+      },
     ],
   },
 

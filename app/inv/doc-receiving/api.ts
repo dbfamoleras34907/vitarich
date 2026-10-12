@@ -9,6 +9,7 @@ export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Reversed' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
 const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
+const ACTIVE_DOC_PLACEMENT_STATUSES: GoodsReceiptDbStatus[] = ['Draft', 'Posted', 'Received']
 
 const localToday = () => {
   const date = new Date()
@@ -24,8 +25,9 @@ export async function getFirstDocPlacementDates(flockCardIds: number[]) {
 
   const result = await db
     .from('goods_receipt_doc')
-    .select('flock_card_id, receive_date')
+    .select('flock_card_id, receive_date, goods_receipt!inner(status)')
     .in('flock_card_id', ids)
+    .in('goods_receipt.status', ACTIVE_DOC_PLACEMENT_STATUSES)
     .eq('void', '1')
     .not('receive_date', 'is', null)
     .order('receive_date', { ascending: true })

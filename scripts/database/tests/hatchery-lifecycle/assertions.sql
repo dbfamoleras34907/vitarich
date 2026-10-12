@@ -41,7 +41,53 @@ begin
   result := public.get_hatchery_lifecycle_report(array[10]::bigint[], null, '2026-10-01', '2026-10-31', 'created', array['approved'], 1, 25);
   if jsonb_array_length(result->'rows') <> 3 then raise exception 'Expected all three assigned user rows, including zero activity rows.'; end if;
   if (result#>>'{pagination,total}')::integer <> 1 then raise exception 'Expected one Receiving lifecycle.'; end if;
+  if (result->>'apiVersion')::integer <> 3 then raise exception 'Expected full-record lifecycle API version 3.'; end if;
   if jsonb_array_length(result->'lifecycles'->0->'nodes') <> 11 then raise exception 'Expected all Receiving-to-Disposal stage nodes.'; end if;
+  if jsonb_array_length(result->'lifecycles'->0->'edges') <> 10 then raise exception 'Expected one father-child edge for every non-root lifecycle node.'; end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements(result->'lifecycles'->0->'nodes') node
+    where node->>'stage' = 'Receiving'
+      and node#>'{metadata,header}' = (select to_jsonb(receiving) from public.recieving receiving where receiving.id = 100)
+      and node#>'{metadata,items}' = (
+        select jsonb_agg(to_jsonb(item) order by item.id)
+        from public.recieving_items item
+        where item.docentry = 100
+      )
+  ) then raise exception 'Receiving must return its complete header and all item rows.'; end if;
+  if exists (
+    select 1
+    from (
+      select 'Classification'::text as stage, to_jsonb(record) as expected from public.hatch_classification record where id = 101
+      union all select 'Storage', to_jsonb(record) from public.egg_storage_mngt record where id = 102
+      union all select 'Pre-Warming', to_jsonb(record) from public.egg_pre_warming record where id = 103
+      union all select 'Setter', to_jsonb(record) from public.setter_incubation_process record where id = 104
+      union all select 'Transfer', to_jsonb(record) from public.egg_transfer_process record where id = 105
+      union all select 'Hatcher', to_jsonb(record) from public.egg_hatchery_process record where id = 106
+      union all select 'Pullout', to_jsonb(record) from public.chick_pullout_process record where id = 107
+      union all select 'Chick Grading', to_jsonb(record) from public.chick_grading_process record where id = 108
+    ) expected
+    where not exists (
+      select 1
+      from jsonb_array_elements(result->'lifecycles'->0->'nodes') node
+      where node->>'stage' = expected.stage
+        and node#>'{metadata,record}' = expected.expected
+    )
+  ) then raise exception 'Every Hatchery process node must return its complete source-table row.'; end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements(result->'lifecycles'->0->'nodes') node
+    where node->>'stage' = 'Dispatch'
+      and node#>'{metadata,header}' = (select to_jsonb(dispatch) from public.dispatch_doc dispatch where dispatch.id = 109)
+      and node#>'{metadata,item}' = (select to_jsonb(item) from public.dispatch_doc_item item where item.id = 110)
+  ) then raise exception 'DOC Dispatch must return its complete header and item row.'; end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements(result->'lifecycles'->0->'nodes') node
+    where node->>'stage' = 'Disposal'
+      and node#>'{metadata,header}' = (select to_jsonb(disposal) from public.disposal disposal where disposal.id = 111)
+      and node#>'{metadata,item}' = (select to_jsonb(item) from public.disposal_item item where item.id = 112)
+  ) then raise exception 'Disposal must return its complete header and item row.'; end if;
   if result#>>'{lifecycles,0,reference}' <> 'BE-REF-1' then raise exception 'Lifecycle must use the Receiving line breeder reference.'; end if;
   if result->'lifecycles'->0->'needs_review' <> '[]'::jsonb then raise exception 'Complete lifecycle should not require review.'; end if;
   if not exists (
@@ -53,6 +99,9 @@ begin
   end if;
   if result->'lifecycles'->0->'nodes' @> '[{"stage":"Chick Grading","quantity":89}]'::jsonb is not true then
     raise exception 'Chick Grading quantity must sum the persisted classification fields.';
+  end if;
+  if result->'lifecycles'->0->'edges' @> '[{"fatherNodeKey":"CHICK_GRADING:108","childNodeKey":"DISPATCH:109:110"},{"fatherNodeKey":"CHICK_GRADING:108","childNodeKey":"DISPOSAL:111:112"}]'::jsonb is not true then
+    raise exception 'One Chick Grading father must link independently to its Dispatch and Disposal children.';
   end if;
 end;
 $$;

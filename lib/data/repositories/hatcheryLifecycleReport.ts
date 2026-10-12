@@ -51,6 +51,7 @@ export type HatcheryLifecycleSummaryRow = {
 
 export type HatcheryLifecycleNode = {
   nodeKey: string
+  parentNodeKey: string | null
   stage: HatcheryLifecycleStage
   stageOrder: number
   documentId: number
@@ -68,6 +69,11 @@ export type HatcheryLifecycleNode = {
   metadata: Record<string, unknown>
 }
 
+export type HatcheryLifecycleEdge = {
+  fatherNodeKey: string
+  childNodeKey: string
+}
+
 export type HatcheryLifecycle = {
   receivingId: number
   farmId: number
@@ -78,6 +84,7 @@ export type HatcheryLifecycle = {
   reference: string | null
   needsReview: string[]
   nodes: HatcheryLifecycleNode[]
+  edges: HatcheryLifecycleEdge[]
 }
 
 export type HatcheryLifecycleReport = {
@@ -165,6 +172,7 @@ function normalizeReport(value: unknown): HatcheryLifecycleReport {
     lifecycles: lifecycles.map((lifecycle) => {
       const record = lifecycle as Record<string, unknown>
       const nodes = Array.isArray(record.nodes) ? record.nodes : []
+      const edges = Array.isArray(record.edges) ? record.edges : []
       return {
         receivingId: numberValue(record.receiving_id), farmId: numberValue(record.farm_id), taId: record.ta_id == null ? null : numberValue(record.ta_id),
         reportDate: String(record.report_date ?? ''), reportStatus: String(record.report_status ?? ''), documentNo: String(record.document_no ?? ''),
@@ -173,6 +181,7 @@ function normalizeReport(value: unknown): HatcheryLifecycleReport {
           const item = node as Record<string, unknown>
           return {
             nodeKey: String(item.nodeKey ?? ''), stage: String(item.stage ?? 'Receiving') as HatcheryLifecycleStage,
+            parentNodeKey: item.parentNodeKey == null ? null : String(item.parentNodeKey),
             stageOrder: numberValue(item.stageOrder), documentId: numberValue(item.documentId), lineId: item.lineId == null ? null : numberValue(item.lineId),
             documentNo: String(item.documentNo ?? ''), reference: item.reference == null ? null : String(item.reference), occurredAt: item.occurredAt == null ? null : String(item.occurredAt),
             status: String(item.status ?? ''), voided: Boolean(item.voided), quantity: item.quantity == null ? null : numberValue(item.quantity), uom: item.uom == null ? null : String(item.uom),
@@ -181,6 +190,10 @@ function normalizeReport(value: unknown): HatcheryLifecycleReport {
             metadata: (item.metadata && typeof item.metadata === 'object' ? item.metadata : {}) as Record<string, unknown>,
           }
         }),
+        edges: edges.map((edge) => {
+          const item = edge as Record<string, unknown>
+          return { fatherNodeKey: String(item.fatherNodeKey ?? ''), childNodeKey: String(item.childNodeKey ?? '') }
+        }).filter((edge) => edge.fatherNodeKey && edge.childNodeKey),
       }
     }),
     pagination: { page: numberValue(pagination.page) || 1, pageSize: numberValue(pagination.pageSize) || 25, total: numberValue(pagination.total) },
