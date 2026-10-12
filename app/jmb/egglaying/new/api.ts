@@ -36,6 +36,7 @@ function validateDateLaying(dateLaying: string) {
 export type LayingPlacement = {
   id: number;
   placement_date: string;
+  age_anchor_date?: string | null;
   dr_no: string;
   farm_id?: number | null;
   farm_name: string;

@@ -7,6 +7,8 @@ type TransferInput = {
   transfer_date?: unknown;
   source_placement_id?: unknown;
   destination_placement_id?: unknown;
+  destination_building_id?: unknown;
+  destination_pen_id?: unknown;
   male_qty?: unknown;
   female_qty?: unknown;
   reason?: unknown;
@@ -128,6 +130,42 @@ export async function POST(req: Request) {
   try {
     const user = await authenticatedUser(req);
     const body = (await req.json()) as { action?: string; id?: unknown; reason?: unknown; correctionReason?: unknown; input?: TransferInput; post?: boolean };
+    if (body.action === "create-destination") {
+      const input = body.input ?? {};
+      const transferDate = String(input.transfer_date ?? "");
+      const sourcePlacementId = Number(input.source_placement_id);
+      const destinationBuildingId = Number(input.destination_building_id);
+      const destinationPenId = Number(input.destination_pen_id);
+      const maleQty = Number(input.male_qty ?? 0);
+      const femaleQty = Number(input.female_qty ?? 0);
+      const reason = String(input.reason ?? "").trim();
+      const remarks = String(input.remarks ?? "").trim() || null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(transferDate)) throw new Error("Transfer date is required.");
+      if (transferDate > businessDate()) throw new Error("Transfer date cannot be later than today.");
+      if (![sourcePlacementId, destinationBuildingId, destinationPenId].every((id) => Number.isInteger(id) && id > 0)) throw new Error("A valid source, destination building, and destination pen are required.");
+      if (!Number.isInteger(maleQty) || !Number.isInteger(femaleQty) || maleQty < 0 || femaleQty < 0 || maleQty + femaleQty <= 0) throw new Error("Enter a positive whole-number male or female quantity.");
+      if (!reason) throw new Error("Transfer reason is required.");
+
+      const { data, error } = await admin_db.rpc("post_breeder_transfer_to_new_destination", {
+        p_transfer_date: transferDate,
+        p_source_placement_id: sourcePlacementId,
+        p_destination_building_id: destinationBuildingId,
+        p_destination_pen_id: destinationPenId,
+        p_male_qty: maleQty,
+        p_female_qty: femaleQty,
+        p_reason: reason,
+        p_remarks: remarks,
+        p_user_id: user.id,
+      });
+      if (error) throw error;
+      const result = Array.isArray(data) ? data[0] : data;
+      const id = Number(result?.transfer_id);
+      const destinationPlacementId = Number(result?.destination_placement_id);
+      if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(destinationPlacementId) || destinationPlacementId <= 0) {
+        throw new Error("The destination placement and transfer were not created.");
+      }
+      return NextResponse.json({ id, destinationPlacementId });
+    }
     if (body.action === "post") {
       const id = Number(body.id);
       if (!Number.isInteger(id) || id <= 0) throw new Error("A valid bird transfer is required.");

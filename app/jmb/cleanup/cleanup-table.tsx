@@ -16,6 +16,7 @@ import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   Table,
   TableBody,
@@ -49,6 +50,7 @@ export default function CleanupTable() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [farmFilter, setFarmFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     void refreshSessionx(router);
@@ -118,6 +120,13 @@ export default function CleanupTable() {
       );
     });
   }, [farmFilter, records, search]);
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [currentPage, filtered]);
 
   async function remove(record: BreederCleanupRecord) {
     if (
@@ -189,7 +198,10 @@ export default function CleanupTable() {
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder="Search building, cycle, buyer, hauler, or remarks..."
               className="pl-9"
             />
@@ -198,7 +210,10 @@ export default function CleanupTable() {
             label="Farm"
             items={farms}
             value={farmFilter}
-            onValueChange={setFarmFilter}
+            onValueChange={(value) => {
+              setFarmFilter(value);
+              setPage(1);
+            }}
             placeholder="All farms"
             showCode
             className="w-full lg:w-72"
@@ -240,9 +255,9 @@ export default function CleanupTable() {
                 </TableRow>
               ) : null}
               {!loading &&
-                filtered.map((record, index) => (
+                paginatedRecords.map((record, index) => (
                   <TableRow key={record.id}>
-                    <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                    <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatDate(record.created_at)}
                     </TableCell>
@@ -330,9 +345,7 @@ export default function CleanupTable() {
             </TableBody>
           </Table>
         </div>
-        <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-          Showing {filtered.length} of {records.length} records
-        </div>
+        <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="records" onPageChange={setPage} />
       </section>
     </main>
   );

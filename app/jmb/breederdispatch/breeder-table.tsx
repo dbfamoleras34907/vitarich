@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Ban,
   Bird,
+  Boxes,
   ChevronDown,
   ClipboardList,
   Eye,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,6 +68,7 @@ export default function BreederDispatchTable() {
   const [search, setSearch] = useState("");
   const [farmFilter, setFarmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [page, setPage] = useState(1);
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
@@ -109,6 +112,13 @@ export default function BreederDispatchTable() {
         .some((value) => String(value ?? "").toLowerCase().includes(query));
     });
   }, [farmFilter, records, search, statusFilter]);
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [currentPage, filtered]);
   const posted = records.filter((record) => record.status === "Posted");
   const postedUnits = posted.reduce((sum, record) => sum + Number(record.total_qty), 0);
 
@@ -134,6 +144,7 @@ export default function BreederDispatchTable() {
               <div><h1 className="text-xl font-semibold">Breeder dispatch</h1><p className="text-sm text-muted-foreground">Population Record and Egg Laying dispatch register</p></div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => router.push("/jmb/breederdispatch/inventory")}><Boxes className="size-4" />Remaining inventory</Button>
               <Button variant="outline" onClick={() => router.push("/jmb/breederdispatch/multiple")}><ListPlus className="size-4" />New dispatch</Button>
             </div>
           </div>
@@ -144,9 +155,9 @@ export default function BreederDispatchTable() {
           </div>
         </div>
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
-          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search document, farm, destination, hauler, or plate..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={setFarmFilter} placeholder="All farms" showCode className="w-full lg:w-72" />
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select>
+          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search document, farm, destination, hauler, or plate..." className="pl-9" /></div>
+          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode className="w-full lg:w-72" />
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select>
           <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
@@ -154,9 +165,9 @@ export default function BreederDispatchTable() {
           <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading ? <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
-            {!loading && filtered.map((record, index) => (
+            {!loading && paginatedRecords.map((record, index) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
-                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                 <TableCell>{formatDate(record.dispatch_date)}</TableCell>
                 <TableCell><div className="font-mono text-xs">{record.document_no}</div><div className="text-xs text-muted-foreground">{record.line_count} categor{record.line_count === 1 ? "y" : "ies"}</div></TableCell>
                 <TableCell><div className="font-medium">{record.farm_name}</div><div className="text-xs text-muted-foreground">{record.farm_code || "-"}</div></TableCell>
@@ -181,7 +192,7 @@ export default function BreederDispatchTable() {
             {!loading && !filtered.length ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
-        <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} dispatches</div>
+        <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="dispatches" onPageChange={setPage} />
       </section>
       <Dialog open={Boolean(cancelRecord)} onOpenChange={(open) => { if (!open && !working) setCancelRecord(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Cancel breeder dispatch?</DialogTitle><DialogDescription>The reserved Population Record and Egg Laying quantities will become available for dispatch again.</DialogDescription></DialogHeader>

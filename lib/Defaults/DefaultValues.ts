@@ -1161,6 +1161,17 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
 
+          {
+            id: 84,
+            type: "Module",
+            title: "Upload Data",
+            url: "/jmb/brold",
+            view: false,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
+
           // {
           //   id: 74,
           //   type: "Report",
