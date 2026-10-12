@@ -1,7 +1,12 @@
 import { saveBroilerGrowingTransaction } from "@/lib/data/repositories/broilerGrowingSave";
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
-import { actualAdgColumnIndex, feedTypeColumnIndex } from "./flockCardGridConfig";
+import {
+  actualAdgColumnIndex,
+  feedTypeColumnIndex,
+  mortalityRemarksColumnIndex,
+  remarksColumnIndex,
+} from "./flockCardGridConfig";
 
 export type FeedBatchOnHand = {
   id: string;
@@ -372,6 +377,7 @@ function linePayloadToRow(line: FlockCardLinePayload, fcId: number, userId: stri
     thin_pm: parseNumberOrNull(values[4]),
     row_total: parseNumberOrNull(values[5]),
     cum_total: parseNumberOrNull(values[7]),
+    mortality_remarks: values[mortalityRemarksColumnIndex]?.trim() || null,
     feed_kg: parseNumberOrNull(values[8]),
     feed_bird: parseNumberOrNull(values[9]),
     feed_guideline: parseNumberOrNull(values[10]),
@@ -388,6 +394,7 @@ function linePayloadToRow(line: FlockCardLinePayload, fcId: number, userId: stri
     skin_b: parseNumberOrNull(values[21]),
     skin_a: parseNumberOrNull(values[22]),
     skin_l: parseNumberOrNull(values[23]),
+    remarks: values[remarksColumnIndex]?.trim() || null,
     extra: getLineExtra(line),
     is_locked: true,
     void: "1",
@@ -447,6 +454,7 @@ function omitMortalityThinningColumns<T extends Record<string, unknown>>(row: T)
     thin_pm,
     row_total,
     cum_total,
+    mortality_remarks,
     extra,
     ...nonMortalityRow
   } = row;
@@ -458,6 +466,7 @@ function omitMortalityThinningColumns<T extends Record<string, unknown>>(row: T)
   void thin_pm;
   void row_total;
   void cum_total;
+  void mortality_remarks;
   void extra;
 
   return nonMortalityRow;
@@ -627,7 +636,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
   const headerId = Number(headerResult.data.id);
   const lineResult = await db
     .from("brd_fc_line")
-    .select("id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l, extra")
+    .select("id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, mortality_remarks, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l, remarks, extra")
     .eq("fc_id", headerId)
     .eq("void", "1")
     .order("age", { ascending: true });
@@ -721,9 +730,11 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           String(rawExtra.actualAdg ?? rawExtra.addAlw ?? ""),
           null,
           String(rawExtra.feedItemId ?? (rawExtra.feedTypeId ? `legacy:${rawExtra.feedTypeId}` : "")),
+          line.remarks,
           null,
+          line.mortality_remarks,
         ].map((value, columnIndex) =>
-          columnIndex === actualAdgColumnIndex
+          [actualAdgColumnIndex, remarksColumnIndex, mortalityRemarksColumnIndex].includes(columnIndex)
             ? String(value ?? "")
             : formatDbValue(value)
         ),

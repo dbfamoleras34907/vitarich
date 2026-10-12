@@ -40,6 +40,7 @@ const exportHeaders = [
   "Total",
   "DOC Batch",
   "Cumulative",
+  "Mortality Remarks",
   "Feeds Consumption Actual FC",
   "Feeds Consumption Feed Type",
   "Feed Intake Daily per Bird g/b",
@@ -47,6 +48,7 @@ const exportHeaders = [
   "Feed Intake Feeds Batch",
   "Water Intake Daily L/Flock",
   "Water Intake Daily per Bird",
+  "Water Intake Guideline ml/b/d",
   "Average Live Weight Actual ALW",
   "Average Live Weight Standard ALW",
   "Temp AM C",
@@ -59,13 +61,12 @@ const exportHeaders = [
   "Skin Color L (luminosity)",
   "Average Daily Gain Actual ADG",
   "Average Daily Gain Standard ADG",
-  "Spacer 4",
-  "Water Intake Guideline ml/b/d",
+  "Remarks",
 ];
 
 const exportColumnIndexes = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 26, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  19, 20, 21, 22, 23, 24, 25, 27, 28,
+  0, 1, 2, 3, 4, 5, 6, 7, 29, 8, 26, 9, 10, 11, 12, 13, 28, 14, 15, 16,
+  17, 18, 19, 20, 21, 22, 23, 24, 25, 27,
 ];
 
 function getExportValues(row: ExportRow) {

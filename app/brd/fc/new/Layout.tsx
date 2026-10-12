@@ -99,6 +99,9 @@ import {
   mortalityBatchColumnIndex,
   mortalityBatchMaxColumnWidth,
   mortalityBatchMinColumnWidth,
+  mortalityRemarksColumnIndex,
+  remarksColumnIndex,
+  remarksColumnWidth,
   rows,
   standardAdgColumnIndex,
   topHeaderCells,
@@ -733,6 +736,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           ? feedTypeColumnWidth
           : colIndex === mortalityBatchColumnIndex
             ? mortalityBatchColumnWidth
+            : colIndex === mortalityRemarksColumnIndex || colIndex === remarksColumnIndex
+              ? remarksColumnWidth
             : dataColumnWidth
     ),
     [feedBatchColumnWidth, mortalityBatchColumnWidth]
@@ -1172,6 +1177,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         feedTypeColumnIndex,
         waterGuidelineColumnIndex,
         standardAdgColumnIndex,
+        mortalityRemarksColumnIndex,
+        remarksColumnIndex,
         15,
       ],
     }),
@@ -1246,7 +1253,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   ) {
     if (isRowAgeLocked(rowIndex)) return;
     if (isFeedIntakeLocked(rowIndex) && feedIntakeColumnIndexes.has(colIndex)) return;
-    if (isMortalityThinningLocked(rowIndex) && [0, 1, 3, 4, mortalityBatchColumnIndex].includes(colIndex)) return;
+    if (isMortalityThinningLocked(rowIndex) && [0, 1, 3, 4, mortalityBatchColumnIndex, mortalityRemarksColumnIndex].includes(colIndex)) return;
 
     const currentFeedQuantityValue = gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "";
     const hasExistingFeedBatch =
@@ -1909,7 +1916,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         if (
           rowAgeLocked ||
           (feedIntakeLocked && feedIntakeColumnIndexes.has(targetColIndex)) ||
-          (mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex].includes(targetColIndex))
+          (mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex, mortalityRemarksColumnIndex].includes(targetColIndex))
         ) {
           skippedLockedCellCount += 1;
           return;
@@ -2074,7 +2081,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     // Allocations are selected and validated separately for each age.
     if (colIndex === feedBatchColumnIndex || colIndex === mortalityBatchColumnIndex) return false;
     if (isFeedIntakeLocked(rowIndex) && feedIntakeColumnIndexes.has(colIndex)) return false;
-    if (isMortalityThinningLocked(rowIndex) && [0, 1, 3, 4].includes(colIndex)) return false;
+    if (isMortalityThinningLocked(rowIndex) && [0, 1, 3, 4, mortalityRemarksColumnIndex].includes(colIndex)) return false;
     return colIndex !== feedTypeColumnIndex
       || getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
   };
@@ -2605,6 +2612,17 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       return;
     }
 
+    const missingMortalityRemarksRowIndex = gridValues.findIndex((row, rowIndex) =>
+      !savedMortalityLineByRowIndex[rowIndex] &&
+      getNumericValue(row[0] ?? "") + getNumericValue(row[1] ?? "") !== 0 &&
+      !String(row[mortalityRemarksColumnIndex] ?? "").trim()
+    );
+    if (missingMortalityRemarksRowIndex >= 0) {
+      toast(`Please enter Mortality Remarks for age ${rows[missingMortalityRemarksRowIndex]?.age ?? missingMortalityRemarksRowIndex}.`);
+      focusCell(missingMortalityRemarksRowIndex, mortalityRemarksColumnIndex);
+      return;
+    }
+
     const hasMortalityOrThinning = gridValues.some(row => getMortalityThinningTotal(row) > 0);
     if (hasMortalityOrThinning && !getDefaultDisposalWarehouseCode(selectedFarm)) {
       toast("Please configure the farm's default Disposal warehouse before saving mortality or thinning.");
@@ -2803,7 +2821,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           currentValues.map((gridRow, currentRowIndex) =>
             currentRowIndex === rowIndex
               ? gridRow.map((cellValue, currentColIndex) =>
-                [0, 1, 2, 3, 4, 5, cumulativeTotalColumnIndex, mortalityBatchColumnIndex].includes(currentColIndex)
+                [0, 1, 2, 3, 4, 5, cumulativeTotalColumnIndex, mortalityBatchColumnIndex, mortalityRemarksColumnIndex].includes(currentColIndex)
                   ? ""
                   : cellValue
               )
@@ -4161,6 +4179,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 const rowAgeLocked = isRowAgeLocked(rowIndex);
                 const feedIntakeLocked = isFeedIntakeLocked(rowIndex);
                 const hasActualFc = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
+                const hasMortality = getNumericValue(gridValues[rowIndex]?.[0] ?? "") +
+                  getNumericValue(gridValues[rowIndex]?.[1] ?? "") !== 0;
                 const mortalityThinningLocked = isMortalityThinningLocked(rowIndex);
                 const bodyBorderClasses = striped ? bodyBorderClassesStriped : bodyBorderClassesPlain;
 
@@ -4225,7 +4245,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                     {visibleColumnIndexes.map((colIndex) => {
                       const feedIntakeCellLocked = feedIntakeLocked && feedIntakeColumnIndexes.has(colIndex);
                       const mortalityThinningCellLocked =
-                        mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex].includes(colIndex);
+                        mortalityThinningLocked && [0, 1, 3, 4, mortalityBatchColumnIndex, mortalityRemarksColumnIndex].includes(colIndex);
                       const disabled = rowAgeLocked || feedIntakeCellLocked || mortalityThinningCellLocked || columnDisabledFlags[colIndex];
                       const inputDisabled = colIndex === feedBatchColumnIndex || colIndex === mortalityBatchColumnIndex
                         ? rowAgeLocked || mortalityThinningCellLocked || columnDisabledFlags[colIndex]
@@ -4375,6 +4395,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                             <CellInput
                               id={`row-${rowIndex}-col-${colIndex}`}
                               disabled={inputDisabled}
+                              placeholder={colIndex === mortalityRemarksColumnIndex && hasMortality ? "Required" : undefined}
+                              required={colIndex === mortalityRemarksColumnIndex && hasMortality}
                               value={computedGridValues[rowIndex][colIndex]}
                               inputRef={(element) => {
                                 inputRefs.current[rowIndex] ??= [];

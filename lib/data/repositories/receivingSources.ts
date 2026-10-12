@@ -1,4 +1,5 @@
 import { db } from '@/lib/Supabase/supabaseClient'
+import { createUuid } from '@/lib/utils/createUuid'
 
 export type ReceivingKind = 'hatchery' | 'broiler'
 
@@ -82,7 +83,7 @@ function requestId(key: string) {
   const storageKey = `receiving-copy:${key}`
   const existing = sessionStorage.getItem(storageKey)
   if (existing) return existing
-  const id = crypto.randomUUID()
+  const id = createUuid()
   sessionStorage.setItem(storageKey, id)
   return id
 }

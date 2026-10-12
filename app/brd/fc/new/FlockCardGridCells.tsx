@@ -29,6 +29,8 @@ export function CellInput({
   onFocus,
   onKeyDown,
   onPaste,
+  placeholder,
+  required,
 }: {
   id: string;
   disabled: boolean;
@@ -39,6 +41,8 @@ export function CellInput({
   onFocus: (event: FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  required?: boolean;
 }) {
   const valueOnFocus = useRef(value);
 
@@ -48,6 +52,8 @@ export function CellInput({
       id={id}
       name={id}
       disabled={disabled}
+      placeholder={placeholder}
+      required={required}
       defaultValue={value}
       ref={inputRef}
       onBlur={(event) => {

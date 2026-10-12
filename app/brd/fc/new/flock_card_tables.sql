@@ -55,6 +55,7 @@ create table if not exists public.brd_fc_line (
   thin_pm numeric(18, 6) null,
   row_total numeric(18, 6) null,
   cum_total numeric(18, 6) null,
+  mortality_remarks text null,
   feed_kg numeric(18, 6) null,
   feed_bird numeric(18, 6) null,
   feed_guideline numeric(18, 6) null,
@@ -71,6 +72,7 @@ create table if not exists public.brd_fc_line (
   skin_b numeric(18, 6) null,
   skin_a numeric(18, 6) null,
   skin_l numeric(18, 6) null,
+  remarks text null,
   extra jsonb not null default '{}'::jsonb,
   is_locked boolean not null default false,
   reversed_at timestamp with time zone null,
@@ -170,7 +172,45 @@ alter table public.brd_fc_line
   add column if not exists is_locked boolean not null default false,
   add column if not exists reversed_at timestamp with time zone null,
   add column if not exists reversed_by uuid null,
-  add column if not exists reversal_reason text null;
+  add column if not exists reversal_reason text null,
+  add column if not exists mortality_remarks text null,
+  add column if not exists remarks text null;
+
+create or replace function public.validate_brd_fc_mortality_remarks()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if coalesce(new.mort_am, 0) + coalesce(new.mort_pm, 0) <> 0
+       and nullif(btrim(new.mortality_remarks), '') is null then
+      raise exception 'Mortality remarks are required when mortality is not zero.';
+    end if;
+  else
+    if (new.mort_am is distinct from old.mort_am
+        or new.mort_pm is distinct from old.mort_pm
+        or new.mortality_remarks is distinct from old.mortality_remarks)
+       and coalesce(new.mort_am, 0) + coalesce(new.mort_pm, 0) <> 0
+       and nullif(btrim(new.mortality_remarks), '') is null then
+      raise exception 'Mortality remarks are required when mortality is not zero.';
+    end if;
+
+    if coalesce(old.mort_am, 0) + coalesce(old.mort_pm, 0) <> 0
+       and coalesce(new.mort_am, 0) + coalesce(new.mort_pm, 0) = 0 then
+      new.mortality_remarks := null;
+    end if;
+  end if;
+
+  new.mortality_remarks := nullif(btrim(new.mortality_remarks), '');
+  new.remarks := nullif(btrim(new.remarks), '');
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_brd_fc_mortality_remarks_on_line on public.brd_fc_line;
+create trigger validate_brd_fc_mortality_remarks_on_line
+before insert or update on public.brd_fc_line
+for each row execute function public.validate_brd_fc_mortality_remarks();
 
 alter table public.brd_fc_ba
   add column if not exists reversed_at timestamp with time zone null,
@@ -1290,6 +1330,7 @@ begin
     thin_pm = null,
     row_total = null,
     cum_total = null,
+    mortality_remarks = null,
     extra = coalesce(line.extra, '{}'::jsonb) - 'mortalityBatchAllocations',
     updated_by = v_user,
     reversed_by = v_user,

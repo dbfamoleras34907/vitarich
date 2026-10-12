@@ -1,6 +1,6 @@
 export const rows = Array.from({ length: 46 }, (_, i) => ({ age: i }));
 
-export const dataColumnCount = 29;
+export const dataColumnCount = 30;
 export const ageColumnWidth = 50;
 export const dataColumnWidth = 80;
 export const feedBatchMinColumnWidth = 140;
@@ -8,10 +8,10 @@ export const feedBatchMaxColumnWidth = 260;
 export const feedTypeColumnWidth = 150;
 export const mortalityBatchMinColumnWidth = 140;
 export const mortalityBatchMaxColumnWidth = 260;
+export const remarksColumnWidth = 180;
 export const headerRowHeight = 28;
 const stripedRow = 5;
 const middleHeaderTop = headerRowHeight;
-const bottomHeaderTop = headerRowHeight * 2;
 export const trackingLabelLeft = ageColumnWidth + 16;
 export const mortalityBatchColumnIndex = 6;
 export const cumulativeTotalColumnIndex = 7;
@@ -23,6 +23,8 @@ export const waterGuidelineColumnIndex = 28;
 export const actualAdgColumnIndex = 24;
 export const standardAdgColumnIndex = 25;
 export const feedTypeColumnIndex = 26;
+export const remarksColumnIndex = 27;
+export const mortalityRemarksColumnIndex = 29;
 export const feedIntakeColumnIndexes = new Set([
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
@@ -35,8 +37,9 @@ export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i
 const hiddenColumnIndexes = new Set([1, 2, 3, 4, 5, 9, 16, 17, 18, 19, 20, 21, 22, 23]);
 export const visibleColumnIndexes = columnIndexes
   .filter((colIndex) => !hiddenColumnIndexes.has(colIndex) && colIndex !== waterGuidelineColumnIndex)
-  .filter((colIndex) => colIndex !== feedTypeColumnIndex)
+  .filter((colIndex) => colIndex !== feedTypeColumnIndex && colIndex !== mortalityRemarksColumnIndex)
   .flatMap((colIndex) => {
+    if (colIndex === cumulativeTotalColumnIndex) return [colIndex, mortalityRemarksColumnIndex];
     if (colIndex === feedDailyKgColumnIndex) return [colIndex, feedTypeColumnIndex];
     if (colIndex === 14) return [waterGuidelineColumnIndex, colIndex];
     return [colIndex];
@@ -66,6 +69,8 @@ export const editableColumnIndexes = new Set([
   22,
   23,
   actualAdgColumnIndex,
+  remarksColumnIndex,
+  mortalityRemarksColumnIndex,
 ]);
 
 export const editableColumns = [...editableColumnIndexes]
@@ -76,7 +81,7 @@ export const columnDisabledFlags = columnIndexes.map(
   (colIndex) => !editableColumnIndexes.has(colIndex)
 );
 
-const groupEndColumnIndexes = new Set([2, 4, 7, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, 27]);
+const groupEndColumnIndexes = new Set([2, 4, 7, mortalityRemarksColumnIndex, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, remarksColumnIndex]);
 const emphasizedColumnIndexes = new Set([2, 5, cumulativeTotalColumnIndex]);
 
 const stickyHeaderClass = "fc-grid-header sticky z-30";
@@ -84,9 +89,6 @@ const groupHeaderClass =
   `${stickyHeaderClass} fc-grid-header-group px-1 py-0 text-left font-semibold leading-none`;
 const subHeaderClass =
   `${stickyHeaderClass} px-1 py-0 text-center leading-none`;
-const leafHeaderClass =
-  `${stickyHeaderClass} px-1 py-0 text-center leading-none`;
-
 export const trackingLabelClass = "sticky z-40 inline-block";
 
 export type HeaderCellConfig = {
@@ -104,7 +106,9 @@ export function getZeroInputRow() {
     editableColumnIndexes.has(colIndex) &&
       colIndex !== feedBatchColumnIndex &&
       colIndex !== feedTypeColumnIndex &&
-      colIndex !== mortalityBatchColumnIndex
+      colIndex !== mortalityBatchColumnIndex &&
+      colIndex !== mortalityRemarksColumnIndex &&
+      colIndex !== remarksColumnIndex
       ? "0"
       : ""
   );
@@ -150,11 +154,12 @@ export const bodyEmphasisClasses = columnIndexes.map((colIndex) =>
 export const topHeaderCells: HeaderCellConfig[] = [
   { label: "Mortality", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Batch", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Mortality Remarks", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Feeds Consumption", colSpan: 4, groupEnd: true, className: groupHeaderClass },
   { label: "Water Intake", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Average Live Weight (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Average Daily Gain (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
-  { ariaLabel: "Spacer", colSpan: 1, groupEnd: true, className: groupHeaderClass },
+  { label: "Remarks", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
 ];
 
 export const middleHeaderCells: HeaderCellConfig[] = [
@@ -171,15 +176,6 @@ export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "Standard ALW", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { label: "Actual ADG", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Standard ADG", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
-  { ariaLabel: "Spacer", colSpan: 1, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
 ];
 
-export const bottomHeaderCells: HeaderCellConfig[] = [
-  {
-    ariaLabel: "Spacer",
-    colSpan: 1,
-    groupEnd: true,
-    top: bottomHeaderTop,
-    className: leafHeaderClass,
-  },
-];
+export const bottomHeaderCells: HeaderCellConfig[] = [];

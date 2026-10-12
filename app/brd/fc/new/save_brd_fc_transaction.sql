@@ -442,6 +442,7 @@ begin
           thin_pm = v_line.thin_pm,
           row_total = v_line.row_total,
           cum_total = v_line.cum_total,
+          mortality_remarks = v_line.mortality_remarks,
           feed_kg = v_line.feed_kg,
           feed_bird = v_line.feed_bird,
           feed_guideline = v_line.feed_guideline,
@@ -458,6 +459,7 @@ begin
           skin_b = v_line.skin_b,
           skin_a = v_line.skin_a,
           skin_l = v_line.skin_l,
+          remarks = v_line.remarks,
           extra = v_line.extra,
           is_locked = v_line.is_locked,
           updated_by = v_user
@@ -465,8 +467,8 @@ begin
         if not found then raise exception 'Growing line could not be updated.'; end if;
       else
         v_line := jsonb_populate_record(null::public.brd_fc_line, v_input->'insert');
-        insert into public.brd_fc_line (fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l, extra, is_locked, created_by, updated_by, void)
-        values (v_header.id, (v_input->>'age')::integer, v_line.mort_am, v_line.mort_pm, v_line.mort_total, v_line.thin_am, v_line.thin_pm, v_line.row_total, v_line.cum_total, v_line.feed_kg, v_line.feed_bird, v_line.feed_guideline, v_line.feed_batch_text, v_line.water_l, v_line.water_bird, v_line.body_wt, v_line.body_guideline, v_line.temp_min, v_line.temp_max, v_line.hum_min, v_line.hum_max, v_line.nh3_max, v_line.skin_b, v_line.skin_a, v_line.skin_l, v_line.extra, v_line.is_locked, v_user, v_user, '1')
+        insert into public.brd_fc_line (fc_id, age, mort_am, mort_pm, mort_total, thin_am, thin_pm, row_total, cum_total, mortality_remarks, feed_kg, feed_bird, feed_guideline, feed_batch_text, water_l, water_bird, body_wt, body_guideline, temp_min, temp_max, hum_min, hum_max, nh3_max, skin_b, skin_a, skin_l, remarks, extra, is_locked, created_by, updated_by, void)
+        values (v_header.id, (v_input->>'age')::integer, v_line.mort_am, v_line.mort_pm, v_line.mort_total, v_line.thin_am, v_line.thin_pm, v_line.row_total, v_line.cum_total, v_line.mortality_remarks, v_line.feed_kg, v_line.feed_bird, v_line.feed_guideline, v_line.feed_batch_text, v_line.water_l, v_line.water_bird, v_line.body_wt, v_line.body_guideline, v_line.temp_min, v_line.temp_max, v_line.hum_min, v_line.hum_max, v_line.nh3_max, v_line.skin_b, v_line.skin_a, v_line.skin_l, v_line.remarks, v_line.extra, v_line.is_locked, v_user, v_user, '1')
         returning * into v_saved_line;
       end if;
       v_feed := nullif(v_input->'feed', 'null'::jsonb);
