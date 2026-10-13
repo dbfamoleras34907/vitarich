@@ -77,6 +77,7 @@ export type GrowingUpdate = Partial<GrowingInsert>;
 export type GrowingPlacement = {
   id: number;
   placement_date: string;
+  age_anchor_date?: string | null;
   dr_no: string | null;
   farm_id?: number | null;
   farm_name: string | null;
@@ -108,6 +109,7 @@ const growingSelect = `
   placement:tbl_placement!fk_tbl_growing_placement(
     id,
     placement_date,
+    age_anchor_date,
     dr_no,
     farm_id,
     farm_name,
@@ -304,7 +306,7 @@ export async function listGrowingPlacements() {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, age_anchor_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .not("farm_name", "is", null)
     .not("building_no", "is", null)
@@ -326,7 +328,7 @@ export async function getGrowingPlacementById(id: number) {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, age_anchor_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .eq("id", id)
     .single();

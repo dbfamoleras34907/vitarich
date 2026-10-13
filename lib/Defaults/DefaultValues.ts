@@ -1187,11 +1187,11 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
-            id: 85,
+            id: 84,
             type: "Module",
-            title: "Data Transfer Workbench",
-            url: "/brd/dtw",
-            view: true,
+            title: "Upload Data",
+            url: "/jmb/brold",
+            view: false,
             insert: false,
             edit: false,
             approval: false,

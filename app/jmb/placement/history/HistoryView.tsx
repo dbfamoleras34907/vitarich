@@ -6,6 +6,7 @@ import { ArrowLeft, Egg, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import {
   listDailyPerformance,
   listFeedTypes,
@@ -146,7 +147,7 @@ function buildGrowingRows(
     (latest, row) =>
       Math.max(
         latest,
-        ageOn(placement.placement_date, normalizeDate(row.daterec)),
+        ageOn(breederAgeAnchorDate(placement), normalizeDate(row.daterec)),
       ),
     0,
   );
@@ -155,7 +156,7 @@ function buildGrowingRows(
   return Array.from(
     { length: Math.max(31, lastSavedDay) },
     (_, index): GrowingHistoryRow => {
-      const daterec = addDays(placement.placement_date, index);
+      const daterec = addDays(breederAgeAnchorDate(placement), index);
       const saved = savedByDate.get(daterec);
       const row: GrowingHistoryRow = {
         ...(saved ?? {
@@ -729,7 +730,7 @@ function GrowingGrid({
                   style={{ minWidth: 52 }}
                 >
                   <div className="flex h-8 items-center justify-center">
-                    {ageOn(placement?.placement_date, row.daterec)}
+                    {ageOn(placement ? breederAgeAnchorDate(placement) : undefined, row.daterec)}
                   </div>
                 </td>
                 {values.map((value, index) => (
@@ -895,8 +896,9 @@ function LayingGrid({
                     >
                       <div className="flex h-8 items-center justify-center">
                         {ageOn(
-                          placementById.get(number(row.placement_id))
-                            ?.placement_date,
+                          breederAgeAnchorDate(
+                            placementById.get(number(row.placement_id)) ?? {},
+                          ),
                           row.date_laying,
                         )}
                       </div>

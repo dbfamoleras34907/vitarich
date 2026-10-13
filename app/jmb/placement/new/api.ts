@@ -62,6 +62,7 @@ export type Placement = {
   updated_at: string | null;
   updated_by: string | null;
   placement_date: string;
+  age_anchor_date?: string | null;
   dr_no: string;
   file_attached: string | null;
   farm_id: number;

@@ -33,8 +33,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import type { Placement } from "../new/api";
+import {
+  listFarmLocationLookup,
+  type FarmLocationLookup,
+  type Placement,
+} from "../new/api";
 import WeightSamplesDialog from "./WeightSamplesDialog";
 import {
   getPlacement,
@@ -54,6 +59,7 @@ import BreederCardExportMenu, {
 } from "./BreederCardExportMenu";
 import {
   createBreederTransfer,
+  createBreederTransferToNewDestination,
   loadBreederTransfers,
   type TransferPlacement,
 } from "../transfer/api";
@@ -67,6 +73,7 @@ type TransferModalState = {
   transfer_date: string;
   destination_building_id: string;
   destination_placement_id: string;
+  destination_pen_id: string;
   male_qty: string;
   female_qty: string;
   reason: string;
@@ -286,10 +293,11 @@ function buildDailyRows(
   placement: Placement,
   savedRows: BreederDailyPerformance[] = [],
 ) {
+  const ageAnchorDate = breederAgeAnchorDate(placement);
   const savedByDate = new Map(savedRows.map((row) => [row.daterec, row]));
   const lastSavedDay = savedRows.reduce(
     (latest, row) =>
-      Math.max(latest, ageOn(placement.placement_date, row.daterec)),
+      Math.max(latest, ageOn(ageAnchorDate, row.daterec)),
     0,
   );
   const rowCount = Math.max(
@@ -297,7 +305,7 @@ function buildDailyRows(
     Math.ceil(lastSavedDay / PERIOD_DAYS) * PERIOD_DAYS,
   );
   const sourceRows = Array.from({ length: rowCount }, (_, age): EditableRow => {
-    const daterec = addDays(placement.placement_date, age);
+    const daterec = addDays(ageAnchorDate, age);
     const saved = savedByDate.get(daterec);
     return {
       ...(saved ?? {
@@ -431,6 +439,9 @@ export default function CardForm() {
   const [transferPlacements, setTransferPlacements] = useState<
     TransferPlacement[]
   >([]);
+  const [transferLocations, setTransferLocations] = useState<FarmLocationLookup[]>(
+    [],
+  );
   const [transferLoading, setTransferLoading] = useState(false);
   const [transferSaving, setTransferSaving] = useState(false);
   const gridRef = useRef<HTMLTableElement>(null);
@@ -563,7 +574,7 @@ export default function CardForm() {
       const targetRow = nextRows[targetRowIndex];
       if (!targetRow) return;
 
-      const rowAge = ageOn(placement.placement_date, targetRow.daterec);
+      const rowAge = ageOn(breederAgeAnchorDate(placement), targetRow.daterec);
       const pastedAge = String(pastedRow[0] ?? "").trim();
       const hasLeadingAgeCell =
         pastedRow.length > 1 &&
@@ -733,7 +744,7 @@ export default function CardForm() {
           restoredRows?.length ? restoredRows : dailyRows
         ).reduce(
           (latest, row) =>
-            Math.max(latest, ageOn(placementRow.placement_date, row.daterec)),
+            Math.max(latest, ageOn(breederAgeAnchorDate(placementRow), row.daterec)),
           0,
         );
         setPeriodIndex(Math.floor(Math.max(0, lastSavedDay - 1) / PERIOD_DAYS));
@@ -783,7 +794,7 @@ export default function CardForm() {
       const index = periodStartIndex + visibleIndex;
       return {
         age: formatAge(
-          placement ? ageOn(placement.placement_date, row.daterec) : 1,
+          placement ? ageOn(breederAgeAnchorDate(placement), row.daterec) : 1,
         ),
         date: row.daterec,
         values: [
@@ -885,7 +896,7 @@ export default function CardForm() {
       while (nextRows.length < requiredRowCount) {
         nextRows.push({
           placement_id: placement.id,
-          daterec: addDays(placement.placement_date, nextRows.length),
+          daterec: addDays(breederAgeAnchorDate(placement), nextRows.length),
           inv_male: 0,
           inv_female: 0,
           ...zeroFields,
@@ -1071,7 +1082,7 @@ export default function CardForm() {
           );
         }
         const targetIndex = periodStartIndex + index;
-        const expectedDate = addDays(placement.placement_date, targetIndex);
+        const expectedDate = addDays(breederAgeAnchorDate(placement), targetIndex);
         const daterec = normalizeImportedDate(excelRow[0]);
         if (daterec !== expectedDate)
           errors.push(
@@ -1321,6 +1332,7 @@ export default function CardForm() {
       transfer_date: row.daterec,
       destination_building_id: "",
       destination_placement_id: "",
+      destination_pen_id: "",
       male_qty: "",
       female_qty: "",
       reason: "",
@@ -1328,8 +1340,12 @@ export default function CardForm() {
     });
     setTransferLoading(true);
     try {
-      const result = await loadBreederTransfers();
+      const [result, locations] = await Promise.all([
+        loadBreederTransfers(),
+        listFarmLocationLookup(),
+      ]);
       setTransferPlacements(result.placements);
+      setTransferLocations(locations);
       if (!result.placements.some((item) => item.id === placement.id)) {
         toast.error(
           "This source placement does not have an active breeder cycle.",
@@ -1353,19 +1369,24 @@ export default function CardForm() {
     const destination = transferPlacements.find(
       (item) => String(item.id) === transferModal.destination_placement_id,
     );
+    const newDestination = transferLocations.find(
+      (item) =>
+        String(item.building_id) === transferModal.destination_building_id &&
+        String(item.pen_id) === transferModal.destination_pen_id,
+    );
     const maleQty = Number(transferModal.male_qty || 0);
     const femaleQty = Number(transferModal.female_qty || 0);
     if (!source) {
       toast.error("The source placement is not active for transfer.");
       return;
     }
-    if (!destination) {
+    if (!destination && !newDestination) {
       toast.error("Select a destination building and pen.");
       return;
     }
     if (
       transferModal.transfer_date < source.placement_date ||
-      transferModal.transfer_date < destination.placement_date
+      (destination && transferModal.transfer_date < destination.placement_date)
     ) {
       toast.error(
         "Transfer date cannot be earlier than either placement date.",
@@ -1395,18 +1416,31 @@ export default function CardForm() {
     }
     setTransferSaving(true);
     try {
-      await createBreederTransfer(
-        {
+      if (newDestination) {
+        await createBreederTransferToNewDestination({
           transfer_date: transferModal.transfer_date,
           source_placement_id: source.id,
-          destination_placement_id: destination.id,
+          destination_building_id: newDestination.building_id,
+          destination_pen_id: newDestination.pen_id,
           male_qty: maleQty,
           female_qty: femaleQty,
           reason: transferModal.reason.trim(),
           remarks: transferModal.remarks.trim() || null,
-        },
-        true,
-      );
+        });
+      } else if (destination) {
+        await createBreederTransfer(
+          {
+            transfer_date: transferModal.transfer_date,
+            source_placement_id: source.id,
+            destination_placement_id: destination.id,
+            male_qty: maleQty,
+            female_qty: femaleQty,
+            reason: transferModal.reason.trim(),
+            remarks: transferModal.remarks.trim() || null,
+          },
+          true,
+        );
+      }
       const refreshed = await listDailyPerformance(placement.id);
       setRows(buildDailyRows(placement, refreshed));
       setTransferModal(null);
@@ -1534,18 +1568,28 @@ export default function CardForm() {
   const transferDestinations = transferPlacements.filter(
     (item) => item.id !== placement.id && item.farm_id === placement.farm_id,
   );
-  const destinationBuildings = Array.from(
-    transferDestinations.reduce((buildings, item) => {
-      if (!buildings.has(item.building_id)) {
-        buildings.set(item.building_id, item);
-      }
-      return buildings;
-    }, new Map<number, TransferPlacement>()).values(),
-  ).sort((left, right) =>
-    left.building_no.localeCompare(right.building_no, undefined, {
-      numeric: true,
-    }),
+  const newDestinationLocations = transferLocations.filter(
+    (item) =>
+      item.farm_id === placement.farm_id &&
+      !(item.building_id === placement.building_id && item.pen_id === placement.pen_id),
   );
+  const destinationBuildings = Array.from(
+    [...transferDestinations, ...newDestinationLocations].reduce(
+      (buildings, item) => {
+        if (!buildings.has(item.building_id)) {
+          buildings.set(item.building_id, item.building_no);
+        }
+        return buildings;
+      },
+      new Map<number, string>(),
+    ),
+  )
+    .map(([building_id, building_no]) => ({ building_id, building_no }))
+    .sort((left, right) =>
+      left.building_no.localeCompare(right.building_no, undefined, {
+      numeric: true,
+      }),
+    );
   const selectedDestinationBuildingId = Number(
     transferModal?.destination_building_id,
   );
@@ -1561,6 +1605,19 @@ export default function CardForm() {
       .values(),
   ).sort((left, right) =>
     left.pen_no.localeCompare(right.pen_no, undefined, { numeric: true }),
+  );
+  const newDestinationPens = newDestinationLocations
+    .filter((item) => item.building_id === selectedDestinationBuildingId)
+    .filter(
+      (item) => !destinationPens.some((placement) => placement.pen_id === item.pen_id),
+    )
+    .sort((left, right) =>
+      left.pen_no.localeCompare(right.pen_no, undefined, { numeric: true }),
+    );
+  const selectedNewDestination = newDestinationLocations.find(
+    (item) =>
+      String(item.building_id) === transferModal?.destination_building_id &&
+      String(item.pen_id) === transferModal?.destination_pen_id,
   );
   const transferMinimumDate =
     [transferSource?.placement_date, transferDestination?.placement_date]
@@ -1579,7 +1636,7 @@ export default function CardForm() {
   ] ?? { male: 0, female: 0 };
   const canShowNextPeriod =
     periodEndIndex < rows.length ||
-    addDays(placement.placement_date, periodEndIndex) <= localDate();
+    addDays(breederAgeAnchorDate(placement), periodEndIndex) <= localDate();
   const savingStatus = saveProgress !== null ? (
     <span role="status" aria-live="polite" className="text-center text-xs tabular-nums text-muted-foreground">
       {saving ? "Saving" : "Saved"}: {saveProgress}%
@@ -1992,7 +2049,7 @@ export default function CardForm() {
                     >
                       <div className="flex h-8 items-center justify-center">
                         {formatAge(
-                          ageOn(placement.placement_date, row.daterec),
+                          ageOn(breederAgeAnchorDate(placement), row.daterec),
                         )}
                       </div>
                     </td>
@@ -2190,6 +2247,7 @@ export default function CardForm() {
                             ...current,
                             destination_building_id: event.target.value,
                             destination_placement_id: "",
+                            destination_pen_id: "",
                           }
                         : current,
                     )
@@ -2212,17 +2270,26 @@ export default function CardForm() {
               <label className="space-y-2">
                 <Label required>Destination pen</Label>
                 <select
-                  value={transferModal.destination_placement_id}
-                  onChange={(event) =>
+                  value={
+                    transferModal.destination_placement_id
+                      ? `placement:${transferModal.destination_placement_id}`
+                      : transferModal.destination_pen_id
+                        ? `new:${transferModal.destination_pen_id}`
+                        : ""
+                  }
+                  onChange={(event) => {
+                    const [kind, id] = event.target.value.split(":");
                     setTransferModal((current) =>
                       current
                         ? {
                             ...current,
-                            destination_placement_id: event.target.value,
+                            destination_placement_id:
+                              kind === "placement" ? id : "",
+                            destination_pen_id: kind === "new" ? id : "",
                           }
                         : current,
-                    )
-                  }
+                    );
+                  }}
                   disabled={
                     transferLoading || !transferModal.destination_building_id
                   }
@@ -2235,13 +2302,34 @@ export default function CardForm() {
                         ? "Select pen"
                         : "Select a building first"}
                   </option>
-                  {destinationPens.map((item) => (
-                    <option key={item.pen_id} value={item.id}>
-                      {item.pen_no}
-                    </option>
-                  ))}
+                  {destinationPens.length ? (
+                    <optgroup label="Active Population Records">
+                      {destinationPens.map((item) => (
+                        <option key={item.pen_id} value={`placement:${item.id}`}>
+                          {item.pen_no}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {newDestinationPens.length ? (
+                    <optgroup label="New destination placement">
+                      {newDestinationPens.map((item) => (
+                        <option key={item.pen_id} value={`new:${item.pen_id}`}>
+                          {item.pen_no} — New destination placement
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
               </label>
+              {selectedNewDestination ? (
+                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm sm:col-span-2">
+                  <div className="font-medium">New destination placement</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Posting creates the next available cycle for {selectedNewDestination.building_no} / {selectedNewDestination.pen_no}. The receiving placement begins on the transfer date while keeping the source flock age.
+                  </p>
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 gap-3 sm:col-span-2">
                 <div className="rounded-md border bg-muted/20 px-3 py-2">
                   <div className="text-xs text-muted-foreground">

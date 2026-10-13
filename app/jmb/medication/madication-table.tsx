@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   Table,
   TableBody,
@@ -44,6 +45,7 @@ export default function MedicationTable() {
   const [search, setSearch] = useState("");
   const [farmFilter, setFarmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("Posted");
+  const [page, setPage] = useState(1);
   const [cancelRecord, setCancelRecord] = useState<MedicationRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -95,6 +97,13 @@ export default function MedicationTable() {
         .some((value) => String(value ?? "").toLowerCase().includes(query));
     });
   }, [farmFilter, records, search, statusFilter]);
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [currentPage, filtered]);
 
   const postedCount = records.filter((row) => row.status === "Posted").length;
   const activeFarmCount = new Set(records.filter((row) => row.status === "Posted").map((row) => row.farm_id)).size;
@@ -147,9 +156,9 @@ export default function MedicationTable() {
         </div>
 
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
-          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search medication, indication, farm, building, or pen..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={setFarmFilter} placeholder="All farms" showCode className="w-full lg:w-72" />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>Posted</option><option>Cancelled</option><option>All</option></select>
+          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search medication, indication, farm, building, or pen..." className="pl-9" /></div>
+          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode className="w-full lg:w-72" />
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>Posted</option><option>Cancelled</option><option>All</option></select>
           <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
         </div>
 
@@ -159,9 +168,9 @@ export default function MedicationTable() {
           <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Medication</TableHead><TableHead>Dosage</TableHead><TableHead>Period</TableHead><TableHead>Route</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading ? <TableRow><TableCell colSpan={10} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow> : null}
-            {!loading && filtered.map((row, index) => (
+            {!loading && paginatedRecords.map((row, index) => (
               <TableRow key={row.id} className={row.status === "Cancelled" ? "opacity-60" : ""}>
-                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                 <TableCell className="whitespace-nowrap">{formatDate(row.medication_date)}</TableCell>
                 <TableCell className="font-mono text-xs">{row.document_no}</TableCell>
                 <TableCell><div className="font-medium">{row.farm_name}</div><div className="max-w-72 truncate text-xs text-muted-foreground" title={row.target_names ?? ""}>{row.scope}: {row.target_names || row.building_name || row.farm_name}</div></TableCell>
@@ -176,7 +185,7 @@ export default function MedicationTable() {
             {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
-        <div className="border-t px-4 py-3 text-sm text-muted-foreground">Showing {filtered.length} of {records.length} records</div>
+        <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="records" onPageChange={setPage} />
       </section>
 
       <Dialog open={Boolean(cancelRecord)} onOpenChange={(open) => { if (!open && !cancelling) setCancelRecord(null); }}>
