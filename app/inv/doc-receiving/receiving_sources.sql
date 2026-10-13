@@ -158,7 +158,15 @@ begin
     v_series.next_number:=v_series.next_number+1;
     exit when not exists(select 1 from public.item_batches where batch_number=v_batch and item_code=p_item_code);
   end loop;
-  update public.batch_number_series set next_number=v_series.next_number,updated_by=auth.uid(),updated_at=now() where id=v_series.id;
+  update public.batch_number_series series
+  set next_number=v_series.next_number,
+    created_by=case
+      when series.created_by is null or exists(select 1 from auth.users actor where actor.id=series.created_by) then series.created_by
+      else null
+    end,
+    updated_by=auth.uid(),
+    updated_at=now()
+  where series.id=v_series.id;
   insert into public.item_batches(item_id,item_code,batch_number,manufacturing_date,expiry_date,source_gr_id,status,created_by,batch_rule_id)
     values(v_item.id,p_item_code,v_batch,p_mfg,p_expiry,case when p_kind='broiler' then p_receipt_id else null end,'Active',auth.uid(),v_rule_id);
   insert into public.receiving_batch_assignments values(p_kind,p_receipt_id,p_source_key,p_item_code,v_batch);

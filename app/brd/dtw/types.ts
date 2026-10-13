@@ -30,6 +30,8 @@ export type BroilerDtwReferences = {
 
 export type BroilerDtwRow = Record<string, string | number | null>
 
+export const BROILER_DTW_SOURCE_ROW: unique symbol = Symbol('broilerDtwSourceRow')
+
 export type BroilerDtwWorkbookPayload = {
   mode: BroilerDtwMode
   fileName: string
@@ -44,7 +46,20 @@ export type BroilerDtwValidation = {
   payload: BroilerDtwWorkbookPayload
   errors: string[]
   warnings: string[]
+  modifications: string[]
 }
+
+export type BroilerDtwProgress = {
+  phase: 'reading' | 'processing' | 'finalizing' | 'reporting' | 'staging' | 'importing'
+  message: string
+  module?: string
+  worksheetRow?: number
+  processedRows?: number
+  totalRows?: number
+  percent?: number
+}
+
+export type BroilerDtwImportProgress = (progress: BroilerDtwProgress) => void
 
 export type BroilerDtwImportResult = {
   jobId: string
@@ -54,7 +69,12 @@ export type BroilerDtwImportResult = {
   growingCount: number
   harvestCount: number
   cleanupCount: number
+  voidedCount?: number
   warnings: string[]
+  error?: {
+    code?: string
+    message?: string
+  }
 }
 
 export type BroilerDtwImportJob = {
@@ -68,4 +88,24 @@ export type BroilerDtwImportJob = {
   harvestCount: number
   cleanupCount: number
   createdAt: string
+}
+
+export type BroilerDtwImportStage = 'DOC Placement' | 'Growing' | 'Harvest Delivery' | 'Clean Up'
+
+export type BroilerDtwImportedRow = {
+  id: number
+  stage: BroilerDtwImportStage
+  rowNo: number
+  farmId: number
+  buildingId: number
+  farmCycleId: number
+  entityId: number | null
+  rawData: Record<string, unknown>
+  warnings: string[]
+  createdAt: string
+}
+
+export type BroilerDtwImportedRowPage = {
+  rows: BroilerDtwImportedRow[]
+  total: number
 }

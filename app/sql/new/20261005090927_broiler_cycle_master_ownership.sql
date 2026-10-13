@@ -76,11 +76,6 @@ begin
   if new.status = 'Saved' and v_cycle.status not in ('Saved', 'Past Open') then
     raise exception 'The selected Cycle Master is not open.';
   end if;
-  if new.status = 'Saved' and exists (
-    select 1 from public.flock_card c where c.farm_id = new.farm_id
-      and c.building_whse_id = new.building_whse_id
-      and c.void = '1' and c.status = 'Saved' and c.id is distinct from new.id
-  ) then raise exception 'This building already has an active cycle. Use its existing flock card.'; end if;
   select exists(select 1 from public.doc_cycle_excluded_buildings e
     where e.farm_id = new.farm_id and e.building_whse_id = new.building_whse_id) into v_excluded;
   if v_assignment_changed then
@@ -105,11 +100,10 @@ before insert or update of farm_id, building_whse_id, cycle_no, farm_cycle_id, s
 on public.flock_card for each row execute function public.validate_doc_flock_cycle_assignment();
 revoke all on function public.validate_doc_flock_cycle_assignment() from public, anon, authenticated;
 
--- A unique index makes simultaneous inserts safe even when RLS hides other cards.
--- Deployment fails transactionally if existing overlapping active cards require review.
-create unique index if not exists flock_card_one_open_cycle_per_building_uidx
-on public.flock_card(farm_id, building_whse_id)
-where void = '1' and status = 'Saved';
+-- A building may participate in more than one open Cycle Master. Keep this
+-- drop here so reapplying the ownership migration also repairs databases
+-- where the superseded one-open-cycle rule was installed.
+drop index if exists public.flock_card_one_open_cycle_per_building_uidx;
 
 -- Owner-only, explicitly selected repair. Preview is the default. No row IDs are
 -- inferred from BD codes. Ambiguous/missing counts require operator review.
