@@ -67,6 +67,19 @@ function loadApi(rows) {
   return mod.exports
 }
 
+function loadPlacementWindow() {
+  const source = fs.readFileSync(path.join(root, 'lib/functions/docPlacementWindow.ts'), 'utf8')
+  const code = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText
+  const mod = { exports: {} }
+  new Function('require', 'module', 'exports', code)(require, mod, mod.exports)
+  return mod.exports
+}
+
 async function run() {
   const rows = [
     { flock_card_id: 10, receive_date: '2026-08-01', void: '1', goods_receipt: { status: 'Reversed' } },
@@ -79,6 +92,13 @@ async function run() {
   assert.deepEqual(await getFirstDocPlacementDates([10, 20, 30]), { 10: '2026-08-03' })
   assert.deepEqual(await getFirstDocPlacementDates([20]), {})
   assert.deepEqual(await getFirstDocPlacementDates([]), {})
+
+  const { isOutsideDocPlacementWindow } = loadPlacementWindow()
+  assert.equal(isOutsideDocPlacementWindow(6), false)
+  assert.equal(isOutsideDocPlacementWindow(7), true)
+  assert.equal(isOutsideDocPlacementWindow(-1), true)
+  assert.equal(isOutsideDocPlacementWindow(7, true), false)
+  assert.equal(isOutsideDocPlacementWindow(-1, true), false)
   console.log('DOC placement window tests passed')
 }
 

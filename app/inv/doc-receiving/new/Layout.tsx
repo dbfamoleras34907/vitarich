@@ -103,6 +103,10 @@ import { getFarmCycleMasterRows } from '@/lib/data/repositories/broilerFarmCycle
 import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
 import { allocationTotals, linkReceivingSource } from '@/lib/data/repositories/receivingSources'
 import { useTableCopyDown } from '@/hooks/useTableCopyDown'
+import {
+  DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET,
+  isOutsideDocPlacementWindow,
+} from '@/lib/functions/docPlacementWindow'
 
 const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'receive_date', name: 'Date Receive' },
@@ -340,12 +344,6 @@ const placementAge = (firstPlacementDate: string, receiveDate: string) => {
   if (start == null || placement == null) return Number.POSITIVE_INFINITY
   return placement - start
 }
-
-const DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET = 6
-
-const isOutsideDocPlacementWindow = (age: number) => (
-  age < 0 || age > DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET
-)
 
 const formatCalendarDate = (value: string) => {
   const [year, month, day] = value.slice(0, 10).split('-')
@@ -2086,7 +2084,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       .find((building, index) => building && isOutsideDocPlacementWindow(placementAge(
         getFirstPlacementDate(building.flockCardId, rowsWithReceivedChicks[index]?.receive_date || receipt.receiveDate),
         rowsWithReceivedChicks[index]?.receive_date || receipt.receiveDate,
-      )))
+      ), docReceivingSettings?.suppress_seven_day_placement_condition))
     if (posting && ageIssue) {
       return
     }
@@ -2222,7 +2220,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const receiveDate = row.receive_date || receipt.receiveDate
     const firstDate = getFirstPlacementDate(building.flockCardId, receiveDate)
     const day = placementAge(firstDate, receiveDate)
-    return isOutsideDocPlacementWindow(day)
+    return isOutsideDocPlacementWindow(day, docReceivingSettings?.suppress_seven_day_placement_condition)
       ? [`${building.warehouseCode}: Date Receive must be from ${firstDate} through ${addDaysToDate(firstDate, DOC_PLACEMENT_WINDOW_LAST_DAY_OFFSET)} (7 calendar dates including the first placement date).`]
       : []
   })[0] ?? ''
@@ -2460,7 +2458,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       const hasAgeIssue = Boolean(firstPlacementDate && isOutsideDocPlacementWindow(placementAge(
                         firstPlacementDate,
                         rowReceiveDate,
-                      )))
+                      ), docReceivingSettings?.suppress_seven_day_placement_condition))
                       const inputValue = getDocDetailValue(row, column.code)
 
                       return (
@@ -2660,7 +2658,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           const hasAgeIssue = Boolean(firstPlacementDate && isOutsideDocPlacementWindow(placementAge(
                             firstPlacementDate,
                             modalReceiveDate,
-                          )))
+                          ), docReceivingSettings?.suppress_seven_day_placement_condition))
 
                           return (
                             <div

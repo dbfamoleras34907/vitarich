@@ -10,6 +10,8 @@ import { usePermission } from '@/hooks/usePermission'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { getFarmBuildingsForFlockCard, type FarmBuildingListRow } from '@/app/brd/fc/api'
 import { ModuleSettingsHeader, SettingRow, SettingsCategory } from '@/components/settings/ModuleSettingsLayout'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   addDocReceivingSettings,
   DocItemOption,
@@ -26,18 +28,21 @@ type FormState = {
   goodDoc: string
   daoDoc: string
   rejectDoc: string
+  suppressSevenDayPlacementCondition: boolean
 }
 
 const emptyForm: FormState = {
   goodDoc: '',
   daoDoc: '',
   rejectDoc: '',
+  suppressSevenDayPlacementCondition: false,
 }
 
 const toForm = (settings: DocReceivingSettings | null): FormState => ({
   goodDoc: settings?.good_doc == null ? '' : String(settings.good_doc),
   daoDoc: settings?.bad_doc == null ? '' : String(settings.bad_doc),
   rejectDoc: settings?.reject_doc == null ? '' : String(settings.reject_doc),
+  suppressSevenDayPlacementCondition: Boolean(settings?.suppress_seven_day_placement_condition),
 })
 
 const toPayload = (form: FormState, farmId: number): DocReceivingSettings => ({
@@ -45,6 +50,7 @@ const toPayload = (form: FormState, farmId: number): DocReceivingSettings => ({
   good_doc: form.goodDoc ? Number(form.goodDoc) : null,
   bad_doc: form.daoDoc ? Number(form.daoDoc) : null,
   reject_doc: form.rejectDoc ? Number(form.rejectDoc) : null,
+  suppress_seven_day_placement_condition: form.suppressSevenDayPlacementCondition,
 })
 
 const optionLabel = (item: DocItemOption) =>
@@ -178,7 +184,7 @@ export default function DocReceivingSettingsLayout({
     void fetchData()
   }
 
-  const updateForm = (key: keyof FormState, value: string) => {
+  const updateForm = <Key extends keyof FormState>(key: Key, value: FormState[Key]) => {
     setForm(current => ({ ...current, [key]: value }))
   }
 
@@ -281,6 +287,25 @@ export default function DocReceivingSettingsLayout({
               />
             </SettingRow>
           ))}
+        </SettingsCategory>
+        <SettingsCategory title="Placement Controls" description="Configure farm-specific DOC placement validation behavior.">
+          <SettingRow
+            label="Suppress 7-day placement condition"
+            description="Allows DOC placements outside the seven-calendar-date window that starts on the building's first placement date."
+            settingKey="SUPPRESS_SEVEN_DAY_PLACEMENT_CONDITION"
+          >
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="suppress-seven-day-placement-condition"
+                checked={form.suppressSevenDayPlacementCondition}
+                disabled={!canSave}
+                onCheckedChange={checked => updateForm('suppressSevenDayPlacementCondition', checked === true)}
+              />
+              <Label htmlFor="suppress-seven-day-placement-condition">
+                {form.suppressSevenDayPlacementCondition ? 'Enabled' : 'Disabled'}
+              </Label>
+            </div>
+          </SettingRow>
         </SettingsCategory>
         <SettingsCategory title="Cycle Assignment" description="Every building belongs to Cycle Master. Normal buildings copy its Cycle Count; excluded buildings keep their own Cycle Count.">
           <SettingRow label="Excluded Cycle Buildings" description="Select active, empty buildings whose Cycle Count is entered separately. They still belong to the farm Cycle Master. A building with an active flock cannot be added or removed until posted Clean up is complete." settingKey="EXCLUDED_CYCLE_BUILDINGS">
