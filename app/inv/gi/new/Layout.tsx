@@ -66,6 +66,7 @@ import {
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
+import { getCleanupCycleInventoryBatches } from '@/lib/data/repositories/brCleanup'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -74,7 +75,7 @@ const QUANTITY_LOCALE = 'en-PH'
 const QUANTITY_FORMAT_OPTIONS: Intl.NumberFormatOptions = { maximumFractionDigits: 6 }
 
 type DeliveryPlacementBatch = GoodsIssueOnHandBatch & {
-  harvestEmptied?: boolean
+  cleanupZeroBalance?: boolean
   itemName?: string
 }
 
@@ -607,7 +608,7 @@ export default function NewGoodsIssue({
           farmId: Number(issue.farmId),
           farmCycleId: issue.farmCycleId,
           targetAge: Number(cleanupSettings?.target_cleanup_age ?? deliverySettings?.target_delivery_age ?? 0),
-          allowHarvestEmptied: triggeredBy === 'BR-CU',
+          cleanupCycleInventory: triggeredBy === 'BR-CU',
         })
         if (cancelled) return
 
@@ -941,6 +942,11 @@ export default function NewGoodsIssue({
         return updated
       })
 
+      const cleanupCycleBatches = isCleanup && issue.farmId && issue.farmCycleId
+        ? await getCleanupCycleInventoryBatches(Number(issue.farmId), Number(issue.farmCycleId))
+        : undefined
+      if (cancelled) return
+
       const placementResults = await Promise.all(
         infoResults.map(async result => {
           try {
@@ -951,7 +957,9 @@ export default function NewGoodsIssue({
                   buildingWarehouseId: result.info.buildingWarehouseId,
                   buildingCode: result.info.buildingCode,
                   cycleNumber: result.info.cycleNumber,
-                  allowHarvestEmptied: isCleanup,
+                  farmCycleId: result.info.farmCycleId,
+                  cleanupCycleInventory: isCleanup,
+                  cleanupCycleBatches,
                 })
               : []
             return { lookupKey: result.lookupKey, placementBatches }
@@ -1088,7 +1096,7 @@ export default function NewGoodsIssue({
     Boolean(line.itemCode.trim() || line.description.trim() || line.itemId)
 
   const canCleanupAtZero = (line: GoodsIssueLine) => isCleanup &&
-    Boolean(linePlacementBatches[String(line.id)]?.some(batch => batch.harvestEmptied &&
+    Boolean(linePlacementBatches[String(line.id)]?.some(batch => batch.cleanupZeroBalance &&
       batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber))
 
   const lineHasInvalidQuantity = (line: GoodsIssueLine) =>
@@ -1254,14 +1262,14 @@ export default function NewGoodsIssue({
     }
   }
 
-  const getRawBatchOptionsForLine = (line: GoodsIssueLine) => {
+  const getRawBatchOptionsForLine = (line: GoodsIssueLine): DeliveryPlacementBatch[] => {
     const placementBatches = linePlacementBatches[String(line.id)] ?? []
     if (usesLineWarehouse && placementBatches.length > 0) {
       const selectedItemCode = line.itemCode.trim().toUpperCase()
       const matchingBatches = selectedItemCode
         ? placementBatches.filter(batch => batch.itemCode.trim().toUpperCase() === selectedItemCode)
         : placementBatches
-      return matchingBatches.filter(batch => batch.onHandQty > 0 || (isCleanup && 'harvestEmptied' in batch && batch.harvestEmptied) || batch.batchNumber === line.batchNumber)
+      return matchingBatches.filter(batch => batch.onHandQty > 0 || batch.cleanupZeroBalance || batch.batchNumber === line.batchNumber)
     }
 
     return batchOptions[batchOptionKey(line)] ?? []
@@ -1324,7 +1332,7 @@ export default function NewGoodsIssue({
           onHandQty: remainingOnHandQty,
         }
       })
-      .filter(batch => batch.onHandQty > 0 || (isCleanup && 'harvestEmptied' in batch && batch.harvestEmptied) || batch.batchNumber === line.batchNumber)
+      .filter(batch => batch.onHandQty > 0 || batch.cleanupZeroBalance || batch.batchNumber === line.batchNumber)
 
   const lineHasPlacementBatchOptions = (line: GoodsIssueLine) =>
     usesLineWarehouse && (linePlacementBatches[String(line.id)]?.length ?? 0) > 0
@@ -1371,7 +1379,7 @@ export default function NewGoodsIssue({
     const availableAltQty = baseQtyPerAltQty > 0 ? Number(batch?.onHandQty || 0) / baseQtyPerAltQty : 0
     const defaultAllocationQty = line.batchNumber ? remainingAltQty : requiredAltQty
     const altQty = Math.min(requestedAllocationQty ?? defaultAllocationQty, remainingAltQty || requiredAltQty, availableAltQty)
-    const zeroCleanup = isCleanup && batch && 'harvestEmptied' in batch && batch.harvestEmptied && altQty === 0
+    const zeroCleanup = isCleanup && Boolean(batch?.cleanupZeroBalance) && altQty === 0
     if (altQty <= 0 && !zeroCleanup) {
       toast(remainingAltQty <= 0 ? `${lineQuantityLabel} is already fully allocated.` : 'This batch has no available quantity.')
       return
@@ -1575,10 +1583,8 @@ export default function NewGoodsIssue({
 
     const processedGroups = new Set<string>()
     issue.lines.forEach(line => {
-      // Reconcile drafts that selected an empty harvest batch before the requested
-      // quantity was reset, including a line selected while batches were loading.
       if (line.batchNumber && line.altQty === 0 && line.baseQty === 0 && line.requestedAltQty !== 0 &&
-        linePlacementBatches[String(line.id)]?.some(batch => batch.harvestEmptied &&
+        linePlacementBatches[String(line.id)]?.some(batch => batch.cleanupZeroBalance &&
           batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber)) {
         setIssue(current => current ? { ...current, lines: current.lines.map(candidate =>
           candidate.id === line.id ? { ...candidate, requestedAltQty: 0 } : candidate),
@@ -1592,7 +1598,7 @@ export default function NewGoodsIssue({
 
       const options = linePlacementBatches[String(line.id)]
         ?.filter(option => option.itemCode.trim().toUpperCase() === line.itemCode.trim().toUpperCase())
-        .filter(option => option.onHandQty > 0 || option.harvestEmptied) ?? []
+        .filter(option => option.onHandQty > 0 || option.cleanupZeroBalance) ?? []
       if (options.length === 0 || loadingLinePlacementBatches[String(line.id)]) return
 
       const selectedItem = getSelectedItem(line)
@@ -1603,7 +1609,7 @@ export default function NewGoodsIssue({
 
       const fullBaseQty = options.reduce((total, option) => total + Number(option.onHandQty || 0), 0)
       const requestedAltQty = fullBaseQty / baseQtyPerAltQty
-      if (requestedAltQty === 0 && options.every(option => option.harvestEmptied)) {
+      if (requestedAltQty === 0 && options.every(option => option.cleanupZeroBalance)) {
         const batch = options[0]
         setIssue(current => current ? { ...current, lines: current.lines.map(candidate =>
           candidate.id === line.id ? { ...candidate, batchNumber: batch.batchNumber,
@@ -2206,10 +2212,10 @@ export default function NewGoodsIssue({
                   <span className="truncate text-xs text-muted-foreground">
                     {noAvailableDeliveryBuildings
                       ? isCleanup
-                        ? 'No buildings are eligible for Clean Up. Buildings with stock must meet the cleanup age; zero-stock buildings qualify when a posted harvest emptied the active cycle.'
+                        ? 'No buildings in the selected cycle have a DOC Placement batch available for Clean Up.'
                         : 'No buildings meet the Delivery age and available-batch requirements.'
                       : isCleanup
-                        ? 'Eligible buildings load their full placement-batch balance. Zero quantity is allowed when a posted harvest emptied the cycle. Variance shows any remaining difference.'
+                        ? 'Eligible buildings load the DOC Placement batch balance for the selected cycle. A zero balance can still be posted to close the cycle.'
                         : 'Flock card information: eligible buildings load automatically, or select a building manually.'}
                   </span>
                 )}

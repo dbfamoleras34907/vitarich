@@ -38,7 +38,8 @@ rollback to dependencies;
 update brd_fc set updated_at=now()+interval '1 second' where id=1;
 select test_reverse_error((select id from br_cleanup where gi_no='CU-TEST-1'),'test','A subsequent transaction%');
 rollback to dependencies;
-insert into goods_receipt_doc values(1,1,'1',now()+interval '1 second',null);
+insert into goods_receipt_doc(flock_card_id,building_warehouse_id,void,created_at,updated_at)
+values(1,1,'1',now()+interval '1 second',null);
 select test_reverse_error((select id from br_cleanup where gi_no='CU-TEST-1'),'test','A subsequent transaction%');
 rollback to dependencies;
 insert into doc_farm_cycles values(1,1,1,'Closed',now(),null,null),(2,1,2,'Saved',null,null,null);

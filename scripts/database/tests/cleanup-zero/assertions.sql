@@ -1,4 +1,9 @@
 begin;
+select test_assert((select count(*) = 12 from get_cleanup_cycle_inventory_batches(1,100)), 'selected cycle returns its nonnegative DOC Placement batches');
+select test_assert((select count(*) = 0 from get_cleanup_cycle_inventory_batches(2,100)), 'farm parameter cannot cross cycles');
+update goods_receipt set status='Draft' where id=2;
+select test_assert(not exists(select 1 from get_cleanup_cycle_inventory_batches(1,100) where flock_card_id=2), 'unposted DOC Placement excluded');
+update goods_receipt set status='Posted' where id=2;
 -- Reported Building 1 shape: DOC Receiving wrote the consolidated ledger but
 -- the active flock card has no flock_card_origin rows. Include the rejection
 -- cases too, so absent origins cannot turn unqualified zero balances eligible.
@@ -11,20 +16,20 @@ insert into inventory_postings(source_doc_type,source_docentry,item_code,warehou
   values('BRD_FC_MORT_THIN_TRANSFER_OUT',1,'DOC','B1',3483,'DOC:F1:B1:1','OUT');
 insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
   values('BR_DELIVERY',1,'DOC','B1',68291,'DOC:F1:B1:1','OUT');
+select test_assert((select on_hand_qty = 0 from get_cleanup_cycle_inventory_batches(1,100) where flock_card_id=1), 'zero balance remains eligible without a Harvest check');
 select test_assert((select count(*) = 1 from get_harvest_emptied_cleanup_batches(1)), 'harvest-emptied cycle eligible');
 select save_br_cleanup_transaction(test_cleanup_document(1,0));
 select test_assert((select status = 'Closed' from flock_card where id = 1), 'zero cleanup closes cycle');
 select test_assert((select count(*) = 1 and min(qty) = 0 from inventory_postings where source_doc_type = 'BR_CLEANUP' and warehouse_code = 'B1'), 'zero cleanup records one zero-quantity inventory posting');
 select test_assert(not exists(select 1 from inventory_postings where source_doc_type = 'BR_CLEANUP_VARIANCE'), 'zero cleanup creates no variance');
 select test_assert((select farm_code = 'F1' from br_cleanup where gi_no = 'CU-TEST-1'), 'farm code resolved from canonical row');
-select save_br_cleanup_transaction(test_cleanup_document(1,0));
-select test_assert((select count(*) = 1 from notification_outbox), 'identical post retry produces one event');
-select test_assert((select count(*) = 1 from inventory_postings where source_doc_type = 'BR_CLEANUP' and warehouse_code = 'B1'), 'identical post retry does not duplicate zero inventory posting');
+select test_assert((select count(*) = 1 from notification_outbox), 'zero closeout emits one event');
 select process_notification_outbox();
 select test_assert((select bool_and(status = 'processed') from notification_outbox), 'no-rule dispatch succeeds');
 select test_assert(not exists(select 1 from user_notifications), 'no active rule produces no delivery');
 
--- Empty due to mortality, unposted harvest, wrong-farm harvest, or residual/negative balance.
+-- Any exact-cycle zero balance may close the building; positive residual and
+-- negative ledger balances remain ineligible for a zero line.
 insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
 values ('BRD_FC',2,'DOC','B2',100,'DOC:F1:B2:1','OUT'),
        ('BR_DELIVERY',3,'DOC','B3',100,'DOC:F1:B3:1','OUT'),
@@ -35,20 +40,23 @@ values ('BRD_FC',2,'DOC','B2',100,'DOC:F1:B2:1','OUT'),
        ('BRD_FC',7,'DOC','B7',1,'DOC:F1:B7:1','OUT');
 update br_delivery set status = 'Draft' where id = 3;
 update br_delivery set farm_id = 2 where id = 4;
-do $$begin
-  for n in 2..7 loop
-    perform test_assert(not exists(select 1 from get_harvest_emptied_cleanup_batches(n)), 'ineligible zero cleanup '||n);
+do $$declare n integer; begin
+  for n in select unnest(array[2,3,4,7]) loop
+    perform save_br_cleanup_transaction(test_cleanup_document(n,0));
+    perform test_assert((select status = 'Closed' from flock_card where id = n), 'zero cycle balance closes building '||n);
+  end loop;
+  for n in select unnest(array[5,6]) loop
     begin
       perform save_br_cleanup_transaction(test_cleanup_document(n,0));
       raise exception 'Unexpected successful zero cleanup %',n;
     exception when others then
-      if sqlerrm not like 'Zero-quantity Clean Up requires%' then raise; end if;
+      if sqlerrm not like 'Zero-quantity Clean Up requires a zero-balance DOC Placement batch%' then raise; end if;
     end;
     perform test_assert(not exists(select 1 from br_cleanup where gi_no = 'CU-TEST-'||n), 'failed post rolls back header');
     perform test_assert((select status = 'Saved' from flock_card where id = n), 'failed post keeps cycle active');
   end loop;
 end;$$;
-select test_assert((select count(*) = 1 from notification_outbox), 'failed operations emit nothing');
+select test_assert((select count(*) = 5 from notification_outbox), 'failed operations emit nothing');
 
 -- Harvest from before the current cycle and a forged line batch cannot qualify.
 insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
@@ -86,12 +94,11 @@ do $$begin
   perform test_assert((select line.base_qty = 90 from br_cleanup_lines line join br_cleanup header on header.id = line.br_cleanup_id where header.gi_no = 'CU-TEST-9' and line.void = '1'), 'failed edit preserves draft lines');
 end;$$;
 
--- Legacy, unconsolidated batches use the same harvest evidence.
-update inventory_postings set batch_number = 'ORIGIN10', source_doc_type = 'DOC_RECEIVING' where warehouse_code = 'B10';
+-- Placement Batch remains the authoritative cycle key.
 insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
-values ('BR_DELIVERY',10,'DOC','B10',100,'ORIGIN10','OUT');
-select test_assert((select batch_number = 'ORIGIN10' from get_harvest_emptied_cleanup_batches(10)), 'legacy batch eligible');
-select save_br_cleanup_transaction(jsonb_set(test_cleanup_document(10,0),'{lines,0,batchNumber}','"ORIGIN10"'));
+values ('BR_DELIVERY',10,'DOC','B10',100,'DOC:F1:B10:1','OUT');
+select test_assert((select on_hand_qty = 0 from get_cleanup_cycle_inventory_batches(1,100) where flock_card_id=10), 'placement batch zero balance eligible');
+select save_br_cleanup_transaction(test_cleanup_document(10,0));
 
 -- Harvest-emptied closeout is allowed without eligible mortality age.
 insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
@@ -117,13 +124,13 @@ insert into notification_rules(module_key,event_key,name,require_view_permission
 values('BR_CLEANUP','BR_CLEANUP_POSTED','Cleanup test',true);
 select process_notification_outbox();
 select test_assert(not exists(select 1 from notification_outbox where status = 'failed'), 'shared dispatcher completes');
-select test_assert((select count(*) = 3 from user_notifications), 'only matching posted events delivered');
+select test_assert((select count(*) = 7 from user_notifications), 'only matching posted events delivered');
 update notification_outbox set status = 'pending';
 select process_notification_outbox();
-select test_assert((select count(*) = 4 from user_notifications), 'reprocessing adds formerly unmatched first post only');
+select test_assert((select count(*) = 8 from user_notifications), 'reprocessing adds formerly unmatched first post only');
 update notification_outbox set status = 'pending';
 select process_notification_outbox();
-select test_assert((select count(*) = 4 from user_notifications), 'recipient retries deduplicate');
+select test_assert((select count(*) = 8 from user_notifications), 'recipient retries deduplicate');
 update notification_outbox set farm_id = null, recipient_farm_id = null, status = 'pending' where document_no = 'CU-TEST-1';
 select process_notification_outbox();
 select test_assert((select status = 'invalid' from notification_outbox where document_no = 'CU-TEST-1'), 'missing required farm invalid, never global');

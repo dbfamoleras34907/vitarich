@@ -5,6 +5,9 @@ function cleanupDatabaseError(error: { code?: string; message?: string; details?
   if (error.code === 'PGRST202') {
     return new Error('Clean Up needs a database update before it can load or save. Ask your administrator to install the Clean Up update, then retry.')
   }
+  if (error.code === '57014') {
+    return new Error('Clean Up inventory lookup timed out. Apply the cycle-scoped Clean Up database update, then retry.')
+  }
   return new Error([error.message, error.details, error.hint].filter(Boolean).join(' ') || 'Unable to access Clean Up data.')
 }
 
@@ -12,6 +15,17 @@ export type BrCleanupDraftIdentity = {
   id: number
   status: string
   createdBy: string | null
+}
+
+export type CleanupCycleInventoryBatch = {
+  flock_card_id: number
+  building_warehouse_id: number
+  building_code: string
+  item_code: string
+  item_name: string
+  batch_number: string
+  warehouse_code: string
+  on_hand_qty: number
 }
 
 export async function getBrCleanupIdentityByDocumentNo(
@@ -36,17 +50,13 @@ export async function getBrCleanupIdentityByDocumentNo(
   }
 }
 
-export async function getHarvestEmptiedCleanupBatches(flockCardId: number) {
-  const { data, error } = await db.rpc('get_harvest_emptied_cleanup_batches', {
-    p_flock_card_id: flockCardId,
+export async function getCleanupCycleInventoryBatches(farmId: number, farmCycleId: number) {
+  const { data, error } = await db.rpc('get_cleanup_cycle_inventory_batches', {
+    p_farm_id: farmId,
+    p_farm_cycle_id: farmCycleId,
   })
   if (error) throw cleanupDatabaseError(error)
-  return (data ?? []) as {
-    item_code: string
-    item_name: string
-    batch_number: string
-    warehouse_code: string
-  }[]
+  return (data ?? []) as CleanupCycleInventoryBatch[]
 }
 
 export async function saveBroilerCleanup(issue: GoodsIssue) {
