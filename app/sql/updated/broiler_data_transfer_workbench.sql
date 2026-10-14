@@ -458,6 +458,11 @@ begin
   -- This transaction-local flag is consumed only by the shared Flock Card
   -- posting functions. Normal workflows remain strict about on-hand stock.
   perform set_config('app.broiler_dtw_allow_negative_inventory','on',true);
+  -- DTW owns and validates the imported Farm + Building + Placement Batch
+  -- context before writing the flock card. Let this transaction create the
+  -- historical card even when the building has another open cycle; ordinary
+  -- Flock Card and DOC Placement transactions remain protected.
+  perform set_config('app.broiler_dtw_force_cycle_insert','on',true);
   if v_legacy then
     perform set_config('app.broiler_dtw_suppress_notifications','on',true);
     perform set_config('app.broiler_dtw_legacy_allow_mort_thin_imbalance','on',true);
@@ -1268,6 +1273,37 @@ set local lock_timeout = '15s';
 -- Keep negative DOC stock permission scoped to a DTW import transaction. DTW
 -- feed and harvest write their own audited postings; only the shared mortality
 -- trigger needs compatibility patching. Ordinary Flock Card calls stay strict.
+-- Older deployments may still have the superseded one-open-cycle index and a
+-- cycle-assignment trigger that rejects every second open cycle. The index is
+-- no longer part of the Broiler lifecycle contract, while the trigger bypass
+-- below is deliberately limited to an authenticated DTW transaction inserting
+-- a row stamped as BROILER_DTW.
+drop index if exists public.flock_card_one_open_cycle_per_building_uidx;
+
+do $patch_dtw_cycle_assignment$
+declare
+  v_proc regprocedure;
+  v_definition text;
+begin
+  v_proc:=to_regprocedure('public.validate_doc_flock_cycle_assignment()');
+  if v_proc is not null then
+    select pg_get_functiondef(v_proc) into v_definition;
+    if position('broiler_dtw_force_cycle_insert' in v_definition)=0 then
+      v_definition:=regexp_replace(
+        v_definition,
+        '([[:space:]]begin[[:space:]])',
+        E'\\1  if current_setting(''app.broiler_dtw_force_cycle_insert'', true) = ''on''\n    and auth.uid() is not null\n    and current_user not in (''anon'', ''authenticated'')\n    and coalesce(new.extra->>''createdFrom'', '''') = ''BROILER_DTW'' then return new; end if;\n',
+        'i'
+      );
+      if position('broiler_dtw_force_cycle_insert' in v_definition)=0 then
+        raise exception 'DTW cycle override could not patch public.validate_doc_flock_cycle_assignment() because its function shape is unsupported.';
+      end if;
+      execute v_definition;
+    end if;
+  end if;
+end;
+$patch_dtw_cycle_assignment$;
+
 do $patch_dtw_negative_inventory$
 declare
   v_proc regprocedure;
