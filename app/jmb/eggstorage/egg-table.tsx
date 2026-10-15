@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { ClipboardCopy, Copy, FileSearch, MoreHorizontal, Pencil, Plus, RefreshCw, View } from "lucide-react";
+import { ClipboardCopy, Copy, FileSearch, MoreHorizontal, Pencil, Plus, RefreshCw } from "lucide-react";
 
 import {
   EggStorageMngt,
@@ -12,7 +12,6 @@ import {
 } from "./new/api";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 
@@ -26,6 +25,7 @@ import {
   attachFarmFilterFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function fmtDuration(sec: number | null) {
   if (sec == null) return "";
@@ -48,10 +48,11 @@ export default function EggTable() {
   const canEdit = usePermission('/jmb/eggstorage/edit')
 
 
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
   const defaultFarmFilters = useMemo(
-    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
-    [getValue],
+    () => buildDefaultFarmInitialFilters(parameters.farmId),
+    [parameters.farmId],
   );
 
   const tableColumns: ColumnConfig[] = useMemo(
@@ -120,7 +121,7 @@ export default function EggTable() {
     [],
   );
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -128,7 +129,7 @@ export default function EggTable() {
 
       const mapped =
         Array.isArray(data)
-          ? data.map((item: EggStorageMngt, index: number) => ({
+          ? data.filter(item => isWithinHatcheryDateRange(item.created_at, parameters.dateFrom, parameters.dateTo)).map((item: EggStorageMngt, index: number) => ({
             id: item.id,
             "#": index + 1,
             classi_ref_no: item.classi_ref_no || "-",
@@ -153,20 +154,20 @@ export default function EggTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     router.prefetch("/jmb/eggstorage/new");
     fetchItems();
-  }, []);
+  }, [fetchItems, router]);
 
   useEffect(() => {
     setValue("loading_g", loading);
-  }, [loading]);
+  }, [loading, setValue]);
 
 
 
@@ -242,6 +243,7 @@ export default function EggTable() {
           {/* <Button onClick={() => test console.log({ items })}>items</Button> */}
         </div>
       </div>
+      <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
       <div className="mt-4">
         <DynamicTable
           key={JSON.stringify(defaultFarmFilters)}

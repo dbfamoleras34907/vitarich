@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { addDays, format } from 'date-fns'
 import { Copy, Eye, MoreHorizontal, Plus, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
 import {
   DropdownMenu,
@@ -42,6 +45,7 @@ type GoodsIssueHistoryConfig = {
   noResultsMessage: string
   useDefaultFarm: boolean
   showFarmFilter: boolean
+  showDateFilter: boolean
   showDeliveryReceipt: boolean
   showDuplicateAction: boolean
   receiptLabel: string
@@ -61,6 +65,7 @@ const defaultConfig: GoodsIssueHistoryConfig = {
   noResultsMessage: 'No matching item stock out transactions found',
   useDefaultFarm: false,
   showFarmFilter: false,
+  showDateFilter: false,
   showDeliveryReceipt: false,
   showDuplicateAction: false,
   receiptLabel: 'Delivery Receipt',
@@ -129,12 +134,14 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const cannotInsert = usePermission(`${config.permissionPath}/insert`)
   const conVoid = usePermission(`${config.permissionPath}/void`)
   const defaultFarmId = config.useDefaultFarm
-    ? normalizeFarmId(getValue('DefaultFarmId'))
+    ? normalizeFarmId(
+        getValue('DefaultFarmId')
+        ?? getValue('UserInfoAuthSession')?.[0]?.default_farm,
+      )
     : null
-  const [selectedFarmId, setSelectedFarmId] = useState('')
-  const activeFarmId = config.showFarmFilter
-    ? selectedFarmId || defaultFarmId
-    : defaultFarmId
+  const activeFarmId = defaultFarmId
+  const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
+  const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [issues, setIssues] = useState<GoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
@@ -143,11 +150,13 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setIssues(await getGoodsIssues(
-        100,
-        config.triggeredBy,
-        activeFarmId,
-      ))
+      setIssues(await getGoodsIssues({
+        limit: 100,
+        triggeredBy: config.triggeredBy,
+        farmIdentifier: activeFarmId,
+        dateFrom: config.showDateFilter ? dateFrom : undefined,
+        dateTo: config.showDateFilter ? dateTo : undefined,
+      }))
     } catch (error) {
       const message = getErrorMessage(error)
       // This is handled by the toast. Using console.error here makes Next.js show
@@ -157,7 +166,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     } finally {
       setLoading(false)
     }
-  }, [activeFarmId, config.triggeredBy])
+  }, [activeFarmId, config.showDateFilter, config.triggeredBy, dateFrom, dateTo])
 
   useEffect(() => {
     router.prefetch(`${config.basePath}/new`)
@@ -326,14 +335,41 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       </PageHeader>
 
       <div className="space-y-3">
-        {config.showFarmFilter && (
-          <div className="w-full sm:max-w-sm">
-            <UserFarmSearchCombobox
-              label="Farm"
-              farmType="BR"
-              value={activeFarmId}
-              onValueChange={setSelectedFarmId}
-            />
+        {(config.showFarmFilter || config.showDateFilter) && (
+          <div className="grid gap-2 rounded-md border bg-muted/30 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+            {config.showFarmFilter && (
+              <UserFarmSearchCombobox
+                label="Farm"
+                farmType="BR"
+                value={activeFarmId}
+              />
+            )}
+
+            {config.showDateFilter && (
+              <div className="space-y-2">
+                <Label htmlFor={`${config.triggeredBy}-date-from`}>From Date</Label>
+                <Input
+                  id={`${config.triggeredBy}-date-from`}
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={event => setDateFrom(event.target.value)}
+                />
+              </div>
+            )}
+
+            {config.showDateFilter && (
+              <div className="space-y-2">
+                <Label htmlFor={`${config.triggeredBy}-date-to`}>To Date</Label>
+                <Input
+                  id={`${config.triggeredBy}-date-to`}
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={event => setDateTo(event.target.value)}
+                />
+              </div>
+            )}
           </div>
         )}
 

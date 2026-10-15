@@ -14,6 +14,12 @@ type Permission = {
   is_visible: boolean
 }
 
+const landingFolderOrder = new Map([
+  ['Breeder', 0],
+  ['Hatchery', 1],
+  ['Broiler', 2],
+])
+
 function parsePermissions(value: unknown): Permission[] | null {
   if (Array.isArray(value)) return value as Permission[]
   if (typeof value !== 'string') return null
@@ -33,14 +39,14 @@ export default function ModuleWorkspace() {
 
   if (!profile || permissions === null) {
     return (
-      <main className="mx-auto w-full max-w-[1500px] px-2 py-6 sm:px-4 lg:px-6">
-        <div className="animate-pulse space-y-6" role="status" aria-label="Loading modules">
+      <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-4">
+        <div className="animate-pulse space-y-4" role="status" aria-label="Loading modules">
           <div className="space-y-2">
             <div className="h-7 w-48 rounded bg-muted" />
             <div className="h-4 w-80 max-w-full rounded bg-muted" />
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[0, 1, 2].map(item => <div key={item} className="h-52 rounded-xl border bg-muted/35" />)}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map(item => <div key={item} className="h-44 rounded-lg border bg-muted/35" />)}
           </div>
         </div>
       </main>
@@ -63,6 +69,10 @@ export default function ModuleWorkspace() {
         .filter(group => group.children.length > 0),
     }))
     .filter(folder => folder.items.length > 0)
+    .sort((left, right) =>
+      (landingFolderOrder.get(left.title) ?? Number.MAX_SAFE_INTEGER) -
+      (landingFolderOrder.get(right.title) ?? Number.MAX_SAFE_INTEGER),
+    )
 
   const fmsType = String(profile.fms_type ?? '').trim()
   const moduleCount = folders.reduce(
@@ -71,13 +81,13 @@ export default function ModuleWorkspace() {
   )
 
   return (
-    <main className="mx-auto w-full max-w-[1500px] px-2 py-6 sm:px-4 lg:px-6">
-      <header className="mb-6 flex flex-col gap-2 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-4">
+      <header className="mb-3 flex flex-col gap-1.5 border-b pb-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
             {fmsType ? `${fmsType} FMS` : 'Vita FMS'}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Your workspace</h1>
+          <h1 className="mt-0.5 text-xl font-semibold tracking-tight">Your workspace</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Open any module assigned to your account.
           </p>
@@ -96,13 +106,13 @@ export default function ModuleWorkspace() {
           </p>
         </div>
       ) : (
-        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="[column-gap:0.75rem] [column-width:19rem]">
           {folders.map(folder => {
             const FolderIcon = folder.icon
             return (
-              <section key={folder.id} className="overflow-hidden rounded-xl border bg-card shadow-sm">
-                <div className="flex items-center gap-3 border-b bg-muted/30 px-4 py-3">
-                  <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <section key={folder.id} className="mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-lg border bg-card shadow-sm">
+                <div className="flex items-center gap-2.5 border-b bg-muted/30 px-3 py-2.5">
+                  <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
                     <FolderIcon className="size-[18px]" aria-hidden="true" />
                   </span>
                   <div>
@@ -113,11 +123,11 @@ export default function ModuleWorkspace() {
                   </div>
                 </div>
 
-                <div className="space-y-5 p-3">
+                <div className="space-y-3 p-2">
                   {folder.items.map(group => (
                     <div key={`${folder.id}-${group.group}`}>
                       {folder.items.length > 1 && (
-                        <h3 className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        <h3 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                           {group.group}
                         </h3>
                       )}
@@ -129,7 +139,7 @@ export default function ModuleWorkspace() {
                               key={`${folder.id}-${group.group}-${child.id}`}
                               href={child.url}
                               onClick={() => setValue('loading_s', true)}
-                              className="group flex min-h-11 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="group flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               <ModuleIcon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
                               <span className="min-w-0 leading-5">{child.title}</span>

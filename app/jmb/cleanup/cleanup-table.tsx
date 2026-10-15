@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
+import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   deleteBreederCleanup,
   listBreederCleanups,
@@ -44,19 +43,13 @@ function formatDate(value?: string | null) {
 
 export default function CleanupTable() {
   const router = useRouter();
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useBreederListParameters();
   const [records, setRecords] = useState<BreederCleanupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-<<<<<<< Updated upstream
-  const [farmFilter, setFarmFilter] = useState("");
-=======
-  const [farmFilter, setFarmFilter] = useState(() => String(getValue("DefaultFarmId") ?? ""));
-  useSyncDefaultFarm(farmFilter);
-  const [page, setPage] = useState(1);
->>>>>>> Stashed changes
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -83,28 +76,15 @@ export default function CleanupTable() {
     [loading, setValue, working],
   );
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, BreederCleanupRecord>();
-    records.forEach((record) => unique.set(record.farm_id, record));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((record) => ({
-        code: String(record.farm_id),
-        name: record.farm_code
-          ? `${record.farm_code} - ${record.farm_name}`
-          : record.farm_name,
-      })),
-    ];
-  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
       if (
-        farmFilter &&
-        farmFilter !== "__all__" &&
-        String(record.farm_id) !== farmFilter
+        parameters.farmId &&
+        String(record.farm_id) !== parameters.farmId
       )
         return false;
+      if (!isWithinDateRange(record.date_of_culling ?? record.created_at, parameters.dateFrom, parameters.dateTo)) return false;
       return (
         !query ||
         [
@@ -126,7 +106,7 @@ export default function CleanupTable() {
         )
       );
     });
-  }, [farmFilter, records, search]);
+  }, [parameters.dateFrom, parameters.dateTo, parameters.farmId, records, search]);
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -200,7 +180,7 @@ export default function CleanupTable() {
             <Stat label="Male cleaned up" value={maleTotal} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-3 border-b p-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -213,26 +193,17 @@ export default function CleanupTable() {
               className="pl-9"
             />
           </div>
-          <SearchableCombobox
-            label="Farm"
-            items={farms}
-            value={farmFilter}
-            onValueChange={(value) => {
-              setFarmFilter(value);
-              setPage(1);
-            }}
-            placeholder="All farms"
-            showCode
-            className="w-full lg:w-72"
-          />
-          <Button
-            variant="outline"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <BreederListParameters {...parameters} />
+            <Button
+              variant="outline"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
         {error ? (
           <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

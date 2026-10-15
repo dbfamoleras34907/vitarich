@@ -105,7 +105,11 @@ async function requestDocDispatchWrite<T>(
   return json as T;
 }
 
-export async function listDispatchDocs() {
+export type DispatchDocListRow = Partial<DispatchDoc> & {
+  hatchery_farm_id: number | null;
+};
+
+export async function listDispatchDocs(): Promise<DispatchDocListRow[]> {
   const { data, error } = await db
     .from("dispatch_doc")
     .select(
@@ -115,7 +119,41 @@ export async function listDispatchDocs() {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as Partial<DispatchDoc>[];
+  const headers = (data ?? []) as Partial<DispatchDoc>[];
+  const documentIds = headers.flatMap((row) => Number.isInteger(Number(row.id)) ? [Number(row.id)] : []);
+  if (!documentIds.length) return [];
+
+  const { data: itemRows, error: itemError } = await db
+    .from("dispatch_doc_item")
+    .select("dispatch_doc_id, doc_batch_code")
+    .in("dispatch_doc_id", documentIds);
+  if (itemError) throw itemError;
+
+  const batchCodes = Array.from(new Set(
+    (itemRows ?? []).map((row) => String(row.doc_batch_code ?? "").trim()).filter(Boolean),
+  ));
+  const { data: gradingRows, error: gradingError } = batchCodes.length
+    ? await db.from("chick_grading_process").select("batch_code, farm_id").in("batch_code", batchCodes)
+    : { data: [], error: null };
+  if (gradingError) throw gradingError;
+
+  const farmIdByBatch = new Map(
+    (gradingRows ?? []).map((row) => [String(row.batch_code ?? "").trim(), Number(row.farm_id) || null]),
+  );
+  const farmIdsByDocument = new Map<number, Set<number>>();
+  for (const row of itemRows ?? []) {
+    const farmId = farmIdByBatch.get(String(row.doc_batch_code ?? "").trim());
+    if (!farmId) continue;
+    const documentId = Number(row.dispatch_doc_id);
+    const farmIds = farmIdsByDocument.get(documentId) ?? new Set<number>();
+    farmIds.add(farmId);
+    farmIdsByDocument.set(documentId, farmIds);
+  }
+
+  return headers.map((row) => {
+    const farmIds = farmIdsByDocument.get(Number(row.id)) ?? new Set<number>();
+    return { ...row, hatchery_farm_id: farmIds.size === 1 ? [...farmIds][0] : null };
+  });
 }
 
 export async function getDispatchDocById(id: number) {

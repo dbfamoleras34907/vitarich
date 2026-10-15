@@ -1403,7 +1403,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
                 {canPostDocument && (
                   <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Posting...' : 'Save Document'}
                   </Button>
                 )}
               </div>

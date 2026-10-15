@@ -229,7 +229,6 @@ const SheetClasses = {
 export default function GrowingForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getValue } = useGlobalContext();
   const idParam = searchParams.get("id");
   const placementIdParam = searchParams.get("placementId");
   const isEdit = Boolean(idParam);
@@ -239,7 +238,6 @@ export default function GrowingForm() {
   const [placements, setPlacements] = useState<GrowingPlacement[]>([]);
   const [growingRows, setGrowingRows] = useState<GrowingPenRow[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState("");
-  useSyncDefaultFarm(selectedFarmId);
   const [selectedBuildingNo, setSelectedBuildingNo] = useState("");
   const [selectedPlacement, setSelectedPlacement] =
     useState<GrowingPlacement | null>(null);
@@ -335,17 +333,6 @@ export default function GrowingForm() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (isEdit || selectedFarmId || !placements.length) return;
-    const defaultFarmReference = getValue("DefaultFarmId")
-      ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
-    const defaultPlacement = placements.find((placement) =>
-      getFarmKey(placement) === String(defaultFarmReference ?? "")
-      || placement.farm_name?.trim() === String(defaultFarmReference ?? "").trim(),
-    );
-    if (defaultPlacement) setSelectedFarmId(getFarmKey(defaultPlacement));
-  }, [getValue, isEdit, placements, selectedFarmId]);
 
   useEffect(() => {
     (async () => {

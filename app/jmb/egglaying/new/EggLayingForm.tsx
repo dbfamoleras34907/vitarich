@@ -17,11 +17,7 @@ import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { usePermission } from "@/hooks/usePermission";
 import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
-<<<<<<< Updated upstream
-=======
-import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
->>>>>>> Stashed changes
 import {
   createEggLaying,
   createEggLayingBatch,

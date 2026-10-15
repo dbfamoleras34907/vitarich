@@ -58,10 +58,10 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import {
   FARM_FILTER_KEY,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && value !== "";
@@ -76,10 +76,7 @@ function buildDefaultFarmColumnFilter(defaultFarmId: unknown): ColumnFiltersStat
 function withDefaultFarmColumnFilter(
   filters: ColumnFiltersState,
   defaultFarmId: unknown,
-  farmFilterTouched: boolean,
 ): ColumnFiltersState {
-  if (farmFilterTouched) return filters;
-
   if (!hasValue(defaultFarmId)) {
     return filters.filter((filter) => filter.id !== FARM_FILTER_KEY);
   }
@@ -127,12 +124,12 @@ export default function ChickgradingTable() {
 
   const [items, setItems] = useState<DocClassificationRow[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const { getValue, setValue } = useGlobalContext();
-  const defaultFarmId = getValue("DefaultFarmId");
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
+  const defaultFarmId = parameters.farmId;
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() =>
     buildDefaultFarmColumnFilter(defaultFarmId),
   );
-  const [farmFilterTouched, setFarmFilterTouched] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
     [FARM_FILTER_KEY]: false,
   });
@@ -146,9 +143,8 @@ export default function ChickgradingTable() {
       withDefaultFarmColumnFilter(
         columnFilters,
         defaultFarmId,
-        farmFilterTouched,
       ),
-    [columnFilters, defaultFarmId, farmFilterTouched],
+    [columnFilters, defaultFarmId],
   );
 
   const canView = usePermission(
@@ -172,7 +168,7 @@ export default function ChickgradingTable() {
 
       const mapped =
         Array.isArray(data)
-          ? data.map(
+          ? data.filter(item => isWithinHatcheryDateRange(item.grading_datetime, parameters.dateFrom, parameters.dateTo)).map(
             (
               item: ChickGradingProcess,
             ) => ({
@@ -232,7 +228,7 @@ export default function ChickgradingTable() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -458,6 +454,8 @@ export default function ChickgradingTable() {
         </Button>
       </div>
 
+      <HatcheryListParameters {...parameters} />
+
       <ClassificationTableSection
         table={table}
         title="Doc Classification"
@@ -478,40 +476,9 @@ export default function ChickgradingTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (table
-                    .getColumn(FARM_FILTER_KEY)
-                    ?.getFilterValue() as string) ?? ""
-                }
-                onValueChange={(farmName) => {
-                  table
-                    .getColumn(FARM_FILTER_KEY)
-                    ?.setFilterValue(farmName || undefined);
-
-                  setFarmFilterTouched(true);
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                table.getColumn(FARM_FILTER_KEY)?.setFilterValue(undefined);
-                setFarmFilterTouched(true);
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />
     </div>
   );
 }
-// 

@@ -271,7 +271,7 @@ export default function SearchableCombobox(props: Props) {
         <ComboboxChips
           ref={anchor}
           className={cn(
-            "min-h-10 border-[#b8b2aa] bg-white px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
+            "border-[#b8b2aa] bg-white px-3 py-2 shadow-none hover:border-ring dark:border-input dark:bg-input/30",
             props.multiple && "items-start",
             className
           )}
@@ -382,7 +382,7 @@ export default function SearchableCombobox(props: Props) {
               {/* <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /> */}
               <Input
                 ref={searchRef}
-                className="h-9 w-full border-stone-300 pl-8 shadow-none"
+                className=" w-full border-stone-300 pl-8 shadow-none"
                 placeholder="Search..."
                 value={search}
                 onChange={(event) => {

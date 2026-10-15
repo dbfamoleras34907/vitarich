@@ -6,11 +6,8 @@ import { ArrowLeft, Egg, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-<<<<<<< Updated upstream
-=======
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
->>>>>>> Stashed changes
 import {
   listDailyPerformance,
   listFeedTypes,

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, CalendarDays, Loader2, MapPin, Pencil, Pill, Plus, RefreshCw, Search } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
+import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { cancelMedication, listMedications, type MedicationRecord } from "./new/api";
 
 function formatDate(value?: string | null) {
@@ -39,13 +38,12 @@ function formatDate(value?: string | null) {
 
 export default function MedicationTable() {
   const router = useRouter();
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useBreederListParameters();
   const [records, setRecords] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [farmFilter, setFarmFilter] = useState(() => String(getValue("DefaultFarmId") ?? ""));
-  useSyncDefaultFarm(farmFilter);
   const [statusFilter, setStatusFilter] = useState("Posted");
   const [page, setPage] = useState(1);
   const [cancelRecord, setCancelRecord] = useState<MedicationRecord | null>(null);
@@ -77,28 +75,17 @@ export default function MedicationTable() {
 
   useEffect(() => setValue("loading_g", loading || cancelling), [loading, cancelling, setValue]);
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, MedicationRecord>();
-    records.forEach((row) => unique.set(row.farm_id, row));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((row) => ({
-        code: String(row.farm_id),
-        name: row.farm_code ? `${row.farm_code} - ${row.farm_name}` : row.farm_name,
-      })),
-    ];
-  }, [records]);
-
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((row) => {
-      if (farmFilter && farmFilter !== "__all__" && String(row.farm_id) !== farmFilter) return false;
+      if (parameters.farmId && String(row.farm_id) !== parameters.farmId) return false;
+      if (!isWithinDateRange(row.medication_date, parameters.dateFrom, parameters.dateTo)) return false;
       if (statusFilter !== "All" && row.status !== statusFilter) return false;
       if (!query) return true;
       return [row.document_no, row.farm_name, row.building_name, row.target_names, row.medication_brand, row.medication_type, row.indication, row.route]
         .some((value) => String(value ?? "").toLowerCase().includes(query));
     });
-  }, [farmFilter, records, search, statusFilter]);
+  }, [parameters.dateFrom, parameters.dateTo, parameters.farmId, records, search, statusFilter]);
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -157,11 +144,14 @@ export default function MedicationTable() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-3 border-b p-4">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search medication, indication, farm, building, or pen..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode className="w-full lg:w-72" />
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>Posted</option><option>Cancelled</option><option>All</option></select>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <BreederListParameters {...parameters}>
+              <div className="space-y-2 lg:w-40"><Label>Status</Label><select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>Posted</option><option>Cancelled</option><option>All</option></select></div>
+            </BreederListParameters>
+            <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          </div>
         </div>
 
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}

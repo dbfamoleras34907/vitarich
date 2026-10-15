@@ -33,11 +33,11 @@ import {
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import {
   listAssignedUserFarmOptions,
   type AssignedFarmOption,
 } from "@/lib/data/repositories/farmOptions.client";
+import HatcheryListParameters, { useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && value !== "";
@@ -55,12 +55,9 @@ function withAssignedDefaultFarmFilter(
   filters: ColumnFiltersState,
   columnId: string,
   defaultFarmId: unknown,
-  farmFilterTouched: boolean,
   assignedFarms: AssignedFarmOption[],
 ): ColumnFiltersState {
   const otherFilters = filters.filter((filter) => filter.id !== columnId);
-  if (farmFilterTouched) return filters;
-
   const defaultValue = String(defaultFarmId ?? "");
   const preferredFarmId = assignedFarms.find(
     (farm) => String(farm.id) === defaultValue || farm.code === defaultValue,
@@ -87,8 +84,9 @@ function loadErrorMessage(error: unknown, label: string) {
 export default function HatchTable() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
-  const defaultFarmId = getValue("DefaultFarmId");
   const sessionUserId = getValue("UserInfoAuthSession")?.[0]?.id ?? null;
+  const parameters = useHatcheryListParameters();
+  const defaultFarmId = parameters.farmId;
   const [items, setItems] = useState<HatchClassificationListRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
   const [assignedFarms, setAssignedFarms] = useState<AssignedFarmOption[]>([]);
@@ -97,8 +95,6 @@ export default function HatchTable() {
     useState<ColumnFiltersState>(() =>
       buildDefaultFarmFilter("farm_id", defaultFarmId),
     );
-  const [classifiedFarmFilterTouched, setClassifiedFarmFilterTouched] =
-    useState(false);
   const [classifiedColumnVisibility, setClassifiedColumnVisibility] =
     useState<VisibilityState>({ farm_id: false });
   const [classifiedRowSelection, setClassifiedRowSelection] =
@@ -108,8 +104,6 @@ export default function HatchTable() {
     useState<ColumnFiltersState>(() =>
       buildDefaultFarmFilter("farm_id", defaultFarmId),
     );
-  const [pendingFarmFilterTouched, setPendingFarmFilterTouched] =
-    useState(false);
   const [pendingColumnVisibility, setPendingColumnVisibility] =
     useState<VisibilityState>({ farm_id: false });
   const [pendingRowSelection, setPendingRowSelection] =
@@ -133,10 +127,9 @@ export default function HatchTable() {
         pendingColumnFilters,
         "farm_id",
         defaultFarmId,
-        pendingFarmFilterTouched,
         assignedFarms,
       ),
-    [assignedFarms, defaultFarmId, pendingColumnFilters, pendingFarmFilterTouched],
+    [assignedFarms, defaultFarmId, pendingColumnFilters],
   );
 
   const pendingFarmIdsForQuery = useMemo(() => {
@@ -156,10 +149,9 @@ export default function HatchTable() {
         classifiedColumnFilters,
         "farm_id",
         defaultFarmId,
-        classifiedFarmFilterTouched,
         assignedFarms,
       ),
-    [assignedFarms, classifiedColumnFilters, classifiedFarmFilterTouched, defaultFarmId],
+    [assignedFarms, classifiedColumnFilters, defaultFarmId],
   );
 
   const classifiedFarmIdsForQuery = useMemo(() => {
@@ -187,6 +179,8 @@ export default function HatchTable() {
       const data = await listHatchClassification({
         farmIds: classifiedFarmIdsForQuery,
         limit: 50,
+        dateFrom: parameters.dateFrom,
+        dateTo: parameters.dateTo,
       });
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -196,13 +190,13 @@ export default function HatchTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [assignedFarmsLoading, classifiedFarmIdsForQuery]);
+  }, [assignedFarmsLoading, classifiedFarmIdsForQuery, parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     let cancelled = false;
     setAssignedFarmsLoading(true);
 
-    void listAssignedUserFarmOptions()
+    void listAssignedUserFarmOptions(["HA", "Hatchery"])
       .then((farms) => {
         if (cancelled) return;
         setAssignedFarms(farms);
@@ -243,6 +237,8 @@ export default function HatchTable() {
       const data = await getReceivingList({
         farmIds: pendingFarmIdsForQuery,
         limit: 50,
+        dateFrom: parameters.dateFrom,
+        dateTo: parameters.dateTo,
       });
       setItemsForClass(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -252,7 +248,7 @@ export default function HatchTable() {
     } finally {
       setIsLoadingforClass(false);
     }
-  }, [assignedFarmsLoading, pendingFarmIdsForQuery]);
+  }, [assignedFarmsLoading, parameters.dateFrom, parameters.dateTo, pendingFarmIdsForQuery]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -527,6 +523,8 @@ export default function HatchTable() {
         {/* <Button onClick={() => console.log({ items })}>check items</Button> */}
       </div>
 
+      <HatcheryListParameters {...parameters} />
+
       <ClassificationTableSection
         table={tableForClass}
         title="Pending Classification"
@@ -551,35 +549,6 @@ export default function HatchTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (tableForClass
-                    .getColumn("farm_id")
-                    ?.getFilterValue() as string) ?? ""
-                }
-                onValueChange={(farmId) => {
-                  tableForClass
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setPendingFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                tableForClass.getColumn("farm_id")?.setFilterValue(undefined)
-                setPendingFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />
@@ -603,34 +572,6 @@ export default function HatchTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (table.getColumn("farm_id")?.getFilterValue() as string) ??
-                  ""
-                }
-                onValueChange={(farmId) => {
-                  table
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setClassifiedFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                table.getColumn("farm_id")?.setFilterValue(undefined)
-                setClassifiedFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />

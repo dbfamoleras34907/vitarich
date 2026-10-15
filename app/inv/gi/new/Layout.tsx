@@ -28,7 +28,7 @@ import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
 import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
-import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
+import { resolveFarmId, useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
@@ -509,8 +509,10 @@ export default function NewGoodsIssue({
             : { ...emptyIssue(giNo), triggeredBy }
 
         if (!savedIssue && useDefaultFarm) {
-          const defaultFarmId = getValue('DefaultFarmId')
-          const defaultFarm = references.farms.find(farm => String(farm.id) === String(defaultFarmId))
+          const defaultFarmReference = getValue('DefaultFarmId')
+            ?? getValue('UserInfoAuthSession')?.[0]?.default_farm
+          const defaultFarmId = resolveFarmId(references.farms, defaultFarmReference)
+          const defaultFarm = references.farms.find(farm => farm.id === defaultFarmId)
           const farmToAutoSelect = defaultFarm ?? null
 
           if (farmToAutoSelect) {
@@ -2983,7 +2985,7 @@ export default function NewGoodsIssue({
                   {canPostDocument && (
                     <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
                       <Save className="size-4" />
-                      {saving ? 'Posting...' : 'Post Document'}
+                      {saving ? 'Posting...' : 'Save Document'}
                     </Button>
                   )}
                 </div>

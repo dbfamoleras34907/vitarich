@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SearchableCombobox from "@/components/SearchableCombobox";
-import { Check, Search } from "lucide-react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { listBroilerFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { useDefaultFarmSelection } from "@/lib/farms/useDefaultFarmSelection";
 
 export type UserFarm = {
@@ -21,6 +21,7 @@ type UserFarmSearchComboboxProps = {
   required?: boolean;
   value?: string | number | null;
   onValueChange?: (farmId: string, farm?: UserFarm) => void;
+  onFarmResolved?: (farm: UserFarm) => void;
   className?: string;
   farmType?: "BR" | "BE" | "HA";
   display?: "combobox" | "buttons";
@@ -48,6 +49,12 @@ const FARM_TYPE_LABELS = {
   HA: "HATCHERY",
 } as const;
 
+const FARM_TYPE_QUERY_VALUES = {
+  BR: ["BR", "Broiler"],
+  BE: ["BE", "Breeder"],
+  HA: ["HA", "Hatchery"],
+} as const;
+
 function matchesFarmType(farm: UserFarm, farmType?: keyof typeof FARM_TYPE_LABELS) {
   if (!farmType) return true;
   const value = String(farm.farm_type ?? "").trim().toUpperCase();
@@ -59,6 +66,7 @@ export default function UserFarmSearchCombobox({
   required,
   value,
   onValueChange,
+  onFarmResolved,
   className = "w-full",
   farmType,
   display = "combobox",
@@ -68,22 +76,24 @@ export default function UserFarmSearchCombobox({
   const session = getValue("UserInfoAuthSession");
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
-  const [broilerFarms, setBroilerFarms] = useState<UserFarm[] | null>(null);
+  const [typedFarms, setTypedFarms] = useState<UserFarm[] | null>(null);
   const [buttonSearch, setButtonSearch] = useState("");
 
   useEffect(() => {
-    if (farmType !== "BR") return;
+    if (!farmType) {
+      return;
+    }
 
     let cancelled = false;
-    listBroilerFarmOptions()
+    listAssignedUserFarmOptions([...FARM_TYPE_QUERY_VALUES[farmType]])
       .then((farms) => {
         if (!cancelled) {
-          setBroilerFarms(farms.map((farm) => ({ ...farm, farm_type: "BR" })));
+          setTypedFarms(farms);
         }
       })
       .catch((error) => {
-        console.error("Unable to load Broiler farms:", error);
-        if (!cancelled) setBroilerFarms([]);
+        console.error(`Unable to load ${FARM_TYPE_LABELS[farmType]} farms:`, error);
+        if (!cancelled) setTypedFarms([]);
       });
 
     return () => {
@@ -91,15 +101,14 @@ export default function UserFarmSearchCombobox({
     };
   }, [farmType]);
 
-  const farmSource = farmType === "BR" && broilerFarms ? broilerFarms : rawFarmDB;
-
   const allowedFarms = useMemo(
-    () =>
-      getAllowedUserFarms(
-        (farmSource || []) as UserFarm[],
-        (rawUserFarms || []) as unknown[]
-      ),
-    [farmSource, rawUserFarms]
+    () => farmType && typedFarms !== null
+      ? typedFarms
+      : getAllowedUserFarms(
+          (rawFarmDB || []) as UserFarm[],
+          (rawUserFarms || []) as unknown[]
+        ),
+    [farmType, rawFarmDB, rawUserFarms, typedFarms]
   );
 
   const filteredFarms = useMemo(
@@ -125,13 +134,21 @@ export default function UserFarmSearchCombobox({
     ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
+    if (selectedFarm) onFarmResolved?.(selectedFarm);
+  }, [onFarmResolved, selectedFarm]);
+
+  useEffect(() => {
+    if (selectedFarm && reference !== String(selectedFarm.id)) {
+      onValueChange?.(String(selectedFarm.id), selectedFarm);
+      return;
+    }
     if (reference || defaultFarmReference == null) return;
     const defaultFarm = filteredFarms.find((farm) =>
       String(farm.id) === String(defaultFarmReference)
       || farm.code === String(defaultFarmReference),
     );
     if (defaultFarm) onValueChange?.(String(defaultFarm.id), defaultFarm);
-  }, [defaultFarmReference, filteredFarms, onValueChange, reference]);
+  }, [defaultFarmReference, filteredFarms, onValueChange, reference, selectedFarm]);
 
   const visibleButtonFarms = useMemo(() => {
     const query = buttonSearch.trim().toLocaleLowerCase();

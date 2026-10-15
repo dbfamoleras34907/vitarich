@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -21,7 +21,7 @@ import {
 
 import {
   listDispatchDocs,
-  softDeleteDispatchDoc,
+  type DispatchDocListRow,
 } from "./newv2/api";
 
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
@@ -51,6 +51,7 @@ import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { buildDefaultFarmInitialFilters, FARM_FILTER_KEY } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 type Row = {
   id: number;
@@ -85,23 +86,12 @@ export default function DocdispatchTable() {
   const [loading, setLoading] =
     useState(false);
 
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
   const defaultFarmFilters = useMemo(
-    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
-    [getValue],
+    () => buildDefaultFarmInitialFilters(parameters.farmId),
+    [parameters.farmId],
   );
-  const farmNameById = useMemo(() => {
-    const farms = (getValue("getFarmDB") || []) as Array<{
-      id?: string | number;
-      name?: string | null;
-    }>;
-
-    return new Map(
-      farms
-        .filter((farm) => farm.id !== undefined && farm.name)
-        .map((farm) => [String(farm.id), String(farm.name)]),
-    );
-  }, [getValue]);
 
   const canView = usePermission(
     "/jmb/docdispatchv2/view",
@@ -115,7 +105,7 @@ export default function DocdispatchTable() {
     "/jmb/docdispatchv2/edit",
   );
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
 
     try {
@@ -123,9 +113,9 @@ export default function DocdispatchTable() {
 
       const mapped =
         Array.isArray(rows)
-          ? rows.map(
+          ? rows.filter(item => isWithinHatcheryDateRange(item.doc_date, parameters.dateFrom, parameters.dateTo)).map(
             (
-              item: Partial<Row>,
+              item: DispatchDocListRow,
               index: number,
             ) => ({
               id: item.id ?? 0,
@@ -137,10 +127,7 @@ export default function DocdispatchTable() {
               dr_no: item.dr_no || "-",
 
               farm_name: item.farm_name || "-",
-              [FARM_FILTER_KEY]:
-                Array.from(farmNameById.entries()).find(
-                  ([, name]) => name === item.farm_name,
-                )?.[0] ?? "",
+              [FARM_FILTER_KEY]: String(item.hatchery_farm_id ?? ""),
 
               hauler_name:
                 item.hauler_name || "-",
@@ -172,11 +159,11 @@ export default function DocdispatchTable() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     router.prefetch(
@@ -184,29 +171,11 @@ export default function DocdispatchTable() {
     );
 
     load();
-  }, []);
+  }, [load, router]);
 
   useEffect(() => {
     setValue("loading_g", loading);
-  }, [loading]);
-
-  async function onDelete(id: number) {
-    const ok = confirm(
-      "Set this record as inactive?",
-    );
-
-    if (!ok) return;
-
-    try {
-      await softDeleteDispatchDoc(id);
-
-      await load();
-    } catch (e) {
-      console.error(e);
-
-      alert("Failed to delete.");
-    }
-  }
+  }, [loading, setValue]);
 
   const tableColumns: ColumnConfig[] =
     useMemo(
@@ -413,6 +382,8 @@ export default function DocdispatchTable() {
           New Dispatch Doc
         </Button>
       </div>
+
+      <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
 
       <div className="mt-4">
         <DynamicTable

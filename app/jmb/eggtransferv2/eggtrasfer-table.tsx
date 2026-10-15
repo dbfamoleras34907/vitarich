@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ import {
   attachFarmFilterFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function formatDateTime(v?: string | null) {
   if (!v) return "-";
@@ -72,10 +73,11 @@ export default function EggTransferTable() {
 
   const router = useRouter();
 
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
   const defaultFarmFilters = useMemo(
-    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
-    [getValue],
+    () => buildDefaultFarmInitialFilters(parameters.farmId),
+    [parameters.farmId],
   );
 
   const canView = usePermission("/jmb/eggtransferv2/view");
@@ -164,7 +166,7 @@ export default function EggTransferTable() {
     [],
   );
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
 
     try {
@@ -185,7 +187,7 @@ export default function EggTransferTable() {
       } else {
         const mapped =
           Array.isArray(data)
-            ? data.map(
+            ? data.filter(item => isWithinHatcheryDateRange(item.trans_date_start ?? item.created_at, parameters.dateFrom, parameters.dateTo)).map(
                 (
                   item: EggTransferProcess,
                   index: number,
@@ -226,11 +228,11 @@ export default function EggTransferTable() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     (async () => {
@@ -238,11 +240,11 @@ export default function EggTransferTable() {
 
       await load();
     })();
-  }, [router]);
+  }, [load, router]);
 
   useEffect(() => {
     setValue("loading_g", loading);
-  }, [loading]);
+  }, [loading, setValue]);
 
   const getRowActions = (
     row: RowDataKey,
@@ -331,6 +333,8 @@ export default function EggTransferTable() {
           New Egg Transfer
         </Button>
       </div>
+
+      <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
 
       <div className="mt-4">
         <DynamicTable

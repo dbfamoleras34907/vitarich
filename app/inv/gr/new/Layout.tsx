@@ -1950,7 +1950,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 {canPostDocument && (
                   <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Posting...' : 'Save Document'}
                   </Button>
                 )}
               </PageActionBar>

@@ -3,15 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Egg, Hash, Loader2, Search, UsersRound } from "lucide-react";
-import SearchableCombobox from "@/components/SearchableCombobox";
+import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
-  getUserInfo,
   listBreederFarms,
   listFarmLocationLookup,
   type BreederFarm,
@@ -104,10 +102,10 @@ function groupPlacementsByFarmBuilding(rows: LayingPlacement[]) {
 export default function EggLayingTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
+  const parameters = useBreederListParameters();
   const [items, setItems] = useState<LayingPlacement[]>([]);
   const [farms, setFarms] = useState<BreederFarm[]>([]);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -119,16 +117,12 @@ export default function EggLayingTable() {
       listLayingPlacements(),
       listBreederFarms(),
       listFarmLocationLookup(),
-      getUserInfo().catch(() => []),
     ])
-      .then(([placementRows, farmRows, locationRows, defaultFarmRows]) => {
+      .then(([placementRows, farmRows, locationRows]) => {
         if (cancelled) return;
         setItems(placementRows);
         setFarms(farmRows);
         setLocations(locationRows);
-        const defaultFarmId = defaultFarmRows[0]?.id;
-        const defaultBreederFarm = farmRows.find((farm) => Number(farm.id) === Number(defaultFarmId));
-        if (defaultBreederFarm) setSelectedFarmId(String(defaultBreederFarm.id));
       })
       .catch((loadError) => {
         console.error("Unable to load egg laying buildings.", loadError);
@@ -141,16 +135,13 @@ export default function EggLayingTable() {
 
   useEffect(() => { setValue("loading_g", loading); }, [loading, setValue]);
 
-  const effectiveFarmId = selectedFarmId;
-  useSyncDefaultFarm(effectiveFarmId);
+  const effectiveFarmId = parameters.farmId;
   const selectedFarm = farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
-  const farmOptions = useMemo(() => farms.map((farm) => ({
-    code: String(farm.id),
-    name: farm.code ? `${farm.code} - ${farm.name}` : farm.name,
-  })), [farms]);
   const groupedItems = useMemo(() => groupPlacementsByFarmBuilding(items).filter(
-    (item) => String(item.farm_id) === effectiveFarmId,
-  ), [effectiveFarmId, items]);
+    (item) =>
+      String(item.farm_id) === effectiveFarmId &&
+      isWithinDateRange(item.placement_date, parameters.dateFrom, parameters.dateTo),
+  ), [effectiveFarmId, items, parameters.dateFrom, parameters.dateTo]);
   const farmBuildingCount = useMemo(() => new Set(locations
     .filter((location) => String(location.farm_id) === effectiveFarmId)
     .map((location) => location.building_id)).size, [effectiveFarmId, locations]);
@@ -173,18 +164,8 @@ export default function EggLayingTable() {
 
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              <label className="text-sm font-semibold">Breeder Farm</label>
-              <SearchableCombobox
-                items={farmOptions}
-                value={effectiveFarmId}
-                onValueChange={setSelectedFarmId}
-                placeholder="Select breeder farm..."
-                showCode
-                className="w-full min-w-[280px] lg:w-[420px]"
-              />
-            </div>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <BreederListParameters {...parameters} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <SummaryCard icon={<Building2 className="size-3.5" />} label="Buildings" value={loading ? "..." : formatNumber(farmBuildingCount)} />
               <SummaryCard icon={<Hash className="size-3.5" />} label="Occupied" value={loading ? "..." : formatNumber(groupedItems.length)} />

@@ -456,11 +456,21 @@ export async function getGoodsIssueOnHandShortages(
   )
 }
 
-export async function getGoodsIssues(
+type GetGoodsIssuesOptions = {
+  limit?: number
+  triggeredBy?: string
+  farmIdentifier?: number | string | null
+  dateFrom?: string
+  dateTo?: string
+}
+
+export async function getGoodsIssues({
   limit = 50,
   triggeredBy = 'GI',
-  farmIdentifier?: number | string | null,
-): Promise<GoodsIssue[]> {
+  farmIdentifier,
+  dateFrom,
+  dateTo,
+}: GetGoodsIssuesOptions = {}): Promise<GoodsIssue[]> {
   const tables = getIssueTables(triggeredBy)
   let query = db
     .from(tables.header)
@@ -480,6 +490,9 @@ export async function getGoodsIssues(
       ? query.eq('farm_id', farmValue)
       : query.eq('farm_code', farmValue)
   }
+
+  if (dateFrom) query = query.gte('issue_date', dateFrom)
+  if (dateTo) query = query.lte('issue_date', dateTo)
 
   const { data: issueRows, error: issueError } = await query
 
