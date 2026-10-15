@@ -1,4 +1,5 @@
 import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
@@ -8,6 +9,7 @@ const HEADER_TABLE = "tbl_brd_dispatch";
 const LINE_TABLE = "tbl_brd_dispatch_line";
 const REGISTER_VIEW = "brd_dispatch_register";
 const HATCHERY_FARM_VIEW = "view_brd_hatchery_farm_lookup";
+const FARM_LOCATION_LOOKUP_VIEW = "view_farm_new_lookup";
 
 export type DispatchStatus = "Draft" | "Posted" | "Cancelled";
 export type DispatchSourceType = "Population Record" | "Egg Laying";
@@ -24,6 +26,15 @@ export type HatcheryFarmLookup = {
   farm_id: number;
   farm_code: string | null;
   farm_name: string;
+};
+
+export type BreederDispatchBuilding = {
+  farm_id: number;
+  farm_code: string | null;
+  farm_name: string;
+  building_id: number;
+  building_code: string | null;
+  building_name: string;
 };
 
 export type BreederDispatchRecord = {
@@ -87,6 +98,29 @@ export async function listHatcheryFarms() {
   return (data ?? []) as HatcheryFarmLookup[];
 }
 
+/** Lists buildings on the current user's assigned Breeder farms, including empty buildings. */
+export async function listBreederDispatchBuildings() {
+  const assignedFarms = await listAssignedUserFarmOptions(["BE", "Breeder"]);
+  const assignedFarmIds = assignedFarms
+    .map((farm) => Number(farm.id))
+    .filter((farmId) => Number.isInteger(farmId) && farmId > 0);
+  if (!assignedFarmIds.length) return [] as BreederDispatchBuilding[];
+
+  const { data, error } = await db
+    .from(FARM_LOCATION_LOOKUP_VIEW)
+    .select("farm_id, farm_code, farm_name, building_id, building_code, building_name")
+    .in("farm_id", assignedFarmIds)
+    .order("building_name", { ascending: true });
+  if (error) throw error;
+
+  return [...new Map(
+    (data ?? []).map((row) => [
+      `${row.farm_id}:${row.building_id}`,
+      row as BreederDispatchBuilding,
+    ]),
+  ).values()];
+}
+
 export async function listBreederDispatches() {
   const { data, error } = await db.from(REGISTER_VIEW).select("*").order("dispatch_date", { ascending: false }).order("id", { ascending: false });
   if (error) throw error;
@@ -129,7 +163,13 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   }).filter((row) => row.male_available > 0 || row.female_available > 0);
 }
 
-export async function listAvailableDispatchItems(dispatchDate: string, farmId?: number) {
+/**
+ * Returns dispatch source records with their remaining quantity as of a dispatch date.
+ * `includeZeroAvailability` is useful for selection grids that must expose an
+ * exhausted source/building as a visible zero, while the default keeps the
+ * regular dispatch and report lists focused on available inventory.
+ */
+export async function listAvailableDispatchItems(dispatchDate: string, farmId?: number, includeZeroAvailability = false) {
   let placementQuery = db.from("tbl_placement").select("id, placement_date, dr_no, farm_id, farm_name, building_id, building_no, pen_id, pen_no").lte("placement_date", dispatchDate);
   if (farmId) placementQuery = placementQuery.eq("farm_id", farmId);
   const [{ data: placements, error: placementError }, { data: farms, error: farmError }] = await Promise.all([
@@ -170,7 +210,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
     for (const [category, label] of POPULATION_CATEGORIES) {
       const key = dispatchItemKey("Population Record", Number(row.id), category);
       const available = Math.max(0, values[category] - (allocated.get(key) ?? 0));
-      if (!available) continue;
+      if (!includeZeroAvailability && !available) continue;
       items.push({ key, source_type: "Population Record", source_record_id: Number(row.id), source_date: row.daterec, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: placement.building_id, building_name: placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(placement.farm_id), farm_code: farmCodeById.get(Number(placement.farm_id)) ?? null, farm_name: placement.farm_name ?? "-" });
     }
   }
@@ -183,7 +223,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
         ? count(row.table_egg_dirty) + count(row.table_egg_misshapen) + count(row.table_egg_off_size) + count(row.table_egg_thin_shell)
         : count(row[category]);
       const available = Math.max(0, quantity - (allocated.get(key) ?? 0));
-      if (!available) continue;
+      if (!includeZeroAvailability && !available) continue;
       items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
     }
   }

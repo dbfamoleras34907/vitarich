@@ -19,9 +19,11 @@ import {
   getDefaultFarm,
   getBreederDispatchById,
   listAvailableDispatchItems,
+  listBreederDispatchBuildings,
   listHatcheryFarms,
   updateBreederDispatch,
   type AvailableDispatchItem,
+  type BreederDispatchBuilding,
   type BreederDispatchDetail,
   type BreederDispatchInput,
   type DispatchSourceType,
@@ -222,8 +224,12 @@ export default function MultipleBreederDispatchForm() {
   const isViewing = Number.isInteger(dispatchId) && dispatchId > 0;
   const [farmId, setFarmId] = useState("");
   const [items, setItems] = useState<AvailableDispatchItem[]>([]);
+  const [buildings, setBuildings] = useState<BreederDispatchBuilding[]>([]);
   const [hatcheryFarms, setHatcheryFarms] = useState<HatcheryFarmLookup[]>([]);
   const [rows, setRows] = useState<DispatchRow[]>(() => [emptyRow()]);
+  // Keep a date being typed outside the committed row. This prevents a partial
+  // native date value from clearing allocations or reloading availability.
+  const [dispatchDateDrafts, setDispatchDateDrafts] = useState<Record<string, string>>({});
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DISPATCH_GRID_COLUMNS.map((column) => column.width));
   const columnResizeCleanup = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
@@ -268,10 +274,12 @@ export default function MultipleBreederDispatchForm() {
     Promise.all([
       isViewing ? getBreederDispatchById(dispatchId) : getDefaultFarm(),
       listHatcheryFarms(),
+      listBreederDispatchBuildings(),
     ])
-      .then(([setup, destinations]) => {
+      .then(([setup, destinations, availableBuildings]) => {
         if (cancelled) return;
         setHatcheryFarms(destinations);
+        setBuildings(availableBuildings);
         if (isViewing) {
           const record = setup as BreederDispatchDetail;
           setFarmId(String(record.farm_id));
@@ -301,16 +309,12 @@ export default function MultipleBreederDispatchForm() {
     let cancelled = false;
     setLoadingItems(true);
     setError("");
-    listAvailableDispatchItems(inventoryDate)
+    listAvailableDispatchItems(inventoryDate, undefined, true)
       .then((available) => {
         if (cancelled) return;
         setItems(available);
         setFarmId((current) =>
-          current && available.some((item) => String(item.farm_id) === current)
-            ? current
-            : available[0]
-              ? String(available[0].farm_id)
-              : "",
+          current || (available[0] ? String(available[0].farm_id) : ""),
         );
       })
       .catch((loadError) => {
@@ -334,17 +338,25 @@ export default function MultipleBreederDispatchForm() {
   );
 
   const farms = useMemo(() => {
-    const unique = new Map<number, AvailableDispatchItem>();
+    const unique = new Map<
+      number,
+      Pick<AvailableDispatchItem, "farm_id" | "farm_code" | "farm_name">
+    >();
     items.forEach((item) => unique.set(item.farm_id, item));
+    buildings.forEach((building) => unique.set(building.farm_id, building));
     return [...unique.values()].sort((left, right) =>
       left.farm_name.localeCompare(right.farm_name),
     );
-  }, [items]);
+  }, [buildings, items]);
   const selectedFarm =
     farms.find((farm) => String(farm.farm_id) === farmId) ?? null;
   const farmItems = useMemo(
     () => items.filter((item) => String(item.farm_id) === farmId),
     [farmId, items],
+  );
+  const farmBuildings = useMemo(
+    () => buildings.filter((building) => String(building.farm_id) === farmId),
+    [buildings, farmId],
   );
   const destinationOptions = hatcheryFarms.map((farm) => ({
     value: String(farm.farm_id),
@@ -362,6 +374,19 @@ export default function MultipleBreederDispatchForm() {
     );
   }
 
+  function updateDispatchDateDraft(id: string, value: string) {
+    setDispatchDateDrafts((current) => ({ ...current, [id]: value }));
+  }
+
+  function commitDispatchDate(id: string, value: string) {
+    setDispatchDateDrafts((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    updateRow(id, "dispatch_date", value);
+  }
+
   const copyDown = useTableCopyDown({
     rows,
     columns: COPY_COLUMNS,
@@ -377,6 +402,14 @@ export default function MultipleBreederDispatchForm() {
             : row,
         ),
       );
+      if (column === "dispatch_date") {
+        const targetIds = new Set(targets.map((row) => row.id));
+        setDispatchDateDrafts((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(([id]) => !targetIds.has(id)),
+          ),
+        );
+      }
     },
   });
 
@@ -806,22 +839,13 @@ export default function MultipleBreederDispatchForm() {
                   </thead>
                   <tbody>
                     {rows.map((row, rowIndex) => {
-                      const buildingOptions = [
-                        ...new Map(
-                          farmItems
-                            .filter(
-                              (item) =>
-                                item.source_date.slice(0, 10) <=
-                                row.dispatch_date,
-                            )
-                            .map((item) => [buildingValue(item), item]),
-                        ).values(),
-                      ].sort((left, right) =>
-                        left.building_name.localeCompare(
-                          right.building_name,
-                          undefined,
-                          { numeric: true },
-                        ),
+                      const buildingOptions = [...farmBuildings].sort(
+                        (left, right) =>
+                          left.building_name.localeCompare(
+                            right.building_name,
+                            undefined,
+                            { numeric: true },
+                          ),
                       );
                       const availableSources = new Set(
                         farmItems
@@ -885,14 +909,9 @@ export default function MultipleBreederDispatchForm() {
                               aria-label={`Row ${rowIndex + 1} Dispatch Date`}
                               className={`${inputClass} w-full max-w-full text-center`}
                               type="date"
-                              value={row.dispatch_date}
-                              onChange={(event) =>
-                                updateRow(
-                                  row.id,
-                                  "dispatch_date",
-                                  event.target.value,
-                                )
-                              }
+                              value={dispatchDateDrafts[row.id] ?? row.dispatch_date}
+                              onChange={(event) => updateDispatchDateDraft(row.id, event.target.value)}
+                              onBlur={(event) => commitDispatchDate(row.id, event.target.value)}
                             />
                           </TableCopyDownCell>
                           <TableCopyDownCell
@@ -915,11 +934,10 @@ export default function MultipleBreederDispatchForm() {
                               <option value="">Select building</option>
                               {buildingOptions.map((building) => (
                                 <option
-                                  key={buildingValue(building)}
-                                  value={buildingValue(building)}
+                                  key={building.building_id}
+                                  value={String(building.building_id)}
                                 >
-                                  {building.building_name ||
-                                    "Unassigned building"}
+                                  {building.building_name}
                                 </option>
                               ))}
                             </select>
@@ -1048,6 +1066,7 @@ export default function MultipleBreederDispatchForm() {
                                 )
                               }
                               placeholder="0"
+                              disabled={available <= 0}
                             />
                           </TableCopyDownCell>
                           <TableCopyDownCell
