@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -64,7 +65,7 @@ export default function Layout() {
         setFarms(data)
         const defaultFarmId = getValue('DefaultFarmId')
         const defaultFarm = data.find(farm => String(farm.id) === String(defaultFarmId))
-        setSelectedFarmCode(current => current || defaultFarm?.code || data[0]?.code || '')
+        setSelectedFarmCode(current => current || defaultFarm?.code || '')
       })
       .catch(error => {
         console.error(error)
@@ -77,6 +78,7 @@ export default function Layout() {
     () => farms.find(farm => farm.code === selectedFarmCode),
     [farms, selectedFarmCode],
   )
+  useSyncDefaultFarm(selectedFarm?.id)
 
   useEffect(() => {
     let active = true

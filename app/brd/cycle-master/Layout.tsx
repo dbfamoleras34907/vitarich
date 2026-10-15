@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarPlus, ChevronRight, Loader2, LockKeyhole, RefreshCw, RotateCcw, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,13 +29,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import UserFarmSearchCombobox, {
-  getAllowedUserFarms,
-  type UserFarm,
-} from '@/components/ui/UserFarmSearchCombobox'
+import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
 import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
-import { useGlobalContext } from '@/lib/context/GlobalContext'
 import {
   getBroilerPastCycleBuildingOptions,
   getCycleMasterListRows,
@@ -76,12 +72,8 @@ const errorMessage = (error: unknown) => {
 
 export default function CycleMasterLayout() {
   const router = useRouter()
-  const { getValue } = useGlobalContext()
   const viewBlocked = usePermission('/brd/cycle-master/view')
   const editBlocked = usePermission('/brd/cycle-master/edit')
-  const session = getValue('UserInfoAuthSession')
-  const rawFarmDB = getValue('getFarmDB')
-  const rawUserFarms = session?.[0]?.users_farms
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [rows, setRows] = useState<CycleMasterListRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -97,12 +89,7 @@ export default function CycleMasterLayout() {
   const [loadingPastCycleBuildings, setLoadingPastCycleBuildings] = useState(false)
   const [savingPastCycle, setSavingPastCycle] = useState(false)
 
-  const allowedFarms = useMemo(
-    () => getAllowedUserFarms((rawFarmDB || []) as UserFarm[], (rawUserFarms || []) as unknown[]),
-    [rawFarmDB, rawUserFarms],
-  )
-  const singleFarm = allowedFarms.length === 1 ? allowedFarms[0] : null
-  const activeFarmId = selectedFarmId || (singleFarm ? String(singleFarm.id) : '')
+  const activeFarmId = selectedFarmId
 
   const loadRows = useCallback(async () => {
     const farmId = Number(activeFarmId)

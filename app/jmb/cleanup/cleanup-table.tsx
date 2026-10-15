@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   deleteBreederCleanup,
   listBreederCleanups,
@@ -42,13 +43,19 @@ function formatDate(value?: string | null) {
 
 export default function CleanupTable() {
   const router = useRouter();
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
   const [records, setRecords] = useState<BreederCleanupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+<<<<<<< Updated upstream
   const [farmFilter, setFarmFilter] = useState("");
+=======
+  const [farmFilter, setFarmFilter] = useState(() => String(getValue("DefaultFarmId") ?? ""));
+  useSyncDefaultFarm(farmFilter);
+  const [page, setPage] = useState(1);
+>>>>>>> Stashed changes
 
   useEffect(() => {
     void refreshSessionx(router);

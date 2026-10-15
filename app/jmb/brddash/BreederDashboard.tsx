@@ -29,6 +29,7 @@ import BreederTrends from "./BreederTrends";
 import BreederBodyWeight from "./BreederBodyWeight";
 import { breederFeedStandard } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { breederAgeDays } from "./api";
 import { COBB_EGG_PRODUCTION_LABEL, COBB_EGG_PRODUCTION_SOURCE } from "@/app/jmb/lib/data/queries/cobb500BreederEggProduction";
 import type { EggRangeBuilding } from "@/app/jmb/lib/breederWeeklyEggProduction";
@@ -111,7 +112,8 @@ export default function BreederDashboard() {
   const defaultFarmId = String(defaultFarmRow?.id ?? defaultFarmReference ?? "");
   const farmId = selectedFarmId ?? (farms.some(farm => String(farm.id) === defaultFarmId)
     ? defaultFarmId
-    : String(farms[0]?.id ?? ""));
+    : "");
+  useSyncDefaultFarm(farmId);
   const [summary, setSummary] = useState<BreederDashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

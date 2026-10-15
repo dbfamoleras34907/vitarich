@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import ReceivingSourcePicker from '@/components/inventory/ReceivingSourcePicker'
 import { linkReceivingSource } from '@/lib/data/repositories/receivingSources'
 import { toast } from 'sonner'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 
 export default function Layout() {
     const params = useParams()
@@ -42,6 +43,7 @@ export default function Layout() {
 
     const [loading, setLoading] = useState(true)
     const [header, setHeader] = useState<any>(null)
+    useSyncDefaultFarm(Number(header?.farm_id || header?.delivered_to) || null)
     const [items, setItems] = useState<any[]>([])
 
     const loadData = async () => {

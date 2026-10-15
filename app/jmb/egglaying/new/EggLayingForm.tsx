@@ -16,6 +16,11 @@ import { Ban, ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, Plus, Tr
 import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { usePermission } from "@/hooks/usePermission";
+<<<<<<< Updated upstream
+=======
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
+>>>>>>> Stashed changes
 import {
   createEggLaying,
   createEggLayingBatch,
@@ -251,6 +256,7 @@ export default function EggLayingForm() {
   const isEdit = Boolean(idParam);
 
   const [form, setForm] = useState<FormState>(() => createInitialForm());
+  useSyncDefaultFarm(form.farm_id);
   const [selectedPlacement, setSelectedPlacement] =
     useState<LayingPlacement | null>(null);
   const [history, setHistory] = useState<EggLayingHistory[]>([]);

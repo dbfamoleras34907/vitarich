@@ -35,6 +35,11 @@ import {
 import Breadcrumb from "@/lib/Breadcrumb";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+<<<<<<< Updated upstream
+=======
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
+import { compareNaturalText } from "@/lib/utils/naturalSort";
+>>>>>>> Stashed changes
 import {
   listBreederFarms,
   listBreederCycles,
@@ -144,8 +149,8 @@ export default function PlacementTable() {
     setValue("loading_g", loading);
   }, [loading, setValue]);
 
-  const effectiveFarmId =
-    selectedFarmId || (farms[0] ? String(farms[0].id) : "");
+  const effectiveFarmId = selectedFarmId;
+  useSyncDefaultFarm(effectiveFarmId);
   const selectedFarm =
     farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
   const farmOptions = useMemo(

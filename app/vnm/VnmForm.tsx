@@ -15,6 +15,7 @@ import DynamicTable, { type Column } from '@/components/ui/DataTableV2'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { usePermission } from '@/hooks/usePermission'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import {
   filterMedicationItems,
   getFarmFmsType,
@@ -54,6 +55,7 @@ export default function VnmForm({ documentId }: { documentId?: number }) {
   const [farms, setFarms] = useState<AssignedFarmOption[]>([])
   const [farmsLoading, setFarmsLoading] = useState(true)
   const [document, setDocument] = useState<VnmDocument>(blankDocument)
+  useSyncDefaultFarm(document.farmId)
   const [references, setReferences] = useState<VnmReferences | null>(null)
   const [batchOptions, setBatchOptions] = useState<Record<string, VnmBatch[]>>({})
   const [loading, setLoading] = useState(Boolean(documentId))
@@ -104,7 +106,7 @@ export default function VnmForm({ documentId }: { documentId?: number }) {
         const preferred = farms.find(farm =>
           String(farm.id) === String(defaultFarmId)
           || farm.code.trim().toUpperCase() === String(defaultFarmId ?? '').trim().toUpperCase()
-        ) ?? (farms.length === 1 ? farms[0] : null)
+        ) ?? null
         if (preferred && !cancelled) {
           const fms = getFarmFmsType(preferred.farm_type)
           if (fms) {

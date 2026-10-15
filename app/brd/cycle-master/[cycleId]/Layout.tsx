@@ -38,6 +38,7 @@ import {
   type CycleMovementRecord,
 } from '@/lib/data/repositories/broilerCycleReport'
 import { cn } from '@/lib/utils'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 
 const STAGES: BroilerCycleStage[] = ['placement', 'growing', 'delivery', 'cleanup']
 const STAGE_META: Record<BroilerCycleStage, { label: string; shortLabel: string }> = {
@@ -192,6 +193,7 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
   const cycleId = useMemo(() => requestedCycleId ?? parseCycleId(params.cycleId), [params.cycleId, requestedCycleId])
   const viewBlocked = usePermission('/brd/cycle-master/report/view')
   const [report, setReport] = useState<BroilerCycleReport | null>(null)
+  useSyncDefaultFarm(report?.farmId)
   const [loading, setLoading] = useState(true)
   const [selectedBuildingId, setSelectedBuildingId] = useState<number | null>(null)
   const [selectedStage, setSelectedStage] = useState<BroilerCycleStage>('placement')

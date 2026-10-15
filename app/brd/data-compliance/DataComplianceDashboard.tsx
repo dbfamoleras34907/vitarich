@@ -15,6 +15,7 @@ import ComplianceBarChart from '@/components/reports/ComplianceBarChart'
 import MaximizableCard from '@/components/reports/MaximizableCard'
 import TransactionDetails from '@/app/brd/dashboard/TransactionDetails'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { usePermission } from '@/hooks/usePermission'
 import { getBroilerDataCompliance, listBroilerDataComplianceFarmOptions, type ComplianceDataset, type ComplianceFarmOption } from '@/lib/data/repositories/broilerDataCompliance'
 import { buildComplianceRow, complianceDate, complianceDateInRange, dataAccuracyBy, farmDataScorecards, filterComplianceRows, complianceFilterOptions, complianceSummary, groupCompliance, manilaToday, taMonthlyCompliance, COMPLIANCE_STAGES, COMPLIANCE_LABELS, COMPLIANCE_RULE, COMPLIANCE_HISTORY_NOTE, type ComplianceRow, type ComplianceStage, type ComplianceStatus, type DataAccuracyRow, type StageCompliance } from '@/lib/broiler/dataCompliance'
@@ -159,6 +160,7 @@ export default function DataComplianceDashboard() {
   const region = regionParam === 'all' ? ALL_REGIONS : regionParam
   const farmParam = searchParams.get('farmId') ?? ''
   const farm = farmParam === 'all' ? ALL_FARMS : farmParam
+  useSyncDefaultFarm(farm)
   const ta = searchParams.get('taId') ?? ''
   const cycle = useMemo(() => searchParams.getAll('cycle').filter(Boolean), [searchParams])
   const statusParam = searchParams.get('status') ?? ''

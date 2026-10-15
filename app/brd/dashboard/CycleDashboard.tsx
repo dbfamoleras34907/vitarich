@@ -12,6 +12,7 @@ import CycleReportLayout from '@/app/brd/cycle-master/[cycleId]/Layout'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { usePermission } from '@/hooks/usePermission'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getBroilerCycleDashboard, type CycleDashboardCatalog, type CycleDashboardData, type DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
 import { activeGrowingLines, ageRange, dashboardMetrics, selectDashboardBuilding } from '@/lib/broiler/cycleDashboard'
@@ -130,6 +131,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
   const farms = farmsReady ? farmState.options : []
   const farmError = farmsReady ? farmState.error : ''
   const [selectedFarm, setSelectedFarm] = useState(initialFarmId ? String(initialFarmId) : '')
+  useSyncDefaultFarm(selectedFarm)
   const [selectedBuilding, setSelectedBuilding] = useState('')
   const [cycleSelection, setCycleSelection] = useState<{ farmId: number; key: string } | null>(initialFarmId && initialCycleId ? { farmId: initialFarmId, key: `${initialCycleKind}:${initialCycleId}` } : null)
   const [tab, setTab] = useState<DetailTab>('overview')
@@ -155,7 +157,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
   const farm = selectedFarm ? farms.find(farm => String(farm.id) === selectedFarm)
     : farms.find(farm => String(farm.id) === defaultFarm)
     ?? farms.find(farm => farm.code === defaultFarm)
-    ?? farms[0]
+    ?? null
   const farmId = farm?.id ?? 0
   const requestedCycleKey = cycleSelection?.farmId === farmId ? cycleSelection.key : ''
 

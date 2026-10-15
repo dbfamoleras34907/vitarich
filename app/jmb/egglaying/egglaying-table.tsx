@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import Breadcrumb from "@/lib/Breadcrumb";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   getUserInfo,
   listBreederFarms,
@@ -140,7 +141,8 @@ export default function EggLayingTable() {
 
   useEffect(() => { setValue("loading_g", loading); }, [loading, setValue]);
 
-  const effectiveFarmId = selectedFarmId || (farms[0] ? String(farms[0].id) : "");
+  const effectiveFarmId = selectedFarmId;
+  useSyncDefaultFarm(effectiveFarmId);
   const selectedFarm = farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
   const farmOptions = useMemo(() => farms.map((farm) => ({
     code: String(farm.id),

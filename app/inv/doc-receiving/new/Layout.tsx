@@ -48,6 +48,7 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
@@ -619,6 +620,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const notificationFarmId = searchParams.get('farmId')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
+  useSyncDefaultFarm(receipt?.farmId)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -1181,7 +1183,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const defaultFarmId = getValue('DefaultFarmId')
     const farm = farms.find(candidate => String(candidate.id) === String(notificationFarmId))
       ?? farms.find(candidate => String(candidate.id) === String(defaultFarmId))
-      ?? (farms.length === 1 ? farms[0] : null)
+      ?? null
     if (!farm) return
 
     setReceipt(current => {

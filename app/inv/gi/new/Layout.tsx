@@ -28,6 +28,7 @@ import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
 import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
@@ -367,6 +368,7 @@ export default function NewGoodsIssue({
   const cannotInsert = usePermission(`${permissionPath}/insert`)
   const cannotEdit = usePermission(`${permissionPath}/edit`)
   const [issue, setIssue] = useState<GoodsIssue | null>(null)
+  useSyncDefaultFarm(issue?.farmId)
   const issueSnapshotRef = useRef(issue)
   issueSnapshotRef.current = issue
   const [items, setItems] = useState<Items[]>([])
@@ -508,7 +510,7 @@ export default function NewGoodsIssue({
         if (!savedIssue && useDefaultFarm) {
           const defaultFarmId = getValue('DefaultFarmId')
           const defaultFarm = references.farms.find(farm => String(farm.id) === String(defaultFarmId))
-          const farmToAutoSelect = defaultFarm ?? (references.farms.length === 1 ? references.farms[0] : null)
+          const farmToAutoSelect = defaultFarm ?? null
 
           if (farmToAutoSelect) {
             const availableWarehouses = getWarehousesForFarm(farmToAutoSelect, references.warehouses, warehouseTypeFilter)

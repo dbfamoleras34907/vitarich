@@ -27,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { cancelMedication, listMedications, type MedicationRecord } from "./new/api";
 
 function formatDate(value?: string | null) {
@@ -37,12 +38,13 @@ function formatDate(value?: string | null) {
 
 export default function MedicationTable() {
   const router = useRouter();
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
   const [records, setRecords] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [farmFilter, setFarmFilter] = useState("");
+  const [farmFilter, setFarmFilter] = useState(() => String(getValue("DefaultFarmId") ?? ""));
+  useSyncDefaultFarm(farmFilter);
   const [statusFilter, setStatusFilter] = useState("Posted");
   const [cancelRecord, setCancelRecord] = useState<MedicationRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");

@@ -15,6 +15,7 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getReceivingList, getPendingReceivingDispatches } from '@/lib/data/repositories/receivingLists'
 import { usePermission } from '@/hooks/usePermission'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -35,6 +36,7 @@ export default function Layout() {
     const [farms, setFarms] = useState<AssignedFarmOption[]>([])
     const [loadingFarms, setLoadingFarms] = useState(true)
     const [selectedFarmId, setSelectedFarmId] = useState('')
+    useSyncDefaultFarm(selectedFarmId)
     const [loadedFarmId, setLoadedFarmId] = useState<number | null>(null)
 
 
@@ -166,7 +168,7 @@ export default function Layout() {
                     if (cancelled) return
                     setFarms(options)
                     const preferred = options.find(farm => String(farm.id) === defaultFarmId)
-                    setSelectedFarmId(String((preferred ?? options[0])?.id ?? ''))
+                    setSelectedFarmId(String(preferred?.id ?? ''))
                 })
                 .catch(error => {
                     if (!cancelled) toast.error(error instanceof Error ? error.message : 'Unable to load farms.')

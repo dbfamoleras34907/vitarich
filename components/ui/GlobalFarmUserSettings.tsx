@@ -36,10 +36,7 @@ export default function GlobalFarmUserSettings({ onFarmSelected }: { onFarmSelec
     <UserFarmSearchCombobox
       display="buttons"
       value={currentDefaultFarmId ?? sessionDefaultFarmId ?? ""}
-      onValueChange={(farmId) => {
-        setValue("DefaultFarmId", Number(farmId));
-        onFarmSelected?.();
-      }}
+      onValueChange={() => onFarmSelected?.()}
     />
   );
 }

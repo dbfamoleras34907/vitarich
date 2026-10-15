@@ -5,9 +5,8 @@ import { toast } from 'sonner'
 
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from '@/components/ui/UserFarmSearchCombobox'
+import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
 import { usePermission } from '@/hooks/usePermission'
-import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { getFarmBuildingsForFlockCard, type FarmBuildingListRow } from '@/app/brd/fc/api'
 import { ModuleSettingsHeader, SettingRow, SettingsCategory } from '@/components/settings/ModuleSettingsLayout'
 import {
@@ -79,10 +78,6 @@ export default function DocReceivingSettingsLayout({
 }: DocReceivingSettingsLayoutProps = {}) {
   const canAdd = usePermission(`${permissionBasePath}/insert`)
   const canEdit = usePermission(`${permissionBasePath}/edit`)
-  const { getValue } = useGlobalContext()
-  const session = getValue('UserInfoAuthSession')
-  const rawFarmDB = getValue('getFarmDB')
-  const rawUserFarms = session?.[0]?.users_farms
   const [settings, setSettings] = useState<DocReceivingSettings | null>(null)
   const [items, setItems] = useState<DocItemOption[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -97,12 +92,7 @@ export default function DocReceivingSettingsLayout({
   const [excludedBuildingIds, setExcludedBuildingIds] = useState<number[]>([])
   const [savedExcludedBuildingIds, setSavedExcludedBuildingIds] = useState<number[]>([])
 
-  const allowedFarms = useMemo(
-    () => getAllowedUserFarms((rawFarmDB || []) as UserFarm[], (rawUserFarms || []) as unknown[]),
-    [rawFarmDB, rawUserFarms],
-  )
-  const singleAllowedFarm = allowedFarms.length === 1 ? allowedFarms[0] : null
-  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : '')
+  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId
 
   const canSave = useMemo(
     () => !loading && !loadFailed && !saving && Boolean(activeFarmId) && (settings?.id ? !canEdit : !canAdd),

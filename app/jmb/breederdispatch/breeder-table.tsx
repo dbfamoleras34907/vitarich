@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
@@ -58,13 +59,14 @@ function statusClass(status: BreederDispatchRecord["status"]) {
 
 export default function BreederDispatchTable() {
   const router = useRouter();
-  const { setValue } = useGlobalContext();
+  const { getValue, setValue } = useGlobalContext();
   const [records, setRecords] = useState<BreederDispatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [farmFilter, setFarmFilter] = useState("");
+  const [farmFilter, setFarmFilter] = useState(() => String(getValue("DefaultFarmId") ?? ""));
+  useSyncDefaultFarm(farmFilter);
   const [statusFilter, setStatusFilter] = useState("All");
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");

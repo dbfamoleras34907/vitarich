@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   createMedication,
   getDefaultFarm,
@@ -76,6 +77,7 @@ export default function MedicationForm() {
   const [locations, setLocations] = useState<FarmLocation[]>([]);
   const [medicationTypes, setMedicationTypes] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
+  useSyncDefaultFarm(form.farm_id);
   const [selectedPenIds, setSelectedPenIds] = useState<number[]>([]);
   const [addAnother, setAddAnother] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -128,10 +130,9 @@ export default function MedicationForm() {
         const defaultFarm = recordOrDefaultFarm as Awaited<ReturnType<typeof getDefaultFarm>>;
         const defaultId = Number(defaultFarm?.id);
         const available = rows.some((row) => row.farm_id === defaultId);
-        const firstFarmId = rows[0]?.farm_id;
         setForm((current) => ({
           ...current,
-          farm_id: String(available ? defaultId : firstFarmId ?? ""),
+          farm_id: String(available ? defaultId : ""),
         }));
       })
       .catch((loadError) => {

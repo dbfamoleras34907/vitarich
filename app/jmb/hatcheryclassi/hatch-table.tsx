@@ -64,7 +64,7 @@ function withAssignedDefaultFarmFilter(
   const defaultValue = String(defaultFarmId ?? "");
   const preferredFarmId = assignedFarms.find(
     (farm) => String(farm.id) === defaultValue || farm.code === defaultValue,
-  )?.id ?? assignedFarms[0]?.id ?? null;
+  )?.id ?? null;
 
   if (preferredFarmId === null) return otherFilters;
 

@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { createVaccination, getDefaultFarm, getVaccinationById, listVaccinationLocations, listVaccinationChoices, type VaccinationChoices, updateVaccination, VACCINATION_ROUTES, type FarmLocation, type VaccinationScope } from "./api";
 
 function localDateTime(value: string | null | undefined) {
@@ -57,6 +58,7 @@ export default function VaccinationForm() {
   const [choices, setChoices] = useState<VaccinationChoices>({ vaccineTypes: [], dosages: [] });
   const [choicesReady, setChoicesReady] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
+  useSyncDefaultFarm(form.farm_id);
   const [selectedPenIds, setSelectedPenIds] = useState<number[]>([]);
   const [addAnother, setAddAnother] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function VaccinationForm() {
         }
         const defaultFarm = recordOrDefaultFarm as Awaited<ReturnType<typeof getDefaultFarm>>;
         const defaultId = Number(defaultFarm?.id);
-        setForm((current) => ({ ...current, farm_id: String(rows.some((row) => row.farm_id === defaultId) ? defaultId : rows[0]?.farm_id ?? "") }));
+        setForm((current) => ({ ...current, farm_id: String(rows.some((row) => row.farm_id === defaultId) ? defaultId : "") }));
       })
       .catch((loadError) => { console.error(loadError); if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Unable to load vaccination form."); })
       .finally(() => { if (!cancelled) setLoading(false); });
