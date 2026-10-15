@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type TransferInput = {
   transfer_date?: unknown;
@@ -119,7 +121,10 @@ export async function GET(req: Request) {
       source: placementLabels.get(Number(transfer.source_placement_id)) ?? null,
       destination: placementLabels.get(Number(transfer.destination_placement_id)) ?? null,
     }));
-    return NextResponse.json({ placements, transfers: transferRows });
+    return NextResponse.json(
+      { placements, transfers: transferRows },
+      { headers: { "Cache-Control": "no-store, max-age=0" } },
+    );
   } catch (error) {
     return NextResponse.json({ error: message(error) }, { status: 400 });
   }

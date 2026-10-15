@@ -289,6 +289,17 @@ function liveInventory(row: EditableRow | undefined, sex: "male" | "female") {
         row.condem_female;
 }
 
+function transferAvailableAt(
+  sourceRows: EditableRow[],
+  transferDate: string,
+  sex: "male" | "female",
+) {
+  const lastRowOnOrBeforeTransfer = sourceRows
+    .filter((row) => row.daterec <= transferDate)
+    .at(-1);
+  return Math.max(0, liveInventory(lastRowOnOrBeforeTransfer, sex));
+}
+
 function buildDailyRows(
   placement: Placement,
   savedRows: BreederDailyPerformance[] = [],
@@ -1376,6 +1387,16 @@ export default function CardForm() {
     );
     const maleQty = Number(transferModal.male_qty || 0);
     const femaleQty = Number(transferModal.female_qty || 0);
+    const maleAvailable = transferAvailableAt(
+      rows,
+      transferModal.transfer_date,
+      "male",
+    );
+    const femaleAvailable = transferAvailableAt(
+      rows,
+      transferModal.transfer_date,
+      "female",
+    );
     if (!source) {
       toast.error("The source placement is not active for transfer.");
       return;
@@ -1404,8 +1425,8 @@ export default function CardForm() {
       return;
     }
     if (
-      maleQty > source.male_available ||
-      femaleQty > source.female_available
+      maleQty > maleAvailable ||
+      femaleQty > femaleAvailable
     ) {
       toast.error("Transfer quantity exceeds the source inventory.");
       return;
@@ -1561,6 +1582,14 @@ export default function CardForm() {
     rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
   const transferSource =
     transferPlacements.find((item) => item.id === placement.id) ?? null;
+  const transferSourceMaleAvailable =
+    transferSource && transferModal
+      ? transferAvailableAt(rows, transferModal.transfer_date, "male")
+      : 0;
+  const transferSourceFemaleAvailable =
+    transferSource && transferModal
+      ? transferAvailableAt(rows, transferModal.transfer_date, "female")
+      : 0;
   const transferDestination =
     transferPlacements.find(
       (item) => String(item.id) === transferModal?.destination_placement_id,
@@ -2337,7 +2366,7 @@ export default function CardForm() {
                   </div>
                   <div className="font-semibold tabular-nums">
                     {Number(
-                      transferSource?.male_available ?? 0,
+                        transferSourceMaleAvailable,
                     ).toLocaleString()}
                   </div>
                 </div>
@@ -2347,7 +2376,7 @@ export default function CardForm() {
                   </div>
                   <div className="font-semibold tabular-nums">
                     {Number(
-                      transferSource?.female_available ?? 0,
+                        transferSourceFemaleAvailable,
                     ).toLocaleString()}
                   </div>
                 </div>
@@ -2357,7 +2386,7 @@ export default function CardForm() {
                 <Input
                   type="number"
                   min="0"
-                  max={transferSource?.male_available ?? 0}
+                  max={transferSourceMaleAvailable}
                   step="1"
                   value={transferModal.male_qty}
                   onChange={(event) =>
@@ -2374,7 +2403,7 @@ export default function CardForm() {
                 <Input
                   type="number"
                   min="0"
-                  max={transferSource?.female_available ?? 0}
+                  max={transferSourceFemaleAvailable}
                   step="1"
                   value={transferModal.female_qty}
                   onChange={(event) =>

@@ -445,7 +445,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 2,
             type: "Module",
-            title: "Placement",
+            title: "Placement & Population",
             url: "/jmb/placement",
             view: true,
             insert: true,

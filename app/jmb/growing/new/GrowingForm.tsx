@@ -97,7 +97,8 @@ function formatDate(value?: string | null) {
 }
 
 function getFeedTypeLabel(feedType: FeedType) {
-  const description = feedType.description?.trim() || `Feed Type #${feedType.id}`;
+  const description =
+    feedType.description?.trim() || `Feed Type #${feedType.id}`;
   return feedType.uom ? `${description} (${feedType.uom})` : description;
 }
 
@@ -474,7 +475,9 @@ export default function GrowingForm() {
     );
   }
 
-  function handleGrowingGridKeyDown(event: React.KeyboardEvent<HTMLTableElement>) {
+  function handleGrowingGridKeyDown(
+    event: React.KeyboardEvent<HTMLTableElement>,
+  ) {
     const movement: Record<string, [number, number]> = {
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
@@ -488,7 +491,13 @@ export default function GrowingForm() {
     const currentCell = target.closest("td");
     const currentRow = currentCell?.parentElement;
     const tableBody = currentRow?.parentElement;
-    if (!currentCell || !currentRow || !tableBody || tableBody.tagName !== "TBODY") return;
+    if (
+      !currentCell ||
+      !currentRow ||
+      !tableBody ||
+      tableBody.tagName !== "TBODY"
+    )
+      return;
 
     const rows = Array.from(tableBody.querySelectorAll("tr"));
     const cells = Array.from(currentRow.querySelectorAll("td"));
@@ -496,7 +505,9 @@ export default function GrowingForm() {
     const columnIndex = cells.indexOf(currentCell as HTMLTableCellElement);
     const nextRow = rows[rowIndex + offset[0]];
     const nextCell = nextRow?.querySelectorAll("td")[columnIndex + offset[1]];
-    const nextControl = nextCell?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])");
+    const nextControl = nextCell?.querySelector<HTMLElement>(
+      "input:not([disabled]), button:not([disabled])",
+    );
     if (!nextControl) return;
 
     event.preventDefault();
@@ -677,13 +688,15 @@ export default function GrowingForm() {
                     ["Farm", selectedPlacement?.farm_name ?? ""],
                     ["Building", selectedPlacement?.building_no ?? ""],
                     ["Week #", String(weekNumber)],
-                    ["Placement Date", formatDate(selectedPlacement?.placement_date)],
+                    [
+                      "Placement Date",
+                      formatDate(selectedPlacement?.placement_date),
+                    ],
                   ].map(([label, value]) => (
                     <div
                       key={label}
                       className={
-                        label === "Farm" ||
-                        label === "Building"
+                        label === "Farm" || label === "Building"
                           ? "rounded-md border border-emerald-200 bg-emerald-50 p-3"
                           : "rounded-md border border-slate-200 bg-slate-50 p-3"
                       }
@@ -718,55 +731,55 @@ export default function GrowingForm() {
                           </th>
                           <th
                             colSpan={4}
-                            className={`${SheetClasses.group} !bg-pink-100 text-pink-800`}
+                            className={`${SheetClasses.group} bg-pink-100! text-pink-800`}
                           >
                             Female
                           </th>
                           <th
                             colSpan={4}
-                            className={`${SheetClasses.group} !bg-sky-100 text-sky-800`}
+                            className={`${SheetClasses.group} bg-sky-100! text-sky-800`}
                           >
                             Male
                           </th>
                         </tr>
                         <tr>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                            className={`${SheetClasses.header} ${TableWidths.count} bg-pink-50!`}
                           >
                             Mortality
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count} !bg-pink-50`}
+                            className={`${SheetClasses.header} ${TableWidths.count} bg-pink-50!`}
                           >
                             Feed Consumption
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-pink-50`}
+                            className={`${SheetClasses.header} ${TableWidths.feed} bg-pink-50!`}
                           >
                             Feed Type (Optional)
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-pink-50`}
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} bg-pink-50!`}
                           >
                             Body Weight
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                            className={`${SheetClasses.header} ${TableWidths.count} bg-sky-50!`}
                           >
                             Mortality
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.count} !bg-sky-50`}
+                            className={`${SheetClasses.header} ${TableWidths.count} bg-sky-50!`}
                           >
                             Feed Consumption
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.feed} !bg-sky-50`}
+                            className={`${SheetClasses.header} ${TableWidths.feed} bg-sky-50!`}
                           >
                             Feed Type (Optional)
                           </th>
                           <th
-                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} !bg-sky-50`}
+                            className={`${SheetClasses.header} ${TableWidths.bodyWeight} bg-sky-50!`}
                           >
                             Body Weight
                           </th>
@@ -1029,9 +1042,7 @@ export default function GrowingForm() {
                         Building
                       </th>
                       <th className="px-3 py-2 text-left font-medium">Pen</th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Age
-                      </th>
+                      <th className="px-3 py-2 text-right font-medium">Age</th>
                       <th className="px-3 py-2 text-right font-medium">
                         Week #
                       </th>
