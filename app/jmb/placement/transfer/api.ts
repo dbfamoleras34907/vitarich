@@ -20,6 +20,14 @@ export type BreederTransferInput = {
   male_qty: number; female_qty: number; reason: string; remarks: string | null;
 };
 
+export type NewDestinationBreederTransferInput = Omit<
+  BreederTransferInput,
+  "destination_placement_id"
+> & {
+  destination_building_id: number;
+  destination_pen_id: number;
+};
+
 export type BreederTransferQuantityEditInput = Pick<
   BreederTransferInput,
   "male_qty" | "female_qty"
@@ -45,11 +53,23 @@ async function request<T>(body?: Record<string, unknown>): Promise<T> {
 }
 
 export function loadBreederTransfers() {
-  return request<{ placements: TransferPlacement[]; transfers: BreederTransfer[] }>();
+  return request<{
+    placements: TransferPlacement[];
+    transfers: BreederTransfer[];
+  }>();
 }
 
 export function createBreederTransfer(input: BreederTransferInput, post: boolean) {
   return request<{ id: number }>({ input, post });
+}
+
+export function createBreederTransferToNewDestination(
+  input: NewDestinationBreederTransferInput,
+) {
+  return request<{ id: number; destinationPlacementId: number }>({
+    action: "create-destination",
+    input,
+  });
 }
 
 export function postBreederTransfer(id: number) {

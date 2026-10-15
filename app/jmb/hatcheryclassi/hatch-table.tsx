@@ -79,6 +79,11 @@ function numericFarmId(value: unknown) {
   return Number.isInteger(farmId) && farmId > 0 ? farmId : null;
 }
 
+function loadErrorMessage(error: unknown, label: string) {
+  const message = error instanceof Error ? error.message : "";
+  return message ? `Unable to load ${label}: ${message}` : `Unable to load ${label}.`;
+}
+
 export default function HatchTable() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
@@ -111,6 +116,8 @@ export default function HatchTable() {
     useState<RowSelectionState>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingforClass, setIsLoadingforClass] = useState(false);
+  const [classifiedLoadError, setClassifiedLoadError] = useState<string | null>(null);
+  const [pendingLoadError, setPendingLoadError] = useState<string | null>(null);
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
@@ -169,11 +176,13 @@ export default function HatchTable() {
   const load = useCallback(async () => {
     if (assignedFarmsLoading || !classifiedFarmIdsForQuery.length) {
       setItems([]);
+      setClassifiedLoadError(null);
       setIsLoading(assignedFarmsLoading);
       return;
     }
 
     setIsLoading(true);
+    setClassifiedLoadError(null);
     try {
       const data = await listHatchClassification({
         farmIds: classifiedFarmIdsForQuery,
@@ -183,6 +192,7 @@ export default function HatchTable() {
     } catch (e) {
       console.error(e);
       setItems([]);
+      setClassifiedLoadError(loadErrorMessage(e, "classified eggs"));
     } finally {
       setIsLoading(false);
     }
@@ -222,11 +232,13 @@ export default function HatchTable() {
   const loadForClassification = useCallback(async () => {
     if (assignedFarmsLoading || !pendingFarmIdsForQuery.length) {
       setItemsForClass([]);
+      setPendingLoadError(null);
       setIsLoadingforClass(assignedFarmsLoading);
       return;
     }
 
     setIsLoadingforClass(true);
+    setPendingLoadError(null);
     try {
       const data = await getReceivingList({
         farmIds: pendingFarmIdsForQuery,
@@ -236,6 +248,7 @@ export default function HatchTable() {
     } catch (e) {
       console.error(e);
       setItemsForClass([]);
+      setPendingLoadError(loadErrorMessage(e, "pending classification records"));
     } finally {
       setIsLoadingforClass(false);
     }
@@ -519,6 +532,7 @@ export default function HatchTable() {
         title="Pending Classification"
         tone="amber"
         isLoading={isLoadingforClass}
+        error={pendingLoadError}
         colSpan={columnsForClass.length}
         headerActions={
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
@@ -575,6 +589,7 @@ export default function HatchTable() {
         title="Classified Eggs"
         tone="emerald"
         isLoading={isLoading}
+        error={classifiedLoadError}
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={

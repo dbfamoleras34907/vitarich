@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { format } from "date-fns";
 import { Loader2, Scale } from "lucide-react";
 import { toast } from "sonner";
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -50,7 +51,7 @@ export default function WeightSamplesDialog({ placement, disabled }: { placement
   }, [open, placement.id, date, reload]);
 
   const stats = { male: calculateWeightSamples(weights.male.map(Number)), female: calculateWeightSamples(weights.female.map(Number)) };
-  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${placement.placement_date.slice(0, 10)}T00:00:00Z`)) / 86400000) + 1;
+  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${breederAgeAnchorDate(placement)}T00:00:00Z`)) / 86400000) + 1;
   const today = format(new Date(), "yyyy-MM-dd");
   const validDate = Number.isInteger(days) && days >= 1 && date <= today;
   const ready = !loading && !saving && loaded?.date === date;

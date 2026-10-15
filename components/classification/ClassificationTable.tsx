@@ -164,6 +164,7 @@ export function ClassificationTableSection<TData>({
   title,
   tone,
   isLoading,
+  error,
   colSpan,
   headerActions,
   minWidthClassName = "min-w-230",
@@ -173,6 +174,7 @@ export function ClassificationTableSection<TData>({
   title: string;
   tone: StatusTone;
   isLoading?: boolean;
+  error?: string | null;
   colSpan: number;
   headerActions?: ReactNode;
   minWidthClassName?: string;
@@ -223,7 +225,13 @@ export function ClassificationTableSection<TData>({
             ) : (
               <TableRow>
                 <TableCell colSpan={colSpan} className="h-24 text-center">
-                  {isLoading ? "Loading..." : "No results."}
+                  {error ? (
+                    <span className="text-destructive">{error}</span>
+                  ) : isLoading ? (
+                    "Loading..."
+                  ) : (
+                    "No results."
+                  )}
                 </TableCell>
               </TableRow>
             )}

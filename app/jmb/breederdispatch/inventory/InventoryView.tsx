@@ -12,7 +12,6 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
 import {
   dispatchCategoryOrder,
@@ -50,7 +49,6 @@ export default function InventoryView() {
   const { setValue } = useGlobalContext();
   const [farms, setFarms] = useState<BreederFarm[]>([]);
   const [farmId, setFarmId] = useState("");
-  useSyncDefaultFarm(farmId);
   const [dataFrom, setDataFrom] = useState(monthStart);
   const [dataTo, setDataTo] = useState(today);
   const [items, setItems] = useState<AvailableDispatchItem[]>([]);
@@ -66,7 +64,7 @@ export default function InventoryView() {
       .then(([availableFarms, defaultFarm]) => {
         if (cancelled) return;
         setFarms(availableFarms);
-        const selectedFarm = availableFarms.find((farm) => farm.id === defaultFarm?.id);
+        const selectedFarm = availableFarms.find((farm) => farm.id === defaultFarm?.id) ?? availableFarms[0];
         setFarmId(selectedFarm ? String(selectedFarm.id) : "");
       })
       .catch((loadError) => {

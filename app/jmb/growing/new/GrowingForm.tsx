@@ -18,12 +18,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-<<<<<<< Updated upstream
-=======
 import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
-import { useGlobalContext } from "@/lib/context/GlobalContext";
->>>>>>> Stashed changes
 import {
   createGrowing,
   createGrowingBatch,
@@ -255,7 +250,7 @@ export default function GrowingForm() {
 
   const disabledAll = saving || loadingRecord;
   const ageDays = selectedPlacement
-    ? getAgeInDays(selectedPlacement.placement_date, form.daterec)
+    ? getAgeInDays(breederAgeAnchorDate(selectedPlacement), form.daterec)
     : 0;
   const weekNumber = formatWeeksDays(ageDays);
   const farmOptions = useMemo(() => {

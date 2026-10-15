@@ -1,7 +1,10 @@
 'use client'
 
 import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask'
-import { getHarvestEmptiedCleanupBatches } from '@/lib/data/repositories/brCleanup'
+import {
+  CleanupCycleInventoryBatch,
+  getCleanupCycleInventoryBatches,
+} from '@/lib/data/repositories/brCleanup'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
@@ -63,7 +66,7 @@ export type GoodsIssuePlacementBatch = {
   expiryDate: string
   warehouseCode: string
   onHandQty: number
-  harvestEmptied?: boolean
+  cleanupZeroBalance?: boolean
 }
 
 export type CleanupCycleSummary = {
@@ -671,6 +674,11 @@ export async function getBrCleanupAgeShortage(params: {
     ]),
   ).values())
 
+  const farmCycleId = Number(params.farmCycleId ?? 0)
+  const cycleBatches = Number.isFinite(farmCycleId) && farmCycleId > 0
+    ? await getCleanupCycleInventoryBatches(farmId, farmCycleId)
+    : []
+
   for (const building of uniqueBuildings) {
     const flock = await getDeliveryFlockCardInfo({
       farmId,
@@ -679,7 +687,15 @@ export async function getBrCleanupAgeShortage(params: {
       buildingCode: building.fromWarehouseCode,
     })
 
-    if (flock && (await getHarvestEmptiedCleanupBatches(flock.id)).length > 0) continue
+    const buildingBatches = cycleBatches.filter(batch =>
+      (
+        (building.fromWarehouseId != null && Number(batch.building_warehouse_id) === Number(building.fromWarehouseId)) ||
+        batch.building_code.trim().toUpperCase() === building.fromWarehouseCode.trim().toUpperCase()
+      )
+    )
+    const zeroBalanceCloseout = buildingBatches.length > 0 &&
+      buildingBatches.every(batch => Number(batch.on_hand_qty) === 0)
+    if (zeroBalanceCloseout) continue
 
     if (!flock || flock.age === null || flock.age < targetAge) {
       return {
@@ -698,7 +714,7 @@ export async function getAvailableDeliveryFlockCards(params: {
   farmId: number
   farmCycleId?: number | null
   targetAge: number
-  allowHarvestEmptied?: boolean
+  cleanupCycleInventory?: boolean
 }): Promise<GoodsIssueFlockCardInfo[]> {
   const farmId = Number(params.farmId)
   const targetAge = Math.max(0, Number(params.targetAge) || 0)
@@ -728,9 +744,36 @@ export async function getAvailableDeliveryFlockCards(params: {
     }
   })
 
-  const eligibleCards = (await Promise.all(
+  const cards = await Promise.all(
     Array.from(latestByBuilding.values()).map(row => toFlockCardInfoWithBodyWeight(row)),
-  )).filter(card => params.allowHarvestEmptied || (card.age !== null && card.age >= targetAge))
+  )
+
+  if (params.cleanupCycleInventory) {
+    const farmCycleId = Number(params.farmCycleId ?? 0)
+    if (!Number.isFinite(farmCycleId) || farmCycleId <= 0) return []
+    const cycleBatches = await getCleanupCycleInventoryBatches(farmId, farmCycleId)
+    const batchesByCard = new Map<number, CleanupCycleInventoryBatch[]>()
+    cycleBatches.forEach(batch => {
+      const cardId = Number(batch.flock_card_id)
+      batchesByCard.set(cardId, [...(batchesByCard.get(cardId) ?? []), batch])
+    })
+    return cards
+      .filter(card => {
+        const batches = batchesByCard.get(card.id) ?? []
+        if (batches.length === 0) return false
+        const zeroBalanceCloseout = batches.every(batch => Number(batch.on_hand_qty) === 0)
+        return zeroBalanceCloseout || (card.age !== null && card.age >= targetAge)
+      })
+      .sort((left, right) =>
+        (left.buildingName || left.buildingCode).localeCompare(
+          right.buildingName || right.buildingCode,
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        ),
+      )
+  }
+
+  const eligibleCards = cards.filter(card => card.age !== null && card.age >= targetAge)
 
   const cardsWithAvailableBatches = await Promise.all(
     eligibleCards.map(async card => {
@@ -740,11 +783,9 @@ export async function getAvailableDeliveryFlockCards(params: {
         buildingWarehouseId: card.buildingWarehouseId,
         buildingCode: card.buildingCode,
         cycleNumber: card.cycleNumber,
-        allowHarvestEmptied: params.allowHarvestEmptied,
       })
-      const harvestEmptied = params.allowHarvestEmptied && batches.some(batch => batch.harvestEmptied)
       const ageEligible = card.age !== null && card.age >= targetAge
-      return harvestEmptied || (ageEligible && batches.some(batch => batch.onHandQty > 0)) ? card : null
+      return ageEligible && batches.some(batch => batch.onHandQty > 0) ? card : null
     }),
   )
 
@@ -765,19 +806,28 @@ export async function getDeliveryFlockCardPlacementBatches(params: {
   buildingWarehouseId?: number | null
   buildingCode: string
   cycleNumber?: string | null
-  allowHarvestEmptied?: boolean
+  farmCycleId?: number | null
+  cleanupCycleInventory?: boolean
+  cleanupCycleBatches?: CleanupCycleInventoryBatch[]
 }): Promise<GoodsIssuePlacementBatch[]> {
   const flockCardId = Number(params.flockCardId ?? 0)
   const destinationWarehouseCode = params.buildingCode.trim()
   if (!Number.isFinite(flockCardId) || flockCardId <= 0) return []
 
-  if (params.allowHarvestEmptied) {
-    const emptied = await getHarvestEmptiedCleanupBatches(flockCardId)
-    if (emptied.length > 0) return emptied.map(batch => ({
+  if (params.cleanupCycleInventory) {
+    const farmId = Number(params.farmId ?? 0)
+    const farmCycleId = Number(params.farmCycleId ?? 0)
+    if (!Number.isFinite(farmId) || farmId <= 0 || !Number.isFinite(farmCycleId) || farmCycleId <= 0) return []
+    const cycleBatches = params.cleanupCycleBatches ??
+      await getCleanupCycleInventoryBatches(farmId, farmCycleId)
+    return cycleBatches
+      .filter(batch => Number(batch.flock_card_id) === flockCardId && Number(batch.on_hand_qty) >= 0)
+      .map(batch => ({
       id: getPlacementBatchId(batch.item_code, batch.batch_number, batch.warehouse_code),
       itemCode: batch.item_code, itemName: batch.item_name,
       batchNumber: batch.batch_number, warehouseCode: batch.warehouse_code,
-      manufacturingDate: '', expiryDate: '', onHandQty: 0, harvestEmptied: true,
+      manufacturingDate: '', expiryDate: '', onHandQty: Number(batch.on_hand_qty),
+      cleanupZeroBalance: Number(batch.on_hand_qty) === 0,
     }))
   }
 

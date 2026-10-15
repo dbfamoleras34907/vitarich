@@ -7,12 +7,16 @@ create function auth.uid() returns uuid language sql stable as $$select '1111111
 insert into auth.users values(auth.uid()), ('22222222-2222-2222-2222-222222222222');
 create table farms(id bigint primary key, code text, name text, farm_type text);
 insert into farms values (1,'F1','Farm 1','BR'),(2,'F2','Farm 2','BR');
-create table i_warehouse(id bigint primary key);
+create table doc_farm_cycles(id bigint primary key, farm_id bigint, cycle_no bigint, status text, closed_at timestamptz, updated_by uuid, updated_at timestamptz);
+insert into doc_farm_cycles values(100,1,1,'Saved',null,null,null);
+create table i_warehouse(id bigint primary key, whse_code text);
 create table items(id bigint primary key, item_code text, item_name text);
 insert into items values (1,'DOC','DOC');
 create table batch_rules(id bigint primary key);
-create table flock_card(id bigint primary key, card_no text, farm_id bigint, building_whse_id bigint, building_code text, building_name text, cycle_no text, start_date date, status text, void text, updated_by uuid, updated_at timestamptz, extra jsonb);
+create table flock_card(id bigint primary key, card_no text, farm_id bigint, farm_cycle_id bigint, building_whse_id bigint, building_code text, building_name text, cycle_no text, start_date date, status text, void text, updated_by uuid, updated_at timestamptz, extra jsonb);
 create table flock_card_origin(fc_id bigint, item_code text, batch_no text, void text);
+create table goods_receipt(id bigint primary key, farm_id bigint, status text);
+create table goods_receipt_doc(flock_card_id bigint, building_warehouse_id bigint, goods_reciept_id bigint, void text);
 create table brd_fc(id bigint primary key, card_no text, farm_id bigint, void text);
 create table brd_fc_line(fc_id bigint, age integer, mort_am numeric, mort_pm numeric, void text);
 create table inventory_postings(id bigint generated always as identity primary key, source_doc_type text, source_docentry bigint, item_code text, warehouse_code text, bin_code text, qty numeric, created_by uuid, ref_type text, ref text, batch_number text, transfer_type text, ref_type2 text, ref2 text);
@@ -26,9 +30,11 @@ insert into user_permissions values('22222222-2222-2222-2222-222222222222','Menu
 
 do $$begin
   for n in 1..12 loop
-    insert into i_warehouse values(n);
-    insert into flock_card values(n,'FC'||n,1,n,'B'||n,'Building '||n,'1','2026-08-01','Saved','1',null,null,null);
+    insert into i_warehouse values(n,'B'||n);
+    insert into flock_card values(n,'FC'||n,1,100,n,'B'||n,'Building '||n,'1','2026-08-01','Saved','1',null,null,null);
     insert into flock_card_origin values(n,'DOC','ORIGIN'||n,'1');
+    insert into goods_receipt values(n,1,'Posted');
+    insert into goods_receipt_doc values(n,n,n,'1');
     insert into brd_fc values(n,'FC'||n,1,'1');
     insert into brd_fc_line values(n,40,1,0,'1');
     insert into inventory_postings(source_doc_type,source_docentry,item_code,warehouse_code,qty,batch_number,transfer_type)
@@ -38,7 +44,7 @@ do $$begin
 end;$$;
 
 create function test_cleanup_document(n integer, quantity numeric, state text default 'Posted') returns jsonb language sql as $$
-  select jsonb_build_object('giNo','CU-TEST-'||n,'issueDate','2026-09-12','farmId',1,
+  select jsonb_build_object('giNo','CU-TEST-'||n,'issueDate','2026-09-12','farmId',1,'farmCycleId',100,
     'farmCode','UNTRUSTED','status',state,'lines',jsonb_build_array(jsonb_build_object(
       'itemId',1,'itemCode','DOC','description','DOC','batchNumber','DOC:F1:B'||n||':1',
       'fromWarehouseId',n,'fromWarehouseCode','B'||n,'altQty',quantity,'baseQty',quantity,

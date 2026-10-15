@@ -4,6 +4,7 @@ export type DocPlacementDefaults = {
   good_doc_item_code: string
   dao_doc_item_code: string
   reject_doc_item_code: string
+  suppress_seven_day_placement_condition: boolean
 }
 
 /**
@@ -14,6 +15,7 @@ export const DOC_PLACEMENT_DEFAULTS: DocPlacementDefaults = {
   good_doc_item_code: 'DOC00002',
   dao_doc_item_code: 'DOC00003',
   reject_doc_item_code: 'DOC00004',
+  suppress_seven_day_placement_condition: false,
 }
 
 export function resolveDocPlacementDefaults(
@@ -39,5 +41,6 @@ export function resolveDocPlacementDefaults(
     good_doc: itemIdByCode.get(DOC_PLACEMENT_DEFAULTS.good_doc_item_code) ?? null,
     bad_doc: itemIdByCode.get(DOC_PLACEMENT_DEFAULTS.dao_doc_item_code) ?? null,
     reject_doc: itemIdByCode.get(DOC_PLACEMENT_DEFAULTS.reject_doc_item_code) ?? null,
+    suppress_seven_day_placement_condition: DOC_PLACEMENT_DEFAULTS.suppress_seven_day_placement_condition,
   }
 }

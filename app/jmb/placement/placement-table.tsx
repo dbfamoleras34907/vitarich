@@ -35,11 +35,7 @@ import {
 import Breadcrumb from "@/lib/Breadcrumb";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-<<<<<<< Updated upstream
-=======
-import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
->>>>>>> Stashed changes
 import {
   listBreederFarms,
   listBreederCycles,
@@ -435,6 +431,10 @@ export default function PlacementTable() {
                       b.placement_date.localeCompare(a.placement_date) ||
                       b.id - a.id,
                   )[0];
+                  const firstPen = [...rows].sort(
+                    (a, b) =>
+                      compareNaturalText(a.pen_no, b.pen_no) || a.id - b.id,
+                  )[0];
                   const actualInventory = cycleNo == null
                     ? undefined
                     : actualInventoryByCycle.get(
@@ -469,12 +469,12 @@ export default function PlacementTable() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          {latest ? (
+                          {firstPen ? (
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              onClick={() => openCard(latest)}
+                              onClick={() => openCard(firstPen)}
                             >
                               <FileSpreadsheet className="size-4" /> Population Records
                             </Button>

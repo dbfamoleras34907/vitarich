@@ -39,6 +39,7 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   value: string[]
   onValueChange: (value: string[]) => void
   allowSelectAll?: boolean
+  showSelectionCount?: boolean
   autoHighlight?: boolean
   className?: string
   placeholder?: string
@@ -61,6 +62,7 @@ type SingleProps = {
   value: string
   onValueChange: (value: string) => void
   allowSelectAll?: boolean
+  showSelectionCount?: boolean
   autoHighlight?: boolean
   className?: string
   placeholder?: string
@@ -109,6 +111,7 @@ export default function SearchableCombobox(props: Props) {
   const {
     items,
     allowSelectAll = true,
+    showSelectionCount = true,
     autoHighlight = true,
     className = "w-full max-w-xs",
     placeholder = props.multiple ? "Search and select..." : "Select an option...",
@@ -240,7 +243,7 @@ export default function SearchableCombobox(props: Props) {
             </Label>
           )}
 
-          {props.multiple && (
+          {props.multiple && showSelectionCount && (
             <span className="text-xs text-muted-foreground ">
               {selectedCodes.length} selected
             </span>

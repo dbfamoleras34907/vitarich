@@ -1,4 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
 
 const GRADING_TABLE = "tbl_grading";
@@ -35,6 +36,7 @@ export type GradingUpdate = Partial<GradingInsert>;
 export type GradingPlacement = {
   id: number;
   placement_date: string;
+  age_anchor_date?: string | null;
   dr_no: string | null;
   farm_id?: number | null;
   farm_name: string | null;
@@ -120,7 +122,7 @@ export async function listGradingPlacements() {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, age_anchor_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .not("farm_name", "is", null)
     .not("building_no", "is", null)
@@ -146,7 +148,7 @@ export async function listGradingHistoryByFarm(params: {
   let placementQuery = db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, age_anchor_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     );
 
   if (params.farmId != null) {
@@ -187,7 +189,10 @@ export async function listGradingHistoryByFarm(params: {
     const placement = row.placement_id
       ? placementById.get(row.placement_id)
       : undefined;
-    const age = getAgeInDays(placement?.placement_date, row.daterec ?? "");
+    const age = getAgeInDays(
+      breederAgeAnchorDate(placement ?? {}),
+      row.daterec ?? "",
+    );
 
     return {
       id: row.id,
@@ -210,7 +215,7 @@ export async function getGradingPlacementById(id: number) {
   const { data, error } = await db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, placement_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
+      "id, placement_date, age_anchor_date, dr_no, farm_id, farm_name, building_no, pen_no, f_endingbalance, m_endingbalance",
     )
     .eq("id", id)
     .single();

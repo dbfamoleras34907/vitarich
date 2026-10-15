@@ -12,6 +12,7 @@ export type DocReceivingSettings = {
   good_doc: number | null
   bad_doc: number | null
   reject_doc: number | null
+  suppress_seven_day_placement_condition: boolean
   void?: string
   created_at?: string
   updated_at?: string | null
@@ -88,6 +89,7 @@ export async function addDocReceivingSettings(payload: DocReceivingSettings) {
       good_doc: payload.good_doc,
       bad_doc: payload.bad_doc,
       reject_doc: payload.reject_doc,
+      suppress_seven_day_placement_condition: payload.suppress_seven_day_placement_condition,
       created_by: authData.user?.id || null,
       void: '1',
     })
@@ -110,6 +112,7 @@ export async function updateDocReceivingSettings(id: number, payload: DocReceivi
       good_doc: payload.good_doc,
       bad_doc: payload.bad_doc,
       reject_doc: payload.reject_doc,
+      suppress_seven_day_placement_condition: payload.suppress_seven_day_placement_condition,
       updated_by: authData.user?.id || null,
       updated_at: new Date().toISOString(),
     })
