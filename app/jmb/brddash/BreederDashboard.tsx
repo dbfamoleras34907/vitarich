@@ -8,6 +8,7 @@ import { Bird, CalendarDays, Egg, HeartCrack, House, Percent, Scale, Wheat } fro
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -143,7 +144,7 @@ export default function BreederDashboard() {
   }, []);
 
   const farmOptions = useMemo(
-    () => farms.map((farm) => ({ code: String(farm.id), name: farm.name })),
+    () => farms.map((farm) => ({ code: String(farm.id), name: formatFarmNameCode(farm.name, farm.code) })),
     [farms],
   );
 
@@ -225,6 +226,8 @@ export default function BreederDashboard() {
                   value={farmId}
                   onValueChange={setSelectedFarmId}
                   placeholder="Select breeder farm"
+                  showCode
+                  codePosition="suffix"
                   className="w-full"
                 />
               </div>

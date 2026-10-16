@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Bird, Boxes, Loader2, Save, Send, Truck, X } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -190,7 +191,7 @@ export default function BreederDispatchForm() {
           {loading ? <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading dispatch...</div> : <>
             <section className="space-y-4 p-5"><SectionHeading icon={<Bird className="size-4" />} title="Dispatch Details" description="Select the dispatch date and breeder farm." /><div className="grid gap-4 md:grid-cols-2">
               <Field label="Dispatch date" required><Input type="date" value={form.dispatch_date} onChange={(e) => { update("dispatch_date", e.target.value); resetAllocation(); }} /></Field>
-              <Field label="Breeder farm" required><SearchableCombobox items={farms.map((farm) => ({ code: String(farm.farm_id), name: farm.farm_code ? `${farm.farm_code} - ${farm.farm_name}` : farm.farm_name }))} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); resetAllocation(); }} placeholder="Select farm" showCode className="w-full" /></Field>
+              <Field label="Breeder farm" required><SearchableCombobox items={farms.map((farm) => ({ code: String(farm.farm_id), name: formatFarmNameCode(farm.farm_name, farm.farm_code) }))} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); resetAllocation(); }} placeholder="Select farm" showCode codePosition="suffix" className="w-full" /></Field>
             </div></section><Divider />
             <section className="space-y-4 p-5"><SectionHeading icon={<Truck className="size-4" />} title="Transport" description="Record the transfer destination and vehicle traceability." /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Destination Transfer" required><SearchableCombobox items={destinationOptions} value={form.destination} onValueChange={(value) => update("destination", value)} placeholder="Select hatchery farm" className="w-full" /></Field><Field label="Hauler"><Input value={form.hauler_name} onChange={(e) => update("hauler_name", e.target.value)} /></Field><Field label="Plate number"><Input value={form.plate_number} onChange={(e) => update("plate_number", e.target.value)} /></Field><Field label="Truck seal"><Input value={form.truck_seal} onChange={(e) => update("truck_seal", e.target.value)} /></Field></div></section><Divider />
             <section className="space-y-4 p-5">
@@ -209,7 +210,7 @@ export default function BreederDispatchForm() {
   </div>;
 }
 
-function lineToItem(record: Awaited<ReturnType<typeof getBreederDispatchById>>) { return (line: Awaited<ReturnType<typeof getBreederDispatchById>>["lines"][number]): AvailableDispatchItem => ({ ...line, key: dispatchItemKey(line.source_type, line.source_record_id, line.category), farm_id: record.farm_id, farm_code: record.farm_code, farm_name: record.farm_name }); }
+function lineToItem(record: Awaited<ReturnType<typeof getBreederDispatchById>>) { return (line: Awaited<ReturnType<typeof getBreederDispatchById>>["lines"][number]): AvailableDispatchItem => ({ ...line, key: dispatchItemKey(line.source_type, line.source_record_id, line.category), farm_id: record.farm_id, farm_code: record.farm_code, farm_name: record.farm_name, source_quantity: Number(line.source_available ?? 0) + Number(line.dispatch_qty ?? 0), dispatch_quantity: Number(line.dispatch_qty ?? 0) }); }
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) { return <div className="space-y-2"><Label required={required}>{label}</Label>{children}</div>; }
 function SectionHeading({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) { return <div><h3 className="flex items-center gap-2 text-sm font-medium">{icon}{title}</h3><p className="text-xs text-muted-foreground">{description}</p></div>; }
 function Divider() { return <div className="h-px bg-border" />; }

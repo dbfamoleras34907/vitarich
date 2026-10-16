@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -154,7 +155,7 @@ export default function PlacementTable() {
     () =>
       farms.map((farm) => ({
         code: String(farm.id),
-        name: farm.code ? `${farm.code} - ${farm.name}` : farm.name,
+        name: formatFarmNameCode(farm.name, farm.code),
       })),
     [farms],
   );
@@ -289,6 +290,7 @@ export default function PlacementTable() {
                 onValueChange={setSelectedFarmId}
                 placeholder="Select breeder farm..."
                 showCode
+                codePosition="suffix"
                 className="w-full min-w-70 lg:w-105"
               />
             </div>

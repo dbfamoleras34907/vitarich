@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Egg, Hash, Loader2, Search, UsersRound } from "lucide-react";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
@@ -144,7 +145,7 @@ export default function EggLayingTable() {
   const selectedFarm = farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
   const farmOptions = useMemo(() => farms.map((farm) => ({
     code: String(farm.id),
-    name: farm.code ? `${farm.code} - ${farm.name}` : farm.name,
+    name: formatFarmNameCode(farm.name, farm.code),
   })), [farms]);
   const groupedItems = useMemo(() => groupPlacementsByFarmBuilding(items).filter(
     (item) => String(item.farm_id) === effectiveFarmId,
@@ -180,6 +181,7 @@ export default function EggLayingTable() {
                 onValueChange={setSelectedFarmId}
                 placeholder="Select breeder farm..."
                 showCode
+                codePosition="suffix"
                 className="w-full min-w-[280px] lg:w-[420px]"
               />
             </div>
