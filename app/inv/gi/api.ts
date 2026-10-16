@@ -544,7 +544,7 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
   )
 }
 
-type BrDeliveryTransactionResult = {
+type GoodsIssueTransactionResult = {
   header: GoodsIssueRow
   lines: GoodsIssueItemRow[]
 }
@@ -579,7 +579,7 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
     }
     throw error
   }
-  const result = data as BrDeliveryTransactionResult | null
+  const result = data as GoodsIssueTransactionResult | null
   if (!result?.header || !Array.isArray(result.lines)) {
     throw new Error('Harvest & Delivery transaction did not return the saved document.')
   }
@@ -597,161 +597,37 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
     return saveBrDeliveryTransaction(issue)
   }
 
-  const tables = getIssueTables(issue.triggeredBy)
-  const userId = await getSessionUserId()
-  const documentId = issue.id
+  if (issue.status === 'Posted') await validateOnHand(issue.lines)
 
-  const previousStatus = documentId
-    ? await db
-        .from(tables.header)
-        .select('status')
-        .eq('id', documentId)
-        .maybeSingle()
-    : { data: null, error: null }
+  const { data, error } = await db.rpc('save_goods_issue_transaction', {
+    p_document: {
+      id: issue.id,
+      issueDate: issue.issueDate,
+      farmId: issue.farmId,
+      fromWarehouseId: issue.fromWarehouseId,
+      fromWarehouseCode: issue.fromWarehouseCode,
+      fromWarehouseName: issue.fromWarehouseName,
+      remarks: issue.remarks,
+      status: issue.status,
+      lines: issue.lines,
+    },
+  })
 
-  if (previousStatus.error) throw previousStatus.error
-
-  const wasPosted = previousStatus.data?.status === 'Posted'
-  const shouldPostAfterLines = issue.status === 'Posted' && !wasPosted
-  if (shouldPostAfterLines) await validateOnHand(issue.lines)
-
-  const saveStatus = shouldPostAfterLines
-    ? (previousStatus.data?.status as GoodsIssueStatus | undefined) ?? 'Draft'
-    : issue.status
-
-  const headerPayload = {
-    gi_no: issue.giNo,
-    issue_date: issue.issueDate,
-    farm_id: issue.farmId,
-    farm_cycle_id: issue.farmCycleId,
-    farm_code: issue.farmCode || null,
-    farm_name: issue.farmName || null,
-    from_warehouse_id: issue.fromWarehouseId,
-    from_warehouse_code: issue.fromWarehouseCode || null,
-    from_warehouse_name: issue.fromWarehouseName || null,
-    triggered_by: issue.triggeredBy || 'GI',
-    remarks: issue.remarks.trim() || null,
-    status: saveStatus,
-    ...(documentId ? { updated_by: userId } : { created_by: userId }),
-  }
-
-  const { data: savedHeader, error: headerError } = documentId
-    ? await db.from(tables.header).update(headerPayload).eq('id', documentId).select('*').single()
-    : await db.from(tables.header).insert(headerPayload).select('*').single()
-
-  if (headerError) throw headerError
-  const header = savedHeader as GoodsIssueRow
-
-  const { data: existingItems, error: existingItemsError } = await db
-    .from(tables.lines)
-    .select('id')
-    .eq(tables.lineForeignKey, header.id)
-    .eq('void', '1')
-
-  if (existingItemsError) throw existingItemsError
-
-  for (const item of existingItems ?? []) {
-    const itemId = Number(item.id)
-    const { error } = await db
-      .from(tables.lines)
-      .update({ line_no: -itemId, updated_by: userId })
-      .eq('id', itemId)
-
-    if (error) throw error
-  }
-
-  const retainedItemIds = new Set(
-    issue.lines
-      .map(line => line.id)
-      .filter((id): id is number => typeof id === 'number'),
-  )
-  const removedItemIds = (existingItems ?? [])
-    .map(item => Number(item.id))
-    .filter(id => !retainedItemIds.has(id))
-
-  if (removedItemIds.length > 0) {
-    const { error } = await db
-      .from(tables.lines)
-      .update({ void: '0', updated_by: userId })
-      .in('id', removedItemIds)
-
-    if (error) throw error
-  }
-
-  for (const [index, line] of issue.lines.entries()) {
-    const itemPayload = {
-      [tables.lineForeignKey]: header.id,
-      line_no: index + 1,
-      item_id: line.itemId,
-      item_code: line.itemCode,
-      description: line.description || null,
-      ...(issue.triggeredBy === 'BR-DR' ? {
-        allocation_group_key: line.allocationGroupKey || String(line.id),
-        ts_dr_no: line.tsDrNo?.trim() || null,
-        hauler_name: line.haulerName?.trim() || null,
-        plate_number: line.plateNumber?.trim() || null,
-        destination: line.destination?.trim() || null,
-        live_sales_customer_name: line.liveSalesCustomerName?.trim() || null,
-        truck_seal: line.truckSeal ?? null,
-      } : {}),
-      ...(issue.triggeredBy === 'BR-CU' ? { remarks: line.lineRemarks?.trim() || null } : {}),
-      ...(issue.triggeredBy === 'BR-CU' ? {
-        batch_total_qty: Number(line.batchTotalQty ?? 0),
-        variance_qty: Number(line.varianceQty ?? 0),
-      } : {}),
-      batch_rule_id: line.batchRuleId,
-      batch_number: line.batchNumber.trim() || null,
-      manufacturing_date: line.manufacturingDate || null,
-      expiry_date: line.expiryDate || null,
-      alt_qty: line.altQty,
-      alt_uom: line.altUom,
-      base_qty: line.baseQty,
-      base_uom: line.baseUom,
-      from_warehouse_id: line.fromWarehouseId,
-      from_warehouse_code: line.fromWarehouseCode || null,
-      from_warehouse_name: line.fromWarehouseName || null,
-      void: '1',
-      updated_by: userId,
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error(
+        'Item Stock Out database save is not deployed. Apply app/sql/new/save_goods_issue_transaction.sql to the same Supabase project used by this app.',
+      )
     }
-
-    if (typeof line.id === 'number') {
-      const { error } = await db
-        .from(tables.lines)
-        .update(itemPayload)
-        .eq('id', line.id)
-
-      if (error) throw error
-    } else {
-      const { error } = await db
-        .from(tables.lines)
-        .insert({ ...itemPayload, created_by: userId })
-
-      if (error) throw error
-    }
+    throw error
   }
 
-  const staleLineVoid = db
-    .from(tables.lines)
-    .update({ void: '0', updated_by: userId })
-    .eq(tables.lineForeignKey, header.id)
-    .eq('void', '1')
-
-  const { error: deleteError } = issue.lines.length > 0
-    ? await staleLineVoid.gt('line_no', issue.lines.length)
-    : await staleLineVoid
-
-  if (deleteError) throw deleteError
-
-  if (shouldPostAfterLines) {
-    const { error: postError } = await db
-      .from(tables.header)
-      .update({ status: 'Posted', updated_by: userId })
-      .eq('id', header.id)
-
-    if (postError) throw postError
+  const result = data as GoodsIssueTransactionResult | null
+  if (!result?.header || !Array.isArray(result.lines)) {
+    throw new Error('Item Stock Out transaction did not return the saved document.')
   }
 
-  return getGoodsIssueById(header.id, issue.triggeredBy)
+  return toIssue(result.header, result.lines)
 }
 
 export async function getCleanupVariancePostings(documentId: number): Promise<CleanupVariancePosting[]> {

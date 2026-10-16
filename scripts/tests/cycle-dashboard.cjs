@@ -125,6 +125,21 @@ async function main() {
   assert.equal(model.goodBirdPlacements([
     building.placements[0], { ...building.placements[0], isGoodBirdItem: false }, building.placements[0],
   ]).length, 1, 'Only one good-bird row per receipt detail')
+  assert.equal(model.latestCycleActivityCreatedAt([{
+    ...building,
+    placements: [{ ...building.placements[0], createdAt: '2026-09-02T01:00:00Z' }],
+    growingLines: [
+      { ...building.growingLines[1], createdAt: '2026-09-04T01:00:00Z' },
+      { ...building.growingLines[2], createdAt: '2026-09-05T01:00:00Z', isVoided: true },
+    ],
+    deliveries: [{ ...building.deliveries[0], createdAt: '2026-09-03T01:00:00Z' }],
+    cleanups: [{ ...building.cleanups[0], createdAt: '2026-09-06T01:00:00Z' }],
+  }]), '2026-09-06T01:00:00Z', 'Latest activity uses created timestamps across every cycle stage')
+  assert.equal(model.latestCycleActivityCreatedAt([{
+    ...building,
+    placements: [{ ...building.placements[0], createdAt: '2026-09-07T01:00:00Z', status: 'Draft' }],
+    growingLines: [], deliveries: [], cleanups: [],
+  }]), null, 'Draft or inactive rows do not become the latest cycle activity')
   assert.equal(metrics.population, 100)
   assert.equal(metrics.startingPopulation, 100)
   const openingReceipt = building.placements[0]

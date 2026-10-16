@@ -38,6 +38,19 @@ export function activeGrowingLines(building: Pick<DashboardCycleBuilding, 'growi
     (line.hasMortality || line.hasFeed || line.hasWater || line.waterPerBird > 0 || line.hasWeight)).sort((a, b) => a.age - b.age)
 }
 
+/** Latest persisted activity timestamp across the selected cycle buildings. */
+export function latestCycleActivityCreatedAt(buildings: DashboardCycleBuilding[]): string | null {
+  const timestamps = buildings.flatMap(building => [
+    ...building.placements.filter(row => row.status === 'Posted' && !row.isVoided).map(row => row.createdAt),
+    ...activeGrowingLines(building).map(row => row.createdAt),
+    ...building.deliveries.filter(row => row.status === 'Posted' && !row.isVoided).map(row => row.createdAt),
+    ...building.cleanups.filter(row => row.status === 'Posted' && !row.isVoided).map(row => row.createdAt),
+  ]).filter((value): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value)))
+
+  return timestamps.reduce<string | null>((latest, value) =>
+    latest === null || Date.parse(value) > Date.parse(latest) ? value : latest, null)
+}
+
 export function movementQuantity(row: CycleMovementRecord, kind: 'heads' | 'kg'): number | null {
   const convert = (quantity: number, unit: string) => {
     const normalized = unit.trim().toUpperCase()

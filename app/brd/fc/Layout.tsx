@@ -376,7 +376,7 @@ export default function Layout() {
     <PageShell className="pb-6">
       <PageHeader>
         <Breadcrumb
-          SecondPreviewPageName="Breeder"
+          SecondPreviewPageName="Broiler"
           SecondPreviewPageLink="/brd"
           FirstPreviewsPageName="Growing & Farm Condition"
           FirstPreviewsPageLink="/brd/fc"
