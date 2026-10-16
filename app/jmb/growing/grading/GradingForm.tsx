@@ -20,6 +20,7 @@ import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
+import { formatFarmNameCodeId } from "@/lib/utils/farmDisplay";
 import {
   createGrading,
   createGradingBatch,
@@ -167,13 +168,13 @@ export default function GradingForm() {
     : 0;
   const weekNumber = formatWeeksDays(ageDays);
   const farmOptions = useMemo(() => {
-    const values = new Map<string, string>();
+    const values = new Map<string, { name: string; code: string | null | undefined }>();
     placements.forEach((placement) => {
       const farmId = getFarmKey(placement);
       const farmName = placement.farm_name?.trim() ?? "";
-      if (farmId && farmName) values.set(farmId, farmName);
+      if (farmId && farmName) values.set(farmId, { name: farmName, code: placement.farm_code });
     });
-    return Array.from(values, ([id, name]) => ({ id, name })).sort((a, b) =>
+    return Array.from(values, ([id, farm]) => ({ id, name: formatFarmNameCodeId(farm.name, farm.code, id) })).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
   }, [placements]);

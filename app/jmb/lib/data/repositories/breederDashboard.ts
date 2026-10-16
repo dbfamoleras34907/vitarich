@@ -62,6 +62,7 @@ export type BreederDashboardFilter = {
 export type BreederDashboardFarm = {
   id: number;
   name: string;
+  code: string;
 };
 
 export type BuildingDashboardRow = {
@@ -630,6 +631,6 @@ export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[
   const farms = await listAssignedUserFarmOptions(["BE", "Breeder"]);
 
   return farms
-    .map((farm) => ({ id: numeric(farm.id), name: farm.name.trim() }))
+    .map((farm) => ({ id: numeric(farm.id), name: farm.name.trim(), code: farm.code.trim() }))
     .filter((farm): farm is BreederDashboardFarm => farm.id > 0 && Boolean(farm.name));
 }

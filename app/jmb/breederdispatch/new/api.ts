@@ -1,5 +1,6 @@
 import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
@@ -55,6 +56,7 @@ export type BreederDispatchLine = {
 export type BreederDispatchDetail = BreederDispatchRecord & { lines: BreederDispatchLine[] };
 export type AvailableDispatchItem = Omit<BreederDispatchLine, "id" | "dispatch_id" | "line_no" | "dispatch_qty" | "remarks"> & {
   key: string; farm_id: number; farm_code: string | null; farm_name: string;
+  source_quantity: number; dispatch_quantity: number;
 };
 export type AvailableBreederFlock = Placement & {
   farm_code: string | null; male_available: number; female_available: number;
@@ -182,13 +184,12 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
   const farmCodeById = new Map((farms ?? []).map((row) => [Number(row.id), row.code as string | null]));
   if (!placementIds.length) return [] as AvailableDispatchItem[];
 
-  const [{ data: population, error: populationError }, { data: eggs, error: eggError }, { data: posted, error: postedError }] = await Promise.all([
+  const [{ data: population, error: populationError }, eggs, { data: posted, error: postedError }] = await Promise.all([
     db.from("tbl_breeder_daily_performance").select("id, placement_id, daterec, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female").in("placement_id", placementIds).eq("isactive", true).lte("daterec", dispatchDate),
-    db.from("tbl_egglaying").select("id, placement_id, date_laying, farm_id, farm_name, building_id, building, hatching_egg, classb, table_egg_dirty, table_egg_misshapen, table_egg_off_size, table_egg_thin_shell, crack, junior, jumbo, condemn").in("placement_id", placementIds).eq("is_active", true).lte("date_laying", dispatchDate),
+    listBreederEggLayings({ placementIds, to: dispatchDate }),
     db.from(HEADER_TABLE).select("id").eq("status", "Posted"),
   ]);
   if (populationError) throw populationError;
-  if (eggError) throw eggError;
   if (postedError) throw postedError;
 
   const allocated = new Map<string, number>();
@@ -211,7 +212,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
       const key = dispatchItemKey("Population Record", Number(row.id), category);
       const available = Math.max(0, values[category] - (allocated.get(key) ?? 0));
       if (!includeZeroAvailability && !available) continue;
-      items.push({ key, source_type: "Population Record", source_record_id: Number(row.id), source_date: row.daterec, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: placement.building_id, building_name: placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(placement.farm_id), farm_code: farmCodeById.get(Number(placement.farm_id)) ?? null, farm_name: placement.farm_name ?? "-" });
+      items.push({ key, source_type: "Population Record", source_record_id: Number(row.id), source_date: row.daterec, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: placement.building_id, building_name: placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_quantity: values[category], dispatch_quantity: allocated.get(key) ?? 0, source_available: available, farm_id: Number(placement.farm_id), farm_code: farmCodeById.get(Number(placement.farm_id)) ?? null, farm_name: placement.farm_name ?? "-" });
     }
   }
   for (const row of eggs ?? []) {
@@ -224,7 +225,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
         : count(row[category]);
       const available = Math.max(0, quantity - (allocated.get(key) ?? 0));
       if (!includeZeroAvailability && !available) continue;
-      items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
+      items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_quantity: quantity, dispatch_quantity: allocated.get(key) ?? 0, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
     }
   }
   return items.sort((a, b) => b.source_date.localeCompare(a.source_date) || a.building_name.localeCompare(b.building_name) || a.category_label.localeCompare(b.category_label));

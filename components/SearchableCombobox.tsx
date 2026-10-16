@@ -44,6 +44,7 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   className?: string
   placeholder?: string
   showCode?: boolean
+  codePosition?: "prefix" | "suffix"
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
   contentClassName?: string
@@ -67,6 +68,7 @@ type SingleProps = {
   className?: string
   placeholder?: string
   showCode?: boolean
+  codePosition?: "prefix" | "suffix"
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
   contentClassName?: string
@@ -116,6 +118,7 @@ export default function SearchableCombobox(props: Props) {
     className = "w-full max-w-xs",
     placeholder = props.multiple ? "Search and select..." : "Select an option...",
     showCode = false,
+    codePosition = "prefix",
     contentPositionerClassName,
     contentPositionerZIndex,
     contentClassName,
@@ -191,7 +194,10 @@ export default function SearchableCombobox(props: Props) {
 
   const formatLabel = (item?: ComboboxItemType) => {
     if (!item) return ""
-    return showCode ? `${item.code} - ${item.name}` : item.name
+    if (!showCode) return item.name
+    return codePosition === "suffix"
+      ? `${item.name} - ${item.code}`
+      : `${item.code} - ${item.name}`
   }
 
   const removeItem = (code: string) => {
@@ -482,7 +488,7 @@ export default function SearchableCombobox(props: Props) {
                 onMouseMove={() => setHighlightedIndex(index)}
               >
                 <span className="flex min-w-0 flex-1 items-center gap-2">
-                  {showCode && (
+                  {showCode && codePosition === "prefix" && (
                     <span className="shrink-0 rounded border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[11px] text-stone-600">
                       {item.code}
                     </span>
@@ -493,6 +499,11 @@ export default function SearchableCombobox(props: Props) {
                   >
                     {item.name}
                   </span>
+                  {showCode && codePosition === "suffix" && (
+                    <span className="shrink-0 rounded border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[11px] text-stone-600">
+                      {item.code}
+                    </span>
+                  )}
                 </span>
               </ComboboxItem>
             )}

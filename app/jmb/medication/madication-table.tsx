@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Ban, CalendarDays, Loader2, MapPin, Pencil, Pill, Plus, RefreshCw, Search } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -82,7 +83,7 @@ export default function MedicationTable() {
       { code: "__all__", name: "All farms" },
       ...[...unique.values()].map((row) => ({
         code: String(row.farm_id),
-        name: row.farm_code ? `${row.farm_code} - ${row.farm_name}` : row.farm_name,
+        name: formatFarmNameCode(row.farm_name, row.farm_code),
       })),
     ];
   }, [records]);
@@ -157,7 +158,7 @@ export default function MedicationTable() {
 
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search medication, indication, farm, building, or pen..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode className="w-full lg:w-72" />
+          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode codePosition="suffix" className="w-full lg:w-72" />
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>Posted</option><option>Cancelled</option><option>All</option></select>
           <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
         </div>
