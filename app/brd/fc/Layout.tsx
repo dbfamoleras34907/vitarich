@@ -383,7 +383,7 @@ export default function Layout() {
           CurrentPageName="Growing & Farm Condition"
         />
       </PageHeader>
-{/*  */}
+
       <PageSection>
         <div className="border-b bg-muted/25 p-3">
           <div className="grid gap-3 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)] lg:items-end">
