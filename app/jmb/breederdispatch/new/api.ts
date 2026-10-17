@@ -11,6 +11,8 @@ const LINE_TABLE = "tbl_brd_dispatch_line";
 const REGISTER_VIEW = "brd_dispatch_register";
 const HATCHERY_FARM_VIEW = "view_brd_hatchery_farm_lookup";
 const FARM_LOCATION_LOOKUP_VIEW = "view_farm_new_lookup";
+const SOURCE_PAGE_SIZE = 1000;
+const DISPATCH_ID_CHUNK_SIZE = 300;
 
 export type DispatchStatus = "Draft" | "Posted" | "Cancelled";
 export type DispatchSourceType = "Population Record" | "Egg Laying";
@@ -165,6 +167,46 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   }).filter((row) => row.male_available > 0 || row.female_available > 0);
 }
 
+/** Reads every Posted allocation visible to the caller; Supabase caps each response page. */
+async function listPostedDispatchAllocationLines(farmId?: number) {
+  const postedIds: number[] = [];
+  for (let offset = 0; ; offset += SOURCE_PAGE_SIZE) {
+    let query = db
+      .from(HEADER_TABLE)
+      .select("id")
+      .eq("status", "Posted")
+      .order("id")
+      .range(offset, offset + SOURCE_PAGE_SIZE - 1);
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
+    if (error) throw error;
+    postedIds.push(...(data ?? []).map((row) => Number(row.id)));
+    if ((data?.length ?? 0) < SOURCE_PAGE_SIZE) break;
+  }
+
+  const lines: Array<{
+    source_type: DispatchSourceType;
+    source_record_id: number;
+    category: string;
+    dispatch_qty: number | null;
+  }> = [];
+  for (let start = 0; start < postedIds.length; start += DISPATCH_ID_CHUNK_SIZE) {
+    const dispatchIds = postedIds.slice(start, start + DISPATCH_ID_CHUNK_SIZE);
+    for (let offset = 0; ; offset += SOURCE_PAGE_SIZE) {
+      const { data, error } = await db
+        .from(LINE_TABLE)
+        .select("source_type, source_record_id, category, dispatch_qty")
+        .in("dispatch_id", dispatchIds)
+        .order("id")
+        .range(offset, offset + SOURCE_PAGE_SIZE - 1);
+      if (error) throw error;
+      lines.push(...((data ?? []) as typeof lines));
+      if ((data?.length ?? 0) < SOURCE_PAGE_SIZE) break;
+    }
+  }
+  return lines;
+}
+
 /**
  * Returns dispatch source records with their remaining quantity as of a dispatch date.
  * `includeZeroAvailability` is useful for selection grids that must expose an
@@ -184,24 +226,18 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
   const farmCodeById = new Map((farms ?? []).map((row) => [Number(row.id), row.code as string | null]));
   if (!placementIds.length) return [] as AvailableDispatchItem[];
 
-  const [{ data: population, error: populationError }, eggs, { data: posted, error: postedError }] = await Promise.all([
+  const [{ data: population, error: populationError }, eggs, postedLines] = await Promise.all([
     db.from("tbl_breeder_daily_performance").select("id, placement_id, daterec, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female").in("placement_id", placementIds).eq("isactive", true).lte("daterec", dispatchDate),
     listBreederEggLayings({ placementIds, to: dispatchDate }),
-    db.from(HEADER_TABLE).select("id").eq("status", "Posted"),
+    listPostedDispatchAllocationLines(farmId),
   ]);
   if (populationError) throw populationError;
-  if (postedError) throw postedError;
 
   const allocated = new Map<string, number>();
-  const postedIds = (posted ?? []).map((row) => row.id);
-  if (postedIds.length) {
-    const { data, error } = await db.from(LINE_TABLE).select("source_type, source_record_id, category, dispatch_qty").in("dispatch_id", postedIds);
-    if (error) throw error;
-    (data ?? []).forEach((line) => {
-      const key = dispatchItemKey(line.source_type as DispatchSourceType, Number(line.source_record_id), line.category);
-      allocated.set(key, (allocated.get(key) ?? 0) + count(line.dispatch_qty));
-    });
-  }
+  postedLines.forEach((line) => {
+    const key = dispatchItemKey(line.source_type, Number(line.source_record_id), line.category);
+    allocated.set(key, (allocated.get(key) ?? 0) + count(line.dispatch_qty));
+  });
 
   const items: AvailableDispatchItem[] = [];
   for (const row of population ?? []) {
