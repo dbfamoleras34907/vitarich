@@ -13,8 +13,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -77,17 +79,6 @@ export default function CleanupTable() {
     [loading, setValue, working],
   );
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, BreederCleanupRecord>();
-    records.forEach((record) => unique.set(record.farm_id, record));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((record) => ({
-        code: String(record.farm_id),
-        name: formatFarmNameCode(record.farm_name, record.farm_code),
-      })),
-    ];
-  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
@@ -205,19 +196,7 @@ export default function CleanupTable() {
               className="pl-9"
             />
           </div>
-          <SearchableCombobox
-            label="Farm"
-            items={farms}
-            value={farmFilter}
-            onValueChange={(value) => {
-              setFarmFilter(value);
-              setPage(1);
-            }}
-            placeholder="All farms"
-            showCode
-            codePosition="suffix"
-            className="w-full lg:w-72"
-          />
+          <BreederListParameters {...parameters} />
           <Button
             variant="outline"
             onClick={() => void load()}

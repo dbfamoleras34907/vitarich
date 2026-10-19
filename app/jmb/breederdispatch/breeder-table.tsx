@@ -17,8 +17,10 @@ import {
   Search,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -93,17 +95,6 @@ export default function BreederDispatchTable() {
   }, [load, router]);
   useEffect(() => setValue("loading_g", loading || working), [loading, setValue, working]);
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, BreederDispatchRecord>();
-    records.forEach((record) => unique.set(record.farm_id, record));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((record) => ({
-        code: String(record.farm_id),
-        name: formatFarmNameCode(record.farm_name, record.farm_code),
-      })),
-    ];
-  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
@@ -158,9 +149,12 @@ export default function BreederDispatchTable() {
         </div>
         <div className="flex flex-col gap-3 border-b p-4">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search document, farm, destination, hauler, or plate..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode codePosition="suffix" className="w-full lg:w-72" />
-          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <BreederListParameters {...parameters}>
+              <div className="space-y-2 lg:w-40"><Label>Status</Label><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select></div>
+            </BreederListParameters>
+            <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          </div>
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table>

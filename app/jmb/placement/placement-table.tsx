@@ -22,8 +22,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -140,14 +142,6 @@ export default function PlacementTable() {
   const effectiveFarmId = parameters.farmId;
   const selectedFarm =
     farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
-  const farmOptions = useMemo(
-    () =>
-      farms.map((farm) => ({
-        code: String(farm.id),
-        name: formatFarmNameCode(farm.name, farm.code),
-      })),
-    [farms],
-  );
   const buildings = useMemo(() => {
     const unique = new Map<number, FarmLocationLookup>();
     locations
@@ -275,18 +269,7 @@ export default function PlacementTable() {
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              <label className="text-sm font-semibold">Breeder Farm</label>
-              <SearchableCombobox
-                items={farmOptions}
-                value={effectiveFarmId}
-                onValueChange={setSelectedFarmId}
-                placeholder="Select breeder farm..."
-                showCode
-                codePosition="suffix"
-                className="w-full min-w-70 lg:w-105"
-              />
-            </div>
+            <BreederListParameters {...parameters} />
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-md border bg-background px-3 py-2">
