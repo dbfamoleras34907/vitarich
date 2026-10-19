@@ -28,6 +28,14 @@ export type MonthlyFarmCompletionCatalogFarm = {
   region: string
 }
 
+export type MonthlyFarmCompletionCatalogUser = {
+  id: number
+  name: string
+  userType: number
+  userTypeLabel: string
+  farmIds: number[]
+}
+
 export type MonthlyFarmCompletionCell = {
   month: number
   completedCount: number
@@ -49,11 +57,14 @@ export type MonthlyFarmCompletionReport = {
     completionRule: MonthlyFarmCompletionRule
     island: string | null
     region: string | null
+    farmIds: number[]
+    userIds: number[]
   }
   catalog: {
     availableYears: number[]
     fmsTypes: MonthlyFarmCompletionFmsType[]
     farms: MonthlyFarmCompletionCatalogFarm[]
+    users: MonthlyFarmCompletionCatalogUser[]
   }
   rows: MonthlyFarmCompletionRow[]
   generatedAt: string
@@ -66,6 +77,8 @@ export type MonthlyFarmCompletionParams = {
   completionRule: MonthlyFarmCompletionRule
   island?: string
   region?: string
+  farmIds?: number[]
+  userIds?: number[]
 }
 
 export function isMonthlyFarmCompletionFmsType(value: unknown): value is MonthlyFarmCompletionFmsType {

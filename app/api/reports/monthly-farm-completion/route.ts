@@ -14,6 +14,14 @@ function textFilter(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function idFilters(value: unknown, label: string) {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.length > 500) throw new Error(`Choose valid ${label}.`)
+  const ids = [...new Set(value.map(Number))]
+  if (ids.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new Error(`Choose valid ${label}.`)
+  return ids
+}
+
 export async function POST(request: Request) {
   try {
     const authorization = request.headers.get('authorization') ?? ''
@@ -39,6 +47,8 @@ export async function POST(request: Request) {
       completionRule: body.completionRule,
       island: textFilter(body.island),
       region: textFilter(body.region),
+      farmIds: idFilters(body.farmIds, 'farms'),
+      userIds: idFilters(body.userIds, 'users'),
     }
     const data = await getMonthlyFarmCompletionReportForAuthorizedUser(authData.user.id, params)
     return NextResponse.json(data)

@@ -5,6 +5,7 @@ import { Download, FileText, RefreshCw, Search } from 'lucide-react'
 import { useReactToPrint } from 'react-to-print'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import SearchableCombobox from '@/components/SearchableCombobox'
 import {
   CompactMetric,
   PageHeader,
@@ -30,6 +31,7 @@ import {
 } from '@/lib/data/repositories/monthlyFarmCompletion.shared'
 import { exportReportWorkbook } from '@/lib/reports/exportWorkbook'
 import { monthlyFarmCompletionReportSheets } from '@/lib/reports/monthlyFarmCompletion'
+import { FARM_ISLANDS, PHILIPPINE_REGIONS, PHILIPPINE_REGIONS_BY_ISLAND, type FarmIslandGroup } from '@/lib/farmProfileOptions'
 import { cn } from '@/lib/utils'
 
 const ALL = '__all__'
@@ -41,6 +43,8 @@ type Filters = {
   completionRule: MonthlyFarmCompletionRule
   island: string
   region: string
+  farmIds: string[]
+  userIds: string[]
 }
 
 function manilaYear() {
@@ -70,10 +74,13 @@ export default function MonthlyFarmCompletionReport() {
     completionRule: 'any_dispatch',
     island: ALL,
     region: ALL,
+    farmIds: [],
+    userIds: [],
   }), [])
   const [filters, setFilters] = useState<Filters>(defaultFilters)
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
   const initialLoadStarted = useRef(false)
@@ -81,6 +88,7 @@ export default function MonthlyFarmCompletionReport() {
   const loadReport = useCallback(async () => {
     if (blocked) return
     setLoading(true)
+    setLoadError(null)
     try {
       setReport(await getMonthlyFarmCompletionReport({
         fmsType: filters.fmsType,
@@ -89,9 +97,13 @@ export default function MonthlyFarmCompletionReport() {
         completionRule: filters.completionRule,
         island: filters.island === ALL ? undefined : filters.island,
         region: filters.region === ALL ? undefined : filters.region,
+        farmIds: filters.farmIds.map(Number),
+        userIds: filters.userIds.map(Number),
       }))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to load the Monthly Farm Completion Report.')
+      const message = error instanceof Error ? error.message : 'Unable to load the Monthly Farm Completion Report.'
+      setLoadError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -104,10 +116,29 @@ export default function MonthlyFarmCompletionReport() {
   }, [blocked, loadReport])
 
   const catalogFarms = useMemo(() => report?.catalog.farms ?? [], [report])
-  const islands = useMemo(() => [...new Set(catalogFarms.map(farm => farm.island))].sort(), [catalogFarms])
-  const regions = useMemo(() => [...new Set(catalogFarms
-    .filter(farm => filters.island === ALL || farm.island === filters.island)
-    .map(farm => farm.region))].sort(), [catalogFarms, filters.island])
+  const islands = useMemo(() => [...new Set([...FARM_ISLANDS, ...catalogFarms.map(farm => farm.island).filter(Boolean)])], [catalogFarms])
+  const regions = useMemo(() => {
+    const farmRegions = catalogFarms
+      .filter(farm => filters.island === ALL || farm.island === filters.island)
+      .map(farm => farm.region).filter(Boolean)
+    const standardRegions = filters.island === ALL
+      ? PHILIPPINE_REGIONS
+      : FARM_ISLANDS.some(island => island === filters.island)
+        ? PHILIPPINE_REGIONS_BY_ISLAND[filters.island as FarmIslandGroup]
+        : []
+    return [...new Set([...standardRegions, ...farmRegions])]
+  }, [catalogFarms, filters.island])
+  const availableFarms = useMemo(() => catalogFarms.filter(farm =>
+    (filters.island === ALL || farm.island === filters.island)
+    && (filters.region === ALL || farm.region === filters.region)
+  ), [catalogFarms, filters.island, filters.region])
+  const farmOptions = useMemo(() => availableFarms.map(farm => ({ code: String(farm.id), name: `${farm.name} - ${farm.code}` })), [availableFarms])
+  const userFarmIds = useMemo(() => new Set((filters.farmIds.length
+    ? availableFarms.filter(farm => filters.farmIds.includes(String(farm.id)))
+    : availableFarms).map(farm => farm.id)), [availableFarms, filters.farmIds])
+  const userOptions = useMemo(() => (report?.catalog.users ?? [])
+    .filter(user => user.farmIds.some(farmId => userFarmIds.has(farmId)))
+    .map(user => ({ code: String(user.id), name: `${user.name} - ${user.userTypeLabel}` })), [report, userFarmIds])
   const years = useMemo(() => [...new Set([filters.year, ...(report?.catalog.availableYears ?? [])])].sort((a, b) => b - a), [filters.year, report])
 
   const totals = useMemo(() => {
@@ -124,10 +155,14 @@ export default function MonthlyFarmCompletionReport() {
     completionRule: report.filters.completionRule,
     island: report.filters.island ?? ALL,
     region: report.filters.region ?? ALL,
+    farmIds: report.filters.farmIds.map(String),
+    userIds: report.filters.userIds.map(String),
   } : filters
   const moduleLabel = monthlyFarmCompletionModuleLabel(appliedFilters.completionModule)
   const completionContext = appliedFilters.completionModule === 'doc_dispatch' ? `; ${ruleLabel(appliedFilters.completionRule)}` : ''
-  const context = `${appliedFilters.fmsType}; ${appliedFilters.year}; Through ${moduleLabel}${completionContext}; ${appliedFilters.island === ALL ? 'All Island Groups' : appliedFilters.island}; ${appliedFilters.region === ALL ? 'All Regions' : appliedFilters.region}`
+  const appliedFarmNames = appliedFilters.farmIds.map(id => report?.catalog.farms.find(farm => String(farm.id) === id)?.name).filter(Boolean)
+  const appliedUserNames = appliedFilters.userIds.map(id => report?.catalog.users.find(user => String(user.id) === id)?.name).filter(Boolean)
+  const context = `${appliedFilters.fmsType}; ${appliedFilters.year}; Through ${moduleLabel}${completionContext}; ${appliedFilters.island === ALL ? 'All Island Groups' : appliedFilters.island}; ${appliedFilters.region === ALL ? 'All Regions' : appliedFilters.region}; ${appliedFarmNames.length ? appliedFarmNames.join(', ') : 'All Farms'}; ${appliedUserNames.length ? appliedUserNames.join(', ') : 'All Users'}`
   const printReport = useReactToPrint({
     contentRef: reportRef,
     documentTitle: `Monthly Farm Completion Report ${appliedFilters.year}`,
@@ -163,15 +198,17 @@ export default function MonthlyFarmCompletionReport() {
 
     <PageSection className="print:hidden">
       <PageSectionHeader>
-        <div><PageSectionTitle>Report filters</PageSectionTitle><PageSectionDescription>The report includes all active approved farms in the selected scope, regardless of the viewer’s farm assignments.</PageSectionDescription></div>
+        <div><PageSectionTitle>Report filters</PageSectionTitle><PageSectionDescription>Farm filters narrow the available users. A selected user remains associated with every later module after creating or posting a record in its lineage.</PageSectionDescription></div>
       </PageSectionHeader>
-      <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">FMS Type</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.fmsType} onChange={event => setFilters(current => ({ ...current, fmsType: event.target.value as MonthlyFarmCompletionFmsType }))}>{MONTHLY_FARM_COMPLETION_FMS_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>
         <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Year</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.year} onChange={event => setFilters(current => ({ ...current, year: Number(event.target.value) }))}>{years.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Completion Module</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.completionModule} onChange={event => setFilters(current => ({ ...current, completionModule: event.target.value as MonthlyFarmCompletionModule }))}>{MONTHLY_FARM_COMPLETION_MODULES.map(module => <option key={module.value} value={module.value}>{module.label}</option>)}</select></label>
         {filters.completionModule === 'doc_dispatch' && <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Completion Rule</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.completionRule} onChange={event => setFilters(current => ({ ...current, completionRule: event.target.value as MonthlyFarmCompletionRule }))}><option value="any_dispatch">Any dispatch recorded</option><option value="all_grading_batches">Every grading batch dispatched</option></select></label>}
-        <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Island Group</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.island} onChange={event => setFilters(current => ({ ...current, island: event.target.value, region: ALL }))}><option value={ALL}>All Island Groups</option>{islands.map(value => <option key={value}>{value}</option>)}</select></label>
-        <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Region</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.region} onChange={event => setFilters(current => ({ ...current, region: event.target.value }))}><option value={ALL}>All Regions</option>{regions.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Island Group</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.island} onChange={event => setFilters(current => ({ ...current, island: event.target.value, region: ALL, farmIds: [], userIds: [] }))}><option value={ALL}>All Island Groups</option>{islands.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label className="space-y-1.5 text-sm"><span className="block text-xs font-semibold text-muted-foreground">Region</span><select className="h-10 w-full rounded-md border bg-background px-3" value={filters.region} onChange={event => setFilters(current => ({ ...current, region: event.target.value, farmIds: [], userIds: [] }))}><option value={ALL}>All Regions</option>{regions.map(value => <option key={value}>{value}</option>)}</select></label>
+        <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:text-muted-foreground"><SearchableCombobox multiple label="Farm" items={farmOptions} value={filters.farmIds} onValueChange={farmIds => setFilters(current => ({ ...current, farmIds, userIds: [] }))} placeholder="All Farms" className="w-full" /></div>
+        <div className="min-w-0 [&_label]:text-xs [&_label]:font-semibold [&_label]:text-muted-foreground"><SearchableCombobox multiple label="User" items={userOptions} value={filters.userIds} onValueChange={userIds => setFilters(current => ({ ...current, userIds }))} placeholder="All Users" className="w-full" disabled={userOptions.length === 0} /></div>
       </div>
       <div className="flex flex-col gap-2 border-t bg-muted/20 p-3 sm:flex-row sm:justify-end">
         <Button variant="outline" size="sm" onClick={() => setFilters(defaultFilters)}>Clear filters</Button>
@@ -191,6 +228,8 @@ export default function MonthlyFarmCompletionReport() {
       <CompactMetric label={`Reached ${moduleLabel}`} value={totals.completed.toLocaleString('en-PH')} />
       <CompactMetric label="Overall Completion" value={totals.percentage == null ? 'N/A' : `${totals.percentage}%`} />
     </div>
+
+    {loadError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive print:hidden">{loadError}</div>}
 
     <PageSection>
       <PageSectionHeader>

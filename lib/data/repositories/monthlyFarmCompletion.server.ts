@@ -40,6 +40,8 @@ export async function getMonthlyFarmCompletionReportForAuthorizedUser(
     p_completion_rule: params.completionRule,
     p_island: params.island?.trim() || null,
     p_region: params.region?.trim() || null,
+    p_farm_ids: params.farmIds ?? [],
+    p_user_ids: params.userIds ?? [],
   })
 
   if (error) {
