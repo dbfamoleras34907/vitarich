@@ -17,6 +17,7 @@ declare
   warehouse_id_by_client_key jsonb := '{}'::jsonb;
   associated_warehouse_items jsonb[] := array[]::jsonb[];
   farm_address text;
+  assigned_user_ids bigint[];
 begin
   if auth.uid() is null or not (
     public.current_user_has_farm_permission('/a_dean/farm')
@@ -61,6 +62,12 @@ begin
     nullif(payload->'address'->>'city', ''),
     nullif(payload->'address'->>'province', '')
   ), '');
+
+  if payload ? 'assigned_user_ids' then
+    select coalesce(array_agg(distinct selected.value::bigint), array[]::bigint[])
+    into assigned_user_ids
+    from jsonb_array_elements_text(coalesce(payload->'assigned_user_ids', '[]'::jsonb)) as selected(value);
+  end if;
 
   update public.farms
   set code = payload->'farm'->>'code',
@@ -257,6 +264,14 @@ begin
   update public.farms
   set associated_warehouses = associated_warehouse_items
   where id = p_farm_id;
+
+  if payload ? 'assigned_user_ids' then
+    perform public.sync_farm_user_assignments(
+      p_farm_id,
+      payload->'farm'->>'code',
+      assigned_user_ids
+    );
+  end if;
 
   return p_farm_id;
 end;

@@ -1,3 +1,5 @@
+'use client'
+
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Sun, CheckCircle2, Moon } from 'lucide-react'
@@ -5,13 +7,34 @@ import { useTheme } from 'next-themes'
 import React, { useState } from 'react'
 import { Modal } from './Moda'
 
-interface collapsed {
-    collapsed: boolean
+interface ThemeSwitchProps {
+    collapsed?: boolean
+    variant?: 'dialog' | 'toggle'
 }
 
-export default function ThemeSwitch({ collapsed }: collapsed) {
-    const { setTheme, theme } = useTheme()
+export default function ThemeSwitch({ collapsed = false, variant = 'dialog' }: ThemeSwitchProps) {
+    const { resolvedTheme, setTheme, theme } = useTheme()
     const [openModal, setOpenModal] = useState(false);
+
+    if (variant === 'toggle') {
+        const nextTheme = resolvedTheme === 'dark' ? 'light' : 'dark'
+
+        return (
+            <Button
+                variant="outline"
+                type="button"
+                onClick={() => setTheme(nextTheme)}
+                aria-label="Toggle color theme"
+                title="Toggle color theme"
+                className="h-10 gap-2 bg-card/90 px-3 shadow-sm backdrop-blur-sm"
+            >
+                <Moon className="size-4 dark:hidden" />
+                <Sun className="hidden size-4 dark:block" />
+                <span className="text-xs font-semibold dark:hidden">Dark mode</span>
+                <span className="hidden text-xs font-semibold dark:inline">Light mode</span>
+            </Button>
+        )
+    }
 
     return (
         <div>

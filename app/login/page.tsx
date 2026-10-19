@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import Image from "next/image"
 import { LoginForm } from "@/lib/Login/loginform"
+import ThemeSwitch from "@/lib/ThemeSwitch"
 import poultryHero from "./fms-poultry-hero.png"
+import poultryHeroDark from "./fms-poultry-hero-dark.png"
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ accountError?: string }> }) {
     const { accountError } = await searchParams
@@ -16,7 +18,15 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                         fill
                         priority
                         sizes="58vw"
-                        className="object-cover object-center"
+                        className="object-cover object-center dark:hidden"
+                    />
+                    <Image
+                        src={poultryHeroDark}
+                        alt=""
+                        fill
+                        priority
+                        sizes="58vw"
+                        className="hidden object-cover object-center dark:block"
                     />
                     <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,65,39,0.36),rgba(0,93,56,0.06)_48%,rgba(5,72,44,0.10)),linear-gradient(180deg,rgba(0,54,33,0.08),rgba(0,28,18,0.32))]" />
 
@@ -50,7 +60,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                     </div>
                 </section>
 
-                <section className="flex min-h-full items-center justify-center px-5 py-8 sm:px-8 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:py-[clamp(1.5rem,4vh,2rem)]">
+                <section className="relative flex min-h-full items-center justify-center px-5 py-8 sm:px-8 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:py-[clamp(1.5rem,4vh,2rem)]">
+                    <div className="absolute right-3 top-3 z-10 sm:right-5 sm:top-5">
+                        <ThemeSwitch variant="toggle" />
+                    </div>
                     <div className="w-full max-w-md">
                         <div className="mb-8 flex items-center justify-center lg:hidden">
                             <div className="rounded-md bg-[#0f5132] px-5 py-3 shadow-[var(--starbucks-card-shadow)]">

@@ -26,6 +26,7 @@ declare
   farm_region text;
   farm_approval_status text;
   assigned_warehouse_count integer;
+  assigned_user_ids bigint[];
 begin
   if auth.uid() is null or not (
     public.current_user_has_farm_permission('/a_dean/farm')
@@ -54,6 +55,10 @@ begin
   );
 
   farm_approval_status := coalesce(nullif(payload->'farm'->>'approval_status', ''), 'approved');
+
+  select coalesce(array_agg(distinct selected.value::bigint), array[]::bigint[])
+  into assigned_user_ids
+  from jsonb_array_elements_text(coalesce(payload->'assigned_user_ids', '[]'::jsonb)) as selected(value);
 
   if exists (
     select 1
@@ -264,6 +269,12 @@ begin
   if assigned_warehouse_count <> cardinality(warehouse_ids) then
     raise exception 'Farm creation could not persist every warehouse assignment.';
   end if;
+
+  perform public.sync_farm_user_assignments(
+    new_farm_id,
+    payload->'farm'->>'code',
+    assigned_user_ids
+  );
 
   for machine_item in
     select * from jsonb_array_elements(coalesce(payload->'machines', '[]'::jsonb))

@@ -106,7 +106,7 @@ export default function ModuleWorkspace() {
           </p>
         </div>
       ) : (
-        <div className="[column-gap:0.75rem] [column-width:19rem]">
+        <div className="columns-1 gap-3 sm:columns-2 xl:columns-3">
           {folders.map(folder => {
             const FolderIcon = folder.icon
             return (
@@ -131,7 +131,7 @@ export default function ModuleWorkspace() {
                           {group.group}
                         </h3>
                       )}
-                      <div className="grid gap-1 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap">
                         {group.children.map(child => {
                           const ModuleIcon = getModuleIcon(child.title, child.type)
                           return (
@@ -139,10 +139,10 @@ export default function ModuleWorkspace() {
                               key={`${folder.id}-${group.group}-${child.id}`}
                               href={child.url}
                               onClick={() => setValue('loading_s', true)}
-                              className="group flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="group flex min-h-11 w-full min-w-max items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:flex-[1_1_calc(50%-0.125rem)]"
                             >
                               <ModuleIcon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
-                              <span className="min-w-0 leading-5">{child.title}</span>
+                              <span className="min-w-0 whitespace-nowrap leading-5">{child.title}</span>
                             </Link>
                           )
                         })}

@@ -3,6 +3,11 @@ import type { WarehouseData } from '@/lib/types'
 import { getWarehouses } from '../../warehouse/api'
 import { resolveFarmWarehouseAssociations } from '@/lib/data/repositories/farmWarehouseAssociations'
 import { isUniqueConstraintViolation } from '@/lib/data/errors/postgres'
+import {
+  listFarmAssignableUsers,
+  listFarmAssignedUsers,
+  type FarmAssignableUser,
+} from '@/lib/data/repositories/farmAssignedUsers'
 
 export type FarmSetupFormData = Record<string, string>
 
@@ -37,15 +42,21 @@ export type FarmSetupRecord = {
   address: FarmSetupFormData
   warehouses: FarmSetupWarehouseDraft[]
   assignableWarehouses: FarmSetupWarehouseDraft[]
+  assignedUserIds: number[]
 }
 
 export type FarmSetupPayload = {
   farm: FarmSetupFormData
   address: FarmSetupFormData
   warehouses: FarmSetupWarehouseDraft[]
+  assigned_user_ids: number[]
   machines: {
     data: FarmSetupFormData
   }[]
+}
+
+export async function getFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
+  return listFarmAssignableUsers()
 }
 
 export type FarmSetupApprovalResult = {
@@ -228,6 +239,12 @@ export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
   }
   if (!farmData?.farm) throw new Error('Farm not found.')
 
+  const assignedUsers = await listFarmAssignedUsers(
+    [{ id: farmId, code: String(farmData.farm.code ?? '').trim() }],
+    [2, 3],
+    { activeUsersOnly: true },
+  )
+
   const { assigned: assignedWarehouseRows, assignable: assignableWarehouseRows } =
     resolveFarmWarehouseAssociations(
       farmId,
@@ -245,6 +262,7 @@ export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
     },
     warehouses: assignedWarehouseRows.map(toFarmSetupWarehouseDraft),
     assignableWarehouses: assignableWarehouseRows.map(toFarmSetupWarehouseDraft),
+    assignedUserIds: (assignedUsers.get(farmId) ?? []).map(user => user.id),
   }
 }
 

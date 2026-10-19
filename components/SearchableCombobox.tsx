@@ -52,6 +52,7 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   onAction?: () => void
   actionDisabled?: boolean
   disabled?: boolean
+  inputAriaLabel?: string
 }
 
 type SingleProps = {
@@ -235,7 +236,7 @@ export default function SearchableCombobox(props: Props) {
 
   return (
     <div className="relative min-w-0 ">
-      {(props.label || props.multiple) && (
+      {(props.label || (props.multiple && showSelectionCount)) && (
         <div className="flex  items-center justify-between mb-2">
           {props.label && (
             <Label required={props.required} className="">
@@ -293,7 +294,10 @@ export default function SearchableCombobox(props: Props) {
                     {visibleItems.map((item) => (
                       <span
                         key={item.code}
-                        className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-medium text-stone-700"
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-medium text-stone-700",
+                          wrapItemLabels ? "max-w-full sm:max-w-80" : "max-w-[220px]",
+                        )}
                       >
                         <span className="truncate">{formatLabel(item)}</span>
                         <button
@@ -326,6 +330,7 @@ export default function SearchableCombobox(props: Props) {
                     )}
 
                     <ComboboxChipsInput
+                      aria-label={props.inputAriaLabel ?? props.label}
                       className="min-w-28 flex-1 text-sm placeholder:text-muted-foreground"
                       placeholder={selectedItems.length === 0 ? placeholder : "Search..."}
                     />

@@ -29,6 +29,7 @@ import {
   Plus,
   Save,
   Trash2,
+  UsersRound,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
@@ -38,11 +39,13 @@ import { voidFarm } from '../api'
 import { useGlobalDefaults } from '@/lib/Defaults/GlobalDefaults'
 import {
   createFarmSetup,
+  getFarmAssignableUsers,
   getFarmSetup,
   updateFarmSetup,
   type FarmSetupPayload,
   type FarmSetupWarehouseDraft,
 } from './api'
+import type { FarmAssignableUser } from '@/lib/data/repositories/farmAssignedUsers'
 
 type FormDataMap = Record<string, string>
 
@@ -540,6 +543,9 @@ export default function Layout() {
   const [defaultFeedKey, setDefaultFeedKey] = useState('')
   const [defaultReceivingKey, setDefaultReceivingKey] = useState('')
   const [defaultDisposalKey, setDefaultDisposalKey] = useState('')
+  const [assignableUsers, setAssignableUsers] = useState<FarmAssignableUser[]>([])
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
+  const [loadingAssignableUsers, setLoadingAssignableUsers] = useState(true)
 
   const selectedFarmType = FARM_TYPES.find((type) => type.value === farmData.farm_type)
   const defaultWarehouseOptions: ComboboxItemType[] = useMemo(
@@ -582,6 +588,13 @@ export default function Layout() {
         }
       })
   }, [selectedFarmType?.warehouseType, warehouseCatalog, warehouseDrafts])
+  const assignableUserOptions: ComboboxItemType[] = useMemo(
+    () => assignableUsers.map(user => ({
+      code: String(user.id),
+      name: `${user.name} - ${user.userTypeLabel}`,
+    })),
+    [assignableUsers],
+  )
   const locationPreview = useMemo(
     () =>
       [addressData.address, addressData.barangay, addressData.city, addressData.province]
@@ -872,6 +885,7 @@ export default function Layout() {
       const payload: FarmSetupPayload = {
         farm: farmData,
         address: addressData,
+        assigned_user_ids: assignedUserIds.map(Number),
         warehouses: [
           ...warehouseDrafts.filter((draft) => !isPenDraft(draft)),
           ...warehouseDrafts.filter(isPenDraft),
@@ -983,6 +997,7 @@ export default function Layout() {
         const record = await getFarmSetup(farmId)
         setFarmData(record.farm)
         setAddressData(record.address)
+        setAssignedUserIds(record.assignedUserIds.map(String))
         const defaults = withDefaultWarehouses(
           record.warehouses.map((warehouse) => ({
             id: warehouse.id,
@@ -1029,6 +1044,21 @@ export default function Layout() {
     loadFarm()
   }, [loadFarm, router])
 
+  useEffect(() => {
+    let active = true
+    getFarmAssignableUsers()
+      .then(users => {
+        if (active) setAssignableUsers(users)
+      })
+      .catch(error => {
+        if (active) toast.error(error instanceof Error ? error.message : 'Unable to load assignable users.')
+      })
+      .finally(() => {
+        if (active) setLoadingAssignableUsers(false)
+      })
+    return () => { active = false }
+  }, [])
+
   const structures = warehouseDrafts.filter((draft) => !isPenDraft(draft))
   const summary = `${structures.filter((draft) => draft.data.warehouse_type === 'Building').length} Buildings · ${structures.filter((draft) => draft.data.warehouse_type === 'Warehouse').length} Warehouses · ${warehouseDrafts.filter(isPenDraft).length} Pens`
   const farmField = (code: string) => {
@@ -1072,6 +1102,34 @@ export default function Layout() {
                   {farmField('contact_person')}
                   {farmField('contact_number')}
                   {farmField('tel')}
+                  <div className="space-y-1.5 md:col-span-2 xl:col-span-2">
+                    <div className="flex min-h-5 flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs font-semibold text-neutral-950 dark:text-foreground">Assigned TA</Label>
+                        <Badge variant="outline" className="h-5 rounded px-1.5 text-[10px] font-normal text-muted-foreground">Optional</Badge>
+                      </div>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {assignedUserIds.length ? `${assignedUserIds.length} selected` : 'No users selected'}
+                      </span>
+                    </div>
+                    <SearchableCombobox
+                      multiple
+                      items={assignableUserOptions}
+                      value={assignedUserIds}
+                      onValueChange={setAssignedUserIds}
+                      placeholder={loadingAssignableUsers ? 'Loading active users...' : 'Search by ID, name, or user type...'}
+                      disabled={loadingAssignableUsers}
+                      showCode
+                      showSelectionCount={false}
+                      wrapItemLabels
+                      inputAriaLabel="Assigned TA"
+                      className="h-auto min-h-10 max-h-none w-full items-center py-1.5"
+                    />
+                    <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <UsersRound className="size-3.5 shrink-0" aria-hidden="true" />
+                      Select one or more active Admin or User accounts assigned to this farm.
+                    </p>
+                  </div>
                 </div>
                 <section className="space-y-3 border-t border-border pt-4">
                   <SectionIntro title="Farm Location" description="The farm address is used as the initial address for new structures." />
@@ -1119,6 +1177,10 @@ export default function Layout() {
                     <div><dt className="text-xs text-muted-foreground">Farm</dt><dd className="mt-1 font-medium">{farmData.name}</dd><dd className="text-xs text-muted-foreground">{farmData.code || 'Code assigned on save'} · {selectedFarmType?.label}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Location</dt><dd className="mt-1">{locationPreview || 'Not set'}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Contact</dt><dd className="mt-1">{farmData.contact_person || 'Not set'}</dd><dd className="text-xs text-muted-foreground">{[farmData.contact_number, farmData.tel].filter(Boolean).join(' · ')}</dd></div>
+                    <div className="md:col-span-3"><dt className="text-xs text-muted-foreground">Assigned TA</dt><dd className="mt-1.5 flex flex-wrap gap-1.5">{assignedUserIds.length ? assignedUserIds.map(id => {
+                      const user = assignableUsers.find(item => String(item.id) === id)
+                      return <Badge key={id} variant="outline" className="rounded px-2 py-1 font-normal">{user ? `${user.id} - ${user.name} - ${user.userTypeLabel}` : id}</Badge>
+                    }) : <span className="text-muted-foreground">Not assigned</span>}</dd></div>
                   </dl>
                 </section>
                 <section className="rounded-md border border-border">
