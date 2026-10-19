@@ -738,6 +738,16 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 200,
+            type: "Report",
+            title: "Monthly Farm Completion Report",
+            url: "/report/monthly-farm-completion",
+            view: true,
+            insert: false,
+            edit: false,
+          },
+
+          {
             id: 24,
             type: "Report",
             title: "Machine Monitoring",
@@ -1597,4 +1607,4 @@ export const islandGrouplist: CodeNameBase[] = [
   { code: "m", name: "Mindanao" },
 ];
 
-// 
+//
