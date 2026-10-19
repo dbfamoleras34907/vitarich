@@ -15,7 +15,7 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getBroilerCycleDashboard, type CycleDashboardCatalog, type CycleDashboardData, type DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
-import { activeGrowingLines, ageRange, dashboardMetrics, selectDashboardBuilding } from '@/lib/broiler/cycleDashboard'
+import { ageRange, dashboardMetrics, latestCycleActivityCreatedAt, selectDashboardBuilding } from '@/lib/broiler/cycleDashboard'
 import { cn } from '@/lib/utils'
 import { BuildingComparison, PerformanceCharts } from './PerformanceCharts'
 import CycleDashboardSkeleton from './CycleDashboardSkeleton'
@@ -67,13 +67,6 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
   const metrics = dashboardMetrics(cycles)
   const placements = cycles.flatMap(cycle => cycle.placements)
   const docBatches = [...new Set(placements.map(row => row.batchNumber).filter(Boolean))]
-  const activityDates = cycles.flatMap(cycle => {
-    const age = activeGrowingLines(cycle).at(-1)?.age
-    const lastGrowing = age !== undefined && cycle.startDate
-      ? new Date(Date.parse(`${cycle.startDate.slice(0, 10)}T00:00:00Z`) + age * 86400000) : null
-    return [...cycle.placements.map(row => row.receiveDate), ...cycle.deliveries.map(row => row.date),
-      ...cycle.cleanups.map(row => row.date), lastGrowing && Number.isFinite(lastGrowing.getTime()) ? lastGrowing.toISOString().slice(0, 10) : '']
-  }).filter(Boolean).sort()
   const details: [string, ReactNode][] = [
     ['Farm', farmName], ['Building', buildingName],
     ['Cycle number', distinct(cycles.map(cycle => String(cycle.cycleNumber)))],
@@ -106,7 +99,7 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
         </div>
       </DialogContent>
     </Dialog>],
-    ['Latest activity date', formatDate(activityDates.at(-1) ?? '')],
+    ['Latest activity date', formatDate(latestCycleActivityCreatedAt(cycles) ?? '')],
     ['Status', distinct(cycles.map(cycle => cycle.status === 'Saved' ? 'Active' : cycle.status))],
     ['Remarks', distinct(cycles.map(cycle => cycle.remarks))],
   ]

@@ -422,9 +422,9 @@ export default function NewGoodsIssue({
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
   const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
-  const getAllocationGroupKey = useCallback((line: GoodsIssueLine) => triggeredBy === 'BR-DR'
-    ? line.allocationGroupKey || String(line.id)
-    : `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`, [triggeredBy])
+  const getAllocationGroupKey = useCallback((line: GoodsIssueLine) => triggeredBy === 'BR-CU'
+    ? `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
+    : line.allocationGroupKey || String(line.id), [triggeredBy])
   const isSameAllocationGroup = (left: GoodsIssueLine, right: GoodsIssueLine) =>
     getAllocationGroupKey(left) === getAllocationGroupKey(right)
   const isCleanup = triggeredBy === 'BR-CU'
@@ -464,7 +464,9 @@ export default function NewGoodsIssue({
         const [references, savedIssue, giNo] = await Promise.all([
           referencesPromise,
           sourceIssueId ? getGoodsIssueById(Number(sourceIssueId), triggeredBy) : Promise.resolve(null),
-          issueId ? Promise.resolve('') : createGoodsIssueNumber(documentPrefix),
+          issueId || !isBroilerCycleIssue
+            ? Promise.resolve('')
+            : createGoodsIssueNumber(documentPrefix),
         ])
 
         if (cancelled) return
@@ -478,7 +480,9 @@ export default function NewGoodsIssue({
         const requestedQtyByGroup = new Map<string, number>()
         if (isDuplicating && savedIssue) {
           savedIssue.lines.forEach(line => {
-            const groupKey = `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+            const groupKey = triggeredBy === 'BR-CU'
+              ? `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+              : line.allocationGroupKey || String(line.id)
             requestedQtyByGroup.set(
               groupKey,
               (requestedQtyByGroup.get(groupKey) ?? 0) + Number(line.altQty || 0),
@@ -496,7 +500,9 @@ export default function NewGoodsIssue({
               createdAt: new Date().toISOString(),
               triggeredBy,
               lines: savedIssue.lines.map(line => {
-                const groupKey = `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+                const groupKey = triggeredBy === 'BR-CU'
+                  ? `${line.fromWarehouseId ?? line.fromWarehouseCode}|${line.itemId ?? line.itemCode}`
+                  : line.allocationGroupKey || String(line.id)
                 return {
                   ...line,
                   id: crypto.randomUUID(),
@@ -553,7 +559,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [basePath, documentPrefix, duplicateId, getValue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
+  }, [basePath, documentPrefix, duplicateId, getValue, isBroilerCycleIssue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === issue?.farmId),
@@ -1038,6 +1044,46 @@ export default function NewGoodsIssue({
     )
   }
 
+  const getAllocationLines = (line: GoodsIssueLine) =>
+    issue?.lines.filter(candidate => isSameAllocationGroup(candidate, line)) ?? [line]
+
+  const replaceAllocationGroup = (line: GoodsIssueLine, replacement: GoodsIssueLine) => {
+    const groupKey = getAllocationGroupKey(line)
+    setIssue(current => {
+      if (!current) return current
+      let replaced = false
+      return {
+        ...current,
+        lines: current.lines.flatMap(candidate => {
+          if (getAllocationGroupKey(candidate) !== groupKey) return [candidate]
+          if (replaced) return []
+          replaced = true
+          return [{ ...replacement, allocationGroupKey: line.allocationGroupKey || String(line.id) }]
+        }),
+      }
+    })
+  }
+
+  const updateRequestedLineQuantity = (line: GoodsIssueLine, requestedAltQty: number) => {
+    const groupKey = getAllocationGroupKey(line)
+    const group = getAllocationLines(line)
+    const hasBatchAllocation = group.some(candidate => Boolean(candidate.batchNumber))
+    setIssue(current => current ? {
+      ...current,
+      lines: current.lines.map(candidate => {
+        if (getAllocationGroupKey(candidate) !== groupKey) return candidate
+        return {
+          ...candidate,
+          requestedAltQty,
+          ...(!hasBatchAllocation ? {
+            altQty: requestedAltQty,
+            baseQty: calculateBaseQty(requestedAltQty, candidate.altUom, candidate.baseUom),
+          } : {}),
+        }
+      }),
+    } : current)
+  }
+
   const getSelectedItem = useCallback((line: GoodsIssueLine) =>
     items.find(item => item.id === line.itemId), [items])
 
@@ -1084,6 +1130,12 @@ export default function NewGoodsIssue({
 
     return conversion ? altQty * conversion.baseQty : 0
   }, [conversions])
+
+  const getRequestedLineQuantity = (line: GoodsIssueLine) =>
+    line.requestedAltQty ?? getAllocationLines(line).reduce(
+      (total, candidate) => total + Number(candidate.altQty || 0),
+      0,
+    )
 
   const getLineWithRecalculatedQuantity = (line: GoodsIssueLine): GoodsIssueLine => {
     const altQty = Number(line.altQty || 0)
@@ -1218,9 +1270,15 @@ export default function NewGoodsIssue({
 
   const selectLineWarehouse = async (line: GoodsIssueLine, value: string) => {
     const warehouse = farmWarehouses.find(candidate => candidate.whse_code === value) ?? null
-    const updatedLine = clearWarehouseSensitiveLineData(line, warehouse)
+    const requestedAltQty = getRequestedLineQuantity(line)
+    const updatedLine = {
+      ...clearWarehouseSensitiveLineData(line, warehouse),
+      requestedAltQty,
+      altQty: requestedAltQty,
+      baseQty: calculateBaseQty(requestedAltQty, line.altUom, line.baseUom),
+    }
 
-    updateLine(line.id, updatedLine)
+    replaceAllocationGroup(line, updatedLine)
 
     if (canSearchLineInventory(updatedLine)) {
       await refreshLineOnHand(updatedLine)
@@ -1231,6 +1289,7 @@ export default function NewGoodsIssue({
     const item = items.find(candidate => candidate.item_code === value)
     const baseUom = item?.inventory_uom || item?.unit_measure || ''
     const altUom = getDefaultAltUom(baseUom)
+    const requestedAltQty = getRequestedLineQuantity(line) || 1
     const updatedLine = {
       ...line,
       itemId: item?.id ?? null,
@@ -1240,18 +1299,19 @@ export default function NewGoodsIssue({
       batchNumber: '',
       manufacturingDate: '',
       expiryDate: '',
-      altQty: line.altQty || 1,
+      altQty: requestedAltQty,
       altUom,
-      baseQty: calculateBaseQty(line.altQty || 1, altUom, baseUom),
+      baseQty: calculateBaseQty(requestedAltQty, altUom, baseUom),
       baseUom,
       fromWarehouseId: usesLineWarehouse ? line.fromWarehouseId : issue?.fromWarehouseId ?? line.fromWarehouseId,
       fromWarehouseCode: usesLineWarehouse ? line.fromWarehouseCode : issue?.fromWarehouseCode ?? line.fromWarehouseCode,
       fromWarehouseName: usesLineWarehouse ? line.fromWarehouseName : issue?.fromWarehouseName ?? line.fromWarehouseName,
       onHandQty: 0,
+      requestedAltQty,
     }
 
     const batchRule = item ? getBatchRuleForLine(updatedLine) : null
-    updateLine(line.id, {
+    replaceAllocationGroup(line, {
       ...updatedLine,
       batchRuleId: batchRule?.id ?? null,
     })
@@ -1371,10 +1431,7 @@ export default function NewGoodsIssue({
     const lineAltUomIsAvailable = availableAltUoms.some(option => option.uomCode === line.altUom)
     const altUom = lineAltUomIsAvailable ? line.altUom : getDefaultAltUom(baseUom)
     const allocationGroup = issue.lines.filter(candidate => isSameAllocationGroup(candidate, line))
-    const requiredAltQty = line.requestedAltQty ?? allocationGroup.reduce(
-      (total, candidate) => total + Number(candidate.altQty || 0),
-      0,
-    )
+    const requiredAltQty = getRequestedLineQuantity(line)
     const alreadyAllocatedAltQty = allocationGroup
       .filter(candidate => candidate.batchNumber)
       .reduce((total, candidate) => total + Number(candidate.altQty || 0), 0)
@@ -1398,6 +1455,7 @@ export default function NewGoodsIssue({
       manufacturingDate: batch?.manufacturingDate ?? '',
       expiryDate: batch?.expiryDate ?? '',
       ...(zeroCleanup ? { requestedAltQty: 0 } : {}),
+      ...(!zeroCleanup ? { requestedAltQty: requiredAltQty } : {}),
       altQty,
       altUom,
       baseQty: calculateBaseQty(altQty, altUom, baseUom),
@@ -1972,7 +2030,7 @@ export default function NewGoodsIssue({
   const activeBatchKey = activeBatchLine ? batchOptionKey(activeBatchLine) : ''
   const activeBatchOptions = activeBatchLine ? getBatchOptionsForLine(activeBatchLine) : []
   const activeRequiredAltQty = activeBatchLine
-    ? activeBatchLine.requestedAltQty ?? (activeBatchAllocationLines.reduce((total, line) => total + Number(line.altQty || 0), 0) || activeBatchLine.altQty)
+    ? getRequestedLineQuantity(activeBatchLine)
     : 0
   const activeAllocatedAltQty = activeBatchAllocationLines.reduce((total, line) => total + Number(line.altQty || 0), 0)
   const activeRemainingAltQty = Math.max(activeRequiredAltQty - activeAllocatedAltQty, 0)
@@ -1990,6 +2048,23 @@ export default function NewGoodsIssue({
     ? Object.prototype.hasOwnProperty.call(batchOptions, activeBatchKey)
     : false
   const activeDocumentIsPosted = issue.status === 'Posted'
+  const standardLineGroups = Array.from(issue.lines.reduce((groups, line) => {
+    const key = getAllocationGroupKey(line)
+    groups.set(key, [...(groups.get(key) ?? []), line])
+    return groups
+  }, new Map<string, GoodsIssueLine[]>()).entries()).map(([key, allocations]) => {
+    const line = allocations[0]
+    const requestedAltQty = line?.requestedAltQty ?? allocations.reduce(
+      (total, allocation) => total + Number(allocation.altQty || 0),
+      0,
+    )
+    return { key, line, allocations, requestedAltQty }
+  }).filter((group): group is {
+    key: string
+    line: GoodsIssueLine
+    allocations: GoodsIssueLine[]
+    requestedAltQty: number
+  } => Boolean(group.line))
 
   const canSave = !saving && !pastingDelivery && !deliverySettingsError && canEditDraft && (issue.id ? !cannotEdit : !cannotInsert)
   const renderFlockCardInformation = (
@@ -2057,7 +2132,12 @@ export default function NewGoodsIssue({
       content:
         (
           <div className='flex items-center gap-1'>
-            <Input value={issue.giNo} readOnly className="bg-stone-50" />
+            <Input
+              value={issue.giNo}
+              placeholder={isBroilerCycleIssue ? undefined : 'Auto-generated on save'}
+              readOnly
+              className="bg-stone-50"
+            />
             <span className={getInventoryStatusBadgeClass(issue.status)}>
               {isBroilerCycleIssue && issue.status === 'Cancelled' ? 'Void' : issue.status}
             </span>
@@ -2298,17 +2378,27 @@ export default function NewGoodsIssue({
                   </tr>
                 </thead>
                 <tbody>
-                  {issue.lines.map((line, index) => {
+                  {standardLineGroups.map(({ key: allocationGroupKey, line, allocations, requestedAltQty }, index) => {
                     const needsBatch = itemNeedsBatch(line)
                     const batchKey = batchOptionKey(line)
                     const batches = batchOptions[batchKey] ?? []
                     const isLoadingBatches = Boolean(loadingBatchOptions[batchKey])
                     const hasSearchedBatches = Object.prototype.hasOwnProperty.call(batchOptions, batchKey)
                     const canSearchBatches = canSearchLineInventory(line)
-                    const isOver = canPostDocument && line.itemCode && line.onHandQty > 0 && line.baseQty > line.onHandQty
+                    const requestedBaseQty = calculateBaseQty(requestedAltQty, line.altUom, line.baseUom)
+                    const selectedAllocations = allocations.filter(allocation => Boolean(allocation.batchNumber))
+                    const batchSummary = selectedAllocations
+                      .map(allocation => `${allocation.batchNumber} (${formatQuantity(allocation.altQty)})`)
+                      .join(', ')
+                    const displayedOnHandQty = selectedAllocations.length > 0
+                      ? selectedAllocations.reduce((total, allocation) => total + Number(allocation.onHandQty || 0), 0)
+                      : line.onHandQty
+                    const isOver = canPostDocument && line.itemCode && selectedAllocations.some(allocation =>
+                      allocation.onHandQty > 0 && allocation.baseQty > allocation.onHandQty,
+                    )
 
                     return (
-                      <tr key={line.id} className="odd:bg-background even:bg-muted/40 hover:bg-accent/40">
+                      <tr key={allocationGroupKey} className="odd:bg-background even:bg-muted/40 hover:bg-accent/40">
                         <td className="border border-border bg-muted px-1 py-1 text-center align-middle text-muted-foreground">{index + 1}</td>
                         <td className="border border-border p-1 align-middle">
                           <SearchableDropdown
@@ -2366,13 +2456,10 @@ export default function NewGoodsIssue({
                             type="number"
                             min="0"
                             step="any"
-                            value={line.altQty}
+                            value={requestedAltQty}
                             onChange={event => {
                               const altQty = numberValue(event.target.value)
-                              updateLine(line.id, {
-                                altQty,
-                                baseQty: calculateBaseQty(altQty, line.altUom, line.baseUom),
-                              })
+                              updateRequestedLineQuantity(line, altQty)
                             }}
                             className="h-7 rounded-none border-0 bg-background px-1.5 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                           />
@@ -2383,10 +2470,16 @@ export default function NewGoodsIssue({
                             disabled={!line.baseUom}
                             onChange={event => {
                               const altUom = event.target.value
-                              updateLine(line.id, {
-                                altUom,
-                                baseQty: calculateBaseQty(line.altQty, altUom, line.baseUom),
-                              })
+                              setIssue(current => current ? {
+                                ...current,
+                                lines: current.lines.map(candidate => getAllocationGroupKey(candidate) === allocationGroupKey
+                                  ? {
+                                      ...candidate,
+                                      altUom,
+                                      baseQty: calculateBaseQty(candidate.altQty, altUom, candidate.baseUom),
+                                    }
+                                  : candidate),
+                              } : current)
                             }}
                             className="h-7 w-full rounded-none border-0 bg-background px-1.5 text-xs outline-none transition focus:ring-2 focus:ring-inset focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60"
                           >
@@ -2402,13 +2495,13 @@ export default function NewGoodsIssue({
                           {line.baseUom && line.altUom ? (
                             <div className="whitespace-nowrap">
                               <span className="font-medium tabular-nums">
-                                {formatQuantity(line.baseQty)}
+                                {formatQuantity(requestedBaseQty)}
                               </span>{' '}
                               <span className="text-stone-600">
                                 {getSelectedGroup(line.baseUom)?.baseUomCode}
                               </span>
                               <div className="text-[10px] leading-tight text-muted-foreground">
-                                {formatQuantity(line.altQty)}{' '}
+                                {formatQuantity(requestedAltQty)}{' '}
                                 {line.altUom} x{' '}
                                 {getSelectedConversion(line.baseUom, line.altUom)?.baseQty.toLocaleString(QUANTITY_LOCALE, QUANTITY_FORMAT_OPTIONS)}
                               </div>
@@ -2426,15 +2519,15 @@ export default function NewGoodsIssue({
                                 disabled={!canSearchBatches}
                                 onClick={() => openBatchSelector(line)}
                                 className={`h-7 w-full justify-start rounded-none border-0 px-1.5 text-left text-xs font-normal hover:bg-accent ${
-                                  line.batchNumber
+                                  batchSummary
                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                                     : 'bg-white text-stone-800'
                                 }`}
                               >
-                                {line.batchNumber ? (
+                                {batchSummary ? (
                                   <span className="flex min-w-0 items-center gap-2 font-semibold">
                                     <PackageCheck className="size-3.5 shrink-0" />
-                                    <span className="truncate">{line.batchNumber}</span>
+                                    <span className="truncate">{batchSummary}</span>
                                   </span>
                                 ) : (
                                   <span className="truncate">
@@ -2467,7 +2560,7 @@ export default function NewGoodsIssue({
                           <div>
                             <div className="whitespace-nowrap">
                               <span className={`font-medium tabular-nums ${isOver ? 'text-red-600' : 'text-stone-800'}`}>
-                                {formatQuantity(activeDocumentIsPosted ? line.baseQty : line.onHandQty)}
+                                {formatQuantity(activeDocumentIsPosted ? requestedBaseQty : displayedOnHandQty)}
                               </span>{' '}
                               {line.baseUom && (
                                 <span className={isOver ? 'text-red-600' : 'text-stone-600'}>
@@ -2487,7 +2580,7 @@ export default function NewGoodsIssue({
                             type="button"
                             onClick={() => setIssue(current => current ? {
                               ...current,
-                              lines: current.lines.filter(candidate => candidate.id !== line.id),
+                              lines: current.lines.filter(candidate => getAllocationGroupKey(candidate) !== allocationGroupKey),
                             } : current)}
                             className="inline-flex size-7 items-center justify-center rounded-none text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
                             aria-label={`Delete line ${index + 1}`}
@@ -2638,7 +2731,7 @@ export default function NewGoodsIssue({
                         ? 'Posted documents are read-only, so this view shows the batch saved on this transaction line.'
                         : usesLineWarehouse
                           ? `Choose one or more available batches. Additional selections are added to this ${warehouseLabel.toLowerCase()} automatically.`
-                          : 'Choose an available batch for this item stock out line. The selected batch will carry its on-hand quantity and manufacturing date back to the row.'}
+                          : 'Choose an available batch for this item stock out line. Batch allocations use, but never replace, the quantity entered on the line.'}
                     </p>
                     {!activeDocumentIsPosted && (
                       <div className="mt-3 grid gap-2 sm:grid-cols-4">
