@@ -13,7 +13,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
+import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -76,6 +77,17 @@ export default function CleanupTable() {
     [loading, setValue, working],
   );
 
+  const farms = useMemo(() => {
+    const unique = new Map<number, BreederCleanupRecord>();
+    records.forEach((record) => unique.set(record.farm_id, record));
+    return [
+      { code: "__all__", name: "All farms" },
+      ...[...unique.values()].map((record) => ({
+        code: String(record.farm_id),
+        name: formatFarmNameCode(record.farm_name, record.farm_code),
+      })),
+    ];
+  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
@@ -193,17 +205,27 @@ export default function CleanupTable() {
               className="pl-9"
             />
           </div>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <BreederListParameters {...parameters} />
-            <Button
-              variant="outline"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-          </div>
+          <SearchableCombobox
+            label="Farm"
+            items={farms}
+            value={farmFilter}
+            onValueChange={(value) => {
+              setFarmFilter(value);
+              setPage(1);
+            }}
+            placeholder="All farms"
+            showCode
+            codePosition="suffix"
+            className="w-full lg:w-72"
+          />
+          <Button
+            variant="outline"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
         {error ? (
           <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

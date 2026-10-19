@@ -1,4 +1,6 @@
 import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
@@ -8,6 +10,9 @@ const HEADER_TABLE = "tbl_brd_dispatch";
 const LINE_TABLE = "tbl_brd_dispatch_line";
 const REGISTER_VIEW = "brd_dispatch_register";
 const HATCHERY_FARM_VIEW = "view_brd_hatchery_farm_lookup";
+const FARM_LOCATION_LOOKUP_VIEW = "view_farm_new_lookup";
+const SOURCE_PAGE_SIZE = 1000;
+const DISPATCH_ID_CHUNK_SIZE = 300;
 
 export type DispatchStatus = "Draft" | "Posted" | "Cancelled";
 export type DispatchSourceType = "Population Record" | "Egg Laying";
@@ -24,6 +29,15 @@ export type HatcheryFarmLookup = {
   farm_id: number;
   farm_code: string | null;
   farm_name: string;
+};
+
+export type BreederDispatchBuilding = {
+  farm_id: number;
+  farm_code: string | null;
+  farm_name: string;
+  building_id: number;
+  building_code: string | null;
+  building_name: string;
 };
 
 export type BreederDispatchRecord = {
@@ -44,6 +58,7 @@ export type BreederDispatchLine = {
 export type BreederDispatchDetail = BreederDispatchRecord & { lines: BreederDispatchLine[] };
 export type AvailableDispatchItem = Omit<BreederDispatchLine, "id" | "dispatch_id" | "line_no" | "dispatch_qty" | "remarks"> & {
   key: string; farm_id: number; farm_code: string | null; farm_name: string;
+  source_quantity: number; dispatch_quantity: number;
 };
 export type AvailableBreederFlock = Placement & {
   farm_code: string | null; male_available: number; female_available: number;
@@ -85,6 +100,29 @@ export async function listHatcheryFarms() {
     .order("farm_name");
   if (error) throw error;
   return (data ?? []) as HatcheryFarmLookup[];
+}
+
+/** Lists buildings on the current user's assigned Breeder farms, including empty buildings. */
+export async function listBreederDispatchBuildings() {
+  const assignedFarms = await listAssignedUserFarmOptions(["BE", "Breeder"]);
+  const assignedFarmIds = assignedFarms
+    .map((farm) => Number(farm.id))
+    .filter((farmId) => Number.isInteger(farmId) && farmId > 0);
+  if (!assignedFarmIds.length) return [] as BreederDispatchBuilding[];
+
+  const { data, error } = await db
+    .from(FARM_LOCATION_LOOKUP_VIEW)
+    .select("farm_id, farm_code, farm_name, building_id, building_code, building_name")
+    .in("farm_id", assignedFarmIds)
+    .order("building_name", { ascending: true });
+  if (error) throw error;
+
+  return [...new Map(
+    (data ?? []).map((row) => [
+      `${row.farm_id}:${row.building_id}`,
+      row as BreederDispatchBuilding,
+    ]),
+  ).values()];
 }
 
 export async function listBreederDispatches() {
@@ -129,7 +167,53 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   }).filter((row) => row.male_available > 0 || row.female_available > 0);
 }
 
-export async function listAvailableDispatchItems(dispatchDate: string, farmId?: number) {
+/** Reads every Posted allocation visible to the caller; Supabase caps each response page. */
+async function listPostedDispatchAllocationLines(farmId?: number) {
+  const postedIds: number[] = [];
+  for (let offset = 0; ; offset += SOURCE_PAGE_SIZE) {
+    let query = db
+      .from(HEADER_TABLE)
+      .select("id")
+      .eq("status", "Posted")
+      .order("id")
+      .range(offset, offset + SOURCE_PAGE_SIZE - 1);
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
+    if (error) throw error;
+    postedIds.push(...(data ?? []).map((row) => Number(row.id)));
+    if ((data?.length ?? 0) < SOURCE_PAGE_SIZE) break;
+  }
+
+  const lines: Array<{
+    source_type: DispatchSourceType;
+    source_record_id: number;
+    category: string;
+    dispatch_qty: number | null;
+  }> = [];
+  for (let start = 0; start < postedIds.length; start += DISPATCH_ID_CHUNK_SIZE) {
+    const dispatchIds = postedIds.slice(start, start + DISPATCH_ID_CHUNK_SIZE);
+    for (let offset = 0; ; offset += SOURCE_PAGE_SIZE) {
+      const { data, error } = await db
+        .from(LINE_TABLE)
+        .select("source_type, source_record_id, category, dispatch_qty")
+        .in("dispatch_id", dispatchIds)
+        .order("id")
+        .range(offset, offset + SOURCE_PAGE_SIZE - 1);
+      if (error) throw error;
+      lines.push(...((data ?? []) as typeof lines));
+      if ((data?.length ?? 0) < SOURCE_PAGE_SIZE) break;
+    }
+  }
+  return lines;
+}
+
+/**
+ * Returns dispatch source records with their remaining quantity as of a dispatch date.
+ * `includeZeroAvailability` is useful for selection grids that must expose an
+ * exhausted source/building as a visible zero, while the default keeps the
+ * regular dispatch and report lists focused on available inventory.
+ */
+export async function listAvailableDispatchItems(dispatchDate: string, farmId?: number, includeZeroAvailability = false) {
   let placementQuery = db.from("tbl_placement").select("id, placement_date, dr_no, farm_id, farm_name, building_id, building_no, pen_id, pen_no").lte("placement_date", dispatchDate);
   if (farmId) placementQuery = placementQuery.eq("farm_id", farmId);
   const [{ data: placements, error: placementError }, { data: farms, error: farmError }] = await Promise.all([
@@ -142,25 +226,18 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
   const farmCodeById = new Map((farms ?? []).map((row) => [Number(row.id), row.code as string | null]));
   if (!placementIds.length) return [] as AvailableDispatchItem[];
 
-  const [{ data: population, error: populationError }, { data: eggs, error: eggError }, { data: posted, error: postedError }] = await Promise.all([
+  const [{ data: population, error: populationError }, eggs, postedLines] = await Promise.all([
     db.from("tbl_breeder_daily_performance").select("id, placement_id, daterec, mc_male, mc_female, cull_male, cull_female, kitchen_male, kitchen_female, condem_male, condem_female").in("placement_id", placementIds).eq("isactive", true).lte("daterec", dispatchDate),
-    db.from("tbl_egglaying").select("id, placement_id, date_laying, farm_id, farm_name, building_id, building, hatching_egg, classb, table_egg_dirty, table_egg_misshapen, table_egg_off_size, table_egg_thin_shell, crack, junior, jumbo, condemn").in("placement_id", placementIds).eq("is_active", true).lte("date_laying", dispatchDate),
-    db.from(HEADER_TABLE).select("id").eq("status", "Posted"),
+    listBreederEggLayings({ placementIds, to: dispatchDate }),
+    listPostedDispatchAllocationLines(farmId),
   ]);
   if (populationError) throw populationError;
-  if (eggError) throw eggError;
-  if (postedError) throw postedError;
 
   const allocated = new Map<string, number>();
-  const postedIds = (posted ?? []).map((row) => row.id);
-  if (postedIds.length) {
-    const { data, error } = await db.from(LINE_TABLE).select("source_type, source_record_id, category, dispatch_qty").in("dispatch_id", postedIds);
-    if (error) throw error;
-    (data ?? []).forEach((line) => {
-      const key = dispatchItemKey(line.source_type as DispatchSourceType, Number(line.source_record_id), line.category);
-      allocated.set(key, (allocated.get(key) ?? 0) + count(line.dispatch_qty));
-    });
-  }
+  postedLines.forEach((line) => {
+    const key = dispatchItemKey(line.source_type, Number(line.source_record_id), line.category);
+    allocated.set(key, (allocated.get(key) ?? 0) + count(line.dispatch_qty));
+  });
 
   const items: AvailableDispatchItem[] = [];
   for (const row of population ?? []) {
@@ -170,8 +247,8 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
     for (const [category, label] of POPULATION_CATEGORIES) {
       const key = dispatchItemKey("Population Record", Number(row.id), category);
       const available = Math.max(0, values[category] - (allocated.get(key) ?? 0));
-      if (!available) continue;
-      items.push({ key, source_type: "Population Record", source_record_id: Number(row.id), source_date: row.daterec, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: placement.building_id, building_name: placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(placement.farm_id), farm_code: farmCodeById.get(Number(placement.farm_id)) ?? null, farm_name: placement.farm_name ?? "-" });
+      if (!includeZeroAvailability && !available) continue;
+      items.push({ key, source_type: "Population Record", source_record_id: Number(row.id), source_date: row.daterec, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: placement.building_id, building_name: placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_quantity: values[category], dispatch_quantity: allocated.get(key) ?? 0, source_available: available, farm_id: Number(placement.farm_id), farm_code: farmCodeById.get(Number(placement.farm_id)) ?? null, farm_name: placement.farm_name ?? "-" });
     }
   }
   for (const row of eggs ?? []) {
@@ -183,8 +260,8 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
         ? count(row.table_egg_dirty) + count(row.table_egg_misshapen) + count(row.table_egg_off_size) + count(row.table_egg_thin_shell)
         : count(row[category]);
       const available = Math.max(0, quantity - (allocated.get(key) ?? 0));
-      if (!available) continue;
-      items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
+      if (!includeZeroAvailability && !available) continue;
+      items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_quantity: quantity, dispatch_quantity: allocated.get(key) ?? 0, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
     }
   }
   return items.sort((a, b) => b.source_date.localeCompare(a.source_date) || a.building_name.localeCompare(b.building_name) || a.category_label.localeCompare(b.category_label));

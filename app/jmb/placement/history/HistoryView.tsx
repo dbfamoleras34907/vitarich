@@ -20,7 +20,7 @@ import {
 } from "../../egglaying/new/api";
 import { listPlacementHistory, type Placement } from "../new/api";
 
-type HistoryMode = "growing" | "laying";
+type HistoryMode = "Population" | "Laying";
 type GrowingHistoryRow = Omit<
   BreederDailyPerformance,
   "id" | "created_at" | "created_by" | "updated_at" | "updated_by"
@@ -192,7 +192,7 @@ export default function HistoryView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode: HistoryMode =
-    searchParams.get("mode") === "laying" ? "laying" : "growing";
+    searchParams.get("mode") === "Laying" ? "Laying" : "Population";
   const farmId = Number(searchParams.get("farmId"));
   useSyncDefaultFarm(farmId);
   const buildingId = Number(searchParams.get("buildingId"));
@@ -273,7 +273,7 @@ export default function HistoryView() {
           setLoading(true);
           setError("");
         }
-        if (mode === "growing") {
+        if (mode === "Population") {
           const [rows, feeds] = await Promise.all([
             listDailyPerformance(Number(effectivePlacementId)),
             listFeedTypes(),
@@ -371,7 +371,9 @@ export default function HistoryView() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-lg font-semibold">
-                {mode === "growing" ? "Population Record" : "Egg Laying Record"}
+                {mode === "Population"
+                  ? "Population Record"
+                  : "Egg Laying Record"}
               </h1>
               <p className="text-xs font-medium uppercase text-muted-foreground">
                 Farm / Pen · History
@@ -381,17 +383,17 @@ export default function HistoryView() {
               <Button
                 type="button"
                 size="sm"
-                variant={mode === "growing" ? "default" : "outline"}
-                onClick={() => switchMode("growing")}
+                variant={mode === "Population" ? "default" : "outline"}
+                onClick={() => switchMode("Population")}
               >
                 <FileSpreadsheet className="size-4" />
-                Growing
+                Population
               </Button>
               <Button
                 type="button"
                 size="sm"
-                variant={mode === "laying" ? "default" : "outline"}
-                onClick={() => switchMode("laying")}
+                variant={mode === "Laying" ? "default" : "outline"}
+                onClick={() => switchMode("Laying")}
               >
                 <Egg className="size-4" />
                 Laying
@@ -403,7 +405,7 @@ export default function HistoryView() {
                 onClick={() => router.push("/jmb/placement")}
               >
                 <ArrowLeft className="size-4" />
-                Placement List
+                Placement & Population
               </Button>
             </div>
           </div>
@@ -458,7 +460,7 @@ export default function HistoryView() {
               )}
             />
             <Summary label="Cycle #" value={String(cycleNo ?? "-")} />
-            {mode === "growing" ? (
+            {mode === "Population" ? (
               <>
                 <Summary
                   label="Female live / Mortality"
@@ -497,7 +499,7 @@ export default function HistoryView() {
             <div className="m-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
             </div>
-          ) : mode === "growing" ? (
+          ) : mode === "Population" ? (
             <GrowingGrid
               rows={filteredGrowing}
               placement={placement}
@@ -732,7 +734,10 @@ function GrowingGrid({
                   style={{ minWidth: 52 }}
                 >
                   <div className="flex h-8 items-center justify-center">
-                    {ageOn(placement ? breederAgeAnchorDate(placement) : undefined, row.daterec)}
+                    {ageOn(
+                      placement ? breederAgeAnchorDate(placement) : undefined,
+                      row.daterec,
+                    )}
                   </div>
                 </td>
                 {values.map((value, index) => (
@@ -793,7 +798,10 @@ function LayingGrid({
       EggLaying,
       | "tep_collection"
       | "hatching_egg"
-      | "table_egg_dirty" | "table_egg_misshapen" | "table_egg_off_size" | "table_egg_thin_shell"
+      | "table_egg_dirty"
+      | "table_egg_misshapen"
+      | "table_egg_off_size"
+      | "table_egg_thin_shell"
       | "classb"
       | "crack"
       | "junior"
@@ -826,7 +834,10 @@ function LayingGrid({
     "Hatching Egg",
     "Class B",
     "Junior",
-    "Dirty", "Misshapen", "Off-size", "Thin Shell",
+    "Dirty",
+    "Misshapen",
+    "Off-size",
+    "Thin Shell",
     "Jumbo",
     "Crack",
     "Condemn",
@@ -842,7 +853,7 @@ function LayingGrid({
         </p>
       </div>
       <div className="max-h-130 w-full overflow-auto bg-white dark:bg-card">
-        <table className="fc-grid-table min-w-[1500px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
+        <table className="fc-grid-table min-w-375 w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">
           <colgroup>
             <col style={{ width: "12%" }} />
             <col style={{ width: "7%" }} />
@@ -870,7 +881,10 @@ function LayingGrid({
               rows.map((row, rowIndex) => {
                 const classification =
                   number(row.hatching_egg) +
-                  number(row.table_egg_dirty) + number(row.table_egg_misshapen) + number(row.table_egg_off_size) + number(row.table_egg_thin_shell) +
+                  number(row.table_egg_dirty) +
+                  number(row.table_egg_misshapen) +
+                  number(row.table_egg_off_size) +
+                  number(row.table_egg_thin_shell) +
                   number(row.classb) +
                   number(row.crack) +
                   number(row.junior) +

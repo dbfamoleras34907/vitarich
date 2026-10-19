@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Save, ShieldCheck, X } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -134,7 +135,7 @@ export default function VaccinationForm() {
   const pens = useMemo(() => locations.filter((row) => String(row.building_id) === form.building_id)
     .filter((row, index, all) => all.findIndex((candidate) => candidate.pen_id === row.pen_id) === index)
     .sort((a, b) => a.pen_name.localeCompare(b.pen_name, undefined, { numeric: true })), [form.building_id, locations]);
-  const farmOptions = farms.map((farm) => ({ code: String(farm.farm_id), name: farm.farm_code ? `${farm.farm_code} - ${farm.farm_name}` : farm.farm_name }));
+  const farmOptions = farms.map((farm) => ({ code: String(farm.farm_id), name: formatFarmNameCode(farm.farm_name, farm.farm_code) }));
   const buildingOptions = buildings.map((building) => ({ code: String(building.building_id), name: building.building_code ? `${building.building_code} - ${building.building_name}` : building.building_name }));
   const selectedFarm = farms.find((farm) => String(farm.farm_id) === form.farm_id) ?? null;
   const selectedBuilding = buildings.find((building) => String(building.building_id) === form.building_id) ?? null;
@@ -229,7 +230,7 @@ export default function VaccinationForm() {
 
             <section className="space-y-4 p-5">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); update("building_id", ""); setSelectedPenIds([]); }} placeholder="Select farm" showCode className="w-full" /></Field>
+                <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={(value) => { update("farm_id", value); update("building_id", ""); setSelectedPenIds([]); }} placeholder="Select farm" showCode codePosition="suffix" className="w-full" /></Field>
                 <Field label="Disease target" required><Input value={form.disease_target} onChange={(e) => update("disease_target", e.target.value)} placeholder="Disease or pathogen target" maxLength={200} /></Field>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

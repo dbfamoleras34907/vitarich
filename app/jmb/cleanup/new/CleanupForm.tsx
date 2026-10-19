@@ -8,6 +8,7 @@ import { cullingAge } from "@/lib/data/queries/breederCullingAge";
 import { groupCullingBuildings, type CullingBuilding } from "@/lib/data/queries/breederCullingBuildings";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode, formatFarmNameCodeId } from "@/lib/utils/farmDisplay";
 import { TableCopyDownCell } from "@/components/ui/TableCopyDownCell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -276,7 +277,7 @@ export default function CleanupForm() {
       <fieldset disabled={loading || saving} className="min-w-0 space-y-4 p-3">
         {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
         {success && <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>}
-        <div className="max-w-md space-y-2"><Label>Breeder Farm</Label>{isEdit ? <div className="rounded-md border bg-muted/30 px-3 py-2">{farms.find(farm => String(farm.id) === farmId)?.name ?? farmId}</div> : <SearchableCombobox items={farms.map(farm => ({ code: String(farm.id), name: farm.name }))} value={farmId} onValueChange={value => { setFarmId(value); setRows([emptyRow()]); setError(""); }} placeholder="Select breeder farm" className="w-full" />}</div>
+        <div className="max-w-md space-y-2"><Label>Breeder Farm</Label>{isEdit ? <div className="rounded-md border bg-muted/30 px-3 py-2">{formatFarmNameCodeId(farms.find(farm => String(farm.id) === farmId)?.name, farms.find(farm => String(farm.id) === farmId)?.code, farmId)}</div> : <SearchableCombobox items={farms.map(farm => ({ code: String(farm.id), name: formatFarmNameCode(farm.name, farm.code) }))} value={farmId} onValueChange={value => { setFarmId(value); setRows([emptyRow()]); setError(""); }} placeholder="Select breeder farm" showCode codePosition="suffix" className="w-full" />}</div>
         <section className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-medium">Population Record</h2><p className="text-xs text-muted-foreground">Select a building for each transaction row. Culling Qty cannot exceed the available Female or Male inventory. Right-click an editable cell and choose Copy down to fill rows below.</p></div>{!isEdit && <Button type="button" variant="outline" size="sm" onClick={() => setRows(current => [...current, emptyRow(current.at(-1)?.date_of_culling)])}><ListPlus className="size-4" />Add Row</Button>}</div>
           <div className="max-h-[520px] w-full overflow-auto bg-white dark:bg-card">
             <table ref={tableRef} className="fc-grid-table min-w-[1650px] w-full table-fixed border-separate border-spacing-0 caption-bottom text-sm">

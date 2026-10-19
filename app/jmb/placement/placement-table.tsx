@@ -22,7 +22,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
+import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -110,7 +111,8 @@ export default function PlacementTable() {
           setBreederCycles(cycleRows);
           setBuildingHistory(historyRows);
           setLockedPlacementIds(
-            activityLocks ?? new Set(placementRows.map((placement) => placement.id)),
+            activityLocks ??
+              new Set(placementRows.map((placement) => placement.id)),
           );
           setFarms(farmRows);
           setLocations(locationRows);
@@ -138,6 +140,14 @@ export default function PlacementTable() {
   const effectiveFarmId = parameters.farmId;
   const selectedFarm =
     farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
+  const farmOptions = useMemo(
+    () =>
+      farms.map((farm) => ({
+        code: String(farm.id),
+        name: formatFarmNameCode(farm.name, farm.code),
+      })),
+    [farms],
+  );
   const buildings = useMemo(() => {
     const unique = new Map<number, FarmLocationLookup>();
     locations
@@ -186,7 +196,10 @@ export default function PlacementTable() {
     [breederCycles, effectiveFarmId],
   );
   const actualInventoryByCycle = useMemo(
-    () => new Map(selectedFarmHistory.map((record) => [record.key, record.total_birds])),
+    () =>
+      new Map(
+        selectedFarmHistory.map((record) => [record.key, record.total_birds]),
+      ),
     [selectedFarmHistory],
   );
   const occupiedCount = useMemo(
@@ -218,7 +231,9 @@ export default function PlacementTable() {
     viewOnly = false,
   ) {
     if (placement) {
-      router.push(`/jmb/placement/new?id=${placement.id}${viewOnly ? "&view=1" : ""}`);
+      router.push(
+        `/jmb/placement/new?id=${placement.id}${viewOnly ? "&view=1" : ""}`,
+      );
       return;
     }
 
@@ -234,7 +249,10 @@ export default function PlacementTable() {
     router.push(`/jmb/placement/card?placementId=${placement.id}`);
   }
 
-  function openHistory(record: BuildingHistoryRow, mode: "growing" | "laying") {
+  function openHistory(
+    record: BuildingHistoryRow,
+    mode: "Population" | "Laying",
+  ) {
     const query = new URLSearchParams({
       mode,
       farmId: String(record.farm_id),
@@ -250,14 +268,25 @@ export default function PlacementTable() {
       <div className="px-4 mt-4">
         <Breadcrumb
           SecondPreviewPageName="Breeder"
-          CurrentPageName="Placement List"
+          CurrentPageName="Placement & Population"
         />
       </div>
 
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <BreederListParameters {...parameters} />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0 space-y-2">
+              <label className="text-sm font-semibold">Breeder Farm</label>
+              <SearchableCombobox
+                items={farmOptions}
+                value={effectiveFarmId}
+                onValueChange={setSelectedFarmId}
+                placeholder="Select breeder farm..."
+                showCode
+                codePosition="suffix"
+                className="w-full min-w-70 lg:w-105"
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-md border bg-background px-3 py-2">
@@ -362,7 +391,9 @@ export default function PlacementTable() {
                   <TableHead className="w-32.5">Start Date</TableHead>
                   <TableHead className="w-32.5">Cycle #</TableHead>
                   <TableHead>Remarks</TableHead>
-                  <TableHead className="w-35 text-right">Actual Inventory</TableHead>
+                  <TableHead className="w-35 text-right">
+                    Actual Inventory
+                  </TableHead>
                   <TableHead className="w-32.5">Status</TableHead>
                   <TableHead className="w-64 text-right">Actions</TableHead>
                 </TableRow>
@@ -410,12 +441,15 @@ export default function PlacementTable() {
                     (a, b) =>
                       compareNaturalText(a.pen_no, b.pen_no) || a.id - b.id,
                   )[0];
-                  const actualInventory = cycleNo == null
-                    ? undefined
-                    : actualInventoryByCycle.get(
-                        `${effectiveFarmId}:${building.building_id}:cycle:${cycleNo}`,
-                      );
-                  const editLocked = rows.some((row) => lockedPlacementIds.has(row.id));
+                  const actualInventory =
+                    cycleNo == null
+                      ? undefined
+                      : actualInventoryByCycle.get(
+                          `${effectiveFarmId}:${building.building_id}:cycle:${cycleNo}`,
+                        );
+                  const editLocked = rows.some((row) =>
+                    lockedPlacementIds.has(row.id),
+                  );
                   return (
                     <TableRow key={building.building_id}>
                       <TableCell>
@@ -451,7 +485,8 @@ export default function PlacementTable() {
                               variant="outline"
                               onClick={() => openCard(firstPen)}
                             >
-                              <FileSpreadsheet className="size-4" /> Population Records
+                              <FileSpreadsheet className="size-4" /> Population
+                              Records
                             </Button>
                           ) : null}
                           {latest && editLocked ? (
@@ -510,7 +545,8 @@ export default function PlacementTable() {
         <div className="border-b bg-muted/20 px-5 py-3">
           <h2 className="text-sm font-semibold">Buildings History</h2>
           <p className="text-xs text-muted-foreground">
-            Placement, production, loss, and Terminal Culling totals by building cycle.
+            Placement, production, loss, and Terminal Culling totals by building
+            cycle.
           </p>
         </div>
 
@@ -543,9 +579,7 @@ export default function PlacementTable() {
                     </TableHead>
                     <TableHead className="text-right">DOA</TableHead>
                     <TableHead className="text-right">Rejects</TableHead>
-                    <TableHead className="text-right">
-                      Short Count
-                    </TableHead>
+                    <TableHead className="text-right">Short Count</TableHead>
                     <TableHead className="text-right">
                       Actual Inventory
                     </TableHead>
@@ -612,19 +646,24 @@ export default function PlacementTable() {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 px-2 text-xs"
+                            >
                               View <ChevronDown className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onSelect={() => openHistory(record, "growing")}
+                              onSelect={() => openHistory(record, "Population")}
                             >
                               <FileSpreadsheet className="size-4" /> View
-                              Growing
+                              Population
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onSelect={() => openHistory(record, "laying")}
+                              onSelect={() => openHistory(record, "Laying")}
                             >
                               <Egg className="size-4" /> View Laying
                             </DropdownMenuItem>

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Loader2, MapPin, Pencil, Plus, RefreshCw, Search, ShieldCheck, Syringe } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import BreederListParameters, { isWithinDateRange, useBreederListParameters } from "@/components/breeder/BreederListParameters";
+import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,10 @@ export default function VaccinationTable() {
   useEffect(() => { void load(); router.prefetch("/jmb/vaccination/new"); }, [load, router]);
   useEffect(() => setValue("loading_g", loading || cancelling), [loading, cancelling, setValue]);
 
+  const farms = useMemo(() => {
+    const unique = new Map<number, VaccinationRecord>(); records.forEach((row) => unique.set(row.farm_id, row));
+    return [{ code: "__all__", name: "All farms" }, ...[...unique.values()].map((row) => ({ code: String(row.farm_id), name: formatFarmNameCode(row.farm_name, row.farm_code) }))];
+  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((row) => {
@@ -86,7 +91,7 @@ export default function VaccinationTable() {
             <Stat icon={<Syringe className="size-3.5" />} label="Birds vaccinated" value={vaccinatedBirds} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search vaccine, disease, batch, farm, building, or pen..." className="pl-9" /></div><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><BreederListParameters {...parameters}><div className="space-y-2 lg:w-40"><Label>Status</Label><select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>Posted</option><option>Cancelled</option><option>All</option></select></div></BreederListParameters><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button></div></div>
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search vaccine, disease, batch, farm, building, or pen..." className="pl-9" /></div><SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode codePosition="suffix" className="w-full lg:w-72" /><select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>Posted</option><option>Cancelled</option><option>All</option></select><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button></div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table><TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Scheduled Date</TableHead><TableHead>Actual Date</TableHead><TableHead>Variance (days)</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Vaccine</TableHead><TableHead>Disease</TableHead><TableHead>Batch</TableHead><TableHead>Birds</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
           {loading ? <TableRow><TableCell colSpan={12} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}

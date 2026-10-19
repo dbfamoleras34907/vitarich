@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bird, ListPlus, Loader2, Save, Send, Trash2, X } from "lucide-react";
+import { Bird, ListPlus, Loader2, RefreshCw, Save, Send, Trash2, X } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { TableCopyDownCell } from "@/components/ui/TableCopyDownCell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +21,11 @@ import {
   getDefaultFarm,
   getBreederDispatchById,
   listAvailableDispatchItems,
+  listBreederDispatchBuildings,
   listHatcheryFarms,
   updateBreederDispatch,
   type AvailableDispatchItem,
+  type BreederDispatchBuilding,
   type BreederDispatchDetail,
   type BreederDispatchInput,
   type DispatchSourceType,
@@ -212,6 +215,8 @@ function itemsFromDispatch(record: BreederDispatchDetail): AvailableDispatchItem
     farm_id: record.farm_id,
     farm_code: record.farm_code,
     farm_name: record.farm_name,
+    source_quantity: Number(line.source_available ?? 0) + Number(line.dispatch_qty ?? 0),
+    dispatch_quantity: Number(line.dispatch_qty ?? 0),
   }));
 }
 
@@ -224,10 +229,15 @@ export default function MultipleBreederDispatchForm() {
   const [farmId, setFarmId] = useState("");
   useSyncDefaultFarm(farmId);
   const [items, setItems] = useState<AvailableDispatchItem[]>([]);
+  const [buildings, setBuildings] = useState<BreederDispatchBuilding[]>([]);
   const [hatcheryFarms, setHatcheryFarms] = useState<HatcheryFarmLookup[]>([]);
   const [rows, setRows] = useState<DispatchRow[]>(() => [emptyRow()]);
+  // Keep a date being typed outside the committed row. This prevents a partial
+  // native date value from clearing allocations or reloading availability.
+  const [dispatchDateDrafts, setDispatchDateDrafts] = useState<Record<string, string>>({});
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DISPATCH_GRID_COLUMNS.map((column) => column.width));
   const columnResizeCleanup = useRef<(() => void) | null>(null);
+  const availabilityRequestId = useRef(0);
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -270,10 +280,12 @@ export default function MultipleBreederDispatchForm() {
     Promise.all([
       isViewing ? getBreederDispatchById(dispatchId) : getDefaultFarm(),
       listHatcheryFarms(),
+      listBreederDispatchBuildings(),
     ])
-      .then(([setup, destinations]) => {
+      .then(([setup, destinations, availableBuildings]) => {
         if (cancelled) return;
         setHatcheryFarms(destinations);
+        setBuildings(availableBuildings);
         if (isViewing) {
           const record = setup as BreederDispatchDetail;
           setFarmId(String(record.farm_id));
@@ -298,35 +310,44 @@ export default function MultipleBreederDispatchForm() {
     };
   }, [dispatchId, isViewing]);
 
-  useEffect(() => {
-    if (loading || isReadOnly || !inventoryDate) return;
-    let cancelled = false;
+  const refreshAvailableItems = useCallback(async () => {
+    const selectedFarmId = Number(farmId);
+    if (
+      isReadOnly ||
+      !inventoryDate ||
+      !Number.isInteger(selectedFarmId) ||
+      selectedFarmId <= 0
+    )
+      return;
+    const requestId = ++availabilityRequestId.current;
     setLoadingItems(true);
     setError("");
-    listAvailableDispatchItems(inventoryDate)
-      .then((available) => {
-        if (cancelled) return;
-        setItems(available);
-        setFarmId((current) =>
-          current && available.some((item) => String(item.farm_id) === current)
-            ? current
-            : "",
+    try {
+      const available = await listAvailableDispatchItems(
+        inventoryDate,
+        selectedFarmId,
+        true,
+      );
+      if (requestId !== availabilityRequestId.current) return;
+      setItems(available);
+    } catch (loadError) {
+      console.error(loadError);
+      if (requestId === availabilityRequestId.current)
+        setError(
+          "Unable to load dispatchable Population Record and Egg Laying quantities.",
         );
-      })
-      .catch((loadError) => {
-        console.error(loadError);
-        if (!cancelled)
-          setError(
-            "Unable to load dispatchable Population Record and Egg Laying quantities.",
-          );
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingItems(false);
-      });
+    } finally {
+      if (requestId === availabilityRequestId.current) setLoadingItems(false);
+    }
+  }, [farmId, inventoryDate, isReadOnly]);
+
+  useEffect(() => {
+    if (loading) return;
+    void refreshAvailableItems();
     return () => {
-      cancelled = true;
+      availabilityRequestId.current += 1;
     };
-  }, [inventoryDate, isReadOnly, loading]);
+  }, [loading, refreshAvailableItems]);
 
   useEffect(
     () => setValue("loading_g", loading || loadingItems || saving),
@@ -334,17 +355,25 @@ export default function MultipleBreederDispatchForm() {
   );
 
   const farms = useMemo(() => {
-    const unique = new Map<number, AvailableDispatchItem>();
+    const unique = new Map<
+      number,
+      Pick<AvailableDispatchItem, "farm_id" | "farm_code" | "farm_name">
+    >();
     items.forEach((item) => unique.set(item.farm_id, item));
+    buildings.forEach((building) => unique.set(building.farm_id, building));
     return [...unique.values()].sort((left, right) =>
       left.farm_name.localeCompare(right.farm_name),
     );
-  }, [items]);
+  }, [buildings, items]);
   const selectedFarm =
     farms.find((farm) => String(farm.farm_id) === farmId) ?? null;
   const farmItems = useMemo(
     () => items.filter((item) => String(item.farm_id) === farmId),
     [farmId, items],
+  );
+  const farmBuildings = useMemo(
+    () => buildings.filter((building) => String(building.farm_id) === farmId),
+    [buildings, farmId],
   );
   const destinationOptions = hatcheryFarms.map((farm) => ({
     value: String(farm.farm_id),
@@ -362,6 +391,19 @@ export default function MultipleBreederDispatchForm() {
     );
   }
 
+  function updateDispatchDateDraft(id: string, value: string) {
+    setDispatchDateDrafts((current) => ({ ...current, [id]: value }));
+  }
+
+  function commitDispatchDate(id: string, value: string) {
+    setDispatchDateDrafts((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    updateRow(id, "dispatch_date", value);
+  }
+
   const copyDown = useTableCopyDown({
     rows,
     columns: COPY_COLUMNS,
@@ -377,6 +419,14 @@ export default function MultipleBreederDispatchForm() {
             : row,
         ),
       );
+      if (column === "dispatch_date") {
+        const targetIds = new Set(targets.map((row) => row.id));
+        setDispatchDateDrafts((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(([id]) => !targetIds.has(id)),
+          ),
+        );
+      }
     },
   });
 
@@ -636,7 +686,13 @@ export default function MultipleBreederDispatchForm() {
         setRows((current) => current.slice(completed));
         try {
           if (inventoryDate)
-            setItems(await listAvailableDispatchItems(inventoryDate));
+            setItems(
+              await listAvailableDispatchItems(
+                inventoryDate,
+                selectedFarm?.farm_id,
+                true,
+              ),
+            );
         } catch (refreshError) {
           console.error(refreshError);
         }
@@ -739,9 +795,10 @@ export default function MultipleBreederDispatchForm() {
                   <SearchableCombobox
                     items={farms.map((farm) => ({
                       code: String(farm.farm_id),
-                      name: farm.farm_code
-                        ? `${farm.farm_code} - ${farm.farm_name}`
-                        : farm.farm_name,
+                      name: formatFarmNameCode(
+                        farm.farm_name,
+                        farm.farm_code,
+                      ),
                     }))}
                     value={farmId}
                     onValueChange={(value) => {
@@ -750,6 +807,7 @@ export default function MultipleBreederDispatchForm() {
                     }}
                     placeholder="Select farm"
                     showCode
+                    codePosition="suffix"
                     className="w-full min-w-0 max-w-full"
                   />
                 </div>
@@ -765,24 +823,35 @@ export default function MultipleBreederDispatchForm() {
                       ? isEditingDraft
                         ? "Continue editing this draft dispatch transaction."
                         : "Saved transaction lines for this breeder dispatch document."
-                      : "Each table row creates one breeder dispatch document. Right-click an editable cell and choose Copy down to fill the rows below."}
+                      : "Each table row creates one breeder dispatch document. Data Source and Category are fixed choices; Available is calculated from the building and production date range. Right-click an editable cell and choose Copy down to fill the rows below."}
                   </p>
                 </div>
-                {!isReadOnly ? <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() =>
-                    setRows((current) => [
-                      ...current,
-                      emptyRow(current.at(-1)?.dispatch_date),
-                    ])
-                  }
-                >
-                  <ListPlus className="size-4" />
-                  Add row
-                </Button> : null}
+                {!isReadOnly ? <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refreshAvailableItems()}
+                    disabled={loadingItems}
+                  >
+                    <RefreshCw className={`size-4 ${loadingItems ? "animate-spin" : ""}`} />
+                    Refresh sources
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setRows((current) => [
+                        ...current,
+                        emptyRow(current.at(-1)?.dispatch_date),
+                      ])
+                    }
+                  >
+                    <ListPlus className="size-4" />
+                    Add row
+                  </Button>
+                </div> : null}
               </div>
               <div className="max-h-[520px] w-full min-w-0 max-w-full overflow-auto bg-white dark:bg-card">
                 <table style={{ minWidth: tableWidth, width: tableWidth }} className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-sm">
@@ -806,53 +875,20 @@ export default function MultipleBreederDispatchForm() {
                   </thead>
                   <tbody>
                     {rows.map((row, rowIndex) => {
-                      const buildingOptions = [
-                        ...new Map(
-                          farmItems
-                            .filter(
-                              (item) =>
-                                item.source_date.slice(0, 10) <=
-                                row.dispatch_date,
-                            )
-                            .map((item) => [buildingValue(item), item]),
-                        ).values(),
-                      ].sort((left, right) =>
-                        left.building_name.localeCompare(
-                          right.building_name,
-                          undefined,
-                          { numeric: true },
-                        ),
+                      const buildingOptions = [...farmBuildings].sort(
+                        (left, right) =>
+                          left.building_name.localeCompare(
+                            right.building_name,
+                            undefined,
+                            { numeric: true },
+                          ),
                       );
-                      const availableSources = new Set(
-                        farmItems
-                          .filter(
-                            (item) =>
-                              buildingValue(item) === row.building_id &&
-                              item.source_date.slice(0, 10) <=
-                                row.dispatch_date,
-                          )
-                          .map((item) => item.source_type),
-                      );
-                      const availableCategories = new Set(
-                        farmItems
-                          .filter(
-                            (item) =>
-                              buildingValue(item) === row.building_id &&
-                              item.source_type === row.source_type &&
-                              item.source_date.slice(0, 10) <=
-                                row.dispatch_date,
-                          )
-                          .map((item) => item.category),
-                      );
-                      const categoryOptions = (
+                      const categoryOptions =
                         row.source_type === "Population Record"
                           ? POPULATION_CATEGORIES
                           : row.source_type === "Egg Laying"
                             ? EGG_CATEGORIES
-                            : []
-                      ).filter(([category]) =>
-                        availableCategories.has(category),
-                      );
+                            : [];
                       const available = availableFor(row);
                       const divider =
                         rowIndex % 5 === 4
@@ -885,14 +921,9 @@ export default function MultipleBreederDispatchForm() {
                               aria-label={`Row ${rowIndex + 1} Dispatch Date`}
                               className={`${inputClass} w-full max-w-full text-center`}
                               type="date"
-                              value={row.dispatch_date}
-                              onChange={(event) =>
-                                updateRow(
-                                  row.id,
-                                  "dispatch_date",
-                                  event.target.value,
-                                )
-                              }
+                              value={dispatchDateDrafts[row.id] ?? row.dispatch_date}
+                              onChange={(event) => updateDispatchDateDraft(row.id, event.target.value)}
+                              onBlur={(event) => commitDispatchDate(row.id, event.target.value)}
                             />
                           </TableCopyDownCell>
                           <TableCopyDownCell
@@ -915,11 +946,10 @@ export default function MultipleBreederDispatchForm() {
                               <option value="">Select building</option>
                               {buildingOptions.map((building) => (
                                 <option
-                                  key={buildingValue(building)}
-                                  value={buildingValue(building)}
+                                  key={building.building_id}
+                                  value={String(building.building_id)}
                                 >
-                                  {building.building_name ||
-                                    "Unassigned building"}
+                                  {building.building_name}
                                 </option>
                               ))}
                             </select>
@@ -943,14 +973,10 @@ export default function MultipleBreederDispatchForm() {
                               disabled={!row.building_id}
                             >
                               <option value="">Select source</option>
-                              {availableSources.has("Population Record") ? (
-                                <option value="Population Record">
-                                  Population Record
-                                </option>
-                              ) : null}
-                              {availableSources.has("Egg Laying") ? (
-                                <option value="Egg Laying">Egg Laying</option>
-                              ) : null}
+                              <option value="Population Record">
+                                Population Record
+                              </option>
+                              <option value="Egg Laying">Egg Laying</option>
                             </select>
                           </TableCopyDownCell>
                           <TableCopyDownCell
@@ -1048,6 +1074,7 @@ export default function MultipleBreederDispatchForm() {
                                 )
                               }
                               placeholder="0"
+                              disabled={available <= 0}
                             />
                           </TableCopyDownCell>
                           <TableCopyDownCell

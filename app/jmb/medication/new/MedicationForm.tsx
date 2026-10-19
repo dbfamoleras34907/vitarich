@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Save, X } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -172,7 +173,7 @@ export default function MedicationForm() {
 
   const farmOptions = farms.map((farm) => ({
     code: String(farm.farm_id),
-    name: farm.farm_code ? `${farm.farm_code} - ${farm.farm_name}` : farm.farm_name,
+    name: formatFarmNameCode(farm.farm_name, farm.farm_code),
   }));
   const buildingOptions = buildings.map((building) => ({
     code: String(building.building_id),
@@ -338,7 +339,7 @@ export default function MedicationForm() {
 
             <section className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
               <Field label="Medication date" required><Input type="date" value={form.medication_date} onChange={(e) => update("medication_date", e.target.value)} /></Field>
-              <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={changeFarm} placeholder={loading ? "Loading farms..." : "Select farm"} showCode className="w-full" /></Field>
+              <Field label="Breeder farm" required><SearchableCombobox items={farmOptions} value={form.farm_id} onValueChange={changeFarm} placeholder={loading ? "Loading farms..." : "Select farm"} showCode codePosition="suffix" className="w-full" /></Field>
               <Field label="Indication" required><Input maxLength={250} placeholder="Reason for medication" value={form.indication} onChange={(e) => update("indication", e.target.value)} /></Field>
             </section>
 

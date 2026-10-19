@@ -6,6 +6,7 @@ import { BarChart3, Download, FileText, Loader2, RefreshCw } from "lucide-react"
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import SearchableCombobox from "@/components/SearchableCombobox";
+import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -208,7 +209,7 @@ export default function BreederReports() {
   const selectedReport = REPORT_OPTIONS.find((option) => option.value === reportType) ?? REPORT_OPTIONS[0];
   const usesLocationFilters = !["vaccination", "medication"].includes(reportType);
   const farmLocations = useMemo(() => locations.filter((location) => String(location.farm_id) === farmId), [farmId, locations]);
-  const farmOptions = useMemo(() => farms.map((farm) => ({ code: String(farm.id), name: label(farm.code, farm.name) })), [farms]);
+  const farmOptions = useMemo(() => farms.map((farm) => ({ code: String(farm.id), name: formatFarmNameCode(farm.name, farm.code) })), [farms]);
   const buildingOptions = useMemo(() => { const unique = new Map<number, FarmLocationLookup>(); farmLocations.forEach((row) => unique.set(row.building_id, row)); return [{ code: ALL, name: "All buildings" }, ...[...unique.values()].map((row) => ({ code: String(row.building_id), name: label(row.building_code, row.building_name) }))]; }, [farmLocations]);
   const penOptions = useMemo(() => { const filtered = buildingId === ALL ? farmLocations : farmLocations.filter((row) => String(row.building_id) === buildingId); const unique = new Map<number, FarmLocationLookup>(); filtered.forEach((row) => unique.set(row.pen_id, row)); return [{ code: ALL, name: "All pens" }, ...[...unique.values()].map((row) => ({ code: String(row.pen_id), name: buildingId === ALL ? `${row.building_name} / ${row.pen_name}` : row.pen_name }))]; }, [buildingId, farmLocations]);
   const cycleOptions = useMemo(() => {
@@ -258,7 +259,7 @@ export default function BreederReports() {
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
             <div><label className="mb-2 block border-b border-emerald-600 pb-1 text-sm font-semibold">Select Report</label><Select value={reportType} onValueChange={(value) => { setReportType(value as ReportType); resetReport(); }}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{REPORT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}><span className="font-medium">{option.label}</span><span className="ml-1 text-muted-foreground">— {option.scope}</span></SelectItem>)}</SelectContent></Select></div>
-            <div><label className="mb-2 block border-b border-emerald-600 pb-1 text-sm font-semibold">Breeder Farm</label><SearchableCombobox items={farmOptions} value={farmId} onValueChange={(value) => { setFarmId(value); setCycleNumber(ALL); setBuildingId(ALL); setPenId(ALL); resetReport(); }} placeholder="Select breeder farm..." className="w-full" /></div>
+            <div><label className="mb-2 block border-b border-emerald-600 pb-1 text-sm font-semibold">Breeder Farm</label><SearchableCombobox items={farmOptions} value={farmId} onValueChange={(value) => { setFarmId(value); setCycleNumber(ALL); setBuildingId(ALL); setPenId(ALL); resetReport(); }} placeholder="Select breeder farm..." showCode codePosition="suffix" className="w-full" /></div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
