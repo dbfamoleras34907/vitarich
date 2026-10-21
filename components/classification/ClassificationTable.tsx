@@ -6,9 +6,16 @@ import {
   flexRender,
 } from "@tanstack/react-table";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Table,
   TableBody,
@@ -167,6 +174,8 @@ export function ClassificationTableSection<TData>({
   error,
   colSpan,
   headerActions,
+  contentOpen,
+  onContentOpenChange,
   minWidthClassName = "min-w-230",
   paginationMode = "page-records",
 }: {
@@ -177,15 +186,16 @@ export function ClassificationTableSection<TData>({
   error?: string | null;
   colSpan: number;
   headerActions?: ReactNode;
+  contentOpen?: boolean;
+  onContentOpenChange?: (open: boolean) => void;
   minWidthClassName?: string;
   paginationMode?: PaginationMode;
 }) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-stone-200 bg-white px-3 py-3 sm:flex-row sm:items-center">
-        <ClassificationStatusPill label={title} tone={tone} />
-        {headerActions}
-      </div>
+  const canToggleSectionContent =
+    contentOpen !== undefined && onContentOpenChange !== undefined;
+
+  const tableContent = (
+    <>
       <div className="overflow-x-auto">
         <Table className={`${minWidthClassName} text-xs`}>
           <TableHeader className="bg-stone-100">
@@ -239,6 +249,49 @@ export function ClassificationTableSection<TData>({
         </Table>
       </div>
       <ClassificationPagination table={table} mode={paginationMode} />
+    </>
+  );
+
+  return (
+    <section
+      className={`${
+        canToggleSectionContent ? "overflow-visible" : "overflow-hidden"
+      } rounded-lg border border-stone-200 bg-white`}
+    >
+      <div
+        className={`relative flex flex-col gap-3 border-b border-stone-200 bg-white px-3 sm:flex-row sm:items-center ${
+          canToggleSectionContent && !contentOpen
+            ? "min-h-14 py-2 pb-4"
+            : "py-3"
+        }`}
+      >
+        <ClassificationStatusPill label={title} tone={tone} />
+        {(!canToggleSectionContent || contentOpen) && headerActions}
+        {canToggleSectionContent ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => onContentOpenChange(!contentOpen)}
+            title={contentOpen ? "Hide section" : "Show section"}
+            aria-label={contentOpen ? "Hide section" : "Show section"}
+            className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-sm"
+          >
+            {contentOpen ? (
+              <ChevronUp className="size-4" />
+            ) : (
+              <ChevronDown className="size-4" />
+            )}
+          </Button>
+        ) : null}
+      </div>
+      {canToggleSectionContent ? (
+        <Collapsible open={contentOpen} onOpenChange={onContentOpenChange}>
+          <CollapsibleContent>{tableContent}</CollapsibleContent>
+        </Collapsible>
+      ) : (
+        tableContent
+      )}
     </section>
   );
 }
