@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SearchableCombobox from "@/components/SearchableCombobox";
-import { Check, Search } from "lucide-react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import { listBroilerFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { useDefaultFarmSelection } from "@/lib/farms/useDefaultFarmSelection";
 
 export type UserFarm = {
   id: number;
@@ -53,6 +54,23 @@ function matchesFarmType(farm: UserFarm, farmType?: keyof typeof FARM_TYPE_LABEL
   return value === farmType || value === FARM_TYPE_LABELS[farmType];
 }
 
+export function getFarmsForSelector(
+  farms: UserFarm[],
+  farmType: keyof typeof FARM_TYPE_LABELS | undefined,
+  defaultFarmReference: unknown,
+) {
+  if (!farmType) return farms;
+
+  const preferred = String(defaultFarmReference ?? "").trim();
+  return farms.filter((farm) =>
+    matchesFarmType(farm, farmType)
+    || (preferred !== "" && (
+      String(farm.id) === preferred
+      || String(farm.code).trim() === preferred
+    )),
+  );
+}
+
 export default function UserFarmSearchCombobox({
   label = "Default Farm",
   required,
@@ -63,46 +81,45 @@ export default function UserFarmSearchCombobox({
   display = "combobox",
 }: UserFarmSearchComboboxProps) {
   const { getValue } = useGlobalContext();
+  const selectDefaultFarm = useDefaultFarmSelection();
   const session = getValue("UserInfoAuthSession");
+  const sessionUserId = session?.[0]?.id;
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
-  const [broilerFarms, setBroilerFarms] = useState<UserFarm[] | null>(null);
+  const [assignedFarms, setAssignedFarms] = useState<UserFarm[] | null>(null);
   const [buttonSearch, setButtonSearch] = useState("");
+  const defaultFarmReference = getValue("DefaultFarmId")
+    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
-    if (farmType !== "BR") return;
-
     let cancelled = false;
-    listBroilerFarmOptions()
+    listAssignedUserFarmOptions()
       .then((farms) => {
         if (!cancelled) {
-          setBroilerFarms(farms.map((farm) => ({ ...farm, farm_type: "BR" })));
+          setAssignedFarms(farms);
         }
       })
       .catch((error) => {
-        console.error("Unable to load Broiler farms:", error);
-        if (!cancelled) setBroilerFarms([]);
+        console.error("Unable to load assigned farms:", error);
+        if (!cancelled) setAssignedFarms([]);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [farmType]);
-
-  const farmSource = farmType === "BR" && broilerFarms ? broilerFarms : rawFarmDB;
+  }, [sessionUserId]);
 
   const allowedFarms = useMemo(
-    () =>
-      getAllowedUserFarms(
-        (farmSource || []) as UserFarm[],
-        (rawUserFarms || []) as unknown[]
-      ),
-    [farmSource, rawUserFarms]
+    () => assignedFarms ?? getAllowedUserFarms(
+      (rawFarmDB || []) as UserFarm[],
+      (rawUserFarms || []) as unknown[]
+    ),
+    [assignedFarms, rawFarmDB, rawUserFarms]
   );
 
   const filteredFarms = useMemo(
-    () => allowedFarms.filter((farm) => matchesFarmType(farm, farmType)),
-    [allowedFarms, farmType]
+    () => getFarmsForSelector(allowedFarms, farmType, defaultFarmReference),
+    [allowedFarms, defaultFarmReference, farmType]
   );
 
   const items = useMemo(
@@ -119,6 +136,15 @@ export default function UserFarmSearchCombobox({
   const selectedFarm = filteredFarms.find(farm => farm.code === reference)
     ?? filteredFarms.find(farm => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
+
+  useEffect(() => {
+    if (reference || defaultFarmReference == null) return;
+    const defaultFarm = filteredFarms.find((farm) =>
+      String(farm.id) === String(defaultFarmReference)
+      || farm.code === String(defaultFarmReference),
+    );
+    if (defaultFarm) onValueChange?.(String(defaultFarm.id), defaultFarm);
+  }, [defaultFarmReference, filteredFarms, onValueChange, reference]);
 
   const visibleButtonFarms = useMemo(() => {
     const query = buttonSearch.trim().toLocaleLowerCase();
@@ -153,7 +179,10 @@ export default function UserFarmSearchCombobox({
                 type="button"
                 variant={isSelected ? "default" : "outline"}
                 aria-pressed={isSelected}
-                onClick={() => onValueChange?.(String(farm.id), farm)}
+                onClick={() => {
+                  onValueChange?.(String(farm.id), farm);
+                  void selectDefaultFarm(farm.id).catch(() => undefined);
+                }}
                 className="h-auto min-h-14 min-w-0 max-w-full flex-[1_1_10rem] justify-start whitespace-normal px-3 py-2 text-left"
               >
                 <span className="min-w-0 flex-1 break-words">
@@ -184,6 +213,7 @@ export default function UserFarmSearchCombobox({
         onValueChange={(farmId) => {
           const farm = filteredFarms.find((item) => String(item.id) === farmId);
           onValueChange?.(farmId, farm);
+          void selectDefaultFarm(farmId).catch(() => undefined);
         }}
         className={className}
       />

@@ -105,8 +105,10 @@ type FlockCardListRow = {
   id: number;
   farm_cycle_id: number | null;
   card_no: string | null;
+  cycle_no: string | null;
   cycle_mask?: string | null;
   doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null;
+  extra?: Record<string, unknown> | null;
   building_id: number | null;
   building_whse_id: number | null;
   building_key: string | null;
@@ -363,7 +365,7 @@ export async function getFarmBuildingsForFlockCard(
 
   let flockCardQuery = db
     .from("flock_card")
-    .select("id, farm_cycle_id, card_no, cycle_mask, doc_farm_cycles(cycle_mask), building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
+    .select("id, farm_cycle_id, card_no, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), extra, building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
     .eq("farm_id", farmId)
     .eq("void", "1")
     .eq("status", "Saved")

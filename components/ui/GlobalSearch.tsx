@@ -168,7 +168,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
   const [selectedFilter, setSelectedFilter] = useState("All")
   const resultsListRef = useRef<HTMLDivElement>(null)
   const navtype = ["All", "Settings", "Navigation"]
-  const [farmModalOpen, setFarmModalOpen] = useState(() => getValue('DefaultFarmId') == null)
+  const [farmModalOpen, setFarmModalOpen] = useState(false)
 
   useEffect(() => {
     if (!farmModalOpen) return

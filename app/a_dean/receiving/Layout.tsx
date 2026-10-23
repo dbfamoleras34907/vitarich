@@ -15,6 +15,7 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getReceivingList, getPendingReceivingDispatches } from '@/lib/data/repositories/receivingLists'
 import { usePermission } from '@/hooks/usePermission'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -35,6 +36,7 @@ export default function Layout() {
     const [farms, setFarms] = useState<AssignedFarmOption[]>([])
     const [loadingFarms, setLoadingFarms] = useState(true)
     const [selectedFarmId, setSelectedFarmId] = useState('')
+    useSyncDefaultFarm(selectedFarmId)
     const [loadedFarmId, setLoadedFarmId] = useState<number | null>(null)
 
 
@@ -161,12 +163,14 @@ export default function Layout() {
             setLoadingFarms(true)
             setFarms([])
             setSelectedFarmId('')
-            await listAssignedUserFarmOptions(['HA'])
+            await listAssignedUserFarmOptions()
                 .then(options => {
                     if (cancelled) return
                     setFarms(options)
-                    const preferred = options.find(farm => String(farm.id) === defaultFarmId)
-                    setSelectedFarmId(String((preferred ?? options[0])?.id ?? ''))
+                    const preferred = options.find(farm =>
+                        String(farm.id) === defaultFarmId || farm.code === defaultFarmId
+                    )
+                    setSelectedFarmId(String(preferred?.id ?? ''))
                 })
                 .catch(error => {
                     if (!cancelled) toast.error(error instanceof Error ? error.message : 'Unable to load farms.')
@@ -262,7 +266,7 @@ export default function Layout() {
                     placeholder={loadingFarms ? 'Loading farms...' : 'Select farm'}
                 />
                 {!loadingFarms && farms.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No active Hatchery farms are associated with your account.</p>
+                    <p className="text-sm text-muted-foreground">No active farms are associated with your account.</p>
                 )}
             </div>
 

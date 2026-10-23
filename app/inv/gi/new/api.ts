@@ -722,7 +722,7 @@ export async function getAvailableDeliveryFlockCards(params: {
 
   let cardQuery = db
     .from('flock_card')
-    .select('id, card_no, farm_id, farm_cycle_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status')
+    .select('id, card_no, farm_id, farm_cycle_id, farm_code, farm_name, building_whse_id, building_code, building_name, age, start_date, broiler_type, breed, flock_code, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), animal_qty, status, extra')
     .eq('farm_id', farmId)
     .eq('void', '1')
     .eq('status', 'Saved')

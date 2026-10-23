@@ -6,7 +6,7 @@ const source = fs.readFileSync(path.resolve(__dirname, '../../lib/broiler/cycleM
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
 const mod = { exports: {} }
 new Function('module', 'exports', code)(mod, mod.exports)
-const { formatCycleMask } = mod.exports
+const { formatCycleMask, resolveCycleDisplayNumber } = mod.exports
 assert.equal(formatCycleMask(1003, '2026-09-15'), '09261003')
 assert.equal(formatCycleMask(3, '2026-01-01'), '01260003')
 assert.equal(formatCycleMask(10000, '2027-12-31'), '122710000')
@@ -14,9 +14,13 @@ assert.equal(formatCycleMask('001003', '2026-09-15'), '09261003')
 assert.equal(formatCycleMask(1003, '2026-02-30'), '')
 assert.equal(formatCycleMask(1003, null), '')
 assert.equal(formatCycleMask('legacy', '2026-09-15'), '')
+assert.equal(resolveCycleDisplayNumber(25, '2026-10-01'), '10260025')
+assert.equal(resolveCycleDisplayNumber(25, '2026-10-01', true), '25')
 const { getBroilerCycleDisplay } = mod.exports
 assert.equal(getBroilerCycleDisplay({ cycle_mask: '09261003', doc_farm_cycles: { cycle_mask: '08261003' } }), '08261003')
 assert.equal(getBroilerCycleDisplay({ cycle_mask: '09261003', doc_farm_cycles: [{ cycle_mask: '08261003' }] }), '08261003')
 assert.equal(getBroilerCycleDisplay({ cycle_mask: '09261003' }), '09261003')
+assert.equal(getBroilerCycleDisplay({ cycle_no: '25', cycle_mask: '10260025', doc_farm_cycles: { cycle_mask: '10260012' }, extra: { cycleDisplaySource: 'building' } }), '10260025')
+assert.equal(getBroilerCycleDisplay({ cycle_no: '25', cycle_mask: '10260025', doc_farm_cycles: { cycle_mask: '10260012' }, extra: { cycleDisplaySource: 'building', doNotFormatCycleNumber: true } }), '25')
 assert.equal(getBroilerCycleDisplay({}), '')
 console.log('Cycle mask tests passed')

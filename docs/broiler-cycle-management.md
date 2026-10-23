@@ -20,10 +20,10 @@ Apply these files to the same Supabase project used by the application:
 6. `app/sql/updated/save_br_delivery_transaction.sql`
 6. `app/brd/cu/br_cleanup_tables.sql`
 7. `app/brd/cu/use_last_mortality_age.sql`
-8. `app/brd/cu/allow_harvest_emptied_cleanup.sql`
+8. `app/sql/updated/allow_harvest_emptied_cleanup.sql`
 9. `app/brd/cu/alter_cleanup_quantity_variance.sql`
 10. `app/brd/cu/fix_cleanup_consolidated_batch_balance.sql`
-11. `app/brd/cu/save_br_cleanup_transaction.sql`
+11. `app/sql/updated/save_br_cleanup_transaction.sql`
 12. `app/brd/cu/reverse_br_cleanup_transaction.sql`
 
 Keep the later Clean Up patches in this order because they extend the trigger functions installed by `br_cleanup_tables.sql`.

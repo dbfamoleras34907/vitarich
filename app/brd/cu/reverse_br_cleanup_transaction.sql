@@ -1,5 +1,5 @@
 -- Apply after the current notification_system.sql, doc_farm_cycles.sql,
--- and deploy_harvest_emptied_cleanup.sql. Deployment reverses no documents.
+-- and app/sql/updated/deploy_harvest_emptied_cleanup.sql. Deployment reverses no documents.
 begin;
 alter table public.br_cleanup add column if not exists reversed_at timestamptz;
 alter table public.br_cleanup add column if not exists reversed_by uuid references auth.users(id);

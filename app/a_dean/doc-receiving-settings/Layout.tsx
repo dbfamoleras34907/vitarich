@@ -15,11 +15,12 @@ import { Label } from '@/components/ui/label'
 import {
   addDocReceivingSettings,
   DocItemOption,
+  DocCycleExcludedBuildingSetting,
   DocReceivingSettings,
   getDocItemOptions,
   getDocReceivingSettings,
-  getDocCycleExcludedBuildingIds,
-  saveDocCycleExcludedBuildingIds,
+  getDocCycleExcludedBuildingSettings,
+  saveDocCycleExcludedBuildingSettings,
   updateDocReceivingSettings,
 } from './api'
 import { resolveDocPlacementDefaults } from './defaults'
@@ -55,6 +56,9 @@ const toPayload = (form: FormState, farmId: number): DocReceivingSettings => ({
 
 const optionLabel = (item: DocItemOption) =>
   `${item.item_code}${item.item_name ? ` - ${item.item_name}` : ''}`
+
+const normalizeExcludedBuildingSettings = (settings: DocCycleExcludedBuildingSetting[]) =>
+  [...settings].sort((left, right) => left.buildingWarehouseId - right.buildingWarehouseId)
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) return error.message
@@ -100,8 +104,8 @@ export default function DocReceivingSettingsLayout({
   const loadRequest = useRef(0)
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([])
-  const [excludedBuildingIds, setExcludedBuildingIds] = useState<number[]>([])
-  const [savedExcludedBuildingIds, setSavedExcludedBuildingIds] = useState<number[]>([])
+  const [excludedBuildingSettings, setExcludedBuildingSettings] = useState<DocCycleExcludedBuildingSetting[]>([])
+  const [savedExcludedBuildingSettings, setSavedExcludedBuildingSettings] = useState<DocCycleExcludedBuildingSetting[]>([])
 
   const allowedFarms = useMemo(
     () => getAllowedUserFarms((rawFarmDB || []) as UserFarm[], (rawUserFarms || []) as unknown[]),
@@ -115,8 +119,8 @@ export default function DocReceivingSettingsLayout({
     [activeFarmId, canAdd, canEdit, loading, loadFailed, saving, settings?.id],
   )
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(savedForm) ||
-    JSON.stringify([...excludedBuildingIds].sort((a, b) => a - b)) !== JSON.stringify([...savedExcludedBuildingIds].sort((a, b) => a - b)),
-  [excludedBuildingIds, form, savedExcludedBuildingIds, savedForm])
+    JSON.stringify(normalizeExcludedBuildingSettings(excludedBuildingSettings)) !== JSON.stringify(normalizeExcludedBuildingSettings(savedExcludedBuildingSettings)),
+  [excludedBuildingSettings, form, savedExcludedBuildingSettings, savedForm])
   const itemOptions = useMemo(
     () => items.map(item => ({ code: String(item.id), name: optionLabel(item) })),
     [items],
@@ -128,11 +132,11 @@ export default function DocReceivingSettingsLayout({
     setLoadFailed(false)
     setSaveError(null)
     try {
-      const [storedSettings, nextItems, rows, excludedIds] = await Promise.all([
+      const [storedSettings, nextItems, rows, excludedSettings] = await Promise.all([
         getDocReceivingSettings(Number(activeFarmId), { usePreviousFarmDefaults }),
         getDocItemOptions(),
         activeFarmId ? getFarmBuildingsForFlockCard(Number(activeFarmId)) : Promise.resolve([]),
-        getDocCycleExcludedBuildingIds(Number(activeFarmId)),
+        getDocCycleExcludedBuildingSettings(Number(activeFarmId)),
       ])
       if (request !== loadRequest.current) return
       const farmId = Number(activeFarmId)
@@ -147,8 +151,8 @@ export default function DocReceivingSettingsLayout({
       setSavedForm(nextForm)
       setItems(nextItems)
       setBuildings(rows.filter(row => row.source === 'WAREHOUSE' && row.status === 'Active'))
-      setExcludedBuildingIds(excludedIds)
-      setSavedExcludedBuildingIds(excludedIds)
+      setExcludedBuildingSettings(excludedSettings)
+      setSavedExcludedBuildingSettings(excludedSettings)
     } catch (error) {
       if (request !== loadRequest.current) return
       setLoadFailed(true)
@@ -158,8 +162,8 @@ export default function DocReceivingSettingsLayout({
       setSavedForm(emptyForm)
       setItems([])
       setBuildings([])
-      setExcludedBuildingIds([])
-      setSavedExcludedBuildingIds([])
+      setExcludedBuildingSettings([])
+      setSavedExcludedBuildingSettings([])
     } finally {
       if (request === loadRequest.current) setLoading(false)
     }
@@ -230,9 +234,9 @@ export default function DocReceivingSettingsLayout({
       setForm(nextForm)
       setSavedForm(nextForm)
 
-      const savedExclusions = await saveDocCycleExcludedBuildingIds(Number(activeFarmId), excludedBuildingIds)
-      setExcludedBuildingIds(savedExclusions)
-      setSavedExcludedBuildingIds(savedExclusions)
+      const savedExclusions = await saveDocCycleExcludedBuildingSettings(Number(activeFarmId), excludedBuildingSettings)
+      setExcludedBuildingSettings(savedExclusions)
+      setSavedExcludedBuildingSettings(savedExclusions)
       toast('DOC Placement settings saved')
       onSaved?.()
     } catch (error) {
@@ -308,24 +312,40 @@ export default function DocReceivingSettingsLayout({
           </SettingRow>
         </SettingsCategory>
         <SettingsCategory title="Cycle Assignment" description="Every building belongs to Cycle Master. Normal buildings copy its Cycle Count; excluded buildings keep their own Cycle Count.">
-          <SettingRow label="Excluded Cycle Buildings" description="Select active, empty buildings whose Cycle Count is entered separately. They still belong to the farm Cycle Master. A building with an active flock cannot be added or removed until posted Clean up is complete." settingKey="EXCLUDED_CYCLE_BUILDINGS">
+          <SettingRow label="Excluded Cycle Buildings" description="Select active, empty buildings whose Cycle Count is entered separately. By default, Cycle # is formatted from the Cycle Start date selected during DOC Placement. A building with an active flock cannot be added or removed until posted Clean up is complete." settingKey="EXCLUDED_CYCLE_BUILDINGS">
             <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-stone-200 p-3">
               {!activeFarmId ? <p className="text-sm text-stone-500">Select a farm first.</p> : buildings.length === 0 ? <p className="text-sm text-stone-500">No active buildings are available.</p> : buildings.map(building => {
                 const id = Number(building.id)
-                const checked = excludedBuildingIds.includes(id)
-                return <label key={building.key} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 hover:bg-stone-50">
-                  <input
-                    type="checkbox"
-                    className="size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    checked={checked}
-                    disabled={!canSave}
-                    onChange={event => {
-                      const nextChecked = event.currentTarget.checked
-                      setExcludedBuildingIds(current => nextChecked ? [...new Set([...current, id])] : current.filter(entry => entry !== id))
-                    }}
-                  />
-                  <span className="text-sm">{building.code} - {building.name}</span>
-                </label>
+                const setting = excludedBuildingSettings.find(entry => entry.buildingWarehouseId === id)
+                const checked = Boolean(setting)
+                return <div key={building.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded px-2 py-1.5 hover:bg-stone-50">
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      checked={checked}
+                      disabled={!canSave}
+                      onChange={event => {
+                        const nextChecked = event.currentTarget.checked
+                        setExcludedBuildingSettings(current => nextChecked
+                          ? [...current, { buildingWarehouseId: id, doNotFormatCycleNumber: false }]
+                          : current.filter(entry => entry.buildingWarehouseId !== id))
+                      }}
+                    />
+                    <span className="truncate text-sm">{building.code} - {building.name}</span>
+                  </label>
+                  {checked ? <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={setting?.doNotFormatCycleNumber === true}
+                      disabled={!canSave}
+                      onCheckedChange={nextChecked => setExcludedBuildingSettings(current => current.map(entry =>
+                        entry.buildingWarehouseId === id
+                          ? { ...entry, doNotFormatCycleNumber: nextChecked === true }
+                          : entry))}
+                    />
+                    Do not format Cycle #
+                  </label> : null}
+                </div>
               })}
             </div>
           </SettingRow>

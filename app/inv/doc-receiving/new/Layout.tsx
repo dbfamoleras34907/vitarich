@@ -51,7 +51,7 @@ import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
-import { formatCycleMask } from '@/lib/broiler/cycleMask'
+import { resolveCycleDisplayNumber } from '@/lib/broiler/cycleMask'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
@@ -92,7 +92,7 @@ import {
 } from '@/app/brd/fc/api'
 import {
   ensureActiveDocFarmCycle,
-  isDocCycleBuildingExcluded,
+  getDocCycleBuildingSetting,
   previewDocFarmCycle,
   saveFlockCardPlacement,
 } from '@/app/brd/fc/[buildingId]/add-flock/api'
@@ -653,6 +653,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const [cycleForm, setCycleForm] = useState<CycleInformationForm>(emptyCycleForm)
   const [savingCycle, setSavingCycle] = useState(false)
   const [cycleIsExcluded, setCycleIsExcluded] = useState(false)
+  const [cycleDoNotFormat, setCycleDoNotFormat] = useState(false)
   const separateBatchByReference = true
   const batchReferenceColumn = 'transfer_slip'
   const [loadingReferences, setLoadingReferences] = useState(true)
@@ -1081,7 +1082,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     hasDocReceivingSettings(docReceivingSettings) &&
     (!receipt.id || hasDocDetailValues(docDetailRows)),
   )
-  const displayReceiptLines = shouldDeriveReceiptLines ? derivedReceiptLines : receipt?.lines ?? []
+  const displayReceiptLines = useMemo(
+    () => shouldDeriveReceiptLines ? derivedReceiptLines : receipt?.lines ?? [],
+    [derivedReceiptLines, receipt?.lines, shouldDeriveReceiptLines],
+  )
   const displayTotalQuantity = docDetailRows.reduce(
     (total, row) => total + numberValue(row.quantity_received),
     0,
@@ -1122,6 +1126,101 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       quantity: docDetailRows.reduce((total, row) => total + numberValue(row.short_count), 0),
     },
   ]
+  const buildingLabelByWarehouseId = useMemo(() => {
+    const labels = new Map<number, string>()
+
+    farmBuildings.forEach(building => {
+      if (building.id) labels.set(building.id, `${building.code} - ${building.name}`)
+    })
+    displayReceiptLines.forEach(line => {
+      if (
+        line.warehouseId &&
+        line.itemId === docReceivingSettings?.good_doc &&
+        !labels.has(line.warehouseId)
+      ) {
+        labels.set(
+          line.warehouseId,
+          line.warehouseCode
+            ? `${line.warehouseCode}${line.warehouseName ? ` - ${line.warehouseName}` : ''}`
+            : `Building #${line.warehouseId}`,
+        )
+      }
+    })
+
+    return labels
+  }, [displayReceiptLines, docReceivingSettings?.good_doc, farmBuildings])
+  const receiptLineGroups = useMemo(() => {
+    const groups = new Map<string, {
+      key: string
+      label: string
+      lines: GoodsReceiptLine[]
+      quantity: number
+    }>()
+
+    displayReceiptLines.forEach(line => {
+      const docLineNo = Number(line.docLineNo ?? 0)
+      const detailRow = Number.isInteger(docLineNo) && docLineNo > 0
+        ? docDetailRows[docLineNo - 1]
+        : undefined
+      const buildingWarehouseId = detailRow?.building_warehouse_id ?? (
+        farmBuildings.some(building => building.id === line.warehouseId)
+          ? line.warehouseId
+          : null
+      )
+      const key = buildingWarehouseId ? String(buildingWarehouseId) : 'unassigned'
+      const label = buildingWarehouseId
+        ? buildingLabelByWarehouseId.get(buildingWarehouseId) ?? `Building #${buildingWarehouseId}`
+        : 'Unassigned Building'
+      const group = groups.get(key) ?? { key, label, lines: [], quantity: 0 }
+
+      group.lines.push(line)
+      group.quantity += Number(line.baseQty || 0)
+      groups.set(key, group)
+    })
+
+    let displayIndex = 0
+    return Array.from(groups.values()).map(group => ({
+      ...group,
+      lines: group.lines.map(line => ({ line, index: displayIndex++ })),
+    }))
+  }, [buildingLabelByWarehouseId, displayReceiptLines, docDetailRows, farmBuildings])
+  const buildingReceivingSummaries = useMemo(() => {
+    const groups = new Map<string, {
+      key: string
+      label: string
+      total: number
+      good: number
+      doa: number
+      reject: number
+      short: number
+    }>()
+
+    docDetailRows.forEach(row => {
+      const buildingWarehouseId = row.building_warehouse_id
+      const key = buildingWarehouseId ? String(buildingWarehouseId) : 'unassigned'
+      const label = buildingWarehouseId
+        ? buildingLabelByWarehouseId.get(buildingWarehouseId) ?? `Building #${buildingWarehouseId}`
+        : 'Unassigned Building'
+      const group = groups.get(key) ?? {
+        key,
+        label,
+        total: 0,
+        good: 0,
+        doa: 0,
+        reject: 0,
+        short: 0,
+      }
+
+      group.total += numberValue(row.quantity_received)
+      group.good += calculateActualReceived(row)
+      group.doa += numberValue(row.doa_quantity)
+      group.reject += numberValue(row.reject_count)
+      group.short += numberValue(row.short_count)
+      groups.set(key, group)
+    })
+
+    return Array.from(groups.values())
+  }, [buildingLabelByWarehouseId, docDetailRows])
 
   useEffect(() => {
     if (!receipt || !shouldDeriveReceiptLines) return
@@ -1777,11 +1876,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     setCycleTarget(target)
     setCycleForm(nextForm)
     setCycleIsExcluded(false)
+    setCycleDoNotFormat(false)
     setCycleModalOpen(true)
 
     try {
-      const excluded = await isDocCycleBuildingExcluded(receipt.farmId, Number(building.id))
+      const buildingCycleSetting = await getDocCycleBuildingSetting(receipt.farmId, Number(building.id))
+      const excluded = buildingCycleSetting.excluded
       setCycleIsExcluded(excluded)
+      setCycleDoNotFormat(buildingCycleSetting.doNotFormatCycleNumber)
       const [farmCycle, activeCycles] = await Promise.all([
         previewDocFarmCycle(receipt.farmId),
         getFarmCycleMasterRows(receipt.farmId, { status: 'Saved' }),
@@ -1908,7 +2010,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           ? { id: Number(cycleForm.farmCycleId), cycleNumber: cycleForm.cycleNumber }
           : await ensureActiveDocFarmCycle(receipt.farmId)
       const createdCycleNumber = cycleIsExcluded ? cycleForm.cycleNumber : farmCycle.cycleNumber
-      const createdCycleMask = formatCycleMask(createdCycleNumber, cycleForm.startDate)
+      const createdCycleMask = resolveCycleDisplayNumber(createdCycleNumber, cycleForm.startDate, cycleDoNotFormat)
       const saved = await saveFlockCardPlacement({
         farmId: receipt.farmId,
         farmCode: receipt.farmCode,
@@ -2808,12 +2910,23 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   <th className="h-9 min-w-48 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold uppercase text-stone-700">Warehouse</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {displayReceiptLines.map((line, index) => {
-                  const batchRequirement = getBatchRequirement(line)
+              {receiptLineGroups.map(group => (
+                <tbody key={group.key} className="divide-y">
+                  <tr className="border-y bg-muted/70">
+                    <th colSpan={7} scope="rowgroup" className="px-3 py-2 text-left">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-foreground">{group.label}</span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {group.lines.length} {group.lines.length === 1 ? 'line' : 'lines'} / {formatQuantity(group.quantity)} item quantity
+                        </span>
+                      </div>
+                    </th>
+                  </tr>
+                  {group.lines.map(({ line, index }) => {
+                    const batchRequirement = getBatchRequirement(line)
 
-                  return (
-                    <tr key={line.id} className="odd:bg-card even:bg-secondary/40 hover:bg-accent/30">
+                    return (
+                      <tr key={line.id} className="odd:bg-card even:bg-secondary/40 hover:bg-accent/30">
                       <td className="px-1 py-1 text-center align-middle text-stone-500">{index + 1}</td>
                       <td className="px-1 py-1 align-middle">
                         <SearchableDropdown
@@ -2936,10 +3049,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           )}
                         </div>
                       </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              ))}
             </table>
           </FormTable>
 
@@ -3261,29 +3375,63 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </Dialog>
 
           <div className="mx-2 mb-4 mt-auto flex flex-col items-stretch gap-3 pt-4 sm:mx-4">
-            <div className="ml-auto w-full rounded-lg border bg-card text-card-foreground sm:w-auto">
-              <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
-                <div className="text-right">
-                  <h3 className="text-sm font-semibold">Receiving Summary</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Quantity by condition</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
-                  <div className="rounded-md border px-3 py-2">
-                    <div className="text-muted-foreground">Total</div>
-                    <div className="font-semibold tabular-nums">
-                      {formatQuantity(displayTotalQuantity)}
-                    </div>
+            <div className="ml-auto flex w-full flex-col items-stretch gap-3 xl:w-auto xl:flex-row">
+              <div className="rounded-lg border bg-card text-card-foreground">
+                <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
+                  <div className="text-right">
+                    <h3 className="text-sm font-semibold">Receiving Summary</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">Quantity by condition</p>
                   </div>
-                  {receivingSummary.map(group => (
-                    <div key={group.key} className="rounded-md border px-3 py-2">
-                      <div className="text-muted-foreground">{group.label}</div>
+                  <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
+                    <div className="rounded-md border px-3 py-2">
+                      <div className="text-muted-foreground">Total</div>
                       <div className="font-semibold tabular-nums">
-                        {formatQuantity(group.quantity)}
+                        {formatQuantity(displayTotalQuantity)}
                       </div>
                     </div>
-                  ))}
+                    {receivingSummary.map(group => (
+                      <div key={group.key} className="rounded-md border px-3 py-2">
+                        <div className="text-muted-foreground">{group.label}</div>
+                        <div className="font-semibold tabular-nums">
+                          {formatQuantity(group.quantity)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
+
+              {buildingReceivingSummaries.length > 0 && (
+                <div className="min-w-0 rounded-lg border bg-card text-card-foreground">
+                  <div className="border-b px-4 py-2">
+                    <h3 className="text-sm font-semibold">Building Summary</h3>
+                    <p className="text-xs text-muted-foreground">Receiving quantities per building</p>
+                  </div>
+                  <div className="max-w-full overflow-x-auto p-3">
+                    <div className="grid min-w-[620px] gap-2">
+                      {buildingReceivingSummaries.map(building => (
+                        <div key={building.key} className="grid grid-cols-[minmax(140px,1.5fr)_repeat(5,minmax(72px,1fr))] items-center gap-2 rounded-md border px-3 py-2 text-xs">
+                          <div className="min-w-0 font-semibold text-foreground" title={building.label}>
+                            <span className="block truncate">{building.label}</span>
+                          </div>
+                          {[
+                            { label: 'Total', quantity: building.total },
+                            { label: 'Good Chick', quantity: building.good },
+                            { label: 'DOA', quantity: building.doa },
+                            { label: 'Reject', quantity: building.reject },
+                            { label: 'Short Count', quantity: building.short },
+                          ].map(metric => (
+                            <div key={metric.label} className="text-right">
+                              <div className="text-muted-foreground">{metric.label}</div>
+                              <div className="font-semibold tabular-nums">{formatQuantity(metric.quantity)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {canEditDraft ? (
@@ -3345,6 +3493,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         age={Math.min(calculateCycleRange(cycleForm.startDate, today()), 45)}
         saving={savingCycle}
         cycleNumberEditable={cycleIsExcluded}
+        doNotFormatCycleNumber={cycleDoNotFormat}
         onFormChange={changes => setCycleForm(current => ({ ...current, ...changes }))}
         onCreate={createCycle}
         onCancel={() => {

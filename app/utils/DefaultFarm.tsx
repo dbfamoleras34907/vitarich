@@ -42,8 +42,7 @@ export default function DefaultFarm() {
                         <UserFarmSearchCombobox
                             display="buttons"
                             value={defaultFarmId}
-                            onValueChange={(farmId) => {
-                                setValue("DefaultFarmId", Number(farmId))
+                            onValueChange={() => {
                                 setValue("openDefaultfarmModal", false)
                             }}
                         />

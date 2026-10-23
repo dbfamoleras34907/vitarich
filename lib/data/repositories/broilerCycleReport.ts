@@ -1,4 +1,5 @@
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask'
 import { getDocReceivingSettings } from '@/app/a_dean/doc-receiving-settings/api'
 import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
 
@@ -270,7 +271,7 @@ async function loadBroilerCycleReport(
   const farmId = numberValue(cycle.farm_id)
   const countOptions = options.requireComplete ? { count: 'exact' as const } : undefined
   let cardQuery = db.from('flock_card')
-    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, cycle_mask, start_date, breed, animal_qty, status, remarks, void', countOptions)
+    .select('id, card_no, flock_code, building_whse_id, building_code, building_name, cycle_no, cycle_mask, start_date, breed, animal_qty, status, remarks, void, extra', countOptions)
   if (options.postedOnly) cardQuery = cardQuery.eq('farm_id', farmId)
   cardQuery = cardQuery.eq('farm_cycle_id', cycleId)
   const [farmResult, cardResult] = await Promise.all([
@@ -434,7 +435,12 @@ async function loadBroilerCycleReport(
 
     return {
       flockCardId,
-      cycleLabel: textValue(cycle.cycle_mask) || textValue(card.cycle_mask),
+      cycleLabel: getBroilerCycleDisplay({
+        cycle_no: textValue(card.cycle_no),
+        cycle_mask: textValue(card.cycle_mask),
+        doc_farm_cycles: { cycle_mask: textValue(cycle.cycle_mask) },
+        extra: card.extra && typeof card.extra === 'object' ? card.extra as Record<string, unknown> : null,
+      }),
       cardNo,
       flockCode: textValue(card.flock_code),
       buildingWarehouseId: numberValue(card.building_whse_id) || null,

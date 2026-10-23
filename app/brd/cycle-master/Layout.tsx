@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -84,6 +85,7 @@ export default function CycleMasterLayout() {
   const rawUserFarms = session?.[0]?.users_farms
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [rows, setRows] = useState<CycleMasterListRow[]>([])
+  const [cycleTab, setCycleTab] = useState<'open' | 'closed'>('open')
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [actionTarget, setActionTarget] = useState<{ row: CycleMasterListRow; action: 'close' | 'reopen' } | null>(null)
@@ -103,6 +105,9 @@ export default function CycleMasterLayout() {
   )
   const singleFarm = allowedFarms.length === 1 ? allowedFarms[0] : null
   const activeFarmId = selectedFarmId || (singleFarm ? String(singleFarm.id) : '')
+  const openRows = useMemo(() => rows.filter(row => row.status === 'Saved' || row.status === 'Past Open'), [rows])
+  const closedRows = useMemo(() => rows.filter(row => row.status === 'Closed' || row.status === 'Force Closed' || row.status === 'Cancelled'), [rows])
+  const visibleRows = cycleTab === 'closed' ? closedRows : openRows
 
   const loadRows = useCallback(async () => {
     const farmId = Number(activeFarmId)
@@ -227,6 +232,13 @@ export default function CycleMasterLayout() {
           </div>
         </div>
 
+        <Tabs value={cycleTab} onValueChange={value => setCycleTab(value as 'open' | 'closed')}>
+          <div className="border-b border-stone-200 px-4 pt-3">
+            <TabsList aria-label="Cycle status" className="mb-3">
+              <TabsTrigger value="open">Open Cycles ({openRows.length})</TabsTrigger>
+              <TabsTrigger value="closed">Closed Cycles ({closedRows.length})</TabsTrigger>
+            </TabsList>
+          </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -249,9 +261,9 @@ export default function CycleMasterLayout() {
                 <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">Select a farm to view its cycles.</TableCell></TableRow>
               ) : loadError ? (
                 <TableRow><TableCell colSpan={9}><p role="alert" className="py-3 text-destructive">{loadError}</p></TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">No farm cycles found.</TableCell></TableRow>
-              ) : rows.map(row => (
+              ) : visibleRows.length === 0 ? (
+                <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">No {cycleTab === 'closed' ? 'closed' : 'open'} cycles found.</TableCell></TableRow>
+              ) : visibleRows.map(row => (
                 <TableRow
                   key={`${row.kind}:${row.id}`}
                   role="link"
@@ -315,6 +327,7 @@ export default function CycleMasterLayout() {
             </TableBody>
           </Table>
         </div>
+        </Tabs>
       </section>
 
       <Dialog open={pastCycleOpen} onOpenChange={open => !savingPastCycle && setPastCycleOpen(open)}>
