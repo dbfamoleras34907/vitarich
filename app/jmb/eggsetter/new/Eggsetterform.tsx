@@ -95,6 +95,7 @@ import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 import { Separator } from "@/components/ui/separator";
 import { getHatcheryWizardClassificationHeader } from "@/lib/data/repositories/hatcheryProcessWizard";
 import { usePermission } from "@/hooks/usePermission";
+import EggReferencePicker from "@/components/hatchery/EggReferencePicker";
 type FormState = {
   ref_no: string[];
   setting_date: string; // datetime-local
@@ -790,18 +791,34 @@ export default function Eggsetterform() {
         <CardContent className="pt-4 space-y-4">
           {/* SECTION 1 */}
           <div className="rounded-md border p-4 space-y-4">
-            <div className="space-y-1 max-w-sm">
+            <div className="space-y-1 max-w-xl">
               <RequiredLabel>Egg Reference No.</RequiredLabel>
-              <SearchableDropdown1
-                list={refOptions}
-                codeLabel="classi_ref_no"
-                nameLabel="classi_ref_no"
-                showNameOnly
-                value={form.ref_no}
-                onChange={(val) => handleSelectRef(val)}
-                multiple
-                disabled={saving || loadingRefs || isEdit || isWizard}
-              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <SearchableDropdown1
+                    list={refOptions}
+                    codeLabel="classi_ref_no"
+                    nameLabel="classi_ref_no"
+                    showNameOnly
+                    value={form.ref_no}
+                    onChange={(val) => handleSelectRef(val)}
+                    multiple
+                    disabled={saving || loadingRefs || isEdit || isWizard}
+                  />
+                </div>
+                <EggReferencePicker
+                  options={refOptions.map((option) => ({
+                    eggReferenceNo: option.classi_ref_no,
+                    breederReferenceNo: option.breeder_ref_no,
+                    drNo: option.dr_no,
+                    documentDatePost: option.document_date_post,
+                    totalEggs: Number(option.good_egg ?? 0),
+                  }))}
+                  value={form.ref_no}
+                  onApply={handleSelectRef}
+                  disabled={saving || loadingRefs || isEdit || isWizard}
+                />
+              </div>
             </div>
             <Separator />
             <div className="space-y-4">
