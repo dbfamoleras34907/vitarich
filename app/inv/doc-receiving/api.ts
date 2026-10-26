@@ -4,6 +4,7 @@ import { addDays, parseISO } from 'date-fns'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 import { saveDocReceivingWithSources, type ReceivingAllocation } from '@/lib/data/repositories/receivingSources'
+import { getProcessListAttributions, processListAttributionKey } from '@/lib/data/repositories/processListAttribution'
 
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Reversed' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
@@ -114,6 +115,9 @@ export type GoodsReceipt = {
   lines: GoodsReceiptLine[]
   docDetails: GoodsReceiptDocLine[]
   createdAt: string
+  createdByName?: string
+  assignedTaNames?: string[]
+  assignedTaLabel?: string
   receivingSummary?: GoodsReceiptReceivingSummary
 }
 
@@ -130,6 +134,7 @@ type GoodsReceiptRow = {
   remarks: string | null
   status: GoodsReceiptStatus
   created_at: string
+  created_by: string | null
 }
 
 type GoodsReceiptItemRow = {
@@ -299,6 +304,7 @@ const toReceiptListItem = (
   row: GoodsReceiptRow,
   lines: GoodsReceiptListItemRow[],
   receivingSummary: GoodsReceiptReceivingSummary,
+  attribution: { createdByName: string; assignedTaNames: string[]; assignedTaLabel: string },
 ): GoodsReceipt => ({
   id: row.id,
   grNo: row.gr_no,
@@ -314,6 +320,7 @@ const toReceiptListItem = (
   lines: lines.map(toReceiptListLine),
   docDetails: [],
   createdAt: row.created_at,
+  ...attribution,
   receivingSummary,
 })
 
@@ -368,7 +375,7 @@ export async function getGoodsReceipts({
 
   let receiptQuery = db
     .from('goods_receipt')
-    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, remarks, status, created_at')
+    .select('id, gr_no, vendor, receive_date, fms_type, farm_id, farm_code, farm_name, default_warehouse_id, remarks, status, created_at, created_by')
     .in('id', docReceivingReceiptIds)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -402,12 +409,14 @@ export async function getGoodsReceipts({
   if (itemError) throw itemError
 
   const items = (itemRows ?? []) as GoodsReceiptListItemRow[]
+  const attributions = await getProcessListAttributions(receipts)
 
   return receipts.map(receipt =>
     toReceiptListItem(
       receipt,
       items.filter(item => item.goods_reciept_id === receipt.id),
       receivingSummaries.get(receipt.id) ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 },
+      attributions.get(processListAttributionKey(receipt)) ?? { createdByName: '—', assignedTaNames: [], assignedTaLabel: 'Farm unavailable' },
     )
   )
 }

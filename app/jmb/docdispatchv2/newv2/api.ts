@@ -107,13 +107,14 @@ async function requestDocDispatchWrite<T>(
 
 export type DispatchDocListRow = Partial<DispatchDoc> & {
   hatchery_farm_id: number | null;
+  hatchery_farm_ids: number[];
 };
 
 export async function listDispatchDocs(): Promise<DispatchDocListRow[]> {
   const { data, error } = await db
     .from("dispatch_doc")
     .select(
-      "id, doc_date, dr_no, farm_name, destination_farm_id, destination_farm_code, hauler_name, hauler_plate_no, truck_seal_no, chick_van_temp_c, number_of_fans, remarks, is_active, status, posted_at, posting_version, created_at",
+      "id, doc_date, dr_no, farm_name, destination_farm_id, destination_farm_code, hauler_name, hauler_plate_no, truck_seal_no, chick_van_temp_c, number_of_fans, remarks, is_active, status, posted_at, posting_version, created_at, created_by",
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -152,7 +153,8 @@ export async function listDispatchDocs(): Promise<DispatchDocListRow[]> {
 
   return headers.map((row) => {
     const farmIds = farmIdsByDocument.get(Number(row.id)) ?? new Set<number>();
-    return { ...row, hatchery_farm_id: farmIds.size === 1 ? [...farmIds][0] : null };
+    const hatcheryFarmIds = [...farmIds].sort((left, right) => left - right);
+    return { ...row, hatchery_farm_id: hatcheryFarmIds.length === 1 ? hatcheryFarmIds[0] : null, hatchery_farm_ids: hatcheryFarmIds };
   });
 }
 

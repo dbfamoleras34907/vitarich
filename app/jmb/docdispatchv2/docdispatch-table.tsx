@@ -48,6 +48,7 @@ import {
 } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
+import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { buildDefaultFarmInitialFilters, FARM_FILTER_KEY } from "@/lib/farmFilter";
@@ -125,6 +126,8 @@ export default function DocdispatchTable() {
               doc_date: item.doc_date || "-",
 
               dr_no: item.dr_no || "-",
+              created_by: item.created_by ?? null,
+              farm_ids: item.hatchery_farm_ids,
 
               farm_name: item.farm_name || "-",
               [FARM_FILTER_KEY]: String(item.hatchery_farm_id ?? ""),
@@ -151,7 +154,7 @@ export default function DocdispatchTable() {
             }),
           )
           : [];
-      setItems(mapped);
+      setItems(await attachProcessListAttributions(mapped));
     } catch (e) {
       console.error(e);
 
@@ -263,6 +266,8 @@ export default function DocdispatchTable() {
           type: "text",
           disabled: true,
         },
+        { key: "createdByName", label: "Created by", type: "text", disabled: true },
+        { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
       ],
       [],
     );

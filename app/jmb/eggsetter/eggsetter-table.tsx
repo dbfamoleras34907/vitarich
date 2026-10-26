@@ -41,7 +41,7 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -174,6 +174,8 @@ export default function EggsetterTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -188,6 +190,7 @@ export default function EggsetterTable() {
         Array.isArray(data)
           ? data.filter(item => isWithinHatcheryDateRange(item.setting_date ?? item.created_at, parameters.dateFrom, parameters.dateTo)).map((item: SetterIncubation, index: number) => ({
             id: item.id,
+            created_by: item.created_by,
 
             "#": index + 1,
 
@@ -225,7 +228,7 @@ export default function EggsetterTable() {
           }))
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.ref_no));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);

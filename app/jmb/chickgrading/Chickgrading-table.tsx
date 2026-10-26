@@ -33,6 +33,7 @@ import {
 import Breadcrumb from "@/lib/Breadcrumb";
 import EditActionButton from "@/components/EditActionButton";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { attachProcessListAttributionsFromRefs } from "@/lib/farmFilter";
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return "";
@@ -59,7 +60,7 @@ export default function ChickgradingTable() {
     setIsLoading(true);
     try {
       const data = await listChickGradingProcess();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(Array.isArray(data) ? await attachProcessListAttributionsFromRefs(data, row => row.egg_ref_no) : []);
       setLastUpdated(new Date().toLocaleString());
     } catch (e) {
       console.error(e);
@@ -129,6 +130,8 @@ export default function ChickgradingTable() {
       { accessorKey: "quality_grade_rate", header: "Quality grade rate %" },
       { accessorKey: "cull_rate", header: "Cull rate %" },
       { accessorKey: "grading_personnel", header: "Grading personnel" },
+      { accessorKey: "createdByName", header: "Created by" },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [],
   );

@@ -44,7 +44,7 @@ import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -89,6 +89,7 @@ export default function ChickPulloutTable() {
                 index: number,
               ) => ({
                 id: item.id,
+                created_by: item.created_by,
 
                 "#": index + 1,
 
@@ -119,7 +120,7 @@ export default function ChickPulloutTable() {
             )
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref_no));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.egg_ref_no));
     } catch (e) {
       console.error(e);
 
@@ -214,6 +215,8 @@ export default function ChickPulloutTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );

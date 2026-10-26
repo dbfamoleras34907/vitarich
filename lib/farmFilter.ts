@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { FilterRule } from "@/components/ui/DataTableV2";
+import { getProcessListAttributions, type ProcessListAttribution, type ProcessListAttributionSource } from "@/lib/data/repositories/processListAttribution";
 
 export const FARM_FILTER_KEY = "farm_id_filter";
 
@@ -95,4 +96,50 @@ export async function attachFarmFilterFromRefs<T extends Record<string, unknown>
       [FARM_FILTER_KEY]: farmId ?? "",
     };
   });
+}
+
+/** Add current creator and TA display values for records whose farm comes from hatch classification references. */
+export async function attachProcessListAttributionsFromRefs<T extends ProcessListAttributionSource & Record<string, unknown>>(
+  rows: T[],
+  getRefValue: (row: T) => unknown,
+): Promise<Array<T & ProcessListAttribution & { farm_ids: number[]; [FARM_FILTER_KEY]: string }>> {
+  const rowRefs = rows.map((row) => extractLifecycleRefs(getRefValue(row)));
+  const uniqueRefs = Array.from(new Set(rowRefs.flat().map(ref => ref.toUpperCase())));
+  const farmIdsByRef = new Map<string, number[]>();
+
+  for (let offset = 0; offset < uniqueRefs.length; offset += 100) {
+    const refs = uniqueRefs.slice(offset, offset + 100);
+    const { data, error } = await db
+      .from("hatch_classification")
+      .select("classi_ref_no, farm_id")
+      .in("classi_ref_no", refs);
+
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ classi_ref_no: string | null; farm_id: number | null }>) {
+      const ref = String(row.classi_ref_no ?? "").trim().toUpperCase();
+      const farmId = Number(row.farm_id);
+      if (!ref || !Number.isSafeInteger(farmId) || farmId <= 0) continue;
+      const current = farmIdsByRef.get(ref) ?? [];
+      if (!current.includes(farmId)) current.push(farmId);
+      farmIdsByRef.set(ref, current);
+    }
+  }
+
+  const rowsWithFarmIds = rows.map((row, index) => {
+    const orderedFarmIds = rowRefs[index].flatMap(ref => farmIdsByRef.get(ref.toUpperCase()) ?? []);
+    return {
+      ...row,
+      farm_ids: [...new Set(orderedFarmIds)],
+      [FARM_FILTER_KEY]: String(orderedFarmIds[0] ?? ''),
+    };
+  });
+  const attributions = await getProcessListAttributions(rowsWithFarmIds);
+  return rowsWithFarmIds.map(row => ({
+    ...row,
+    ...(attributions.get(`${[...row.farm_ids].sort((left, right) => left - right).join(',')}:${String(row.created_by ?? '').trim()}`) ?? {
+      createdByName: '—',
+      assignedTaNames: [],
+      assignedTaLabel: 'Farm unavailable',
+    }),
+  }));
 }

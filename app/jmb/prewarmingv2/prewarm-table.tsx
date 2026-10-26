@@ -39,7 +39,7 @@ import {
 
 import { usePermission } from "@/hooks/usePermission";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -116,6 +116,8 @@ export default function PrewarmTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -130,6 +132,7 @@ export default function PrewarmTable() {
         Array.isArray(rows)
           ? rows.filter(item => isWithinHatcheryDateRange(item.created_at, parameters.dateFrom, parameters.dateTo)).map((item: EggPreWarming, index: number) => ({
               id: item.id,
+              created_by: item.created_by,
               "#": index + 1,
               egg_ref_no: item.egg_ref_no || "-",
               pre_temp: item.pre_temp || "-",
@@ -140,7 +143,7 @@ export default function PrewarmTable() {
               remarks: item.remarks || "-",
             }))
           : [];   
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref_no));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.egg_ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);

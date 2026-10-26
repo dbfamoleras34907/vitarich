@@ -46,6 +46,9 @@ export type FarmLocation = {
 
 export type MedicationRecord = {
   id: number;
+  created_by: string | null;
+  createdByName?: string;
+  assignedTaLabel?: string;
   document_no: string;
   medication_date: string;
   treatment_end_date?: string | null;

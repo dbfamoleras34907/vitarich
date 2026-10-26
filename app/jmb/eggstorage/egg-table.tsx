@@ -22,7 +22,7 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { usePermission } from "@/hooks/usePermission";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -117,6 +117,8 @@ export default function EggTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -131,6 +133,7 @@ export default function EggTable() {
         Array.isArray(data)
           ? data.filter(item => isWithinHatcheryDateRange(item.created_at, parameters.dateFrom, parameters.dateTo)).map((item: EggStorageMngt, index: number) => ({
             id: item.id,
+            created_by: item.created_by,
             "#": index + 1,
             classi_ref_no: item.classi_ref_no || "-",
             stor_temp: item.stor_temp || "-",
@@ -147,7 +150,7 @@ export default function EggTable() {
           }))
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.classi_ref_no));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.classi_ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);

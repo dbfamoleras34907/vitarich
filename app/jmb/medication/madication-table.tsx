@@ -31,6 +31,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import { cancelMedication, listMedications, type MedicationRecord } from "./new/api";
 
 function formatDate(value?: string | null) {
@@ -61,7 +62,7 @@ export default function MedicationTable() {
     setLoading(true);
     setError("");
     try {
-      setRecords(await listMedications());
+      setRecords(await attachProcessListAttributions(await listMedications()));
     } catch (loadError) {
       console.error(loadError);
       setError("Unable to load medication records. Run medication_tables.sql in Supabase if this module is new.");
@@ -160,9 +161,9 @@ export default function MedicationTable() {
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
         <Table>
-          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Medication</TableHead><TableHead>Dosage</TableHead><TableHead>Period</TableHead><TableHead>Route</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm / location</TableHead><TableHead>Medication</TableHead><TableHead>Dosage</TableHead><TableHead>Period</TableHead><TableHead>Route</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Assigned TA</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={10} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow> : null}
+            {loading ? <TableRow><TableCell colSpan={12} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow> : null}
             {!loading && paginatedRecords.map((row, index) => (
               <TableRow key={row.id} className={row.status === "Cancelled" ? "opacity-60" : ""}>
                 <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
@@ -174,10 +175,12 @@ export default function MedicationTable() {
                 <TableCell className="whitespace-nowrap">{row.treatment_period_days} day{row.treatment_period_days === 1 ? "" : "s"}</TableCell>
                 <TableCell>{row.route}</TableCell>
                 <TableCell><span className={`rounded-full px-2 py-1 text-xs font-medium ${row.status === "Posted" ? "bg-emerald-100 text-emerald-700" : "bg-stone-200 text-stone-600"}`}>{row.status}</span></TableCell>
+                <TableCell>{row.createdByName}</TableCell>
+                <TableCell><span className="block max-w-40 truncate" title={row.assignedTaLabel}>{row.assignedTaLabel}</span></TableCell>
                 <TableCell><div className="flex justify-end gap-2"><Button type="button" size="sm" variant="outline" onClick={() => router.push(`/jmb/medication/new?id=${row.id}`)} className="border-emerald-700 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"><Pencil className="size-4" />Edit/View</Button>{row.status === "Posted" ? <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelRecord(row); setCancelReason(""); }}><Ban className="size-4" />Cancel</Button> : null}</div></TableCell>
               </TableRow>
             ))}
-            {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
+            {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={12} className="h-32 text-center text-muted-foreground">No medication records found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
         <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="records" onPageChange={setPage} />

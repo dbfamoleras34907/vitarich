@@ -38,7 +38,7 @@ import {
 
 import { usePermission } from "@/hooks/usePermission";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -157,6 +157,8 @@ export default function EggHatchTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -175,6 +177,7 @@ export default function EggHatchTable() {
                 index: number,
               ) => ({
                 id: item.id,
+                created_by: item.created_by,
 
                 "#": index + 1,
 
@@ -204,7 +207,7 @@ export default function EggHatchTable() {
             )
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.egg_ref));
     } catch (e) {
       console.error(e);
 

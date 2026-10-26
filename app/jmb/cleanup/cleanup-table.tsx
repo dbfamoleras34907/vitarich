@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { attachProcessListAttributions, type ProcessListAttribution } from "@/lib/data/repositories/processListAttribution";
 import {
   deleteBreederCleanup,
   listBreederCleanups,
@@ -48,7 +49,7 @@ export default function CleanupTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
   const parameters = useBreederListParameters();
-  const [records, setRecords] = useState<BreederCleanupRecord[]>([]);
+  const [records, setRecords] = useState<Array<BreederCleanupRecord & ProcessListAttribution>>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -62,7 +63,7 @@ export default function CleanupTable() {
     setLoading(true);
     setError("");
     try {
-      setRecords(await listBreederCleanups());
+      setRecords(await attachProcessListAttributions(await listBreederCleanups()));
     } catch (loadError) {
       console.error(loadError);
       setError("Unable to load breeder Terminal Culling records from tbl_breeder_cleanup.");
@@ -219,7 +220,7 @@ export default function CleanupTable() {
                 {["Created", "Cycle", "Farm", "Building", "Age", "Date of Culling"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
                 <TableHead scope="colgroup" colSpan={3} className="bg-pink-100 text-center text-pink-900">Female</TableHead>
                 <TableHead scope="colgroup" colSpan={3} className="bg-sky-100 text-center text-sky-900">Male</TableHead>
-                {["TS/DR #", "Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
+                {["TS/DR #", "Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Created by", "Assigned TA", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
               </TableRow>
               <TableRow>
                 {["Female", "Male"].flatMap(sex => ["Balance", "Culling Qty", "Condemn Variance"].map(label => <TableHead key={sex + label} scope="col" className={`min-w-24 text-right ${sex === "Female" ? "bg-pink-100 text-pink-900" : "bg-sky-100 text-sky-900"}`}>{label}</TableHead>))}
@@ -228,7 +229,7 @@ export default function CleanupTable() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={20} className="h-32 text-center">
+                  <TableCell colSpan={22} className="h-32 text-center">
                     <Loader2 className="mx-auto size-5 animate-spin" />
                   </TableCell>
                 </TableRow>
@@ -286,6 +287,8 @@ export default function CleanupTable() {
                         </div>
                       ) : null}
                     </TableCell>
+                    <TableCell className="max-w-32 truncate" title={record.createdByName}>{record.createdByName}</TableCell>
+                    <TableCell className="max-w-32 truncate" title={record.assignedTaLabel}>{record.assignedTaLabel}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         <Button
@@ -314,7 +317,7 @@ export default function CleanupTable() {
               {!loading && !filtered.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={20}
+                    colSpan={22}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No breeder Terminal Culling records found.

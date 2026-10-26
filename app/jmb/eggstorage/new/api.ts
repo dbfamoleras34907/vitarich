@@ -18,6 +18,7 @@ export type EggStorageInsert = {
 export type EggStorageMngt = {
   id: number;
   created_at: string | null;
+  created_by?: string | null;
   updated_at: string | null;
 
   classi_ref_no: string | null;

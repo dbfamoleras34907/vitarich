@@ -31,6 +31,7 @@ import {
   type HatchClassificationListRow,
 } from "./new/api";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
@@ -182,7 +183,7 @@ export default function HatchTable() {
         dateFrom: parameters.dateFrom,
         dateTo: parameters.dateTo,
       });
-      setItems(Array.isArray(data) ? data : []);
+      setItems(Array.isArray(data) ? await attachProcessListAttributions(data) : []);
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -240,7 +241,7 @@ export default function HatchTable() {
         dateFrom: parameters.dateFrom,
         dateTo: parameters.dateTo,
       });
-      setItemsForClass(Array.isArray(data) ? data : []);
+      setItemsForClass(Array.isArray(data) ? await attachProcessListAttributions(data) : []);
     } catch (e) {
       console.error(e);
       setItemsForClass([]);
@@ -362,6 +363,8 @@ export default function HatchTable() {
       { accessorKey: "driver", header: "Driver" },
       { accessorKey: "voyage_no", header: "Voyage No" },
       { accessorKey: "shipped_via", header: "Shipped Via" },
+      { accessorKey: "createdByName", header: "Created by" },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [router],
   );
@@ -471,6 +474,8 @@ export default function HatchTable() {
         header: "Total Count",
         cell: ({ getValue }) => formatNumber(getValue<number>()),
       },
+      { accessorKey: "createdByName", header: "Created by" },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [],
   );

@@ -43,6 +43,7 @@ export type HatchClassificationListRow = Pick<
   | "br_no"
   | "farm_id"
   | "farm_code"
+  | "created_by"
   | "good_egg"
   | "trans_crack"
   | "hatc_crack"
@@ -58,7 +59,7 @@ export type HatchClassificationListRow = Pick<
   | "dirties"
   | "hairline"
   | "ttl_count"
->;
+> & { createdByName?: string; assignedTaLabel?: string };
 
 export type HatchForClassificationRow = Pick<
   ReceivingListRow,
@@ -73,7 +74,7 @@ export type HatchForClassificationRow = Pick<
   | "driver"
   | "voyage_no"
   | "shipped_via"
->;
+> & { createdByName?: string; assignedTaLabel?: string };
 
 export type HatchClassificationListOptions = {
   farmIds: readonly number[];
@@ -84,9 +85,9 @@ export type HatchClassificationListOptions = {
 
 const PENDING_CLASSIFICATION_LIMIT = 50;
 const CLASSIFICATION_LIST_COLUMNS =
-  "id,date_classify,br_no,farm_id,farm_code,good_egg,trans_crack,hatc_crack,trans_condemn,hatc_condemn,thin_shell,pee_wee,small,jumbo,d_yolk,misshapen,leakers,dirties,hairline,ttl_count";
+  "id,date_classify,br_no,farm_id,farm_code,created_by,good_egg,trans_crack,hatc_crack,trans_condemn,hatc_condemn,thin_shell,pee_wee,small,jumbo,d_yolk,misshapen,leakers,dirties,hairline,ttl_count";
 const PENDING_CLASSIFICATION_COLUMNS =
-  "id,created_at,dr_num,brdr_ref_no,actual_count,farm_id,farm_name,plate_no,driver,voyage_no,shipped_via";
+  "id,created_at,created_by,dr_num,brdr_ref_no,actual_count,farm_id,farm_name,plate_no,driver,voyage_no,shipped_via";
 
 function normalizedFarmIds(farmIds: readonly number[]) {
   return Array.from(

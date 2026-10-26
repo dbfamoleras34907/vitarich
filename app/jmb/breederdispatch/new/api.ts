@@ -42,6 +42,7 @@ export type BreederDispatchBuilding = {
 
 export type BreederDispatchRecord = {
   id: number; document_no: string; dispatch_date: string; farm_id: number; farm_code: string | null;
+  created_by?: string | null; createdByName?: string; assignedTaLabel?: string;
   farm_name: string; destination: string; farm_destination_id: number | null; hauler_name: string | null; plate_number: string | null;
   truck_seal: string | null; status: DispatchStatus; remarks: string | null; line_count: number;
   population_qty: number; egg_qty: number; total_qty: number; created_at: string;

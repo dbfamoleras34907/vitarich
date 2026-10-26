@@ -45,7 +45,7 @@ import { usePermission } from "@/hooks/usePermission";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
@@ -162,6 +162,8 @@ export default function EggTransferTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -193,6 +195,7 @@ export default function EggTransferTable() {
                   index: number,
                 ) => ({
                   id: item.id,
+                  created_by: item.created_by,
 
                   "#": index + 1,
 
@@ -221,7 +224,7 @@ export default function EggTransferTable() {
               )
             : [];
 
-        setItems(await attachFarmFilterFromRefs(mapped, (row) => row.ref_no));
+        setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.ref_no));
       }
     } catch {
       setItems([]);
