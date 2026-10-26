@@ -6,7 +6,9 @@ import { USER_TYPES } from '@/lib/notifications/types'
 export type ProcessListAttributionSource = {
   farm_id?: number | null
   farm_ids?: readonly number[] | null
+  farmId?: number | null
   created_by?: string | null
+  createdBy?: string | null
 }
 
 export type ProcessListAttribution = {
@@ -37,11 +39,14 @@ const fullName = (user: CreatorRow) =>
 
 const normalizedFarmIds = (row: ProcessListAttributionSource) => [...new Set([
   ...(row.farm_ids ?? []),
-  row.farm_id,
+  row.farm_id ?? row.farmId,
 ].map(Number).filter(id => Number.isSafeInteger(id) && id > 0))].sort((left, right) => left - right)
 
+const normalizedCreatedBy = (row: ProcessListAttributionSource) =>
+  String(row.created_by ?? row.createdBy ?? '').trim()
+
 export function processListAttributionKey(row: ProcessListAttributionSource) {
-  return `${normalizedFarmIds(row).join(',')}:${String(row.created_by ?? '').trim()}`
+  return `${normalizedFarmIds(row).join(',')}:${normalizedCreatedBy(row)}`
 }
 
 /** Resolve creator names and the current active TA assignment for transaction list rows. */
@@ -49,7 +54,7 @@ export async function getProcessListAttributions(
   rows: readonly ProcessListAttributionSource[],
 ): Promise<Map<string, ProcessListAttribution>> {
   const farmIds = [...new Set(rows.flatMap(normalizedFarmIds))]
-  const creatorIds = [...new Set(rows.map(row => String(row.created_by ?? '').trim()).filter(Boolean))]
+  const creatorIds = [...new Set(rows.map(normalizedCreatedBy).filter(Boolean))]
 
   const farmResults = await Promise.all(chunksOf(farmIds, 100).map(ids =>
     db.from('farms').select('id, code', { count: 'exact' }).in('id', ids),
@@ -80,7 +85,7 @@ export async function getProcessListAttributions(
 
   for (const row of rows) {
     const rowFarmIds = normalizedFarmIds(row)
-    const createdBy = String(row.created_by ?? '').trim()
+    const createdBy = normalizedCreatedBy(row)
     const assignedTaNames = [...new Set(rowFarmIds.flatMap(farmId =>
       (assignedByFarm.get(farmId) ?? []).map(user => user.name),
     ))].sort((left, right) => left.localeCompare(right))

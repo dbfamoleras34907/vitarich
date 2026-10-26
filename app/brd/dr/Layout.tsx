@@ -20,6 +20,7 @@ export default function Layout() {
         showDeliveryReceipt: true,
         showDuplicateAction: true,
         showWarehouseName: true,
+        showProcessListAttribution: true,
       }}
     />
   )

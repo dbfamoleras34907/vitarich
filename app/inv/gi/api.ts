@@ -67,6 +67,7 @@ export type GoodsIssue = {
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
   createdAt: string
+  createdBy: string | null
 }
 
 type GoodsIssueRow = {
@@ -89,6 +90,7 @@ type GoodsIssueRow = {
   live_sales_customer_name?: string | null
   status: GoodsIssueStatus
   created_at: string
+  created_by: string | null
 }
 
 type GoodsIssueItemRow = {
@@ -259,6 +261,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   status: row.status,
   lines: lines.map(line => toIssueLine(line, row)),
   createdAt: row.created_at,
+  createdBy: row.created_by,
 })
 
 const toIssueListLine = (row: GoodsIssueListItemRow): GoodsIssueLine => ({

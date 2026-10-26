@@ -142,6 +142,7 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
   createdAt: new Date().toISOString(),
+  createdBy: null,
 })
 
 const numberValue = (value: string) => {

@@ -20,6 +20,7 @@ export default function Layout() {
         showDeliveryReceipt: true,
         receiptLabel: 'Clean-up Receipt',
         showWarehouseName: true,
+        showProcessListAttribution: true,
       }}
     />
   )

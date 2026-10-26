@@ -120,12 +120,12 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
   { code: 'doa_quantity', name: 'DOA Count' },
-  { code: 'reject_count', name: 'Reject Count' },
-  { code: 'short_count', name: 'Short Count' },
-  { code: 'actual_received', name: 'Actual Received' },
-  { code: 'short_count_remarks', name: 'Short Count Remarks' },
   { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
+  { code: 'reject_count', name: 'Reject Count' },
   { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
+  { code: 'short_count', name: 'Short Count' },
+  { code: 'short_count_remarks', name: 'Short Count Remarks' },
+  { code: 'actual_received', name: 'Actual Received' },
 ]
 
 const getBuildingCycleOptionLabel = (
@@ -146,14 +146,13 @@ const DOC_RECEIVING_MODAL_GROUPS = [
       'average_doc_weight',
       'quantity_received',
       'doa_quantity',
+      'doa_count_remarks',
       'reject_count',
+      'reject_count_remarks',
       'short_count',
+      'short_count_remarks',
       'actual_received',
     ],
-  },
-  {
-    key: 'remarks',
-    codes: ['short_count_remarks', 'doa_count_remarks', 'reject_count_remarks'],
   },
 ].map(group => ({
   ...group,

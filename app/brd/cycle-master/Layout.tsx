@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarPlus, ChevronRight, Loader2, LockKeyhole, RefreshCw, RotateCcw, ShieldAlert } from 'lucide-react'
+import { format, subMonths } from 'date-fns'
+import { CalendarPlus, ChevronDown, ChevronRight, Loader2, LockKeyhole, RefreshCw, RotateCcw, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { encryptData } from '@/app/utils/supabase/url-encryption'
@@ -32,6 +33,7 @@ import {
 import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
 import { usePermission } from '@/hooks/usePermission'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { isWithinDateRange } from '@/lib/filters/dateRange'
 import {
   getBroilerPastCycleBuildingOptions,
   getCycleMasterListRows,
@@ -53,6 +55,8 @@ const todayValue = () => {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
+
+const oneMonthAgoValue = () => format(subMonths(new Date(), 1), 'yyyy-MM-dd')
 
 const formatDate = (value: string | null) => {
   if (!value) return '-'
@@ -88,8 +92,31 @@ export default function CycleMasterLayout() {
   const [pastCycleBuildings, setPastCycleBuildings] = useState<BroilerPastCycleBuildingOption[]>([])
   const [loadingPastCycleBuildings, setLoadingPastCycleBuildings] = useState(false)
   const [savingPastCycle, setSavingPastCycle] = useState(false)
+  const [openCyclesExpanded, setOpenCyclesExpanded] = useState(true)
+  const [pastCyclesExpanded, setPastCyclesExpanded] = useState(false)
+  const [dateFrom, setDateFrom] = useState(oneMonthAgoValue)
+  const [dateTo, setDateTo] = useState('')
 
   const activeFarmId = selectedFarmId
+  const filteredRows = rows.filter(row => isWithinDateRange(row.createdAt, dateFrom, dateTo))
+  const openCycleRows = filteredRows.filter(row => row.status === 'Saved' || row.status === 'Past Open')
+  const pastCycleRows = filteredRows.filter(row => row.status !== 'Saved' && row.status !== 'Past Open')
+  const cycleGroups = [
+    {
+      key: 'open',
+      label: 'Open Cycles',
+      rows: openCycleRows,
+      expanded: openCyclesExpanded,
+      onExpandedChange: setOpenCyclesExpanded,
+    },
+    {
+      key: 'past',
+      label: 'Past Cycles',
+      rows: pastCycleRows,
+      expanded: pastCyclesExpanded,
+      onExpandedChange: setPastCyclesExpanded,
+    },
+  ]
 
   const loadRows = useCallback(async () => {
     const farmId = Number(activeFarmId)
@@ -209,98 +236,150 @@ export default function CycleMasterLayout() {
         </div>
 
         <div className="border-b border-stone-200 p-4">
-          <div className="max-w-md">
-            <UserFarmSearchCombobox label="Farm" required value={activeFarmId} onValueChange={farmId => setSelectedFarmId(farmId)} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,24rem)_11rem_11rem] lg:items-end">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <UserFarmSearchCombobox label="Farm" required value={activeFarmId} onValueChange={farmId => setSelectedFarmId(farmId)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cycle-date-from">From Date</Label>
+              <Input
+                id="cycle-date-from"
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={event => setDateFrom(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cycle-date-to">To Date</Label>
+              <Input
+                id="cycle-date-to"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={event => setDateTo(event.target.value)}
+              />
+            </div>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">The date range filters cycles by Created date.</p>
         </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cycle Number</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Participating Buildings</TableHead>
-                <TableHead className="text-right">Open Buildings</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Closed</TableHead>
-                <TableHead>Reopened</TableHead>
-                <TableHead className="w-40">Action</TableHead>
-                <TableHead className="w-10"><span className="sr-only">Open cycle dashboard</span></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
-              ) : !activeFarmId ? (
-                <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">Select a farm to view its cycles.</TableCell></TableRow>
-              ) : loadError ? (
-                <TableRow><TableCell colSpan={9}><p role="alert" className="py-3 text-destructive">{loadError}</p></TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-28 text-center text-stone-500">No farm cycles found.</TableCell></TableRow>
-              ) : rows.map(row => (
-                <TableRow
-                  key={`${row.kind}:${row.id}`}
-                  role="link"
-                  tabIndex={0}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)
-                    }
-                  }}
-                >
-                  <TableCell>
-                    <div className="font-medium">{row.cycleMask || '-'}</div>
-                    {row.kind === 'building' && <div className="text-xs text-muted-foreground">{row.buildingName}</div>}
-                  </TableCell>
-                  <TableCell><Badge variant={row.status === 'Saved' ? 'default' : 'secondary'}>{row.displayStatus}</Badge></TableCell>
-                  <TableCell className="text-right">{row.participatingBuildings}</TableCell>
-                  <TableCell className="text-right">{row.openBuildings}</TableCell>
-                  <TableCell>{formatDate(row.createdAt)}</TableCell>
-                  <TableCell>
-                    <div>{formatDate(row.closedAt)}</div>
-                    {row.closedByName && <div className="text-xs text-muted-foreground">{row.closedByName}</div>}
-                    {row.forceClosedOn && <div className="text-xs text-muted-foreground">Closing date: {row.forceClosedOn}</div>}
-                    {row.forceCloseReason && <div className="max-w-56 truncate text-xs text-muted-foreground" title={row.forceCloseReason}>{row.forceCloseReason}</div>}
-                  </TableCell>
-                  <TableCell>
-                    <div>{formatDate(row.reopenedAt)}</div>
-                    {row.reopenedByName && <div className="text-xs text-muted-foreground">{row.reopenedByName}</div>}
-                  </TableCell>
-                  <TableCell onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-                    {row.kind === 'farm' && !editBlocked && (row.status === 'Saved' || row.status === 'Past Open') && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setCloseDate(todayValue())
-                          setCloseReason('')
-                          setActionTarget({ row, action: 'close' })
-                        }}
-                      >
-                        <LockKeyhole className="size-3.5" /> Force Close
-                      </Button>
-                    )}
-                    {row.kind === 'farm' && !editBlocked && (row.status === 'Closed' || row.status === 'Force Closed') && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setActionTarget({ row, action: 'reopen' })}
-                      >
-                        <RotateCcw className="size-3.5" /> Reopen
-                      </Button>
-                    )}
-                  </TableCell>
-                  <TableCell><ChevronRight className="size-4 text-muted-foreground" /></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="divide-y divide-border">
+          {loading ? (
+            <div className="flex h-28 items-center justify-center text-stone-500"><Loader2 className="size-5 animate-spin" /></div>
+          ) : !activeFarmId ? (
+            <div className="flex h-28 items-center justify-center text-stone-500">Select a farm to view its cycles.</div>
+          ) : loadError ? (
+            <p role="alert" className="p-4 text-destructive">{loadError}</p>
+          ) : rows.length === 0 ? (
+            <div className="flex h-28 items-center justify-center text-stone-500">No farm cycles found.</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="flex h-28 items-center justify-center text-stone-500">No cycles found for the selected date range.</div>
+          ) : cycleGroups.map(group => (
+            <section key={group.key}>
+              <button
+                type="button"
+                className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left font-semibold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-expanded={group.expanded}
+                onClick={() => group.onExpandedChange(!group.expanded)}
+              >
+                {group.expanded
+                  ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                  : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+                <span>{group.label}</span>
+                <Badge variant="secondary" className="ml-1 tabular-nums">{group.rows.length}</Badge>
+              </button>
+
+              {group.expanded && (
+                <div className="overflow-x-auto border-t border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cycle Number</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Participating Buildings</TableHead>
+                        <TableHead className="text-right">Open Buildings</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Closed</TableHead>
+                        <TableHead>Reopened</TableHead>
+                        <TableHead className="w-40">Action</TableHead>
+                        <TableHead className="w-10"><span className="sr-only">Open cycle dashboard</span></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.rows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="h-16 text-center text-muted-foreground">
+                            No {group.label.toLowerCase()} found.
+                          </TableCell>
+                        </TableRow>
+                      ) : group.rows.map(row => (
+                        <TableRow
+                          key={`${row.kind}:${row.id}`}
+                          role="link"
+                          tabIndex={0}
+                          className="cursor-pointer"
+                          onClick={() => router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              router.push(`/brd/dashboard?cycle=${encryptData({ farmId: row.farmId, cycleId: row.id, cycleKind: row.kind })}`)
+                            }
+                          }}
+                        >
+                          <TableCell>
+                            <div className="font-medium">{row.cycleMask || '-'}</div>
+                            {row.kind === 'building' && <div className="text-xs text-muted-foreground">{row.buildingName}</div>}
+                          </TableCell>
+                          <TableCell><Badge variant={row.status === 'Saved' ? 'default' : 'secondary'}>{row.displayStatus}</Badge></TableCell>
+                          <TableCell className="text-right">{row.participatingBuildings}</TableCell>
+                          <TableCell className="text-right">{row.openBuildings}</TableCell>
+                          <TableCell>{formatDate(row.createdAt)}</TableCell>
+                          <TableCell>
+                            <div>{formatDate(row.closedAt)}</div>
+                            {row.closedByName && <div className="text-xs text-muted-foreground">{row.closedByName}</div>}
+                            {row.forceClosedOn && <div className="text-xs text-muted-foreground">Closing date: {row.forceClosedOn}</div>}
+                            {row.forceCloseReason && <div className="max-w-56 truncate text-xs text-muted-foreground" title={row.forceCloseReason}>{row.forceCloseReason}</div>}
+                          </TableCell>
+                          <TableCell>
+                            <div>{formatDate(row.reopenedAt)}</div>
+                            {row.reopenedByName && <div className="text-xs text-muted-foreground">{row.reopenedByName}</div>}
+                          </TableCell>
+                          <TableCell onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+                            {row.kind === 'farm' && !editBlocked && (row.status === 'Saved' || row.status === 'Past Open') && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setCloseDate(todayValue())
+                                  setCloseReason('')
+                                  setActionTarget({ row, action: 'close' })
+                                }}
+                              >
+                                <LockKeyhole className="size-3.5" /> Force Close
+                              </Button>
+                            )}
+                            {row.kind === 'farm' && !editBlocked && (row.status === 'Closed' || row.status === 'Force Closed') && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setActionTarget({ row, action: 'reopen' })}
+                              >
+                                <RotateCcw className="size-3.5" /> Reopen
+                              </Button>
+                            )}
+                          </TableCell>
+                          <TableCell><ChevronRight className="size-4 text-muted-foreground" /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       </section>
 

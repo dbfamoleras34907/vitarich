@@ -31,6 +31,10 @@ import {
 import DeliveryReceipt from '@/app/brd/dr/DeliveryReceipt'
 import BroilerIssueReversalButton from '@/app/brd/BroilerIssueReversalButton'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
+import {
+  attachProcessListAttributions,
+  type ProcessListAttribution,
+} from '@/lib/data/repositories/processListAttribution'
 
 type GoodsIssueHistoryConfig = {
   triggeredBy: string
@@ -50,6 +54,7 @@ type GoodsIssueHistoryConfig = {
   showDuplicateAction: boolean
   receiptLabel: string
   showWarehouseName: boolean
+  showProcessListAttribution: boolean
 }
 
 const defaultConfig: GoodsIssueHistoryConfig = {
@@ -70,7 +75,10 @@ const defaultConfig: GoodsIssueHistoryConfig = {
   showDuplicateAction: false,
   receiptLabel: 'Delivery Receipt',
   showWarehouseName: false,
+  showProcessListAttribution: false,
 }
+
+type AttributedGoodsIssue = GoodsIssue & Partial<ProcessListAttribution>
 
 type GoodsIssueTableRow = Record<string, unknown> & {
   id: number | null
@@ -81,7 +89,9 @@ type GoodsIssueTableRow = Record<string, unknown> & {
   warehouse: string
   issueQty: number
   status: string
-  issue: GoodsIssue
+  createdByName: string
+  assignedTaLabel: string
+  issue: AttributedGoodsIssue
 }
 
 type GoodsIssueHistoryProps = {
@@ -142,7 +152,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const activeFarmId = defaultFarmId
   const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [issues, setIssues] = useState<GoodsIssue[]>([])
+  const [issues, setIssues] = useState<AttributedGoodsIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
   const [reversalIssue, setReversalIssue] = useState<GoodsIssue | null>(null)
@@ -150,13 +160,16 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setIssues(await getGoodsIssues({
+      const loadedIssues = await getGoodsIssues({
         limit: 100,
         triggeredBy: config.triggeredBy,
         farmIdentifier: activeFarmId,
         dateFrom: config.showDateFilter ? dateFrom : undefined,
         dateTo: config.showDateFilter ? dateTo : undefined,
-      }))
+      })
+      setIssues(config.showProcessListAttribution
+        ? await attachProcessListAttributions(loadedIssues)
+        : loadedIssues)
     } catch (error) {
       const message = getErrorMessage(error)
       // This is handled by the toast. Using console.error here makes Next.js show
@@ -166,7 +179,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     } finally {
       setLoading(false)
     }
-  }, [activeFarmId, config.showDateFilter, config.triggeredBy, dateFrom, dateTo])
+  }, [activeFarmId, config.showDateFilter, config.showProcessListAttribution, config.triggeredBy, dateFrom, dateTo])
 
   useEffect(() => {
     router.prefetch(`${config.basePath}/new`)
@@ -192,6 +205,8 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           : issue.fromWarehouseCode || '-',
         issueQty: issue.lines.reduce((sum, line) => sum + Number(line.baseQty || 0), 0),
         status: issue.status,
+        createdByName: issue.createdByName ?? '—',
+        assignedTaLabel: issue.assignedTaLabel ?? 'Farm unavailable',
         issue,
       })),
     [config.showWarehouseName, issues],
@@ -227,6 +242,18 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
         ),
         align: 'center',
       },
+      ...(config.showProcessListAttribution ? [
+        { key: 'createdByName', label: 'Created by' },
+        {
+          key: 'assignedTaLabel',
+          label: 'Assigned TA',
+          render: (row: GoodsIssueTableRow) => (
+            <span className="block max-w-40 truncate" title={row.assignedTaLabel}>
+              {row.assignedTaLabel}
+            </span>
+          ),
+        },
+      ] : []),
       {
         key: 'action',
         label: 'Action',
@@ -304,6 +331,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       config.receiptLabel,
       config.showDeliveryReceipt,
       config.showDuplicateAction,
+      config.showProcessListAttribution,
       router,
       setCollapsed,
     ],

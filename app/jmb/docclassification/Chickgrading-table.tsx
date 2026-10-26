@@ -56,6 +56,7 @@ import { RowAction } from "@/lib/types";
 import { copyRow, copyTable } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
@@ -137,6 +138,7 @@ export default function ChickgradingTable() {
 
   const [isLoading, setIsLoading] =
     useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const effectiveColumnFilters = useMemo(
     () =>
@@ -161,6 +163,7 @@ export default function ChickgradingTable() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
 
     try {
       const data =
@@ -225,6 +228,7 @@ export default function ChickgradingTable() {
       console.error(e);
 
       setItems([]);
+      setLoadError(getErrorMessage(e, "Unable to load DOC Classification."));
     } finally {
       setIsLoading(false);
     }
@@ -461,6 +465,7 @@ export default function ChickgradingTable() {
         title="Doc Classification"
         tone="sky"
         isLoading={isLoading}
+        error={loadError}
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={

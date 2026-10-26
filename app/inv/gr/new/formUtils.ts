@@ -7,6 +7,7 @@ import type {
   GoodsReceiptFarm,
 } from './api'
 import type { Items, WarehouseData } from '@/lib/types'
+import { createUuid } from '@/lib/utils/createUuid'
 
 export const FMS_TYPE_OPTIONS = [
   { value: 'broiler', label: 'Broiler' },
@@ -26,7 +27,7 @@ const FARM_TYPE_TO_FMS_TYPE: Record<string, string> = {
 export type GoodsReceiveFormMode = 'draft' | 'post'
 
 export const newLine = (): GoodsReceiptLine => ({
-  id: crypto.randomUUID(),
+  id: createUuid(),
   drReference: '',
   receiveDate: format(new Date(), 'yyyy-MM-dd'),
   itemId: null,
@@ -51,7 +52,7 @@ export const emptyReceipt = (grNo: string): GoodsReceipt => ({
   id: null,
   grNo,
   drReference: '',
-  vendor: '',
+  vendor: 'Vitarich',
   receiveDate: format(new Date(), 'yyyy-MM-dd'),
   fmsType: '',
   farmId: null,
@@ -71,7 +72,7 @@ export const duplicateReceipt = (source: GoodsReceipt, grNo: string): GoodsRecei
   status: 'Draft',
   lines: source.lines.map(line => ({
     ...line,
-    id: crypto.randomUUID(),
+    id: createUuid(),
     drReference: '',
     returnedQty: 0,
   })),

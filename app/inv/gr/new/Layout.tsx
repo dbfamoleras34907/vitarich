@@ -798,7 +798,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : {
           id: 0,
           code: 'GR',
-          name: 'Item Stock In',
+          name: 'Feed Stock In',
           prefix: 'FD',
           suffix: null,
           separator: '-',
@@ -1145,14 +1145,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="Item Stock In"
+          FirstPreviewsPageName="Feed Stock In"
           FirstPreviewsPageLink="/inv/gr"
-          CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
+          CurrentPageName={isPostMode ? 'Post GR' : 'Add Feeds Inventory'}
         />
         <PageHeaderActions>
           <Button type="button" variant="outline" size="sm" onClick={() => router.push('/inv/gr')}>
             <List className="size-4" />
-            GR List
+            Feed Stock In List
           </Button>
         </PageHeaderActions>
       </PageHeader>
