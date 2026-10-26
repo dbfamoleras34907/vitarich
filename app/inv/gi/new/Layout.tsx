@@ -67,6 +67,7 @@ import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
 import { getCleanupCycleInventoryBatches } from '@/lib/data/repositories/brCleanup'
+import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -161,9 +162,7 @@ const getCachedWarehouses = (value: unknown): WarehouseData[] => {
 }
 
 const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null) return JSON.stringify(error)
-  return String(error)
+  return getPostgresErrorMessage(error, 'An unexpected error occurred. Please retry.')
 }
 
 const formatQuantity = (value: number) =>
@@ -2011,7 +2010,7 @@ export default function NewGoodsIssue({
       if (savedIssue) setIssue(savedIssue)
     } catch (error) {
       console.error(error)
-      toast('Error: ' + (error instanceof Error ? error.message : `Unable to save ${listLabel.toLowerCase()}`))
+      toast.error(getPostgresErrorMessage(error, `Unable to save ${listLabel.toLowerCase()}.`))
     } finally {
       setSaving(false)
     }

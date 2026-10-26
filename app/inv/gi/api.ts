@@ -2,6 +2,7 @@
 
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
 import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
+import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 
@@ -572,12 +573,17 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
   })
 
   if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error(
+        'Harvest & Delivery database save is not deployed. Apply app/sql/updated/save_br_delivery_transaction.sql to the same Supabase project used by this app, then retry.',
+      )
+    }
     if (error.code === '42501' && error.message.includes('save_br_delivery_transaction')) {
       throw new Error(
         'Harvest & Delivery database access is not enabled for authenticated users. Apply the RPC execute grant to the same Supabase project used by this app.',
       )
     }
-    throw error
+    throw new Error(getPostgresErrorMessage(error, 'Unable to save Harvest & Delivery.'))
   }
   const result = data as GoodsIssueTransactionResult | null
   if (!result?.header || !Array.isArray(result.lines)) {
