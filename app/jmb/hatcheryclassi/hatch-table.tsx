@@ -82,64 +82,6 @@ function loadErrorMessage(error: unknown, label: string) {
   return message ? `Unable to load ${label}: ${message}` : `Unable to load ${label}.`;
 }
 
-function isDateWithinRange(
-  value: string | null | undefined,
-  fromDate: string,
-  toDate: string,
-) {
-  if (!fromDate && !toDate) return true;
-
-  const date = value?.slice(0, 10);
-  if (!date) return false;
-
-  return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
-}
-
-function DateRangeFilters({
-  idPrefix,
-  fromDate,
-  toDate,
-  onFromDateChange,
-  onToDateChange,
-}: {
-  idPrefix: string;
-  fromDate: string;
-  toDate: string;
-  onFromDateChange: (value: string) => void;
-  onToDateChange: (value: string) => void;
-}) {
-  return (
-    <>
-      <div className="grid w-full gap-1 sm:w-40">
-        <label htmlFor={`${idPrefix}-from-date`} className="text-xs font-medium">
-          From Date
-        </label>
-        <Input
-          id={`${idPrefix}-from-date`}
-          type="date"
-          className="h-9 bg-white"
-          value={fromDate}
-          max={toDate || undefined}
-          onChange={(event) => onFromDateChange(event.target.value)}
-        />
-      </div>
-      <div className="grid w-full gap-1 sm:w-40">
-        <label htmlFor={`${idPrefix}-to-date`} className="text-xs font-medium">
-          To Date
-        </label>
-        <Input
-          id={`${idPrefix}-to-date`}
-          type="date"
-          className="h-9 bg-white"
-          value={toDate}
-          min={fromDate || undefined}
-          onChange={(event) => onToDateChange(event.target.value)}
-        />
-      </div>
-    </>
-  );
-}
-
 export default function HatchTable() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
@@ -169,8 +111,6 @@ export default function HatchTable() {
   const [pendingRowSelection, setPendingRowSelection] =
     useState<RowSelectionState>({});
   const [pendingSectionOpen, setPendingSectionOpen] = useState(true);
-  const [pendingFromDate, setPendingFromDate] = useState("");
-  const [pendingToDate, setPendingToDate] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingforClass, setIsLoadingforClass] = useState(false);
   const [classifiedLoadError, setClassifiedLoadError] = useState<string | null>(null);
@@ -178,24 +118,6 @@ export default function HatchTable() {
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
-  const [classifiedFromDate, setClassifiedFromDate] = useState("");
-  const [classifiedToDate, setClassifiedToDate] = useState("");
-
-  const pendingDateFilteredItems = useMemo(
-    () =>
-      itemsForClass.filter((row) =>
-        isDateWithinRange(row.doc_date, pendingFromDate, pendingToDate),
-      ),
-    [itemsForClass, pendingFromDate, pendingToDate],
-  );
-
-  const classifiedDateFilteredItems = useMemo(
-    () =>
-      items.filter((row) =>
-        isDateWithinRange(row.date_classify, classifiedFromDate, classifiedToDate),
-      ),
-    [classifiedFromDate, classifiedToDate, items],
-  );
 
   const assignedFarmIds = useMemo(
     () => assignedFarms.map((farm) => farm.id),
@@ -449,7 +371,7 @@ export default function HatchTable() {
     [router],
   );
   const tableForClass = useReactTable({
-    data: pendingDateFilteredItems,
+    data: itemsForClass,
     columns: columnsForClass,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -561,7 +483,7 @@ export default function HatchTable() {
   );
 
   const table = useReactTable({
-    data: classifiedDateFilteredItems,
+    data: items,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -621,31 +543,6 @@ export default function HatchTable() {
         onContentOpenChange={setPendingSectionOpen}
         headerActions={
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (tableForClass
-                    .getColumn("farm_id")
-                    ?.getFilterValue() as string) ?? ""
-                }
-                onValueChange={(farmId) => {
-                  tableForClass
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setPendingFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <DateRangeFilters
-              idPrefix="pending-classification"
-              fromDate={pendingFromDate}
-              toDate={pendingToDate}
-              onFromDateChange={setPendingFromDate}
-              onToDateChange={setPendingToDate}
-            />
-
             <Input
               placeholder="Filter Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
@@ -660,19 +557,6 @@ export default function HatchTable() {
                   ?.setFilterValue(e.target.value)
               }
             />
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                tableForClass.getColumn("farm_id")?.setFilterValue(undefined)
-                setPendingFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
 
           </div>
         }
@@ -690,30 +574,6 @@ export default function HatchTable() {
         onContentOpenChange={setClassifiedSectionOpen}
         headerActions={
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (table.getColumn("farm_id")?.getFilterValue() as string) ??
-                  ""
-                }
-                onValueChange={(farmId) => {
-                  table
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setClassifiedFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <DateRangeFilters
-              idPrefix="classified-eggs"
-              fromDate={classifiedFromDate}
-              toDate={classifiedToDate}
-              onFromDateChange={setClassifiedFromDate}
-              onToDateChange={setClassifiedToDate}
-            />
-
             <Input
               placeholder="Filter Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
@@ -722,19 +582,6 @@ export default function HatchTable() {
                 table.getColumn("br_no")?.setFilterValue(e.target.value)
               }
             />
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                table.getColumn("farm_id")?.setFilterValue(undefined)
-                setClassifiedFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
 
           </div>
         }
