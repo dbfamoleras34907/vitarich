@@ -180,6 +180,7 @@ export default function Hatchform() {
 
   const [form, setForm] = useState<FormState>(emptyForm);
 
+  // table fields that are numeric and need to be summed for totals
   const numericFields = useMemo(
     () => [
       { label: "Hatching Egg", name: "good_egg" },
