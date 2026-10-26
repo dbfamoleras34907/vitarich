@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Bird, CalendarDays, Egg, HeartCrack, House, Percent, Scale, Wheat } from "lucide-react";
+import { Bird, Boxes, CalendarDays, Egg, HeartCrack, Percent, Scale, Wheat } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,6 +29,8 @@ import {
 } from "./api";
 import BreederTrends from "./BreederTrends";
 import BreederBodyWeight from "./BreederBodyWeight";
+import EggCollectionForecast from "./EggCollectionForecast";
+import OverstayEggStorageDetails from "./OverstayEggStorageDetails";
 import { breederFeedStandard } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
@@ -116,6 +119,7 @@ export default function BreederDashboard() {
     : "");
   useSyncDefaultFarm(farmId);
   const [summary, setSummary] = useState<BreederDashboardSummary | null>(null);
+  const [eggStorageOpen, setEggStorageOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -180,6 +184,7 @@ export default function BreederDashboard() {
   const totals = summary?.totals;
   const eggRange = summary?.eggRangeProduction;
   const eggRangeTotals = eggRange?.totals;
+  const eggStorage = summary?.eggStorage;
   const eggStandardLink = <a className="underline underline-offset-2" href={COBB_EGG_PRODUCTION_SOURCE} target="_blank" rel="noreferrer">{COBB_EGG_PRODUCTION_LABEL}</a>;
   const activePlacements = summary?.activePlacements ?? [];
   const agePlacement = activePlacements[0];
@@ -360,6 +365,7 @@ export default function BreederDashboard() {
               helper={<div className="space-y-1">
                 <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggs, " eggs", true)}</p>
                 <p>Production: {showEggNumber(eggRangeTotals?.productionPercent, "%")} / Std {showEggNumber(eggRangeTotals?.standardPercent, "%")}</p>
+                <p>Per Hen House: {showEggNumber(eggRangeTotals?.eggsPerHen, " eggs/hen")} / Std {showEggNumber(eggRangeTotals?.standardEggsPerHen, " eggs/hen")}</p>
                 <p>Totals for the selected Production Date Range.</p>
                 <EggRangeDetails rows={eggRange?.buildings ?? []} metric="tep" />
                 <p className="text-xs">{eggStandardLink}. Actual and standard use the same recorded days.</p>
@@ -367,19 +373,6 @@ export default function BreederDashboard() {
               </div>}
               icon={<Egg className="size-6 text-emerald-700" />}
               accent="text-emerald-500"
-            />
-            <StatCard
-              title="TEP per Hen House"
-              value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.eggsPerHen, " eggs/hen")}
-              helper={<div className="space-y-1">
-                <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggsPerHen, " eggs/hen")}</p>
-                <p>TEP ÷ average live females on recorded days.</p>
-                <p>Average live females: {showEggNumber(eggRangeTotals?.averageLiveFemales, "", true)}</p>
-                <EggRangeDetails rows={eggRange?.buildings ?? []} metric="hen" />
-                <p className="text-xs">{eggStandardLink} production rate converted to eggs per live hen.</p>
-              </div>}
-              icon={<House className="size-6 text-teal-700" />}
-              accent="text-teal-500"
             />
             <StatCard
               title="Hatch Recovery"
@@ -393,8 +386,25 @@ export default function BreederDashboard() {
               icon={<Percent className="size-6 text-blue-700" />}
               accent="text-blue-500"
             />
+            <StatCard
+              title="Overstay Egg Storage"
+              value={loading ? "Loading..." : `${integer.format(eggStorage?.overstayQuantity ?? 0)} eggs`}
+              helper={<div className="space-y-1">
+                <p>{eggStorage?.overstayAgeDays ?? 4}+ storage days as of {filter?.to ?? "—"}.</p>
+                <p>Undispatched: {integer.format(eggStorage?.totalRemainingQuantity ?? 0)} · Oldest: {eggStorage?.oldestAgeDays == null ? "N/A" : `${eggStorage.oldestAgeDays} days`}</p>
+                <p>Warning {eggStorage?.overstayAgeDays ?? 4}–{(eggStorage?.criticalAgeDays ?? 8) - 1} days: {integer.format(eggStorage?.warningQuantity ?? 0)} · Critical {eggStorage?.criticalAgeDays ?? 8}+: {integer.format(eggStorage?.criticalQuantity ?? 0)}</p>
+                <p>{eggStorage?.overstaySourceDays ?? 0} source days · {eggStorage?.overstayBuildingCount ?? 0} buildings</p>
+                <Button variant="link" className="h-auto px-0 py-0 text-sm" onClick={() => setEggStorageOpen(true)} disabled={loading || !eggStorage?.rows.length}>View daily / weekly breakdown</Button>
+              </div>}
+              icon={<Boxes className="size-6 text-amber-700" />}
+              accent="text-amber-500"
+            />
           </div>
         )}
+
+        <OverstayEggStorageDetails open={eggStorageOpen} onOpenChange={setEggStorageOpen} summary={eggStorage ?? null} />
+
+        <EggCollectionForecast data={summary?.eggCollectionForecast} loading={loading} />
 
         <BreederBodyWeight rows={summary?.weeklyBodyWeights ?? []} loading={loading} asOf={filter?.to} />
 

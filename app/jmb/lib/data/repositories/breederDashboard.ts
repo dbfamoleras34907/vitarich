@@ -1,6 +1,8 @@
 import { breederAgeDays } from "../../breederAge";
 import { calculateEggRangeProduction, emptyEggRangeProduction, type EggRangeProduction } from "../../breederWeeklyEggProduction";
+import { calculateEggCollectionForecast, type EggCollectionForecast } from "../../eggCollectionForecast";
 import { listBreederEggLayings } from "./breederEggLaying";
+import { getBreederEggStorageSummary, type BreederEggStorageSummary } from "./breederEggStorage";
 import { listBreederCycles } from "@/app/jmb/placement/new/api";
 import { db } from "@/lib/Supabase/supabaseClient";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
@@ -114,6 +116,8 @@ export type BreederUniformityReading = {
 
 export type BreederDashboardSummary = {
   eggRangeProduction: EggRangeProduction;
+  eggStorage: BreederEggStorageSummary;
+  eggCollectionForecast: EggCollectionForecast;
   weightSampleStorageAvailable: boolean;
   depletionRates: {
     growing: { openingPopulation: number | null; ratePercent: number | null };
@@ -316,6 +320,7 @@ export async function getBreederTrend(
 export async function getBreederDashboard(
   filter: BreederDashboardFilter,
 ): Promise<BreederDashboardSummary> {
+  const eggStoragePromise = getBreederEggStorageSummary({ asOf: filter.to, farmId: filter.farmId });
   const placements: PlacementRow[] = [];
   for (let page = 0; ; page += 1) {
     let query = db.from(PLACEMENT_TABLE)
@@ -331,6 +336,7 @@ export async function getBreederDashboard(
     if (rows.length < PAGE_SIZE) break;
   }
   if (!placements.length) {
+    const eggStorage = await eggStoragePromise;
     return {
       depletionRates: {
         growing: { openingPopulation: null, ratePercent: null },
@@ -339,6 +345,8 @@ export async function getBreederDashboard(
       activePlacements: [],
       weightSampleStorageAvailable: true,
       eggRangeProduction: emptyEggRangeProduction(),
+      eggStorage,
+      eggCollectionForecast: { points: [], actualThrough: null, message: "No active breeder placement is available for forecasting." },
       latestUniformity: { male: null, female: null },
       latestFlockAge: null,
       latestFeed: null,
@@ -366,10 +374,11 @@ export async function getBreederDashboard(
   }
 
   const placementById = new Map(placements.map((row) => [Number(row.id), row]));
-  const [performance, weightSamples, eggs] = await Promise.all([
+  const [performance, weightSamples, eggs, eggStorage] = await Promise.all([
     performanceForPlacements([...placementById.keys()], filter, true),
     listBreederWeightSamples({ placementIds: [...placementById.keys()], to: filter.to }),
     listBreederEggLayings({ from: filter.from, to: filter.to, farmId: filter.farmId, ascending: true }),
+    eggStoragePromise,
   ]);
   const eggRangeProduction = calculateEggRangeProduction({ ...filter, placements, performance, eggs });
   const latestByPlacement = new Map<number, PerformanceRow>();
@@ -624,7 +633,15 @@ export async function getBreederDashboard(
     growing: depletionRate(openingByAgePeriod.growingMortality, totals.growingMortality),
     laying: depletionRate(openingByAgePeriod.layingMortality, totals.layingMortality),
   };
-  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates, weightSampleStorageAvailable: weightSamples.available, eggRangeProduction };
+  const eggCollectionForecast = calculateEggCollectionForecast({
+    from: filter.from,
+    to: filter.to,
+    placements,
+    activePlacementIds: new Set(activePlacements.map(placement => Number(placement.id))),
+    performance,
+    eggs,
+  });
+  return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates, weightSampleStorageAvailable: weightSamples.available, eggRangeProduction, eggStorage, eggCollectionForecast };
 }
 
 export async function listBreederDashboardFarms(): Promise<BreederDashboardFarm[]> {

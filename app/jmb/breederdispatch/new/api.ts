@@ -1,6 +1,7 @@
 import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+import { EGG_DISPATCH_CATEGORIES, eggDispatchQuantity } from "@/app/jmb/lib/breederEggCategories";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
@@ -17,7 +18,7 @@ const DISPATCH_ID_CHUNK_SIZE = 300;
 export type DispatchStatus = "Draft" | "Posted" | "Cancelled";
 export type DispatchSourceType = "Population Record" | "Egg Laying";
 export const POPULATION_CATEGORIES = [["mc", "Mortality"], ["condemn", "Condemn"], ["kitchen", "Kitchen"], ["culls", "Culls"]] as const;
-export const EGG_CATEGORIES = [["hatching_egg", "Hatching Egg (<54g)"], ["classb", "Class B (<52g - 53g)"], ["junior", "Junior (<49g - 51g)"], ["table_egg", "Table Egg"], ["jumbo", "Jumbo"], ["crack", "Crack"], ["condemn", "Condemn"]] as const;
+export const EGG_CATEGORIES = EGG_DISPATCH_CATEGORIES;
 
 export function dispatchCategoryOrder(source: DispatchSourceType, category: string) {
   const categories = source === "Population Record" ? POPULATION_CATEGORIES : EGG_CATEGORIES;
@@ -257,9 +258,7 @@ export async function listAvailableDispatchItems(dispatchDate: string, farmId?: 
     if (!placement) continue;
     for (const [category, label] of EGG_CATEGORIES) {
       const key = dispatchItemKey("Egg Laying", Number(row.id), category);
-      const quantity = category === "table_egg"
-        ? count(row.table_egg_dirty) + count(row.table_egg_misshapen) + count(row.table_egg_off_size) + count(row.table_egg_thin_shell)
-        : count(row[category]);
+      const quantity = eggDispatchQuantity(row, category);
       const available = Math.max(0, quantity - (allocated.get(key) ?? 0));
       if (!includeZeroAvailability && !available) continue;
       items.push({ key, source_type: "Egg Laying", source_record_id: Number(row.id), source_date: row.date_laying, category, category_label: label, placement_id: Number(placement.id), placement_date: placement.placement_date, building_id: row.building_id ?? placement.building_id, building_name: row.building ?? placement.building_no ?? "-", pen_id: placement.pen_id, pen_name: placement.pen_no, dr_no: placement.dr_no, source_quantity: quantity, dispatch_quantity: allocated.get(key) ?? 0, source_available: available, farm_id: Number(row.farm_id ?? placement.farm_id), farm_code: farmCodeById.get(Number(row.farm_id ?? placement.farm_id)) ?? null, farm_name: row.farm_name ?? placement.farm_name ?? "-" });
