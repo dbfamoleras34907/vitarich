@@ -129,6 +129,15 @@ export async function listDailyPerformance(placementId: number) {
 }
 
 export async function saveDailyPerformance(payload: BreederDailyPerformancePayload) {
+  const saved = await saveDailyPerformanceBatch([payload]);
+  if (!saved[0]) throw new Error("Unable to save breeder daily performance.");
+  return saved[0];
+}
+
+export async function saveDailyPerformanceBatch(
+  rows: BreederDailyPerformancePayload[],
+) {
+  if (!rows.length) return [] as BreederDailyPerformance[];
   const token = await accessToken();
   const response = await fetch("/api/jmb/breeder-daily-performance", {
     method: "POST",
@@ -136,13 +145,13 @@ export async function saveDailyPerformance(payload: BreederDailyPerformancePaylo
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ payload }),
+    body: JSON.stringify({ rows }),
   });
   const result = (await response.json().catch(() => ({}))) as {
-    data?: BreederDailyPerformance;
+    data?: BreederDailyPerformance[];
     error?: string;
   };
-  if (!response.ok || !result.data) {
+  if (!response.ok || !Array.isArray(result.data)) {
     throw new Error(result.error || "Unable to save breeder daily performance.");
   }
   return result.data;
