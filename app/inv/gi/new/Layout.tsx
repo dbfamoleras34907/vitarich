@@ -3569,7 +3569,7 @@ export default function NewGoodsIssue({
                 />
               )}
 
-              <DialogFooter>
+              <DialogFooter className="sticky bottom-0 z-10 -mx-4 -mb-4 border-t bg-background px-4 py-3">
                 {trailBatchLine && (
                   <BatchWarehouseReportButton
                     batchNumber={trailBatchLine.batchNumber}

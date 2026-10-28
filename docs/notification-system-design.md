@@ -1,6 +1,8 @@
 # Notification System Design
 
-Status: **Source implementation created - SQL deployment and authenticated runtime verification pending**
+Status: **Simplified source implementation created - SQL deployment and authenticated runtime verification pending**
+
+> The current design is an in-app, template-driven notification inbox with immediate dispatch. Older sections below that describe notification email delivery, a scheduled notification worker, or the Process Health dashboard are retained only as historical design context and are not part of the simplified runtime.
 
 Related diagram: [Notification System Flow](./notification-system-flow.md)
 
@@ -13,32 +15,35 @@ Related diagram: [Notification System Flow](./notification-system-flow.md)
 - Deterministic event keys are `<POSTED>:<auth_id>`, `<EDITED>:<auth_id>:activated`, `<EDITED>:<auth_id>:profile`, and `<VOIDED>:<auth_id>:rejected`. Row locks serialize decisions/completion. Failed transactions emit nothing; retries reuse the event and recipient-delivery unique identities.
 - The central dispatcher verifies persisted submission, decision or completion timestamps, actor, entity and dedupe identity. Required farm IDs are not applicable to this account-level module; non-null farm routing is rejected. Farm-targeted business modules keep their existing canonical farm validation.
 - Administrator alerts remain configuration-driven. The seeded Super Admin signup rule is not overwritten on reruns; no active matching rule produces no delivery and leaves signup/approval successful. Unassigned public applicants can initially be reviewed by Super Admins; scoped Admins retain their existing FMS management boundary.
-- Applicant activation/rejection emails are mandatory transactional account correspondence, separate from optional notification rules and per-user notification inboxes. The reusable `transactional_email_outbox` is inserted by the authoritative decision RPC with `ACCOUNT_DECISION:<auth_id>` deduplication. It reuses the shared mail transport and existing process/retry controls. Failed sends remain queued with backoff and expiring worker leases. SMTP/Graph cannot guarantee exactly-once receipt after an ambiguous transport failure.
+- Applicant activation/rejection emails are mandatory transactional account correspondence, separate from notification templates and per-user notification inboxes. The reusable `transactional_email_outbox` is inserted by the authoritative decision RPC with `ACCOUNT_DECISION:<auth_id>` deduplication and is processed after the decision succeeds.
 - Deployment order: apply `app/admin/notifications/notification_system.sql`, then `app/signup_update/registration_profile.sql`, then deploy the app. Set `NEXT_PUBLIC_SITE_URL` (or Netlify's `URL`) for activation login links. The migration configures a PostgREST pre-request gate and adds restrictive policies to existing RLS-enabled public tables and Storage objects; existing permissive policies remain intact. Review any existing pre-request hook before composing it.
 - Local PostgreSQL assertions and mocked application checks are documented in `scripts/database/tests/registration/README.md`. Target Auth/PostgREST configuration and real email delivery need separate deployment verification.
 
 Implemented in source:
 
 - Central DOC Placement and Hatchery DOC Dispatch module/event catalog
-- Notification rules, transactional outbox, inbox, constraints, RLS, and processing SQL
-- Secured rule-management, inbox, read-state, and processing APIs
-- Notification Setup UI with audience filters and processing health
-- Global notification bell and full inbox page
-- Polling fallback, Realtime refresh, shared read state, and client-side ID deduplication
+- Reused notification rules as compact in-app templates; modules still publish stable registered event keys
+- Secured template-management, inbox, and read-state APIs
+- Compact Notification Templates UI with title/message placeholders and optional User Group targeting
+- Global notification bell and full inbox page with initial load and explicit manual refresh
+- No browser polling, Realtime subscription, or browser-triggered global queue processing
+- Immediate centralized dispatch on actual outbox insertion; no scheduled notification worker or worker secret
+- Clickable inbox rows that mark the notification read and open its target route
 - Atomic DOC Placement and Hatchery DOC Dispatch Posted metadata and outbox enqueue on final source status transitions
-- Separate Source FMS and Recipient FMS rule filters for cross-FMS delivery
+- Catalog-defined Source and Recipient FMS routing instead of per-template FMS configuration
 - Explicit catalog farm routing: DOC Placement uses the committed document farm and Hatchery DOC Dispatch uses the destination farm
 - Target-farm recipient filtering through active `users_farms` assignments, with the confirmed Super Admin bypass
-- Per-rule Email delivery checkbox, durable email queue, secured server worker, Microsoft Graph OAuth transport, and branded module-aware HTML template
+- In-app-only module notifications; transactional account email remains a separate account workflow
 
 Still required before calling the feature live:
 
 - Apply `app/admin/notifications/notification_system.sql` to Supabase
-- Enable the optional scheduled outbox processor or configure an equivalent server worker
+- Apply `app/sql/new/simplify_notification_dispatch.sql` after the base notification SQL
+- Leave the older commented outbox cron disabled; new notification events dispatch immediately on insert
 - Grant Notification Setup View/Edit permissions to authorized Admin accounts
 - Test authenticated Super Admin, Admin, and User scenarios in the browser
-- Test posting success, posting errors, duplicate requests, dispatcher downtime, reconnection, and cross-session read synchronization
-- Configure the Microsoft Entra application credentials, grant Graph Application `Mail.Send` with admin consent, restrict it to the Vita FMS sender mailbox, and verify authenticated delivery/retry behavior in the deployed Node.js runtime
+- Test posting success, posting errors, duplicate requests, target navigation, and explicit refresh behavior across sessions
+- Configure and verify Microsoft Graph only for the separate transactional account-email workflow
 
 ## Objective
 
@@ -55,9 +60,9 @@ authenticated checks. See [sample storage and readiness audit](../app/jmb/placem
 - A notification event key describes a completed business action. It does not execute or trigger the business action itself.
 - Post, Edit, and Void operations are the triggers. They publish an event only after the authoritative mutation succeeds.
 - Modules do not select recipients or insert directly into per-user inbox tables.
-- The centralized dispatcher owns active-rule matching, recipient matching, module View-permission enforcement, delivery creation, retries, and safe no-op behavior.
+- The centralized dispatcher owns active-template matching, recipient matching, module View-permission enforcement, delivery creation, deduplication, and safe no-op behavior.
 - Recording a notification event is part of the business transaction.
-- Delivering user notifications is an asynchronous, retryable operation after the business transaction commits.
+- The compatibility outbox is processed immediately when an event is inserted; there is no scheduled or browser-triggered notification processor.
 - A notification informs a user. It never grants access to a module or document.
 
 ## Central event catalog

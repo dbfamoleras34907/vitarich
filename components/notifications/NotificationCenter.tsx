@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Bell, CheckCheck, ExternalLink } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Bell, CheckCheck, ExternalLink, RefreshCcw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -14,12 +14,9 @@ import {
   markAllNotificationsReadRequest,
   markNotificationReadRequest,
   markNotificationsSeenRequest,
-  processPendingNotificationsRequest,
 } from "@/lib/data/repositories/notificationApiClient"
 import type { NotificationInboxItem } from "@/lib/notifications/types"
 import { db } from "@/lib/Supabase/supabaseClient"
-
-const POLL_INTERVAL_MS = 30_000
 
 function dedupe(items: NotificationInboxItem[]) {
   const byId = new Map<number, NotificationInboxItem>()
@@ -36,21 +33,23 @@ export default function NotificationCenter({ collapsed = false }: { collapsed?: 
   const [loading, setLoading] = useState(false)
   const [notifications, setNotifications] = useState<NotificationInboxItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const refreshInFlight = useRef(false)
 
   const refresh = useCallback(async (showError = false) => {
-    if (!authId) return
-    setLoading(current => current || notifications.length === 0)
+    if (!authId || refreshInFlight.current) return
+    refreshInFlight.current = true
+    setLoading(true)
     try {
-      await processPendingNotificationsRequest().catch(() => undefined)
       const result = await getNotificationInbox(25)
       setNotifications(dedupe(result.notifications))
       setUnreadCount(result.unreadCount)
     } catch (error) {
       if (showError) toast.error(error instanceof Error ? error.message : "Unable to load notifications.")
     } finally {
+      refreshInFlight.current = false
       setLoading(false)
     }
-  }, [authId, notifications.length])
+  }, [authId])
 
   useEffect(() => {
     void db.auth.getSession().then(({ data }) => setAuthId(data.session?.user.id ?? null))
@@ -66,20 +65,6 @@ export default function NotificationCenter({ collapsed = false }: { collapsed?: 
     }
 
     void refresh()
-    const interval = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)
-    const channel = db
-      .channel(`user-notifications-${authId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_notifications", filter: `recipient_auth_id=eq.${authId}` },
-        () => void refresh(),
-      )
-      .subscribe()
-
-    return () => {
-      window.clearInterval(interval)
-      void db.removeChannel(channel)
-    }
   }, [authId, refresh])
 
   const unreadLabel = useMemo(() => unreadCount > 99 ? "99+" : String(unreadCount), [unreadCount])
@@ -146,9 +131,15 @@ export default function NotificationCenter({ collapsed = false }: { collapsed?: 
         ) : notificationButton}
         <SheetContent side="left" showCloseButton={false} className="w-full gap-0 sm:max-w-md">
           <SheetHeader className="border-b">
-            <div className="flex items-start justify-between gap-8">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div><SheetTitle>Notifications</SheetTitle><SheetDescription>{unreadCount} unread notification{unreadCount === 1 ? "" : "s"}</SheetDescription></div>
-              <Button type="button" size="sm" variant="ghost" disabled={unreadCount === 0} onClick={() => void markAllRead()}><CheckCheck className="size-4" />Mark all read</Button>
+              <div className="flex flex-wrap justify-end gap-1">
+                <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={() => void refresh(true)}>
+                  <RefreshCcw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+                  {loading ? "Refreshing" : "Refresh"}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={unreadCount === 0} onClick={() => void markAllRead()}><CheckCheck className="size-4" />Mark all read</Button>
+              </div>
             </div>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">

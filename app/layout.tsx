@@ -15,6 +15,7 @@ import RouteGuard from '@/lib/SignupUpdateGuard';
 import GlobalLoaderController from '@/lib/context/GlobalLoaderController';
 import DefaultFarm from './utils/DefaultFarm';
 import CollapsedSidebarLabel from '@/lib/sidebar/CollapsedSidebarLabel';
+import { DesktopStatusBar } from '@/components/ui/DesktopStatusBar';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -74,6 +75,7 @@ export default function RootLayout({
             </ConfirmProvider>
             <InternetErrorToast />
             <Toaster position='top-center' />
+            <DesktopStatusBar />
           </ThemeProvider>
         </GlobalProvider>
 

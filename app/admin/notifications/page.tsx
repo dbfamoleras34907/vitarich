@@ -6,7 +6,7 @@ import Layout from "./Layout"
 
 export default function Page() {
   return (
-    <NavigationBar currentLabel="Notification Setup" fatherLabel="Administrator" fatherLink="/admin/user">
+    <NavigationBar currentLabel="Notification Templates" fatherLabel="Administrator" fatherLink="/admin/user">
       <Layout catalog={notificationCatalog.filter(module => module.ruleActivationReady !== false)} />
     </NavigationBar>
   )

@@ -5,7 +5,6 @@ import type {
   FmsType,
   NotificationFarmRouting,
   NotificationInboxItem,
-  NotificationEmailDelivery,
   NotificationOutboxHealth,
   NotificationRule,
   NotificationRuleAffectedUsers,
@@ -314,9 +313,9 @@ export async function saveNotificationRule(input: NotificationRuleInput, actorAu
     title_template: input.title_template,
     message_template: input.message_template,
     priority: input.priority,
-    email_enabled: input.email_enabled,
+    email_enabled: false,
     exclude_actor: input.exclude_actor,
-    require_view_permission: input.require_view_permission,
+    require_view_permission: true,
     is_active: input.is_active,
     updated_by: actorAuthId,
   }
@@ -389,65 +388,6 @@ export async function markUserNotificationsSeen(authId: string) {
     .update({ seen_at: new Date().toISOString() })
     .eq("recipient_auth_id", authId)
     .is("seen_at", null)
-
-  if (error) throw error
-}
-
-export async function processPendingNotificationEvents(limit = 50) {
-  const { data, error } = await admin_db.rpc("process_notification_outbox", {
-    p_limit: Math.max(1, Math.min(limit, 200)),
-  })
-
-  if (error) throw error
-  return Number(data ?? 0)
-}
-
-export async function makeFailedNotificationEmailsRetryable() {
-  const { data, error } = await admin_db
-    .from("notification_email_deliveries")
-    .update({ next_attempt_at: new Date().toISOString() })
-    .eq("status", "failed")
-    .select("id")
-
-  if (error) throw error
-  return data?.length ?? 0
-}
-
-export async function claimPendingNotificationEmails(limit = 20) {
-  const { data, error } = await admin_db.rpc("claim_notification_email_deliveries", {
-    p_limit: Math.max(1, Math.min(limit, 100)),
-  })
-
-  if (error) throw error
-  return (data ?? []) as NotificationEmailDelivery[]
-}
-
-export async function completeNotificationEmailDelivery(params: {
-  id: number
-  success: boolean
-  error?: string | null
-  providerMessageId?: string | null
-}) {
-  const { error } = await admin_db.rpc("complete_notification_email_delivery", {
-    p_id: params.id,
-    p_success: params.success,
-    p_error: params.error ?? null,
-    p_provider_message_id: params.providerMessageId ?? null,
-  })
-
-  if (error) throw error
-}
-
-export async function skipNotificationEmailDelivery(id: number, reason: string) {
-  const { error } = await admin_db
-    .from("notification_email_deliveries")
-    .update({
-      status: "skipped",
-      last_error: reason.slice(0, 2000),
-      processing_started_at: null,
-    })
-    .eq("id", id)
-    .eq("status", "processing")
 
   if (error) throw error
 }
