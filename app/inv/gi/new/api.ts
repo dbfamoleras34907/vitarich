@@ -6,6 +6,7 @@ import {
   getCleanupCycleInventoryBatches,
 } from '@/lib/data/repositories/brCleanup'
 import { db } from '@/lib/Supabase/supabaseClient'
+import { getFirstDocPlacementDates } from '@/lib/data/queries/broilerDocPlacementDates'
 import { getFarmOriginBatchesForFlockCard } from '@/app/brd/fc/api'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 import {
@@ -46,6 +47,7 @@ export type GoodsIssueFlockCardInfo = {
   buildingName: string
   age: number | null
   startDate: string
+  placementDate: string
   broilerType: string
   breed: string
   flockCode: string
@@ -55,6 +57,7 @@ export type GoodsIssueFlockCardInfo = {
   bodyWeight: number | null
   bodyWeightsByAge: Record<string, number>
   status: string
+  placementBatches?: GoodsIssuePlacementBatch[]
 }
 
 export type GoodsIssuePlacementBatch = {
@@ -443,6 +446,7 @@ const toFlockCardInfo = (
   actualAge: number | null,
   bodyWeight: number | null,
   bodyWeightsByAge: Record<string, number>,
+  placementDate: string,
 ): GoodsIssueFlockCardInfo => ({
   id: Number(row.id),
   cardNo: row.card_no ?? '',
@@ -455,6 +459,7 @@ const toFlockCardInfo = (
   buildingName: row.building_name ?? '',
   age: actualAge,
   startDate: row.start_date ?? '',
+  placementDate,
   broilerType: row.broiler_type ?? '',
   breed: row.breed ?? '',
   flockCode: row.flock_code ?? '',
@@ -507,9 +512,18 @@ async function getLatestFlockCardGrowingMetrics(row: FlockCardInfoRow) {
   }
 }
 
-async function toFlockCardInfoWithBodyWeight(row: FlockCardInfoRow) {
-  const metrics = await getLatestFlockCardGrowingMetrics(row)
-  return toFlockCardInfo(row, metrics.actualAge, metrics.bodyWeight, metrics.bodyWeightsByAge)
+async function toFlockCardInfoWithBodyWeight(row: FlockCardInfoRow, placementDate?: string) {
+  const [metrics, placementDates] = await Promise.all([
+    getLatestFlockCardGrowingMetrics(row),
+    placementDate === undefined ? getFirstDocPlacementDates([Number(row.id)]) : null,
+  ])
+  return toFlockCardInfo(
+    row,
+    metrics.actualAge,
+    metrics.bodyWeight,
+    metrics.bodyWeightsByAge,
+    placementDate ?? placementDates?.[Number(row.id)] ?? '',
+  )
 }
 
 type FlockCardOriginBatchRow = {
@@ -744,9 +758,11 @@ export async function getAvailableDeliveryFlockCards(params: {
     }
   })
 
-  const cards = await Promise.all(
-    Array.from(latestByBuilding.values()).map(row => toFlockCardInfoWithBodyWeight(row)),
-  )
+  const cardRows = Array.from(latestByBuilding.values())
+  const placementDates = await getFirstDocPlacementDates(cardRows.map(row => Number(row.id)))
+  const cards = await Promise.all(cardRows.map(row =>
+    toFlockCardInfoWithBodyWeight(row, placementDates[Number(row.id)] ?? ''),
+  ))
 
   if (params.cleanupCycleInventory) {
     const farmCycleId = Number(params.farmCycleId ?? 0)
@@ -785,12 +801,14 @@ export async function getAvailableDeliveryFlockCards(params: {
         cycleNumber: card.cycleNumber,
       })
       const ageEligible = card.age !== null && card.age >= targetAge
-      return ageEligible && batches.some(batch => batch.onHandQty > 0) ? card : null
+      return ageEligible && batches.some(batch => batch.onHandQty > 0)
+        ? { ...card, placementBatches: batches }
+        : null
     }),
   )
 
   return cardsWithAvailableBatches
-    .filter((card): card is GoodsIssueFlockCardInfo => Boolean(card))
+    .filter((card): card is NonNullable<typeof card> => card !== null)
     .sort((left, right) =>
       (left.buildingName || left.buildingCode).localeCompare(
         right.buildingName || right.buildingCode,

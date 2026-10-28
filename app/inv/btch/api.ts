@@ -3,6 +3,11 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
 
+export {
+  getBatchTransactionTrail,
+  type BatchTransactionTrail,
+} from '@/lib/data/repositories/batchTransactionTrail'
+
 export type BatchResetType = 'Never' | 'Daily' | 'Monthly' | 'Yearly'
 export type BatchDateFormat = 'NONE' | 'YYYYMMDD' | 'YYMMDD' | 'YYYYMM' | 'YYMM' | 'YYYY' | 'YY'
 export type BatchIssueMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'MANUAL'
@@ -28,7 +33,6 @@ export type BatchNumberSeries = {
   remarks: string | null
   void: string
 }
-
 export type BatchNumberSeriesPayload = {
   code: string
   name: string
@@ -133,25 +137,6 @@ export type CreatedBatchInventoryParams = {
   farmId?: number | string | null
 }
 
-export type BatchTransactionTrail = {
-  id: number
-  sourceDocType: string
-  sourceDocEntry: number
-  documentLabel: string
-  itemCode: string
-  warehouseCode: string
-  binCode: string
-  qty: number
-  signedQty: number
-  runningQty: number
-  transferType: string
-  refType: string
-  ref: string
-  refType2: string
-  ref2: string
-  createdAt: string
-}
-
 type ItemBatchInventoryRow = {
   id: number
   item_id: number | null
@@ -192,11 +177,6 @@ type BatchSourceReceiptRow = {
   id: number
   gr_no: string | null
   farm_id?: number | null
-}
-
-type BatchSourceIssueRow = {
-  id: number
-  gi_no: string | null
 }
 
 type SupabaseErrorLike = {
@@ -275,32 +255,6 @@ function addPostingQuantities(
       qty: (current?.qty ?? 0) + signedPostingQty(row),
     })
   }
-}
-
-function dedupePostings(rows: InventoryPostingBatchRow[]) {
-  const seenPostingIds = new Set<number>()
-
-  return rows.filter(row => {
-    if (seenPostingIds.has(row.id)) return false
-    seenPostingIds.add(row.id)
-    return true
-  })
-}
-
-function getPostingBatchReference(row: InventoryPostingBatchRow, normalizedBatchNumber: string) {
-  const batchNumber = String(row.batch_number ?? '').trim()
-  const ref = String(row.ref ?? '').trim()
-  const ref2 = String(row.ref2 ?? '').trim()
-
-  if (batchNumber.toUpperCase() === normalizedBatchNumber) return batchNumber
-  if (ref.toUpperCase() === normalizedBatchNumber) return ref
-  if (ref2.toUpperCase() === normalizedBatchNumber) return ref2
-
-  return ''
-}
-
-function documentKey(sourceDocType: string, sourceDocEntry: number) {
-  return `${sourceDocType.toUpperCase()}|${sourceDocEntry}`
 }
 
 export async function getBatchNumberSeries(): Promise<BatchNumberSeries[]> {
@@ -624,139 +578,5 @@ export async function getCreatedBatchInventory({
       onHandQty: row.qty,
       createdAt: batch.created_at,
     }))
-  })
-}
-
-export async function getBatchTransactionTrail(
-  itemCode: string,
-  batchNumber: string,
-): Promise<BatchTransactionTrail[]> {
-  const normalizedItemCode = itemCode.trim()
-  const normalizedBatchNumber = batchNumber.trim()
-
-  if (!normalizedItemCode || !normalizedBatchNumber) return []
-
-  const postingSelect = 'id, source_doc_type, source_docentry, item_code, warehouse_code, bin_code, qty, transfer_type, batch_number, ref_type, ref, ref_type2, ref2, created_at'
-  const buildPostingQuery = (field: 'batch_number' | 'ref' | 'ref2') =>
-    db
-      .from('inventory_postings')
-      .select(postingSelect)
-      .eq('item_code', normalizedItemCode)
-      .eq(field, normalizedBatchNumber)
-
-  const [batchPostingsResult, refPostingsResult, ref2PostingsResult] = await Promise.all([
-    buildPostingQuery('batch_number'),
-    buildPostingQuery('ref'),
-    buildPostingQuery('ref2'),
-  ])
-
-  if (batchPostingsResult.error) throw batchPostingsResult.error
-  if (refPostingsResult.error) throw refPostingsResult.error
-  if (ref2PostingsResult.error) throw ref2PostingsResult.error
-
-  const normalizedBatchKey = normalizedBatchNumber.toUpperCase()
-  const postings = dedupePostings([
-    ...((batchPostingsResult.data ?? []) as InventoryPostingBatchRow[]),
-    ...((refPostingsResult.data ?? []) as InventoryPostingBatchRow[]),
-    ...((ref2PostingsResult.data ?? []) as InventoryPostingBatchRow[]),
-  ])
-    .filter(row => getPostingBatchReference(row, normalizedBatchKey))
-    .sort((left, right) => {
-      const leftDate = String(left.created_at ?? '')
-      const rightDate = String(right.created_at ?? '')
-      return leftDate.localeCompare(rightDate) || Number(left.id) - Number(right.id)
-    })
-
-  if (postings.length === 0) return []
-
-  const receiptIds = Array.from(new Set(
-    postings
-      .filter(row => String(row.source_doc_type ?? '').toUpperCase() === 'GOODS_RECEIPT')
-      .map(row => Number(row.source_docentry ?? 0))
-      .filter(id => Number.isFinite(id) && id > 0),
-  ))
-  const issueIds = Array.from(new Set(
-    postings
-      .filter(row => String(row.source_doc_type ?? '').toUpperCase() === 'GOODS_ISSUE')
-      .map(row => Number(row.source_docentry ?? 0))
-      .filter(id => Number.isFinite(id) && id > 0),
-  ))
-  const deliveryIds = Array.from(new Set(
-    postings
-      .filter(row => String(row.source_doc_type ?? '').toUpperCase() === 'BR_DELIVERY')
-      .map(row => Number(row.source_docentry ?? 0))
-      .filter(id => Number.isFinite(id) && id > 0),
-  ))
-
-  const documentLabelsByKey = new Map<string, string>()
-
-  if (receiptIds.length > 0) {
-    const { data: receiptRows, error: receiptError } = await db
-      .from('goods_receipt')
-      .select('id, gr_no')
-      .in('id', receiptIds)
-
-    if (receiptError) throw receiptError
-
-    for (const receipt of (receiptRows ?? []) as BatchSourceReceiptRow[]) {
-      documentLabelsByKey.set(documentKey('GOODS_RECEIPT', receipt.id), receipt.gr_no || `GR #${receipt.id}`)
-    }
-  }
-
-  if (issueIds.length > 0) {
-    const { data: issueRows, error: issueError } = await db
-      .from('goods_issue')
-      .select('id, gi_no')
-      .in('id', issueIds)
-
-    if (issueError) throw issueError
-
-    for (const issue of (issueRows ?? []) as BatchSourceIssueRow[]) {
-      documentLabelsByKey.set(documentKey('GOODS_ISSUE', issue.id), issue.gi_no || `GI #${issue.id}`)
-    }
-  }
-
-  if (deliveryIds.length > 0) {
-    const { data: deliveryRows, error: deliveryError } = await db
-      .from('br_delivery')
-      .select('id, gi_no')
-      .in('id', deliveryIds)
-
-    if (deliveryError) throw deliveryError
-
-    for (const delivery of (deliveryRows ?? []) as BatchSourceIssueRow[]) {
-      documentLabelsByKey.set(
-        documentKey('BR_DELIVERY', delivery.id),
-        delivery.gi_no || `BR-DR #${delivery.id}`,
-      )
-    }
-  }
-
-  let runningQty = 0
-
-  return postings.map(row => {
-    const sourceDocType = String(row.source_doc_type ?? '')
-    const sourceDocEntry = Number(row.source_docentry ?? 0)
-    const signedQty = signedPostingQty(row)
-    runningQty += signedQty
-
-    return {
-      id: row.id,
-      sourceDocType,
-      sourceDocEntry,
-      documentLabel: documentLabelsByKey.get(documentKey(sourceDocType, sourceDocEntry)) || `${sourceDocType || 'Document'} #${sourceDocEntry || '-'}`,
-      itemCode: String(row.item_code ?? ''),
-      warehouseCode: String(row.warehouse_code ?? ''),
-      binCode: String(row.bin_code ?? ''),
-      qty: Number(row.qty ?? 0),
-      signedQty,
-      runningQty,
-      transferType: String(row.transfer_type ?? ''),
-      refType: String(row.ref_type ?? ''),
-      ref: String(row.ref ?? ''),
-      refType2: String(row.ref_type2 ?? ''),
-      ref2: String(row.ref2 ?? ''),
-      createdAt: String(row.created_at ?? ''),
-    }
   })
 }

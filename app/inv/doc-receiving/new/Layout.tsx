@@ -134,6 +134,11 @@ const getBuildingCycleOptionLabel = (
   activeCycle ? ` · Age ${activeCycle.cycleAge}` : ' · No active cycle'
 }`
 
+const getBuildingCycleOptionValue = (
+  building: FarmBuildingListRow,
+  activeCycle: GoodsReceiptOpenFlockBuilding | undefined,
+) => `${building.id ?? ''}:${activeCycle?.flockCardId ?? ''}`
+
 const DOC_RECEIVING_MODAL_GROUPS = [
   {
     key: 'receiving',
@@ -672,7 +677,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
 
     let cancelled = false
-    getFarmBuildingsForFlockCard(farmId)
+    getFarmBuildingsForFlockCard(farmId, { includeAllOpenCycles: true })
       .then(async rows => {
         const buildings = rows.filter(row => row.source === 'WAREHOUSE')
         const dates = await getFirstDocPlacementDates(buildings.flatMap(building =>
@@ -850,7 +855,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [farmBuildings])
 
   const selectableFarmBuildings = useMemo(() => farmBuildings.map(building => {
-    const activeCycle = farmOpenFlockBuildings.find(candidate => candidate.warehouseId === building.id)
+    const activeCycle = farmOpenFlockBuildings.find(candidate =>
+      candidate.warehouseId === building.id &&
+      candidate.flockCardId === building.flockCard?.id
+    )
     return { building, activeCycle }
   }).filter(entry => Number(entry.building.id ?? 0) > 0), [farmBuildings, farmOpenFlockBuildings])
 
@@ -1897,9 +1905,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     }
   }
 
-  const selectBuilding = (rowId: number | string, warehouseId: string) => {
+  const selectBuilding = (rowId: number | string, optionValue: string) => {
     const entry = selectableFarmBuildings.find(
-      candidate => candidate.building.id === Number(warehouseId),
+      candidate => getBuildingCycleOptionValue(candidate.building, candidate.activeCycle) === optionValue,
     )
     const building = entry?.activeCycle
     setDocDetailRows(current => current.map(row => row.id === rowId ? {
@@ -1946,9 +1954,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     })
   }
 
-  const selectModalBuilding = (warehouseId: string) => {
+  const selectModalBuilding = (optionValue: string) => {
     const entry = selectableFarmBuildings.find(
-      candidate => candidate.building.id === Number(warehouseId),
+      candidate => getBuildingCycleOptionValue(candidate.building, candidate.activeCycle) === optionValue,
     )
     const building = entry?.activeCycle
     setModalDocDetailRow(current => current ? {
@@ -2547,7 +2555,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                     </td>
                     {DOC_RECEIVING_DETAIL_COLUMNS.map(column => {
                       const selectedBuildingEntry = selectableFarmBuildings.find(entry =>
-                        entry.building.id === row.building_warehouse_id
+                        entry.building.id === row.building_warehouse_id &&
+                        (entry.activeCycle?.flockCardId ?? null) === row.flock_card_id
                       )
                       const selectedRowBuilding = farmOpenFlockBuildings.find(building =>
                         building.warehouseId === row.building_warehouse_id &&
@@ -2586,7 +2595,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                           {column.code === 'building' ? (
                             <div className="min-w-80">
                               <select
-                                value={row.building_warehouse_id ?? ''}
+                                value={selectedBuildingEntry
+                                  ? getBuildingCycleOptionValue(selectedBuildingEntry.building, selectedBuildingEntry.activeCycle)
+                                  : ''}
                                 disabled={!canEditDocDetails || loadingReferences || !receipt.farmId}
                                 onFocus={() => setBuildingRefreshKey(current => current + 1)}
                                 onChange={event => selectBuilding(row.id, event.target.value)}
@@ -2606,7 +2617,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                 {selectableFarmBuildings.map(({ building, activeCycle }) => (
                                   <option
                                     key={building.key}
-                                    value={building.id ?? ''}
+                                    value={getBuildingCycleOptionValue(building, activeCycle)}
                                   >
                                     {getBuildingCycleOptionLabel(building, activeCycle)}
                                   </option>
@@ -2749,6 +2760,10 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                       {groupIndex > 0 && <Separator />}
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {group.columns.map(column => {
+                          const selectedModalBuildingEntry = selectableFarmBuildings.find(entry =>
+                            entry.building.id === modalDocDetailRow.building_warehouse_id &&
+                            (entry.activeCycle?.flockCardId ?? null) === modalDocDetailRow.flock_card_id
+                          )
                           const selectedModalBuilding = farmOpenFlockBuildings.find(building =>
                             building.warehouseId === modalDocDetailRow.building_warehouse_id &&
                             building.flockCardId === modalDocDetailRow.flock_card_id
@@ -2784,7 +2799,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                               {column.code === 'building' ? (
                                 <>
                                   <select
-                                    value={modalDocDetailRow.building_warehouse_id ?? ''}
+                                    value={selectedModalBuildingEntry
+                                      ? getBuildingCycleOptionValue(selectedModalBuildingEntry.building, selectedModalBuildingEntry.activeCycle)
+                                      : ''}
                                     onFocus={() => setBuildingRefreshKey(current => current + 1)}
                                     onChange={event => selectModalBuilding(event.target.value)}
                                     className={`h-9 w-full rounded-md border px-3 py-2 text-sm text-stone-950 shadow-none outline-none focus:ring-2 dark:text-stone-950 ${hasAgeIssue
@@ -2798,7 +2815,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                                     {selectableFarmBuildings.map(({ building, activeCycle }) => (
                                       <option
                                         key={building.key}
-                                        value={building.id ?? ''}
+                                        value={getBuildingCycleOptionValue(building, activeCycle)}
                                       >
                                         {getBuildingCycleOptionLabel(building, activeCycle)}
                                       </option>

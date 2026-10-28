@@ -3,6 +3,7 @@
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
 import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
 import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
+import { quantityExceeds } from '@/lib/utils/quantityComparison'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 
@@ -453,7 +454,7 @@ export async function getGoodsIssueOnHandShortages(
   )
 
   return checkedRequirements.filter(
-    requirement => requirement.requiredQty > requirement.onHandQty,
+    requirement => quantityExceeds(requirement.requiredQty, requirement.onHandQty),
   )
 }
 

@@ -145,6 +145,22 @@ app/sql/
 
 Do not add deployable or migration SQL files beside route or module source files. Move a file between these folders when its state changes. SQL test fixtures may remain in their test directories.
 
+## SQL Execution Approval
+
+Obtain the user's explicit approval before executing any SQL statement against any database.
+
+This applies to:
+
+* read-only queries such as `SELECT` and `EXPLAIN`
+* inserts, updates, deletes, backfills, and repairs
+* DDL, migrations, functions, triggers, and RPC-related SQL
+* local, disposable, development, staging, and production databases
+* SQL-based tests that connect to a database
+
+Approval must identify the target database or environment and the SQL scope to be executed. A request to create, edit, review, or prepare SQL does not by itself authorize execution.
+
+Source inspection, editing SQL files, and static validation that does not connect to or execute against a database do not require SQL execution approval.
+
 ---
 
 ## Browser Rule
