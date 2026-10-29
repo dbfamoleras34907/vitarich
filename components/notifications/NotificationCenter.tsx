@@ -1,14 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Bell, CheckCheck, ExternalLink, RefreshCcw } from "lucide-react"
+import { Bell, CheckCheck, ExternalLink, History, Maximize2, Minimize2, RefreshCcw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import NotificationList from "./NotificationList"
+import LocalNotificationHistory from "./LocalNotificationHistory"
 import {
   getNotificationInbox,
   markAllNotificationsReadRequest,
@@ -31,6 +33,8 @@ export default function NotificationCenter({ collapsed = false }: { collapsed?: 
   const [authId, setAuthId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<"notifications" | "history">("notifications")
+  const [historyExpanded, setHistoryExpanded] = useState(false)
   const [notifications, setNotifications] = useState<NotificationInboxItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const refreshInFlight = useRef(false)
@@ -129,29 +133,57 @@ export default function NotificationCenter({ collapsed = false }: { collapsed?: 
             <TooltipContent side="right">Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ""}</TooltipContent>
           </Tooltip>
         ) : notificationButton}
-        <SheetContent side="left" showCloseButton={false} className="w-full gap-0 sm:max-w-md">
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className={`w-full gap-0 transition-[max-width] duration-200 ${activeTab === "history" && historyExpanded ? "sm:max-w-5xl" : activeTab === "history" ? "sm:max-w-xl lg:max-w-2xl" : "sm:max-w-md"}`}
+        >
           <SheetHeader className="border-b">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><SheetTitle>Notifications</SheetTitle><SheetDescription>{unreadCount} unread notification{unreadCount === 1 ? "" : "s"}</SheetDescription></div>
-              <div className="flex flex-wrap justify-end gap-1">
+              <div>
+                <SheetTitle>{activeTab === "notifications" ? "Notifications" : "Message History"}</SheetTitle>
+                <SheetDescription>
+                  {activeTab === "notifications"
+                    ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+                    : "Toast messages stored only in this browser."}
+                </SheetDescription>
+              </div>
+              {activeTab === "notifications" ? <div className="flex flex-wrap justify-end gap-1">
                 <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={() => void refresh(true)}>
                   <RefreshCcw className={`size-4 ${loading ? "animate-spin" : ""}`} />
                   {loading ? "Refreshing" : "Refresh"}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" disabled={unreadCount === 0} onClick={() => void markAllRead()}><CheckCheck className="size-4" />Mark all read</Button>
-              </div>
+              </div> : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setHistoryExpanded(current => !current)}
+                  aria-label={historyExpanded ? "Collapse message history" : "Expand message history"}
+                >
+                  {historyExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                  {historyExpanded ? "Collapse" : "Expand"}
+                </Button>
+              )}
             </div>
+            <Tabs value={activeTab} onValueChange={value => setActiveTab(value as "notifications" | "history")}>
+              <TabsList variant="line" className="mt-2 h-8">
+                <TabsTrigger value="notifications"><Bell className="size-4" />Notifications</TabsTrigger>
+                <TabsTrigger value="history"><History className="size-4" />Message History</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {loading ? <div className="space-y-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full" />)}</div> : (
+            {activeTab === "history" ? <LocalNotificationHistory onOpenItem={() => setOpen(false)} /> : loading ? <div className="space-y-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full" />)}</div> : (
               <NotificationList notifications={notifications} onOpen={notification => void openNotification(notification)} />
             )}
           </div>
-          <div className="border-t p-3">
+          {activeTab === "notifications" ? <div className="border-t p-3">
             <Button type="button" variant="outline" className="w-full" onClick={() => { setOpen(false); router.push("/notifications") }}>
               <ExternalLink className="size-4" />View all notifications
             </Button>
-          </div>
+          </div> : null}
         </SheetContent>
       </Sheet>
     </div>

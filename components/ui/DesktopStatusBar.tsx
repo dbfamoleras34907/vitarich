@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { isValidElement, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   CircleCheckIcon,
   InfoIcon,
@@ -10,8 +10,17 @@ import {
   XIcon,
 } from "lucide-react"
 import { useSonner, type ToastT } from "sonner"
+import { usePathname } from "next/navigation"
+import {
+  appendLocalNotificationHistory,
+  type LocalNotificationType,
+} from "@/lib/notifications/localNotificationHistory"
+import { useSidebar } from "@/lib/sidebar/SidebarProvider"
 
 type StatusItem = Pick<ToastT, "id" | "type" | "title" | "description">
+
+const STATUS_MESSAGE_DURATION_MS = 60_000
+const SIDEBAR_HIDDEN_ROUTES = new Set(["/signup_update", "/login", "/signup", "/logout"])
 
 const statusStyles = {
   success: "border-emerald-800 bg-emerald-700 text-white",
@@ -44,6 +53,14 @@ function resolveContent(content: StatusItem["title"] | StatusItem["description"]
   return typeof content === "function" ? content() : content
 }
 
+function contentText(content: ReactNode): string {
+  if (content === null || content === undefined || typeof content === "boolean") return ""
+  if (typeof content === "string" || typeof content === "number") return String(content)
+  if (Array.isArray(content)) return content.map(contentText).filter(Boolean).join(" ")
+  if (isValidElement<{ children?: ReactNode }>(content)) return contentText(content.props.children)
+  return ""
+}
+
 function toStatusItem(toast: ToastT): StatusItem {
   return {
     id: toast.id,
@@ -55,7 +72,9 @@ function toStatusItem(toast: ToastT): StatusItem {
 
 export function DesktopStatusBar() {
   const { toasts } = useSonner()
-  const [queue, setQueue] = useState<StatusItem[]>([])
+  const pathname = usePathname()
+  const { collapsed } = useSidebar()
+  const [current, setCurrent] = useState<StatusItem | null>(null)
   const observedIds = useRef(new Set<ToastT["id"]>())
 
   useEffect(() => {
@@ -64,37 +83,66 @@ export function DesktopStatusBar() {
       if (!activeIds.has(id)) observedIds.current.delete(id)
     }
 
-    setQueue((currentQueue) => {
-      const activeById = new Map(toasts.map((toast) => [toast.id, toast]))
-      const currentIds = new Set(currentQueue.map((item) => item.id))
-      const updatedQueue = currentQueue.map((item) => {
-        const updatedToast = activeById.get(item.id)
-        return updatedToast ? toStatusItem(updatedToast) : item
+    const additions = [...toasts]
+      .reverse()
+      .filter((toast) => !toast.jsx && !observedIds.current.has(toast.id))
+      .map(toStatusItem)
+
+    for (const item of additions) observedIds.current.add(item.id)
+
+    for (const item of additions) {
+      const title = contentText(resolveContent(item.title))
+      const description = contentText(resolveContent(item.description))
+      const message = [title, description].filter(Boolean).join(" ").trim()
+      if (!message) continue
+
+      const targetUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      const routeFallback = window.location.pathname.split("/").filter(Boolean).join(" / ") || "Home"
+      const moduleLabel = document.title.trim() && document.title !== "Vita FMS" ? document.title.trim() : routeFallback
+      appendLocalNotificationHistory({
+        type: normalizeType(item.type) as LocalNotificationType,
+        message,
+        moduleLabel,
+        targetUrl,
       })
+    }
 
-      const additions = [...toasts]
-        .reverse()
-        .filter((toast) => !toast.jsx && !currentIds.has(toast.id) && !observedIds.current.has(toast.id))
-        .map((toast) => {
-          observedIds.current.add(toast.id)
-          return toStatusItem(toast)
-        })
+    setCurrent((currentItem) => {
+      const activeById = new Map(toasts.map((toast) => [toast.id, toast]))
+      const updatedToast = currentItem ? activeById.get(currentItem.id) : undefined
+      const updatedCurrent = updatedToast ? toStatusItem(updatedToast) : currentItem
+      const latestAddition = additions[additions.length - 1]
 
-      return additions.length ? [...updatedQueue, ...additions] : updatedQueue
+      return latestAddition ?? updatedCurrent
     })
   }, [toasts])
 
-  const current = queue[0]
+  const currentId = current?.id
+
+  useEffect(() => {
+    if (currentId === undefined) return
+
+    const timeoutId = window.setTimeout(() => {
+      setCurrent((currentItem) => currentItem?.id === currentId ? null : currentItem)
+    }, STATUS_MESSAGE_DURATION_MS)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [currentId])
+
   if (!current) return null
 
   const type = normalizeType(current.type)
   const title = resolveContent(current.title)
   const description = resolveContent(current.description)
-  const queuedCount = queue.length - 1
+  const sidebarOffset = SIDEBAR_HIDDEN_ROUTES.has(pathname)
+    ? "lg:left-0"
+    : collapsed
+      ? "lg:left-16"
+      : "lg:left-[21rem]"
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-[1000000000] hidden h-8 items-center gap-2 border-t px-3 text-xs shadow-[0_-2px_8px_rgb(0_0_0/0.16)] lg:flex print:hidden ${statusStyles[type]}`}
+      className={`fixed right-0 bottom-0 left-0 z-[1000000000] hidden h-8 items-center gap-2 border-t px-3 text-xs shadow-[0_-2px_8px_rgb(0_0_0/0.16)] transition-[left] duration-200 lg:flex print:hidden ${sidebarOffset} ${statusStyles[type]}`}
       role={type === "error" || type === "warning" ? "alert" : "status"}
       aria-live={type === "error" || type === "warning" ? "assertive" : "polite"}
       aria-atomic="true"
@@ -104,13 +152,10 @@ export function DesktopStatusBar() {
         {title}
         {description ? <span className="ml-1 font-normal opacity-90">{description}</span> : null}
       </div>
-      {queuedCount > 0 ? (
-        <span className="shrink-0 tabular-nums opacity-85">{queuedCount} queued</span>
-      ) : null}
       <button
         type="button"
         className="-mr-1 flex size-7 shrink-0 items-center justify-center rounded-sm text-current hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1 focus-visible:ring-offset-transparent"
-        onClick={() => setQueue((currentQueue) => currentQueue.slice(1))}
+        onClick={() => setCurrent(null)}
         aria-label="Close status message"
       >
         <XIcon className="size-4" aria-hidden="true" />

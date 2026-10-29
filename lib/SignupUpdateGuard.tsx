@@ -10,7 +10,7 @@ export default function RouteGuard({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [checkedPath, setCheckedPath] = useState("")
   const [error, setError] = useState("")
-  const unrestricted = ["/login", "/signup", "/about", "/logout", "/signup_update"].includes(pathname)
+  const unrestricted = ["/login", "/signup", "/about", "/logout", "/signup_update", "/timeout"].includes(pathname)
   useEffect(() => {
     if (unrestricted) return
     let cancelled = false

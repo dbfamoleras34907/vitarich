@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
@@ -999,7 +1000,27 @@ export default function DeliveryIssueLinesTable({
             {showTransportFields && <>
               <div className="space-y-1.5"><Label required>Hauler Name</Label><Input value={mobileLine.haulerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { haulerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Plate Number</Label><Input value={mobileLine.plateNumber ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { plateNumber: event.target.value })} /></div>
-              <div className="space-y-1.5"><Label required>Destination</Label><Select value={mobileLine.destination ?? ''} onValueChange={value => updateAllocationGroup(mobileLineGroupKey!, { destination: value, liveSalesCustomerName: '' })}><SelectTrigger className="w-full"><SelectValue placeholder="Select destination" /></SelectTrigger><SelectContent><SelectItem value="Dressing Plant">Dressing Plant</SelectItem><SelectItem value="Live Sales">Live Sales</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5">
+                <Label required>Destination</Label>
+                <RadioGroup
+                  value={mobileLine.destination ?? ''}
+                  onValueChange={destination => updateAllocationGroup(mobileLineGroupKey!, {
+                    destination,
+                    liveSalesCustomerName: '',
+                  })}
+                  className="grid grid-cols-2 gap-2"
+                >
+                  {['Dressing Plant', 'Live Sales'].map(destination => (
+                    <Label
+                      key={destination}
+                      className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 font-normal hover:bg-muted/50"
+                    >
+                      <RadioGroupItem value={destination} />
+                      <span>{destination}</span>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
               <div className="space-y-1.5"><Label required>Destination Details</Label><Input value={mobileLine.liveSalesCustomerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { liveSalesCustomerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Truck Seal</Label><Input type="number" value={mobileLine.truckSeal ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { truckSeal: event.target.value === '' ? null : Number(event.target.value) })} /></div>
             </>}

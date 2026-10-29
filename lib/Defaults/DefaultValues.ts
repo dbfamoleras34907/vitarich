@@ -1448,6 +1448,17 @@ export const NavFolders: NavFolder[] = [
             approval: false,
           },
 
+          {
+            id: 87,
+            type: "Module",
+            title: "System Settings",
+            url: "/admin/system-settings",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
           // {
           //   id: 42,
           //   type: "Module",
