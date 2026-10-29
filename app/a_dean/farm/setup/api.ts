@@ -3,6 +3,7 @@ import type { WarehouseData } from '@/lib/types'
 import { getWarehouses } from '../../warehouse/api'
 import { resolveFarmWarehouseAssociations } from '@/lib/data/repositories/farmWarehouseAssociations'
 import { isUniqueConstraintViolation } from '@/lib/data/errors/postgres'
+import { normalizeFarmSetupAddress } from '@/lib/data/farmSetupPersistence'
 import {
   listFarmAssignableUsers,
   listFarmAssignedUsers,

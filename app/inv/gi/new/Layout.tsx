@@ -2276,9 +2276,36 @@ export default function NewGoodsIssue({
       toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
     }
+    // The Harvest grid displays transport details once per allocation group, while
+    // split batches are persisted as separate lines. Keep those hidden lines in
+    // sync with the visible row before validating and saving the document.
+    const harvestTransportByAllocationGroup = new Map<string, Pick<GoodsIssueLine,
+      'deliveredDate' | 'haulerName' | 'plateNumber' | 'destination' | 'liveSalesCustomerName' | 'truckSeal'
+    >>()
+    if (triggeredBy === 'BR-DR') {
+      completedLines.forEach(line => {
+        const key = getAllocationGroupKey(line)
+        if (!harvestTransportByAllocationGroup.has(key)) {
+          harvestTransportByAllocationGroup.set(key, {
+            deliveredDate: line.deliveredDate,
+            haulerName: line.haulerName,
+            plateNumber: line.plateNumber,
+            destination: line.destination,
+            liveSalesCustomerName: line.liveSalesCustomerName,
+            truckSeal: line.truckSeal,
+          })
+        }
+      })
+    }
+    const completedLinesForSave = triggeredBy === 'BR-DR'
+      ? completedLines.map(line => ({
+          ...line,
+          ...harvestTransportByAllocationGroup.get(getAllocationGroupKey(line)),
+        }))
+      : completedLines
     const linesToSave = isCleanup
-      ? completedLines.map(line => {
-          const group = completedLines.filter(candidate =>
+      ? completedLinesForSave.map(line => {
+          const group = completedLinesForSave.filter(candidate =>
             candidate.fromWarehouseCode === line.fromWarehouseCode && candidate.itemCode === line.itemCode,
           )
           const batchTotalQty = getTotalBatchOnHandForLine(line)
@@ -2289,7 +2316,7 @@ export default function NewGoodsIssue({
             varianceQty: Math.max(batchTotalQty - cleanedQty, 0),
           }
         })
-      : completedLines
+      : completedLinesForSave
 
     if (linesToSave.length === 0) {
       toast('Please select at least one item.')
