@@ -48,9 +48,13 @@ test('farm profile deployment script references only deployable SQL files', () =
 })
 
 test('warehouse loading paginates beyond the Data API row cap', () => {
+  const warehouseRepository = read('lib/data/repositories/warehouses.ts')
   const warehouseApi = read('app/a_dean/warehouse/api.ts')
+  const goodsReceiptReferences = read('lib/data/repositories/goodsReceiptReferences.ts')
 
-  assert.match(warehouseApi, /\.order\('id'\)/)
-  assert.match(warehouseApi, /\.range\(from, from \+ WAREHOUSE_FETCH_PAGE_SIZE - 1\)/)
-  assert.match(warehouseApi, /warehouses\.push\(\.\.\.page\)/)
+  assert.match(warehouseRepository, /\.order\('id'\)/)
+  assert.match(warehouseRepository, /\.range\(from, from \+ WAREHOUSE_FETCH_PAGE_SIZE - 1\)/)
+  assert.match(warehouseRepository, /warehouses\.push\(\.\.\.page\)/)
+  assert.match(warehouseApi, /getWarehouseRows\(\)/)
+  assert.equal((goodsReceiptReferences.match(/getWarehouseRows\(\{ activeOnly: true \}\)/g) ?? []).length, 2)
 })

@@ -1,6 +1,7 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { Items, WarehouseData } from '@/lib/types'
 import { activeApprovedFarmsQuery } from '@/lib/data/repositories/farms'
+import { getWarehouseRows } from '@/lib/data/repositories/warehouses'
 
 export type AssociatedWarehouse = {
   id?: number | null
@@ -287,17 +288,13 @@ export async function getGoodsReceiptReferences() {
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
   const hatcheryFarmsQuery = getActiveHatcheryFarms()
 
-  const [itemsResult, warehousesResult, assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
+  const [itemsResult, warehouseRows, assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, openFlockCardsResult] = await Promise.all([
     db
       .from('items')
       .select('id, item_code, item_name, description, unit_measure, inventory_uom, item_group, sub_item_group_id, sub_item_group_level_1_id, sub_item_group_level_2_id, sub_item_group_level_3_id, fms_group, manage_batch_numbers, batch_management_method, default_expiry_required, default_expiration_months')
       .eq('void', 1)
       .order('item_code'),
-    db
-      .from('i_warehouse')
-      .select('*')
-      .eq('is_active', true)
-      .order('whse_code'),
+    getWarehouseRows({ activeOnly: true }),
     assignedFarmCodesQuery,
     hatcheryFarmsQuery,
     db
@@ -342,7 +339,6 @@ export async function getGoodsReceiptReferences() {
   ])
 
   if (itemsResult.error) throw itemsResult.error
-  if (warehousesResult.error) throw warehousesResult.error
   if (conversionGroupsResult.error) throw conversionGroupsResult.error
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
@@ -350,8 +346,6 @@ export async function getGoodsReceiptReferences() {
   if (openFlockCardsResult.error) throw openFlockCardsResult.error
 
   const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
-  const warehouseRows = (warehousesResult.data ?? []) as WarehouseData[]
-
   return {
     items: (itemsResult.data ?? []) as Items[],
     warehouses: warehouseRows,
@@ -373,7 +367,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
   const assignedFarmCodesQuery = getAuthenticatedAssignedFarmCodes()
   const hatcheryFarmsQuery = getActiveHatcheryFarms()
 
-  const [assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, warehousesResult, openFlockCardsResult] = await Promise.all([
+  const [assignedFarmCodes, hatcheryFarms, conversionGroupsResult, itemGroupsResult, batchRulesResult, batchSeriesResult, warehouseRows, openFlockCardsResult] = await Promise.all([
     assignedFarmCodesQuery,
     hatcheryFarmsQuery,
     db
@@ -408,11 +402,7 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
       .select('id, code, name, prefix, suffix, separator, next_number, number_length, date_format, include_expiry_date, active')
       .eq('void', '1')
       .eq('active', true),
-    db
-      .from('i_warehouse')
-      .select('*')
-      .eq('is_active', true)
-      .order('whse_code'),
+    getWarehouseRows({ activeOnly: true }),
     db
       .from('flock_card')
       .select('id, farm_id, building_whse_id, building_code, building_name, card_no, flock_code, start_date')
@@ -426,12 +416,9 @@ export async function getGoodsReceiptPrefetchReferences(): Promise<GoodsReceiptP
   if (itemGroupsResult.error) throw itemGroupsResult.error
   if (batchRulesResult.error) throw batchRulesResult.error
   if (batchSeriesResult.error) throw batchSeriesResult.error
-  if (warehousesResult.error) throw warehousesResult.error
   if (openFlockCardsResult.error) throw openFlockCardsResult.error
 
   const { uomGroups, conversions } = buildUomOptions(conversionGroupsResult.data ?? [])
-  const warehouseRows = (warehousesResult.data ?? []) as WarehouseData[]
-
   return {
     farms: await getActiveFarmsByCodes(assignedFarmCodes),
     hatcheryFarms,

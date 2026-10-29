@@ -298,6 +298,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [savedLineByRowIndex, setSavedLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
   const [savedMortalityLineByRowIndex, setSavedMortalityLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
+  const [reversingMortalityLineId, setReversingMortalityLineId] = useState<number | null>(null);
   const [, startGridTransition] = useTransition();
   const deferredGridValues = useDeferredValue(gridValues);
   const [numberOfAnimals, setNumberOfAnimals] = useState(21500);
@@ -2807,8 +2808,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
   async function reverseMortalityThinning(rowIndex: number) {
     const savedLine = savedMortalityLineByRowIndex[rowIndex];
-    if (!savedLine) return;
+    if (!savedLine || reversingMortalityLineId != null) return;
 
+    setReversingMortalityLineId(savedLine.id);
     try {
       await reverseFlockCardMortalityThinning(savedLine.id, `Reversed mortality/thinning from flock card row age ${savedLine.age}`);
       setSavedMortalityLineByRowIndex(current => {
@@ -2843,6 +2845,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     } catch (error) {
       console.error(error);
       toast(`Unable to reverse mortality/thinning: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setReversingMortalityLineId(null);
     }
   }
 
@@ -4219,11 +4223,13 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                           ) : null}
                           {savedMortalityLine ? (
                             <DropdownMenuItem
-                              disabled={rowAgeLocked}
+                              disabled={rowAgeLocked || reversingMortalityLineId != null}
                               onClick={() => void reverseMortalityThinning(rowIndex)}
                             >
                               <RotateCcw className="size-4" />
-                              Reverse Mortality/Thinning
+                              {reversingMortalityLineId === savedMortalityLine.id
+                                ? "Reversing..."
+                                : "Reverse Mortality/Thinning"}
                             </DropdownMenuItem>
                           ) : null}
                           {!savedLine && !savedMortalityLine ? (
