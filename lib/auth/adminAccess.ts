@@ -1,6 +1,7 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import { isServiceUnavailableError } from "@/lib/networkError"
 import { getAccountAccessByAuthId } from "@/lib/data/repositories/registration.server"
+import { normalizeUserFmsTypes, userFmsTypesAreSubset } from "@/lib/auth/fmsAccess"
 
 export const USER_TYPE = {
   SUPER_ADMIN: 1,
@@ -15,6 +16,7 @@ export type ManagedUserProfile = {
   firstname: string | null
   lastname: string | null
   fms_type: string | null
+  fms_types: string[] | null
   user_type: number
   issuper: string | null
 }
@@ -36,7 +38,7 @@ export async function requireAdminActor(request: Request) {
 
   const { data, error } = await admin_db
     .from("users")
-    .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
+    .select("id, auth_id, email, firstname, lastname, fms_type, fms_types, user_type, issuper")
     .eq("auth_id", authData.user.id)
     .maybeSingle()
 
@@ -59,8 +61,9 @@ export function canManageUser(actor: ManagedUserProfile, target: ManagedUserProf
   if (actor.user_type === USER_TYPE.SUPER_ADMIN) return true
 
   return target.user_type === USER_TYPE.USER
-    && Boolean(actor.fms_type)
-    && actor.fms_type === target.fms_type
+    && normalizeUserFmsTypes(actor.fms_types, actor.fms_type).length > 0
+    && normalizeUserFmsTypes(target.fms_types, target.fms_type).length > 0
+    && userFmsTypesAreSubset(target.fms_types, actor.fms_types, target.fms_type, actor.fms_type)
 }
 
 export function adminAccessError(error: unknown) {

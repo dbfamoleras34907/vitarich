@@ -48,10 +48,16 @@ type TemplateForm = {
   is_active: boolean
 }
 
+function matchingFmsTypes(moduleTypes: FmsType[] | undefined, actor?: NotificationRuleAccess | null) {
+  if (!moduleTypes) return []
+  if (actor?.userType !== USER_TYPES.ADMIN) return moduleTypes
+  return moduleTypes.filter(type => actor.fmsTypes.includes(type))
+}
+
 function firstAvailableModule(catalog: NotificationCatalog, actor?: NotificationRuleAccess | null) {
   return catalog.find(module =>
     actor?.userType !== USER_TYPES.ADMIN
-      || Boolean(actor.fmsType && module.fmsTypes.includes(actor.fmsType)),
+      || matchingFmsTypes(module.fmsTypes, actor).length > 0,
   ) ?? catalog[0]
 }
 
@@ -61,9 +67,7 @@ function emptyForm(catalog: NotificationCatalog, actor?: NotificationRuleAccess 
     name: "",
     module_key: moduleDefinition?.key ?? "",
     event_key: moduleDefinition?.events[0]?.key ?? "",
-    source_fms_types: actor?.userType === USER_TYPES.ADMIN && actor.fmsType
-      ? [actor.fmsType]
-      : moduleDefinition?.fmsTypes ?? [],
+    source_fms_types: matchingFmsTypes(moduleDefinition?.fmsTypes, actor),
     recipient_fms_types: moduleDefinition?.defaultRecipientFmsTypes ?? [],
     user_types: actor?.userType === USER_TYPES.ADMIN ? [USER_TYPES.USER] : [],
     user_group_ids: [],
@@ -111,7 +115,7 @@ export default function Layout({ catalog }: { catalog: NotificationCatalog }) {
 
   const availableModules = useMemo(
     () => actor?.userType === USER_TYPES.ADMIN
-      ? catalog.filter(module => Boolean(actor.fmsType && module.fmsTypes.includes(actor.fmsType)))
+      ? catalog.filter(module => matchingFmsTypes(module.fmsTypes, actor).length > 0)
       : catalog,
     [actor, catalog],
   )
@@ -232,7 +236,7 @@ export default function Layout({ catalog }: { catalog: NotificationCatalog }) {
             {actor?.userType === USER_TYPES.ADMIN ? (
               <div className="flex gap-2 rounded-md border border-primary/25 bg-primary/5 p-3 text-sm">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-                <span>Your templates are limited to {actor.fmsType ?? "your"} modules and regular users.</span>
+                <span>Your templates are limited to {actor.fmsTypes.join(", ") || "your"} modules and regular users.</span>
               </div>
             ) : null}
           </CardHeader>
@@ -253,9 +257,7 @@ export default function Layout({ catalog }: { catalog: NotificationCatalog }) {
                         ...current,
                         module_key: moduleKey,
                         event_key: moduleDefinition?.events[0]?.key ?? "",
-                        source_fms_types: actor?.userType === USER_TYPES.ADMIN && actor.fmsType
-                          ? [actor.fmsType]
-                          : moduleDefinition?.fmsTypes ?? [],
+                        source_fms_types: matchingFmsTypes(moduleDefinition?.fmsTypes, actor),
                         recipient_fms_types: moduleDefinition?.defaultRecipientFmsTypes ?? [],
                       }))
                     }}

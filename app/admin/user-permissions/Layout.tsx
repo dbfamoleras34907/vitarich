@@ -12,12 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import PermissionEditor, { type PermissionEditorHandle } from "./PermissionEditor"
 import PermissionMatrix from "./PermissionMatrix"
 import { getManageableUsers, type PermissionFolder, type PermissionUser } from "./api"
+import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess"
 
 function userLabel(user: PermissionUser) {
   const name = [user.firstname, user.lastname].filter(Boolean).join(" ")
   const identity = name || user.email || "Unnamed user"
   const email = name && user.email ? ` — ${user.email}` : ""
-  const fmsType = user.fms_type ? ` — ${user.fms_type}` : ""
+  const types = normalizeUserFmsTypes(user.fms_types, user.fms_type)
+  const fmsType = types.length ? ` — ${types.join(", ")}` : ""
   return `${identity}${email}${fmsType}`
 }
 

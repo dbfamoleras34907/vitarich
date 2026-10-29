@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from '@/lib/auth/fmsAccess'
 
 interface Permission {
     ilink: string
@@ -18,11 +19,12 @@ export const usePermission = (link: string): boolean => {
             const profile = Array.isArray(session) ? session[0] : null
             const userType = Number(profile?.user_type ?? 3)
             if (userType === 1) return true
-            if (!profile?.fms_type) return false
+            const fmsTypes = normalizeUserFmsTypes(profile?.fms_types, profile?.fms_type)
+            if (fmsTypes.length === 0) return false
 
             const folder = NavFolders.find(item => item.items?.some(group =>
                 group.children.some(child => link === child.url || link.startsWith(`${child.url}/`))))
-            if (folder && !folder.fmsTypes?.includes(profile.fms_type)) return false
+            if (folder?.fmsTypes?.length && !userFmsTypesOverlap(fmsTypes, folder.fmsTypes)) return false
 
             const rawPermissions = getValue('UserPermission')
             const permissions: Permission[] =

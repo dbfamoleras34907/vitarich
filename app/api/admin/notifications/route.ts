@@ -22,6 +22,14 @@ function text(value: unknown, maxLength: number) {
   return String(value ?? "").trim().slice(0, maxLength)
 }
 
+function intersection<T extends string>(left: readonly T[], right: readonly T[]) {
+  return left.filter(value => right.includes(value))
+}
+
+function isSubset<T extends string>(values: readonly T[], allowed: readonly T[]) {
+  return values.every(value => allowed.includes(value))
+}
+
 export async function GET(request: Request) {
   try {
     const actor = await requireNotificationRuleActor(request, "view")
@@ -72,15 +80,15 @@ export async function POST(request: Request) {
     }
 
     if (actor.userType === USER_TYPES.ADMIN) {
-      if (!actor.fmsType || !moduleDefinition.fmsTypes.includes(actor.fmsType)) throw new Error("FORBIDDEN")
-      sourceFmsTypes = [actor.fmsType]
+      sourceFmsTypes = intersection(moduleDefinition.fmsTypes, actor.fmsTypes)
+      if (sourceFmsTypes.length === 0) throw new Error("FORBIDDEN")
       userTypes = [USER_TYPES.USER]
     }
 
     if (id) {
       const existing = await getNotificationRuleById(id)
       if (!existing) return NextResponse.json({ error: "Notification template not found." }, { status: 404 })
-      if (actor.userType === 2 && (!actor.fmsType || !existing.source_fms_types.includes(actor.fmsType))) {
+      if (actor.userType === 2 && !isSubset(existing.source_fms_types, actor.fmsTypes)) {
         throw new Error("FORBIDDEN")
       }
     }
@@ -134,7 +142,7 @@ export async function DELETE(request: Request) {
 
     const existing = await getNotificationRuleById(id)
     if (!existing) return NextResponse.json({ success: true })
-    if (actor.userType === 2 && (!actor.fmsType || !existing.source_fms_types.includes(actor.fmsType))) {
+    if (actor.userType === 2 && !isSubset(existing.source_fms_types, actor.fmsTypes)) {
       throw new Error("FORBIDDEN")
     }
 

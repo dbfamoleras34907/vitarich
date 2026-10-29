@@ -15,6 +15,7 @@ import {
   type PermissionRow,
   type PermissionUser,
 } from "./api"
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 function permissionKey(row: PermissionRow, action: PermissionAction) {
   return `${row.group}|${action === "list" ? row.title : `${row.title}/${action}`}`
@@ -64,8 +65,11 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
   const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set())
 
   const folders = useMemo(() => permissionFolders
-    .filter(folder => !user.fms_type || !folder.fmsTypes?.length || folder.fmsTypes.includes(user.fms_type as "Broiler" | "Breeder" | "Hatchery"))
-    .filter(folder => folder.rows.length), [permissionFolders, user.fms_type])
+    .filter(folder => {
+      const types = normalizeUserFmsTypes(user.fms_types, user.fms_type)
+      return types.length === 0 || !folder.fmsTypes?.length || userFmsTypesOverlap(types, folder.fmsTypes)
+    })
+    .filter(folder => folder.rows.length), [permissionFolders, user.fms_type, user.fms_types])
   const rows = useMemo<PermissionRow[]>(() => folders.flatMap(folder => folder.rows), [folders])
 
   useEffect(() => {

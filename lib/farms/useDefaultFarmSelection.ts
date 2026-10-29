@@ -18,7 +18,7 @@ let pendingWrites = 0;
 function withSavedDefaultFarm(session: unknown, farm: SavedDefaultFarm) {
   if (!Array.isArray(session) || !session.length) return session;
   return session.map((profile, index) => index === 0 && profile && typeof profile === "object"
-    ? { ...profile, default_farm: farm.code, fms_type: farm.fmsType }
+    ? { ...profile, default_farm: farm.code }
     : profile);
 }
 

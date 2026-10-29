@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getPermissionMatrix, type PermissionAction, type PermissionFolder, type PermissionMatrixUser } from "./api"
+import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess"
 
 const matrixActions: PermissionAction[] = ["list", "view", "edit", "void", "approval"]
 
@@ -72,7 +73,7 @@ export default function PermissionMatrix({ permissionFolders }: { permissionFold
       username: user.email ?? "",
       email: user.email ?? "",
       accountOwner: userLabel(user),
-      fmsType: user.fms_type ?? "",
+      fmsType: normalizeUserFmsTypes(user.fms_types, user.fms_type).join(", "),
       userType: user.user_type === 1 ? "Super Admin" : user.user_type === 2 ? "Admin" : "User",
       accountCreationDate: user.created_at ?? "",
       deactivationDate: isActive(user) ? null : user.updated_at ?? null,
@@ -94,7 +95,7 @@ export default function PermissionMatrix({ permissionFolders }: { permissionFold
         username: user.email ?? "",
         email: user.email ?? "",
         accountOwner: userLabel(user),
-        fmsType: user.fms_type ?? "",
+        fmsType: normalizeUserFmsTypes(user.fms_types, user.fms_type).join(", "),
         userType: user.user_type === 1 ? "Super Admin" : user.user_type === 2 ? "Admin" : "User",
         accountCreationDate: user.created_at ?? null,
         deactivationDate: isActive(user) ? null : user.updated_at ?? null,
@@ -152,7 +153,7 @@ export default function PermissionMatrix({ permissionFolders }: { permissionFold
             {user.email && userLabel(user) !== user.email && <p className="text-[10px] leading-tight text-muted-foreground">{user.email}</p>}
           </div>
           <div className="flex items-center gap-1">
-            {user.fms_type && <Badge className="h-5 px-1.5 text-[10px]" variant="outline">{user.fms_type}</Badge>}
+            {normalizeUserFmsTypes(user.fms_types, user.fms_type).map(type => <Badge key={type} className="h-5 px-1.5 text-[10px]" variant="outline">{type}</Badge>)}
             <Badge className="h-5 px-1.5 text-[10px]" variant="secondary">{user.user_type === 1 ? "Super Admin" : user.user_type === 2 ? "Admin" : "User"}</Badge>
           </div>
         </div>

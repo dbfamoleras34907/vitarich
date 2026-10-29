@@ -6,7 +6,7 @@ export class RegistrationError extends Error {
   constructor(message: string, public status = 400) { super(message) }
 }
 
-export async function createRegistrationAccount(input: { email?: unknown; password?: unknown }, creator?: { authId: string; fmsType: string | null }) {
+export async function createRegistrationAccount(input: { email?: unknown; password?: unknown }, creator?: { authId: string; fmsTypes: string[] }) {
   const email = typeof input.email === "string" ? input.email.trim() : ""
   const password = typeof input.password === "string" ? input.password : ""
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RegistrationError("Please enter a valid email.")
@@ -19,7 +19,7 @@ export async function createRegistrationAccount(input: { email?: unknown; passwo
   // The Auth trigger creates the pending profile and registration event in this transaction.
   const { data, error } = await admin_db.auth.admin.createUser({
     email, password, email_confirm: true, ban_duration: "876000h",
-    app_metadata: { registration_flow: "approval_first", ...(creator ? { registration_created_by: creator.authId, registration_fms_type: creator.fmsType } : {}) },
+    app_metadata: { registration_flow: "approval_first", ...(creator ? { registration_created_by: creator.authId, registration_fms_types: creator.fmsTypes } : {}) },
   })
   if (error) throw new RegistrationError(error.message)
   if (!data.user) throw new RegistrationError("Unable to register your account.")
