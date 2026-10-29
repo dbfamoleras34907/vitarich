@@ -2,6 +2,8 @@
 import { db } from "@/lib/Supabase/supabaseClient"
 import { WarehouseData } from "@/lib/types"
 
+const WAREHOUSE_FETCH_PAGE_SIZE = 1000
+
 type SupabaseErrorLike = {
     message?: string
     details?: string
@@ -87,9 +89,24 @@ export async function getWarehouses(id?: string) {
             if (error) throw error;
             return { success: true, data: data as WarehouseData };
         }
-        const { data, error } = await query;
-        if (error) throw error;
-        return { success: true, data: data as WarehouseData[] };
+        const warehouses: WarehouseData[] = []
+
+        for (let from = 0; ; from += WAREHOUSE_FETCH_PAGE_SIZE) {
+            const { data, error } = await db
+                .from('i_warehouse')
+                .select('*')
+                .order('id')
+                .range(from, from + WAREHOUSE_FETCH_PAGE_SIZE - 1)
+
+            if (error) throw error
+
+            const page = (data ?? []) as WarehouseData[]
+            warehouses.push(...page)
+
+            if (page.length < WAREHOUSE_FETCH_PAGE_SIZE) break
+        }
+
+        return { success: true, data: warehouses };
 
     } catch (error: unknown) {
         const message = getErrorMessage(error, 'Unable to fetch warehouse');

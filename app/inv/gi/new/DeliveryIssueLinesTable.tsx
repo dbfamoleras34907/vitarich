@@ -304,7 +304,7 @@ export default function DeliveryIssueLinesTable({
     <>
     {enableMobileLineModal && issue.status === 'Draft' && (
       <div className="flex justify-end border-b bg-muted/20 p-2 md:hidden">
-        <Button type="button" size="sm" onClick={addMobileLine} disabled={!canEdit}>
+        <Button type="button" size="sm" onClick={addMobileLine}>
           <Plus className="size-4" /> Add Line
         </Button>
       </div>

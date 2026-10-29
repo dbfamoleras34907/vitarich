@@ -3,6 +3,7 @@ import type { WarehouseData } from '@/lib/types'
 import { getWarehouses } from '../../warehouse/api'
 import { resolveFarmWarehouseAssociations } from '@/lib/data/repositories/farmWarehouseAssociations'
 import { isUniqueConstraintViolation } from '@/lib/data/errors/postgres'
+import { normalizeFarmSetupAddress } from '@/lib/data/farmSetupPersistence'
 
 export type FarmSetupFormData = Record<string, string>
 
@@ -237,12 +238,7 @@ export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
 
   return {
     farm: farmData.farm,
-    address: {
-      address: farmData.farm.address ?? '',
-      barangay: farmData.farm.barangay ?? farmData.address?.barangay ?? '',
-      city: farmData.farm.city ?? farmData.address?.city ?? '',
-      province: farmData.farm.region ?? farmData.address?.province ?? '',
-    },
+    address: normalizeFarmSetupAddress(farmData),
     warehouses: assignedWarehouseRows.map(toFarmSetupWarehouseDraft),
     assignableWarehouses: assignableWarehouseRows.map(toFarmSetupWarehouseDraft),
   }
