@@ -37,11 +37,11 @@ import {
 } from "./newv2/api";
 
 import { usePermission } from "@/hooks/usePermission";
-import { useGlobalContext } from "@/lib/context/GlobalContext";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function fmtDateTime(v: string | null | undefined) {
   if (!v) return "";
@@ -91,10 +91,10 @@ export default function EggHatchTable() {
 
   const [items, setItems] = useState<RowDataKey[]>([]);
   const [loading, setLoading] = useState(false);
-  const { getValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
   const defaultFarmFilters = useMemo(
-    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
-    [getValue],
+    () => buildDefaultFarmInitialFilters(parameters.farmId),
+    [parameters.farmId],
   );
 
   const canView = usePermission("/jmb/egghatcherv2/view");
@@ -157,6 +157,8 @@ export default function EggHatchTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
@@ -169,12 +171,13 @@ export default function EggHatchTable() {
 
       const mapped =
         Array.isArray(rows)
-          ? rows.map(
+          ? rows.filter(item => isWithinHatcheryDateRange(item.daterec ?? item.created_at, parameters.dateFrom, parameters.dateTo)).map(
               (
                 item: EggHatcheryProcess,
                 index: number,
               ) => ({
                 id: item.id,
+                created_by: item.created_by,
 
                 "#": index + 1,
 
@@ -204,7 +207,7 @@ export default function EggHatchTable() {
             )
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.egg_ref));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.egg_ref));
     } catch (e) {
       console.error(e);
 
@@ -212,11 +215,11 @@ export default function EggHatchTable() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     router.prefetch("/jmb/egghatcherv2/newv2");
@@ -310,6 +313,8 @@ export default function EggHatchTable() {
           </Button>
         </div>
       </div>
+
+      <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
 
       <div className="mt-4">
         <DynamicTable

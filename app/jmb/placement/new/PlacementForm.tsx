@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   createPlacement,
   createPlacementBatch,
@@ -227,6 +228,7 @@ export default function PlacementForm() {
     source: "",
     remarks: "",
   });
+  useSyncDefaultFarm(form.farm_id);
   const [rows, setRows] = useState<PlacementRow[]>([]);
   const [history, setHistory] = useState<Placement[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);

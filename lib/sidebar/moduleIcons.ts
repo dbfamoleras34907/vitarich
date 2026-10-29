@@ -45,7 +45,7 @@ const MODULE_ICON_RULES: Array<[string[], LucideIcon]> = [
   [["broiler", "flock"], Drumstick],
   [["warehouse"], Warehouse],
   [["bin"], Archive],
-  [["item stock in", "goods receipt", "receiving"],Download],
+  [["feed stock in", "item stock in", "goods receipt", "receiving"],Download],
   [["item stock out", "goods issue", "dispatch"],  Upload],
   [["item master", "item"], Package],
   [["uom", "unit"], Scale],

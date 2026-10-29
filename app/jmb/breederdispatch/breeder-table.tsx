@@ -17,8 +17,10 @@ import {
   Search,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import {
   cancelBreederDispatch,
   listBreederDispatches,
@@ -62,12 +65,12 @@ function statusClass(status: BreederDispatchRecord["status"]) {
 export default function BreederDispatchTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
+  const parameters = useBreederListParameters();
   const [records, setRecords] = useState<BreederDispatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [farmFilter, setFarmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
@@ -78,7 +81,7 @@ export default function BreederDispatchTable() {
     setLoading(true);
     setError("");
     try {
-      setRecords(await listBreederDispatches());
+      setRecords(await attachProcessListAttributions(await listBreederDispatches()));
     } catch (loadError) {
       console.error(loadError);
       setError("Unable to load breeder dispatches. Run breeder_dispatch_tables.sql, then dispatch_category_sources.sql, in Supabase.");
@@ -93,26 +96,16 @@ export default function BreederDispatchTable() {
   }, [load, router]);
   useEffect(() => setValue("loading_g", loading || working), [loading, setValue, working]);
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, BreederDispatchRecord>();
-    records.forEach((record) => unique.set(record.farm_id, record));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((record) => ({
-        code: String(record.farm_id),
-        name: formatFarmNameCode(record.farm_name, record.farm_code),
-      })),
-    ];
-  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
-      if (farmFilter && farmFilter !== "__all__" && String(record.farm_id) !== farmFilter) return false;
+      if (parameters.farmId && String(record.farm_id) !== parameters.farmId) return false;
+      if (!isWithinDateRange(record.dispatch_date, parameters.dateFrom, parameters.dateTo)) return false;
       if (statusFilter !== "All" && record.status !== statusFilter) return false;
       return !query || [record.document_no, record.farm_name, record.destination, record.hauler_name, record.plate_number]
         .some((value) => String(value ?? "").toLowerCase().includes(query));
     });
-  }, [farmFilter, records, search, statusFilter]);
+  }, [parameters.dateFrom, parameters.dateTo, parameters.farmId, records, search, statusFilter]);
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -155,17 +148,20 @@ export default function BreederDispatchTable() {
             <Stat icon={<Bird className="size-3.5" />} label="Units dispatched" value={postedUnits} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-3 border-b p-4">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search document, farm, destination, hauler, or plate..." className="pl-9" /></div>
-          <SearchableCombobox label="Farm" items={farms} value={farmFilter} onValueChange={(value) => { setFarmFilter(value); setPage(1); }} placeholder="All farms" showCode codePosition="suffix" className="w-full lg:w-72" />
-          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm lg:w-40"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <BreederListParameters {...parameters}>
+              <div className="space-y-2 lg:w-40"><Label>Status</Label><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select></div>
+            </BreederListParameters>
+            <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+          </div>
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table>
-          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Assigned TA</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
+            {loading ? <TableRow><TableCell colSpan={11} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
             {!loading && paginatedRecords.map((record, index) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
                 <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
@@ -176,6 +172,8 @@ export default function BreederDispatchTable() {
                 <TableCell className="text-right tabular-nums">{Number(record.population_qty).toLocaleString()}</TableCell>
                 <TableCell className="text-right tabular-nums">{Number(record.egg_qty).toLocaleString()}</TableCell>
                 <TableCell><span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(record.status)}`}>{record.status}</span></TableCell>
+                <TableCell>{record.createdByName}</TableCell>
+                <TableCell><span className="block max-w-40 truncate" title={record.assignedTaLabel}>{record.assignedTaLabel}</span></TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -190,7 +188,7 @@ export default function BreederDispatchTable() {
                 </TableCell>
               </TableRow>
             ))}
-            {!loading && !filtered.length ? <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
+            {!loading && !filtered.length ? <TableRow><TableCell colSpan={11} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
         <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="dispatches" onPageChange={setPage} />

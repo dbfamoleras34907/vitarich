@@ -12,6 +12,7 @@ import { Loader2, ArrowLeft } from 'lucide-react'
 import { getHatchClassificationById } from '../../updatefd/api'
 import { HatchClassificationRow } from '../../new/api'
 import { usePermission } from '@/hooks/usePermission'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 
  
 export default function Layout() {
@@ -29,6 +30,7 @@ export default function Layout() {
 
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<HatchClassificationRow | null>(null)
+  useSyncDefaultFarm(data?.farm_id)
 
   useEffect(() => {
     if (!id) return

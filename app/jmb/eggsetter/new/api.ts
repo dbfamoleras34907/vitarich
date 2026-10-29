@@ -1,57 +1,18 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { DefaultFarm } from "@/lib/types";
+import {
+  listEggSetterReferenceOptions,
+  type EggSetterReferenceOption,
+} from "@/lib/data/repositories/eggSetter";
 
-export type HatchClassiRefOption = {
-  classi_ref_no: string;
-  good_egg: number | null;
-};
-
-type SetterRefNoViewRow = {
-  egg_ref_no: string | null;
-};
+export type HatchClassiRefOption = EggSetterReferenceOption;
 
 export { listSetterReferenceHistory, type SetterRefHistory } from "@/lib/data/repositories/eggSetter";
 
 export async function listHatchClassiRefs(
   includeRefs: string[] = [],
 ): Promise<HatchClassiRefOption[]> {
-  const { data, error } = await db
-    .from("view_setter_ref_no")
-    .select("egg_ref_no")
-    .not("egg_ref_no", "is", null)
-    .order("egg_ref_no", { ascending: true });
-
-  if (error) throw error;
-
-  const refs = Array.from(
-    new Set([
-      ...((data ?? []) as SetterRefNoViewRow[])
-        .map((row) => String(row.egg_ref_no ?? "").trim())
-        .filter(Boolean),
-      ...includeRefs.map((ref) => ref.trim()).filter(Boolean),
-    ]),
-  );
-
-  if (!refs.length) return [];
-
-  const { data: hatchRows, error: hatchError } = await db
-    .from("hatch_classification")
-    .select("classi_ref_no, good_egg")
-    .in("classi_ref_no", refs);
-
-  if (hatchError) throw hatchError;
-
-  const goodEggMap = new Map(
-    ((hatchRows ?? []) as HatchClassiRefOption[]).map((row) => [
-      row.classi_ref_no,
-      row.good_egg,
-    ]),
-  );
-
-  return refs.map((ref) => ({
-    classi_ref_no: ref,
-    good_egg: goodEggMap.get(ref) ?? null,
-  }));
+  return listEggSetterReferenceOptions(includeRefs);
 }
 
 export type SetterIncubation = {

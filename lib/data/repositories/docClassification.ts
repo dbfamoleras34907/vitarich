@@ -36,15 +36,14 @@ export type ChickGradingProcess = {
 
   total_egg_set: number;
 
-  // computed from view
+  // generated/read-only fields
   total_chicks: number | null;
   good_quality_chicks: number | null;
   quality_grade_rate: number | null;
   cull_rate: number | null;
 };
 
-const READ_TABLE = "v_chick_grading_process";
-const WRITE_TABLE = "chick_grading_process";
+const TABLE = "chick_grading_process";
 
 export type ChickGradingProcessCreate = {
   batch_code: string;
@@ -75,41 +74,28 @@ export type ChickGradingProcessCreate = {
 
 export type ChickGradingProcessUpdate = Partial<ChickGradingProcessCreate>;
 
-async function getClassificationFarms(ids: number[]) {
-  const farms = new Map<number, number | null>();
-  for (let index = 0; index < ids.length; index += 100) {
-    const { data, error } = await db.from(WRITE_TABLE)
-      .select("id, farm_id").in("id", ids.slice(index, index + 100));
-    if (error) throw error;
-    for (const row of data ?? []) farms.set(row.id, row.farm_id);
-  }
-  return farms;
-}
-
 export async function listChickGradingProcess() {
   const { data, error } = await db
-    .from(READ_TABLE)
+    .from(TABLE)
     .select("*")
     .order("id", { ascending: false });
 
   if (error) throw error;
   const rows = (data ?? []) as ChickGradingProcess[];
   const totals = await getSetterEggTotals(rows.map((row) => row.egg_ref_no ?? ""));
-  const farms = await getClassificationFarms(rows.map((row) => row.id));
-  return rows.map((row) => ({ ...row, farm_id: farms.get(row.id) ?? null, total_egg_set: totals.get(row.egg_ref_no?.trim() ?? "") ?? 0 }));
+  return rows.map((row) => ({ ...row, total_egg_set: totals.get(row.egg_ref_no?.trim() ?? "") ?? 0 }));
 }
 
 export async function getChickGradingProcessById(id: number) {
   const { data, error } = await db
-    .from(READ_TABLE)
+    .from(TABLE)
     .select("*")
     .eq("id", id)
     .single();
 
   if (error) throw error;
   const totals = await getSetterEggTotals([data.egg_ref_no ?? ""]);
-  const farms = await getClassificationFarms([data.id]);
-  return { ...data, farm_id: farms.get(data.id) ?? null, total_egg_set: totals.get(data.egg_ref_no?.trim() ?? "") ?? 0 } as ChickGradingProcess;
+  return { ...data, total_egg_set: totals.get(data.egg_ref_no?.trim() ?? "") ?? 0 } as ChickGradingProcess;
 }
 
 export async function createChickGradingProcess(
@@ -117,7 +103,7 @@ export async function createChickGradingProcess(
   requestKey: string,
 ) {
   const { data, error } = await db
-    .from(WRITE_TABLE)
+    .from(TABLE)
     .upsert([{ ...payload, request_key: requestKey }], {
       onConflict: "request_key",
       ignoreDuplicates: true,
@@ -130,7 +116,7 @@ export async function createChickGradingProcess(
   if (data) return await getChickGradingProcessById(data.id);
   // A retry of the same completed form must not post inventory or events again.
   const { data: existing, error: lookupError } = await db
-    .from(WRITE_TABLE)
+    .from(TABLE)
     .select("id")
     .eq("request_key", requestKey)
     .single();
@@ -143,7 +129,7 @@ export async function updateChickGradingProcess(
   payload: ChickGradingProcessUpdate,
 ) {
   const { error } = await db
-    .from(WRITE_TABLE)
+    .from(TABLE)
     .update({
       ...payload,
       updated_at: new Date().toISOString(),
@@ -156,7 +142,7 @@ export async function updateChickGradingProcess(
 }
 
 export async function deleteChickGradingProcess(id: number) {
-  const { error } = await db.from(WRITE_TABLE).delete().eq("id", id);
+  const { error } = await db.from(TABLE).delete().eq("id", id);
   if (error) throw error;
   return true;
 }
@@ -205,7 +191,7 @@ export async function generateNextBatchCode(
   const needle = `-B${mmddyy}-`;
 
   const { data, error } = await db
-    .from(WRITE_TABLE)
+    .from(TABLE)
     .select("batch_code")
     .ilike("batch_code", `%${needle}%`)
     .order("batch_code", { ascending: false })

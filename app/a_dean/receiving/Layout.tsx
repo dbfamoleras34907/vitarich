@@ -11,11 +11,10 @@ import Breadcrumb from '@/lib/Breadcrumb'
 import DynamicTable from '@/components/ui/DataTableV2'
 import { ClipboardCopy, Copy, HandCoins, Map, Plus, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
-import SearchableCombobox from '@/components/SearchableCombobox'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getReceivingList, getPendingReceivingDispatches } from '@/lib/data/repositories/receivingLists'
 import { usePermission } from '@/hooks/usePermission'
-import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from '@/components/hatchery/HatcheryListParameters'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -35,8 +34,9 @@ export default function Layout() {
     const [loadingReceived, setLoadingReceived] = useState(true)
     const [farms, setFarms] = useState<AssignedFarmOption[]>([])
     const [loadingFarms, setLoadingFarms] = useState(true)
-    const [selectedFarmId, setSelectedFarmId] = useState('')
-    useSyncDefaultFarm(selectedFarmId)
+    const parameters = useHatcheryListParameters()
+    const selectedFarmId = parameters.farmId
+    const setParameterFarmId = parameters.setFarmId
     const [loadedFarmId, setLoadedFarmId] = useState<number | null>(null)
 
 
@@ -162,15 +162,12 @@ export default function Layout() {
         const loadFarms = async () => {
             setLoadingFarms(true)
             setFarms([])
-            setSelectedFarmId('')
-            await listAssignedUserFarmOptions()
+            await listAssignedUserFarmOptions(['HA'])
                 .then(options => {
                     if (cancelled) return
                     setFarms(options)
-                    const preferred = options.find(farm =>
-                        String(farm.id) === defaultFarmId || farm.code === defaultFarmId
-                    )
-                    setSelectedFarmId(String(preferred?.id ?? ''))
+                    const preferred = options.find(farm => String(farm.id) === defaultFarmId || farm.code === defaultFarmId)
+                    if (preferred) setParameterFarmId(String(preferred.id), preferred)
                 })
                 .catch(error => {
                     if (!cancelled) toast.error(error instanceof Error ? error.message : 'Unable to load farms.')
@@ -179,7 +176,7 @@ export default function Layout() {
         }
         void loadFarms()
         return () => { cancelled = true }
-    }, [userId, defaultFarmId])
+    }, [userId, defaultFarmId, setParameterFarmId])
 
     useEffect(() => {
         refreshSessionx(route)
@@ -202,9 +199,9 @@ export default function Layout() {
                 getReceivingList(currentFarmId),
             ]).then(([pending, received]) => {
                 if (cancelled) return
-                if (pending.status === 'fulfilled') setinitialRows(pending.value)
+                if (pending.status === 'fulfilled') setinitialRows(pending.value.filter(row => isWithinHatcheryDateRange(String(row.doc_date ?? row.created_at ?? ''), parameters.dateFrom, parameters.dateTo)))
                 else toast.error('Unable to load items for receiving.')
-                if (received.status === 'fulfilled') setReceivedRows(received.value)
+                if (received.status === 'fulfilled') setReceivedRows(received.value.filter(row => isWithinHatcheryDateRange(row.recieving_items?.[0]?.created_at, parameters.dateFrom, parameters.dateTo)))
                 else toast.error('Unable to load received items.')
                 setLoadedFarmId(currentFarmId)
                 setLoading(false)
@@ -213,7 +210,7 @@ export default function Layout() {
         }
         void loadRows()
         return () => { cancelled = true }
-    }, [currentFarmId, currentFarmRef])
+    }, [currentFarmId, currentFarmRef, parameters.dateFrom, parameters.dateTo])
 
     useEffect(() => {
         setValue("loading_g", loading)
@@ -255,16 +252,8 @@ export default function Layout() {
                     {/* <Button onClick={() => console.log(getValue("DefaultFarmId"))}>Check getValue("defaultFarmId")</Button> */}
                 </div>
             </div>
-            <div className="mx-4 mb-4 max-w-md space-y-2">
-                <SearchableCombobox
-                    label="Farm"
-                    required
-                    items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
-                    value={selectedFarmId}
-                    onValueChange={setSelectedFarmId}
-                    disabled={loadingFarms}
-                    placeholder={loadingFarms ? 'Loading farms...' : 'Select farm'}
-                />
+            <div className="mx-4 mb-4 space-y-2">
+                <HatcheryListParameters {...parameters} />
                 {!loadingFarms && farms.length === 0 && (
                     <p className="text-sm text-muted-foreground">No active farms are associated with your account.</p>
                 )}

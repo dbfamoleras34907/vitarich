@@ -19,6 +19,7 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { getBroilerDepletionSummary } from "@/lib/broiler/performance";
 import { getUserFarms } from "@/app/admin/user/new/api";
 import {
@@ -189,8 +190,9 @@ export default function Layout() {
     const defaultFarmId = getValue("DefaultFarmId");
     const defaultFarm = farms.find(farm => String(farm.id) === String(defaultFarmId));
 
-    return defaultFarm ? String(defaultFarm.id) : farms[0] ? String(farms[0].id) : "";
+    return defaultFarm ? String(defaultFarm.id) : "";
   }, [farms, getValue, selectedFarmId]);
+  useSyncDefaultFarm(effectiveSelectedFarmId);
 
   const selectedFarm = useMemo(
     () => farms.find(farm => String(farm.id) === effectiveSelectedFarmId) ?? null,
@@ -286,11 +288,6 @@ export default function Layout() {
       cancelled = true;
     };
   }, [assignedFarmCodes.length, sessionUser?.id]);
-
-  useEffect(() => {
-    if (selectedFarmId || farms.length !== 1) return;
-    setSelectedFarmId(String(farms[0].id));
-  }, [farms, selectedFarmId]);
 
   useEffect(() => {
     if (!selectedFarm) {

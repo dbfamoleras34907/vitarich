@@ -131,9 +131,7 @@ export function useGlobalDefaults() {
      batch loader
   ------------------------------------------------------- */
 
-  const setGlobals = async ({
-    autoSelectSingleFarm = false,
-  }: { autoSelectSingleFarm?: boolean } = {}) => {
+  const setGlobals = async () => {
     setLoading(true);
     setValue("loading_g", true);
 
@@ -168,13 +166,11 @@ export function useGlobalDefaults() {
       const currentFarmIsAvailable = assignedFarms.some(
         farm => String(farm.id) === String(getValue("DefaultFarmId")),
       );
-      if (autoSelectSingleFarm || previousDefaultFarm !== userInfo?.[0]?.default_farm || !currentFarmIsAvailable) {
+      if (previousDefaultFarm !== userInfo?.[0]?.default_farm || !currentFarmIsAvailable) {
         const savedDefaultCode = String(userInfo?.[0]?.default_farm ?? '').trim();
         const savedDefaultFarm = assignedFarms.find(farm => String(farm.code ?? '').trim() === savedDefaultCode);
         if (savedDefaultFarm) {
           setValue("DefaultFarmId", savedDefaultFarm.id);
-        } else if (autoSelectSingleFarm && assignedFarms.length === 1) {
-          setValue("DefaultFarmId", assignedFarms[0].id);
         } else {
           setValue("DefaultFarmId", null);
         }

@@ -82,7 +82,7 @@ export default function Layout() {
     setLoading(true)
     try {
       await savePersonalInformation(form)
-      await setGlobals({ autoSelectSingleFarm: true })
+      await setGlobals()
       toast.success("Your information has been saved.")
       router.replace("/init")
     } catch (error) {

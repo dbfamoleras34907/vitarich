@@ -81,10 +81,15 @@ export async function POST(request: Request) {
     }
 
     const fmsType = farmFmsType(farm.farm_type);
+    if (!fmsType) {
+      return NextResponse.json({ error: "The selected farm has no supported FMS Type." }, { status: 400 });
+    }
+
     const { data: updated, error: updateError } = await admin_db
       .from("users")
       .update({
         default_farm: String(farm.code),
+        fms_type: fmsType,
         updated_at: new Date().toISOString(),
         updated_by: authData.user.id,
       })

@@ -40,6 +40,7 @@ export type FarmLocation = {
 
 export type VaccinationRecord = {
   id: number; document_no: string; vaccination_date: string;
+  created_by: string | null; createdByName?: string; assignedTaLabel?: string;
   scheduled_vaccination_date: string | null; date_variance_days: number | null;
   farm_id: number; farm_code: string | null; farm_name: string; scope: VaccinationScope;
   building_id: number | null; building_code: string | null; building_name: string | null;
@@ -54,7 +55,7 @@ export type VaccinationRecord = {
   created_at: string;
 };
 
-export type VaccinationInput = Omit<VaccinationRecord, "id" | "document_no" | "status" | "created_at" | "target_count" | "target_names" | "date_variance_days" | "birds_before" | "birds_vaccinated" | "birds_missed"> & {
+export type VaccinationInput = Omit<VaccinationRecord, "id" | "document_no" | "status" | "created_at" | "created_by" | "createdByName" | "assignedTaLabel" | "target_count" | "target_names" | "date_variance_days" | "birds_before" | "birds_vaccinated" | "birds_missed"> & {
   targets: Array<Pick<FarmLocation, "building_id" | "building_code" | "building_name" | "pen_id" | "pen_code" | "pen_name">>;
 };
 export type VaccinationTarget = VaccinationInput["targets"][number];

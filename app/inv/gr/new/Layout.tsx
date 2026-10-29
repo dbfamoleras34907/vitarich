@@ -28,6 +28,8 @@ import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } 
 import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
+import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { Items, WarehouseData } from '@/lib/types'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
@@ -87,10 +89,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setCollapsed } = useSidebar()
+  const { getValue } = useGlobalContext()
   const receiptId = searchParams.get('id')
   const duplicateId = searchParams.get('duplicateId')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
+  useSyncDefaultFarm(receipt?.farmId)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -270,9 +274,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   }, [farmWarehouses, loadingReferences, receipt?.defaultWarehouseId, receipt?.farmId, receipt?.fmsType, receipt?.lines, selectedFarm])
 
   useEffect(() => {
-    if (loadingReferences || receipt?.farmId || farms.length !== 1) return
+    if (loadingReferences || receipt?.farmId || farms.length === 0) return
 
-    const [farm] = farms
+    const defaultFarmReference = getValue('DefaultFarmId')
+      ?? getValue('UserInfoAuthSession')?.[0]?.default_farm
+    const farm = farms.find(candidate =>
+      String(candidate.id) === String(defaultFarmReference ?? '')
+      || candidate.code === String(defaultFarmReference ?? ''),
+    )
+    if (!farm) return
     const availableFarmWarehouses = getWarehousesForFarm(farm, warehouses)
     const defaultWarehouse = getDefaultReceivingWarehouse(farm, availableFarmWarehouses)
     const allowedCodes = new Set(
@@ -303,7 +313,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         ),
       }
     })
-  }, [farms, loadingReferences, receipt?.farmId, warehouses])
+  }, [farms, getValue, loadingReferences, receipt?.farmId, warehouses])
 
   useEffect(() => {
     const fmsType = String(receipt?.fmsType ?? '').trim().toLowerCase()
@@ -792,7 +802,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : {
           id: 0,
           code: 'GR',
-          name: 'Item Stock In',
+          name: 'Feed Stock In',
           prefix: 'FD',
           suffix: null,
           separator: '-',
@@ -1139,14 +1149,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
-          FirstPreviewsPageName="Item Stock In"
+          FirstPreviewsPageName="Feed Stock In"
           FirstPreviewsPageLink="/inv/gr"
-          CurrentPageName={isPostMode ? 'Post GR' : 'New GR'}
+          CurrentPageName={isPostMode ? 'Post GR' : 'Add Feeds Inventory'}
         />
         <PageHeaderActions>
           <Button type="button" variant="outline" size="sm" onClick={() => router.push('/inv/gr')}>
             <List className="size-4" />
-            GR List
+            Feed Stock In List
           </Button>
         </PageHeaderActions>
       </PageHeader>
@@ -1863,7 +1873,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 {canPostDocument && (
                   <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Posting...' : 'Save Document'}
                   </Button>
                 )}
               </PageActionBar>

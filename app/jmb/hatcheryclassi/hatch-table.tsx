@@ -31,13 +31,14 @@ import {
   type HatchClassificationListRow,
 } from "./new/api";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import { formatNumber } from "@/lib/utils/numberFormat";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import {
   listAssignedUserFarmOptions,
   type AssignedFarmOption,
 } from "@/lib/data/repositories/farmOptions.client";
+import HatcheryListParameters, { useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && value !== "";
@@ -55,16 +56,13 @@ function withAssignedDefaultFarmFilter(
   filters: ColumnFiltersState,
   columnId: string,
   defaultFarmId: unknown,
-  farmFilterTouched: boolean,
   assignedFarms: AssignedFarmOption[],
 ): ColumnFiltersState {
   const otherFilters = filters.filter((filter) => filter.id !== columnId);
-  if (farmFilterTouched) return filters;
-
   const defaultValue = String(defaultFarmId ?? "");
   const preferredFarmId = assignedFarms.find(
     (farm) => String(farm.id) === defaultValue || farm.code === defaultValue,
-  )?.id ?? assignedFarms[0]?.id ?? null;
+  )?.id ?? null;
 
   if (preferredFarmId === null) return otherFilters;
 
@@ -87,8 +85,9 @@ function loadErrorMessage(error: unknown, label: string) {
 export default function HatchTable() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
-  const defaultFarmId = getValue("DefaultFarmId");
   const sessionUserId = getValue("UserInfoAuthSession")?.[0]?.id ?? null;
+  const parameters = useHatcheryListParameters();
+  const defaultFarmId = parameters.farmId;
   const [items, setItems] = useState<HatchClassificationListRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
   const [assignedFarms, setAssignedFarms] = useState<AssignedFarmOption[]>([]);
@@ -97,23 +96,21 @@ export default function HatchTable() {
     useState<ColumnFiltersState>(() =>
       buildDefaultFarmFilter("farm_id", defaultFarmId),
     );
-  const [classifiedFarmFilterTouched, setClassifiedFarmFilterTouched] =
-    useState(false);
   const [classifiedColumnVisibility, setClassifiedColumnVisibility] =
     useState<VisibilityState>({ farm_id: false });
   const [classifiedRowSelection, setClassifiedRowSelection] =
     useState<RowSelectionState>({});
+  const [classifiedSectionOpen, setClassifiedSectionOpen] = useState(true);
   const [pendingSorting, setPendingSorting] = useState<SortingState>([]);
   const [pendingColumnFilters, setPendingColumnFilters] =
     useState<ColumnFiltersState>(() =>
       buildDefaultFarmFilter("farm_id", defaultFarmId),
     );
-  const [pendingFarmFilterTouched, setPendingFarmFilterTouched] =
-    useState(false);
   const [pendingColumnVisibility, setPendingColumnVisibility] =
     useState<VisibilityState>({ farm_id: false });
   const [pendingRowSelection, setPendingRowSelection] =
     useState<RowSelectionState>({});
+  const [pendingSectionOpen, setPendingSectionOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingforClass, setIsLoadingforClass] = useState(false);
   const [classifiedLoadError, setClassifiedLoadError] = useState<string | null>(null);
@@ -133,10 +130,9 @@ export default function HatchTable() {
         pendingColumnFilters,
         "farm_id",
         defaultFarmId,
-        pendingFarmFilterTouched,
         assignedFarms,
       ),
-    [assignedFarms, defaultFarmId, pendingColumnFilters, pendingFarmFilterTouched],
+    [assignedFarms, defaultFarmId, pendingColumnFilters],
   );
 
   const pendingFarmIdsForQuery = useMemo(() => {
@@ -156,10 +152,9 @@ export default function HatchTable() {
         classifiedColumnFilters,
         "farm_id",
         defaultFarmId,
-        classifiedFarmFilterTouched,
         assignedFarms,
       ),
-    [assignedFarms, classifiedColumnFilters, classifiedFarmFilterTouched, defaultFarmId],
+    [assignedFarms, classifiedColumnFilters, defaultFarmId],
   );
 
   const classifiedFarmIdsForQuery = useMemo(() => {
@@ -187,8 +182,10 @@ export default function HatchTable() {
       const data = await listHatchClassification({
         farmIds: classifiedFarmIdsForQuery,
         limit: 50,
+        dateFrom: parameters.dateFrom,
+        dateTo: parameters.dateTo,
       });
-      setItems(Array.isArray(data) ? data : []);
+      setItems(Array.isArray(data) ? await attachProcessListAttributions(data) : []);
     } catch (e) {
       console.error(e);
       setItems([]);
@@ -196,13 +193,13 @@ export default function HatchTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [assignedFarmsLoading, classifiedFarmIdsForQuery]);
+  }, [assignedFarmsLoading, classifiedFarmIdsForQuery, parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     let cancelled = false;
     setAssignedFarmsLoading(true);
 
-    void listAssignedUserFarmOptions()
+    void listAssignedUserFarmOptions(["HA", "Hatchery"])
       .then((farms) => {
         if (cancelled) return;
         setAssignedFarms(farms);
@@ -243,8 +240,10 @@ export default function HatchTable() {
       const data = await getReceivingList({
         farmIds: pendingFarmIdsForQuery,
         limit: 50,
+        dateFrom: parameters.dateFrom,
+        dateTo: parameters.dateTo,
       });
-      setItemsForClass(Array.isArray(data) ? data : []);
+      setItemsForClass(Array.isArray(data) ? await attachProcessListAttributions(data) : []);
     } catch (e) {
       console.error(e);
       setItemsForClass([]);
@@ -252,7 +251,7 @@ export default function HatchTable() {
     } finally {
       setIsLoadingforClass(false);
     }
-  }, [assignedFarmsLoading, pendingFarmIdsForQuery]);
+  }, [assignedFarmsLoading, parameters.dateFrom, parameters.dateTo, pendingFarmIdsForQuery]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -366,6 +365,8 @@ export default function HatchTable() {
       { accessorKey: "driver", header: "Driver" },
       { accessorKey: "voyage_no", header: "Voyage No" },
       { accessorKey: "shipped_via", header: "Shipped Via" },
+      { accessorKey: "createdByName", header: "Created by" },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [router],
   );
@@ -475,6 +476,8 @@ export default function HatchTable() {
         header: "Total Count",
         cell: ({ getValue }) => formatNumber(getValue<number>()),
       },
+      { accessorKey: "createdByName", header: "Created by" },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [],
   );
@@ -527,6 +530,8 @@ export default function HatchTable() {
         {/* <Button onClick={() => console.log({ items })}>check items</Button> */}
       </div>
 
+      <HatcheryListParameters {...parameters} />
+
       <ClassificationTableSection
         table={tableForClass}
         title="Pending Classification"
@@ -534,8 +539,10 @@ export default function HatchTable() {
         isLoading={isLoadingforClass}
         error={pendingLoadError}
         colSpan={columnsForClass.length}
+        contentOpen={pendingSectionOpen}
+        onContentOpenChange={setPendingSectionOpen}
         headerActions={
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <Input
               placeholder="Filter Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
@@ -551,35 +558,6 @@ export default function HatchTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (tableForClass
-                    .getColumn("farm_id")
-                    ?.getFilterValue() as string) ?? ""
-                }
-                onValueChange={(farmId) => {
-                  tableForClass
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setPendingFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                tableForClass.getColumn("farm_id")?.setFilterValue(undefined)
-                setPendingFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />
@@ -592,8 +570,10 @@ export default function HatchTable() {
         error={classifiedLoadError}
         colSpan={columns.length}
         paginationMode="showing-rows"
+        contentOpen={classifiedSectionOpen}
+        onContentOpenChange={setClassifiedSectionOpen}
         headerActions={
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <Input
               placeholder="Filter Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
@@ -603,34 +583,6 @@ export default function HatchTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (table.getColumn("farm_id")?.getFilterValue() as string) ??
-                  ""
-                }
-                onValueChange={(farmId) => {
-                  table
-                    .getColumn("farm_id")
-                    ?.setFilterValue(farmId || undefined)
-                  setClassifiedFarmFilterTouched(true)
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                table.getColumn("farm_id")?.setFilterValue(undefined)
-                setClassifiedFarmFilterTouched(true)
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />

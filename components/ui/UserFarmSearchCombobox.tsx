@@ -21,6 +21,7 @@ type UserFarmSearchComboboxProps = {
   required?: boolean;
   value?: string | number | null;
   onValueChange?: (farmId: string, farm?: UserFarm) => void;
+  onFarmResolved?: (farm: UserFarm) => void;
   className?: string;
   farmType?: "BR" | "BE" | "HA";
   display?: "combobox" | "buttons";
@@ -46,6 +47,12 @@ const FARM_TYPE_LABELS = {
   BR: "BROILER",
   BE: "BREEDER",
   HA: "HATCHERY",
+} as const;
+
+const FARM_TYPE_QUERY_VALUES = {
+  BR: ["BR", "Broiler"],
+  BE: ["BE", "Breeder"],
+  HA: ["HA", "Hatchery"],
 } as const;
 
 function matchesFarmType(farm: UserFarm, farmType?: keyof typeof FARM_TYPE_LABELS) {
@@ -76,6 +83,7 @@ export default function UserFarmSearchCombobox({
   required,
   value,
   onValueChange,
+  onFarmResolved,
   className = "w-full",
   farmType,
   display = "combobox",
@@ -86,35 +94,41 @@ export default function UserFarmSearchCombobox({
   const sessionUserId = session?.[0]?.id;
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
-  const [assignedFarms, setAssignedFarms] = useState<UserFarm[] | null>(null);
+  const [typedFarms, setTypedFarms] = useState<UserFarm[] | null>(null);
   const [buttonSearch, setButtonSearch] = useState("");
   const defaultFarmReference = getValue("DefaultFarmId")
     ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
+    if (!farmType) {
+      return;
+    }
+
     let cancelled = false;
-    listAssignedUserFarmOptions()
+    listAssignedUserFarmOptions([...FARM_TYPE_QUERY_VALUES[farmType]])
       .then((farms) => {
         if (!cancelled) {
-          setAssignedFarms(farms);
+          setTypedFarms(farms);
         }
       })
       .catch((error) => {
-        console.error("Unable to load assigned farms:", error);
-        if (!cancelled) setAssignedFarms([]);
+        console.error(`Unable to load ${FARM_TYPE_LABELS[farmType]} farms:`, error);
+        if (!cancelled) setTypedFarms([]);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId]);
+  }, [farmType]);
 
   const allowedFarms = useMemo(
-    () => assignedFarms ?? getAllowedUserFarms(
-      (rawFarmDB || []) as UserFarm[],
-      (rawUserFarms || []) as unknown[]
-    ),
-    [assignedFarms, rawFarmDB, rawUserFarms]
+    () => farmType && typedFarms !== null
+      ? typedFarms
+      : getAllowedUserFarms(
+          (rawFarmDB || []) as UserFarm[],
+          (rawUserFarms || []) as unknown[]
+        ),
+    [farmType, rawFarmDB, rawUserFarms, typedFarms]
   );
 
   const filteredFarms = useMemo(
@@ -136,15 +150,25 @@ export default function UserFarmSearchCombobox({
   const selectedFarm = filteredFarms.find(farm => farm.code === reference)
     ?? filteredFarms.find(farm => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
+  const defaultFarmReference = getValue("DefaultFarmId")
+    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
+    if (selectedFarm) onFarmResolved?.(selectedFarm);
+  }, [onFarmResolved, selectedFarm]);
+
+  useEffect(() => {
+    if (selectedFarm && reference !== String(selectedFarm.id)) {
+      onValueChange?.(String(selectedFarm.id), selectedFarm);
+      return;
+    }
     if (reference || defaultFarmReference == null) return;
     const defaultFarm = filteredFarms.find((farm) =>
       String(farm.id) === String(defaultFarmReference)
       || farm.code === String(defaultFarmReference),
     );
     if (defaultFarm) onValueChange?.(String(defaultFarm.id), defaultFarm);
-  }, [defaultFarmReference, filteredFarms, onValueChange, reference]);
+  }, [defaultFarmReference, filteredFarms, onValueChange, reference, selectedFarm]);
 
   const visibleButtonFarms = useMemo(() => {
     const query = buttonSearch.trim().toLocaleLowerCase();

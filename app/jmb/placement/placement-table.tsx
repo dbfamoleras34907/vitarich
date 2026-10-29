@@ -22,8 +22,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -44,7 +46,6 @@ import {
   listFarmLocationLookup,
   listPlacementIdsWithPostedActivity,
   listPlacements,
-  getUserInfo,
   type BreederFarm,
   type BreederCycle,
   type BuildingHistoryRow,
@@ -70,6 +71,7 @@ function formatNumber(value: number) {
 export default function PlacementTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
+  const parameters = useBreederListParameters();
   const [placements, setPlacements] = useState<Placement[]>([]);
   const [breederCycles, setBreederCycles] = useState<BreederCycle[]>([]);
   const [buildingHistory, setBuildingHistory] = useState<BuildingHistoryRow[]>(
@@ -80,7 +82,6 @@ export default function PlacementTable() {
   );
   const [farms, setFarms] = useState<BreederFarm[]>([]);
   const [locations, setLocations] = useState<FarmLocationLookup[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -95,7 +96,6 @@ export default function PlacementTable() {
       listBreederCycles(),
       listBreederFarms(),
       listFarmLocationLookup(),
-      getUserInfo().catch(() => []),
     ])
       .then(
         async ([
@@ -103,7 +103,6 @@ export default function PlacementTable() {
           cycleRows,
           farmRows,
           locationRows,
-          defaultFarmRows,
         ]) => {
           const [historyRows, activityLocks] = await Promise.all([
             listBuildingHistory(placementRows),
@@ -119,13 +118,6 @@ export default function PlacementTable() {
           );
           setFarms(farmRows);
           setLocations(locationRows);
-          const defaultFarmId = defaultFarmRows[0]?.id;
-          const defaultBreederFarm = farmRows.find(
-            (farm) => Number(farm.id) === Number(defaultFarmId),
-          );
-          if (defaultBreederFarm) {
-            setSelectedFarmId(String(defaultBreederFarm.id));
-          }
         },
       )
       .catch((loadError) => {
@@ -147,18 +139,9 @@ export default function PlacementTable() {
     setValue("loading_g", loading);
   }, [loading, setValue]);
 
-  const effectiveFarmId =
-    selectedFarmId || (farms[0] ? String(farms[0].id) : "");
+  const effectiveFarmId = parameters.farmId;
   const selectedFarm =
     farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
-  const farmOptions = useMemo(
-    () =>
-      farms.map((farm) => ({
-        code: String(farm.id),
-        name: formatFarmNameCode(farm.name, farm.code),
-      })),
-    [farms],
-  );
   const buildings = useMemo(() => {
     const unique = new Map<number, FarmLocationLookup>();
     locations
@@ -175,16 +158,20 @@ export default function PlacementTable() {
   const selectedFarmPlacements = useMemo(
     () =>
       placements.filter(
-        (placement) => String(placement.farm_id) === effectiveFarmId,
+        (placement) =>
+          String(placement.farm_id) === effectiveFarmId &&
+          isWithinDateRange(placement.placement_date, parameters.dateFrom, parameters.dateTo),
       ),
-    [effectiveFarmId, placements],
+    [effectiveFarmId, parameters.dateFrom, parameters.dateTo, placements],
   );
   const selectedFarmHistory = useMemo(
     () =>
       buildingHistory.filter(
-        (record) => String(record.farm_id) === effectiveFarmId,
+        (record) =>
+          String(record.farm_id) === effectiveFarmId &&
+          isWithinDateRange(record.placement_date, parameters.dateFrom, parameters.dateTo),
       ),
-    [buildingHistory, effectiveFarmId],
+    [buildingHistory, effectiveFarmId, parameters.dateFrom, parameters.dateTo],
   );
   const activeCycleHistoryKeys = useMemo(
     () =>
@@ -282,18 +269,7 @@ export default function PlacementTable() {
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              <label className="text-sm font-semibold">Breeder Farm</label>
-              <SearchableCombobox
-                items={farmOptions}
-                value={effectiveFarmId}
-                onValueChange={setSelectedFarmId}
-                placeholder="Select breeder farm..."
-                showCode
-                codePosition="suffix"
-                className="w-full min-w-70 lg:w-105"
-              />
-            </div>
+            <BreederListParameters {...parameters} />
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-md border bg-background px-3 py-2">

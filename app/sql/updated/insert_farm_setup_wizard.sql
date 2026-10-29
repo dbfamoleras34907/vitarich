@@ -26,9 +26,7 @@ declare
   farm_region text;
   farm_approval_status text;
   assigned_warehouse_count integer;
-  default_feed_count integer;
-  default_receiving_count integer;
-  default_disposal_count integer;
+  assigned_user_ids bigint[];
 begin
   if auth.uid() is null or not (
     public.current_user_has_farm_permission('/a_dean/farm')
@@ -58,18 +56,9 @@ begin
 
   farm_approval_status := coalesce(nullif(payload->'farm'->>'approval_status', ''), 'approved');
 
-  select
-    count(*) filter (where coalesce((item->>'is_default_feed')::boolean, false)),
-    count(*) filter (where coalesce((item->>'is_default_receiving')::boolean, false)),
-    count(*) filter (where coalesce((item->>'is_default_disposal')::boolean, false))
-  into default_feed_count, default_receiving_count, default_disposal_count
-  from jsonb_array_elements(coalesce(payload->'warehouses', '[]'::jsonb)) as warehouses(item);
-
-  if default_feed_count <> 1
-     or default_receiving_count <> 1
-     or default_disposal_count <> 1 then
-    raise exception 'Exactly one default feed, receiving, and disposal warehouse is required.';
-  end if;
+  select coalesce(array_agg(distinct selected.value::bigint), array[]::bigint[])
+  into assigned_user_ids
+  from jsonb_array_elements_text(coalesce(payload->'assigned_user_ids', '[]'::jsonb)) as selected(value);
 
   if exists (
     select 1
@@ -268,21 +257,6 @@ begin
   )
   returning id into new_farm_id;
 
-  insert into public.farm_addresses (
-    farm_id,
-    address,
-    barangay,
-    city,
-    province
-  )
-  values (
-    new_farm_id,
-    nullif(payload->'address'->>'address', ''),
-    nullif(payload->'address'->>'barangay', ''),
-    nullif(payload->'address'->>'city', ''),
-    nullif(payload->'address'->>'province', '')
-  );
-
   update public.i_warehouse
   set
     farm_id = new_farm_id,
@@ -296,19 +270,11 @@ begin
     raise exception 'Farm creation could not persist every warehouse assignment.';
   end if;
 
-  select
-    count(*) filter (where is_default_feed_warehouse),
-    count(*) filter (where is_default_receiving_warehouse),
-    count(*) filter (where is_default_disposal_warehouse)
-  into default_feed_count, default_receiving_count, default_disposal_count
-  from public.i_warehouse
-  where farm_id = new_farm_id;
-
-  if default_feed_count <> 1
-     or default_receiving_count <> 1
-     or default_disposal_count <> 1 then
-    raise exception 'Farm creation could not persist the selected default warehouses.';
-  end if;
+  perform public.sync_farm_user_assignments(
+    new_farm_id,
+    payload->'farm'->>'code',
+    assigned_user_ids
+  );
 
   for machine_item in
     select * from jsonb_array_elements(coalesce(payload->'machines', '[]'::jsonb))

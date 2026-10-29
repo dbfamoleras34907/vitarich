@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { usePermission } from '@/hooks/usePermission'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import { getVnmDocument, voidVnmDocument, type VnmDocument, type VnmLine } from '@/lib/data/repositories/vaccinationMeds'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 
 const Detail = ({ label, value }: { label: string; value: unknown }) => <div><div className="text-xs font-medium uppercase text-muted-foreground">{label}</div><div className="mt-1 text-sm font-medium">{String(value ?? '-') || '-'}</div></div>
 
@@ -40,6 +41,7 @@ export default function VnmView({ documentId }: { documentId: number }) {
   const cannotEdit = usePermission('/vnm/edit')
   const cannotVoid = usePermission('/vnm/void')
   const [document, setDocument] = useState<VnmDocument | null>(null)
+  useSyncDefaultFarm(document?.farmId)
   const [loading, setLoading] = useState(true)
   const [voiding, setVoiding] = useState(false)
   const load = useCallback(async () => {

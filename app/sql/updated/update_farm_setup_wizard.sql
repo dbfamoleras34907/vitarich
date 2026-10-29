@@ -16,13 +16,8 @@ declare
   existing_warehouse_name text;
   warehouse_id_by_client_key jsonb := '{}'::jsonb;
   associated_warehouse_items jsonb[] := array[]::jsonb[];
-  warehouse_ids bigint[] := array[]::bigint[];
   farm_address text;
-  expected_warehouse_count integer;
-  persisted_warehouse_count integer;
-  default_feed_count integer;
-  default_receiving_count integer;
-  default_disposal_count integer;
+  assigned_user_ids bigint[];
 begin
   if auth.uid() is null or not (
     public.current_user_has_farm_permission('/a_dean/farm')
@@ -47,20 +42,18 @@ begin
     raise exception 'At least one warehouse must remain assigned to the farm.';
   end if;
 
-  select
-    count(*) filter (where coalesce((item->>'is_default_feed')::boolean, false)),
-    count(*) filter (where coalesce((item->>'is_default_receiving')::boolean, false)),
-    count(*) filter (where coalesce((item->>'is_default_disposal')::boolean, false))
-  into default_feed_count, default_receiving_count, default_disposal_count
-  from jsonb_array_elements(payload->'warehouses') as warehouses(item);
-
-  if default_feed_count <> 1
-     or default_receiving_count <> 1
-     or default_disposal_count <> 1 then
-    raise exception 'Exactly one default feed, receiving, and disposal warehouse is required.';
+  if not exists (
+    select 1 from jsonb_array_elements(payload->'warehouses') item
+    where coalesce((item->>'is_default_feed')::boolean, false)
+  ) or not exists (
+    select 1 from jsonb_array_elements(payload->'warehouses') item
+    where coalesce((item->>'is_default_receiving')::boolean, false)
+  ) or not exists (
+    select 1 from jsonb_array_elements(payload->'warehouses') item
+    where coalesce((item->>'is_default_disposal')::boolean, false)
+  ) then
+    raise exception 'Default feed, receiving, and disposal warehouses are required.';
   end if;
-
-  expected_warehouse_count := jsonb_array_length(payload->'warehouses');
 
   farm_address := nullif(concat_ws(
     ', ',
@@ -69,6 +62,12 @@ begin
     nullif(payload->'address'->>'city', ''),
     nullif(payload->'address'->>'province', '')
   ), '');
+
+  if payload ? 'assigned_user_ids' then
+    select coalesce(array_agg(distinct selected.value::bigint), array[]::bigint[])
+    into assigned_user_ids
+    from jsonb_array_elements_text(coalesce(payload->'assigned_user_ids', '[]'::jsonb)) as selected(value);
+  end if;
 
   update public.farms
   set code = payload->'farm'->>'code',
@@ -87,30 +86,6 @@ begin
       region = nullif(payload->'address'->>'province', ''),
       updated_at = now()
   where id = p_farm_id;
-
-  update public.farm_addresses
-  set address = nullif(payload->'address'->>'address', ''),
-      barangay = nullif(payload->'address'->>'barangay', ''),
-      city = nullif(payload->'address'->>'city', ''),
-      province = nullif(payload->'address'->>'province', '')
-  where farm_id = p_farm_id;
-
-  if not found then
-    insert into public.farm_addresses (
-      farm_id,
-      address,
-      barangay,
-      city,
-      province
-    )
-    values (
-      p_farm_id,
-      nullif(payload->'address'->>'address', ''),
-      nullif(payload->'address'->>'barangay', ''),
-      nullif(payload->'address'->>'city', ''),
-      nullif(payload->'address'->>'province', '')
-    );
-  end if;
 
   -- Omitted warehouses are unassigned, never voided.
   update public.i_warehouse
@@ -195,7 +170,6 @@ begin
 
     warehouse_id_by_client_key := warehouse_id_by_client_key ||
       jsonb_build_object(warehouse_item->>'client_key', warehouse_id);
-    warehouse_ids := array_append(warehouse_ids, warehouse_id);
 
     update public.i_warehouse
     set is_default_feed_warehouse = coalesce((warehouse_item->>'is_default_feed')::boolean, false),
@@ -285,37 +259,19 @@ begin
       'is_default_receiving', false,
       'is_default_disposal', false
     ));
-    warehouse_ids := array_append(warehouse_ids, warehouse_id);
   end loop;
-
-  select count(*)
-  into persisted_warehouse_count
-  from public.i_warehouse
-  where farm_id = p_farm_id
-    and id = any(warehouse_ids);
-
-  if cardinality(warehouse_ids) <> expected_warehouse_count
-     or persisted_warehouse_count <> expected_warehouse_count then
-    raise exception 'Farm update could not persist every warehouse or building assignment.';
-  end if;
-
-  select
-    count(*) filter (where is_default_feed_warehouse),
-    count(*) filter (where is_default_receiving_warehouse),
-    count(*) filter (where is_default_disposal_warehouse)
-  into default_feed_count, default_receiving_count, default_disposal_count
-  from public.i_warehouse
-  where farm_id = p_farm_id;
-
-  if default_feed_count <> 1
-     or default_receiving_count <> 1
-     or default_disposal_count <> 1 then
-    raise exception 'Farm update could not persist the selected default warehouses.';
-  end if;
 
   update public.farms
   set associated_warehouses = associated_warehouse_items
   where id = p_farm_id;
+
+  if payload ? 'assigned_user_ids' then
+    perform public.sync_farm_user_assignments(
+      p_farm_id,
+      payload->'farm'->>'code',
+      assigned_user_ids
+    );
+  end if;
 
   return p_farm_id;
 end;

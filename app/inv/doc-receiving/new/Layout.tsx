@@ -48,6 +48,7 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import Breadcrumb from '@/lib/Breadcrumb'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
@@ -119,12 +120,12 @@ const DOC_RECEIVING_DETAIL_COLUMNS = [
   { code: 'average_doc_weight', name: 'Average DOC Weight' },
   { code: 'quantity_received', name: 'Total Received' },
   { code: 'doa_quantity', name: 'DOA Count' },
-  { code: 'reject_count', name: 'Reject Count' },
-  { code: 'short_count', name: 'Short Count' },
-  { code: 'actual_received', name: 'Actual Received' },
-  { code: 'short_count_remarks', name: 'Short Count Remarks' },
   { code: 'doa_count_remarks', name: 'DOA Count Remarks' },
+  { code: 'reject_count', name: 'Reject Count' },
   { code: 'reject_count_remarks', name: 'Reject Count Remarks' },
+  { code: 'short_count', name: 'Short Count' },
+  { code: 'short_count_remarks', name: 'Short Count Remarks' },
+  { code: 'actual_received', name: 'Actual Received' },
 ]
 
 const getBuildingCycleOptionLabel = (
@@ -150,14 +151,13 @@ const DOC_RECEIVING_MODAL_GROUPS = [
       'average_doc_weight',
       'quantity_received',
       'doa_quantity',
+      'doa_count_remarks',
       'reject_count',
+      'reject_count_remarks',
       'short_count',
+      'short_count_remarks',
       'actual_received',
     ],
-  },
-  {
-    key: 'remarks',
-    codes: ['short_count_remarks', 'doa_count_remarks', 'reject_count_remarks'],
   },
 ].map(group => ({
   ...group,
@@ -622,6 +622,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const notificationFarmId = searchParams.get('farmId')
   const isPostMode = mode === 'post'
   const [receipt, setReceipt] = useState<GoodsReceipt | null>(null)
+  useSyncDefaultFarm(receipt?.farmId)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -1286,7 +1287,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     const defaultFarmId = getValue('DefaultFarmId')
     const farm = farms.find(candidate => String(candidate.id) === String(notificationFarmId))
       ?? farms.find(candidate => String(candidate.id) === String(defaultFarmId))
-      ?? (farms.length === 1 ? farms[0] : null)
+      ?? null
     if (!farm) return
 
     setReceipt(current => {
@@ -3476,7 +3477,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   {canPostDocument && (
                     <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={saving}>
                       <Save className="size-4" />
-                      {saving ? 'Posting...' : 'Post Document'}
+                      {saving ? 'Posting...' : 'Save Document'}
                     </Button>
                   )}
                 </div>

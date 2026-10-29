@@ -56,12 +56,13 @@ import { RowAction } from "@/lib/types";
 import { copyRow, copyTable } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
-import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import {
   FARM_FILTER_KEY,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && value !== "";
@@ -76,10 +77,7 @@ function buildDefaultFarmColumnFilter(defaultFarmId: unknown): ColumnFiltersStat
 function withDefaultFarmColumnFilter(
   filters: ColumnFiltersState,
   defaultFarmId: unknown,
-  farmFilterTouched: boolean,
 ): ColumnFiltersState {
-  if (farmFilterTouched) return filters;
-
   if (!hasValue(defaultFarmId)) {
     return filters.filter((filter) => filter.id !== FARM_FILTER_KEY);
   }
@@ -127,12 +125,12 @@ export default function ChickgradingTable() {
 
   const [items, setItems] = useState<DocClassificationRow[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const { getValue, setValue } = useGlobalContext();
-  const defaultFarmId = getValue("DefaultFarmId");
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
+  const defaultFarmId = parameters.farmId;
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() =>
     buildDefaultFarmColumnFilter(defaultFarmId),
   );
-  const [farmFilterTouched, setFarmFilterTouched] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
     [FARM_FILTER_KEY]: false,
   });
@@ -140,15 +138,15 @@ export default function ChickgradingTable() {
 
   const [isLoading, setIsLoading] =
     useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const effectiveColumnFilters = useMemo(
     () =>
       withDefaultFarmColumnFilter(
         columnFilters,
         defaultFarmId,
-        farmFilterTouched,
       ),
-    [columnFilters, defaultFarmId, farmFilterTouched],
+    [columnFilters, defaultFarmId],
   );
 
   const canView = usePermission(
@@ -165,6 +163,7 @@ export default function ChickgradingTable() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
 
     try {
       const data =
@@ -172,7 +171,7 @@ export default function ChickgradingTable() {
 
       const mapped =
         Array.isArray(data)
-          ? data.map(
+          ? data.filter(item => isWithinHatcheryDateRange(item.grading_datetime, parameters.dateFrom, parameters.dateTo)).map(
             (
               item: ChickGradingProcess,
             ) => ({
@@ -229,10 +228,11 @@ export default function ChickgradingTable() {
       console.error(e);
 
       setItems([]);
+      setLoadError(getErrorMessage(e, "Unable to load DOC Classification."));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -458,11 +458,14 @@ export default function ChickgradingTable() {
         </Button>
       </div>
 
+      <HatcheryListParameters {...parameters} />
+
       <ClassificationTableSection
         table={table}
         title="Doc Classification"
         tone="sky"
         isLoading={isLoading}
+        error={loadError}
         colSpan={columns.length}
         paginationMode="showing-rows"
         headerActions={
@@ -478,40 +481,9 @@ export default function ChickgradingTable() {
               }
             />
 
-            <div className="w-full sm:w-72">
-              <UserFarmSearchCombobox
-                label="Farm"
-                value={
-                  (table
-                    .getColumn(FARM_FILTER_KEY)
-                    ?.getFilterValue() as string) ?? ""
-                }
-                onValueChange={(farmName) => {
-                  table
-                    .getColumn(FARM_FILTER_KEY)
-                    ?.setFilterValue(farmName || undefined);
-
-                  setFarmFilterTouched(true);
-                }}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-md bg-white"
-              onClick={() => {
-                table.getColumn(FARM_FILTER_KEY)?.setFilterValue(undefined);
-                setFarmFilterTouched(true);
-              }}
-            >
-              Clear Farm
-            </Button>
           </div>
         }
       />
     </div>
   );
 }
-// 

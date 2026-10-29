@@ -6,6 +6,7 @@ import { ArrowLeft, Egg, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import {
   listDailyPerformance,
@@ -193,6 +194,7 @@ export default function HistoryView() {
   const mode: HistoryMode =
     searchParams.get("mode") === "Laying" ? "Laying" : "Population";
   const farmId = Number(searchParams.get("farmId"));
+  useSyncDefaultFarm(farmId);
   const buildingId = Number(searchParams.get("buildingId"));
   const cycleNoText = searchParams.get("cycleNo");
   const cycleNo = cycleNoText == null ? null : Number(cycleNoText);

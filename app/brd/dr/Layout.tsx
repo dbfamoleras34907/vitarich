@@ -16,9 +16,11 @@ export default function Layout() {
         noResultsMessage: 'No matching delivery transactions found',
         useDefaultFarm: true,
         showFarmFilter: true,
+        showDateFilter: true,
         showDeliveryReceipt: true,
         showDuplicateAction: true,
         showWarehouseName: true,
+        showProcessListAttribution: true,
       }}
     />
   )

@@ -13,8 +13,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import SearchableCombobox from "@/components/SearchableCombobox";
-import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
+import BreederListParameters, {
+  isWithinDateRange,
+  useBreederListParameters,
+} from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -28,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { attachProcessListAttributions, type ProcessListAttribution } from "@/lib/data/repositories/processListAttribution";
 import {
   deleteBreederCleanup,
   listBreederCleanups,
@@ -45,12 +48,12 @@ function formatDate(value?: string | null) {
 export default function CleanupTable() {
   const router = useRouter();
   const { setValue } = useGlobalContext();
-  const [records, setRecords] = useState<BreederCleanupRecord[]>([]);
+  const parameters = useBreederListParameters();
+  const [records, setRecords] = useState<Array<BreederCleanupRecord & ProcessListAttribution>>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [farmFilter, setFarmFilter] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export default function CleanupTable() {
     setLoading(true);
     setError("");
     try {
-      setRecords(await listBreederCleanups());
+      setRecords(await attachProcessListAttributions(await listBreederCleanups()));
     } catch (loadError) {
       console.error(loadError);
       setError("Unable to load breeder Terminal Culling records from tbl_breeder_cleanup.");
@@ -77,26 +80,15 @@ export default function CleanupTable() {
     [loading, setValue, working],
   );
 
-  const farms = useMemo(() => {
-    const unique = new Map<number, BreederCleanupRecord>();
-    records.forEach((record) => unique.set(record.farm_id, record));
-    return [
-      { code: "__all__", name: "All farms" },
-      ...[...unique.values()].map((record) => ({
-        code: String(record.farm_id),
-        name: formatFarmNameCode(record.farm_name, record.farm_code),
-      })),
-    ];
-  }, [records]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter((record) => {
       if (
-        farmFilter &&
-        farmFilter !== "__all__" &&
-        String(record.farm_id) !== farmFilter
+        parameters.farmId &&
+        String(record.farm_id) !== parameters.farmId
       )
         return false;
+      if (!isWithinDateRange(record.date_of_culling ?? record.created_at, parameters.dateFrom, parameters.dateTo)) return false;
       return (
         !query ||
         [
@@ -118,7 +110,7 @@ export default function CleanupTable() {
         )
       );
     });
-  }, [farmFilter, records, search]);
+  }, [parameters.dateFrom, parameters.dateTo, parameters.farmId, records, search]);
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -192,7 +184,7 @@ export default function CleanupTable() {
             <Stat label="Male cleaned up" value={maleTotal} />
           </div>
         </div>
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-3 border-b p-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -205,19 +197,7 @@ export default function CleanupTable() {
               className="pl-9"
             />
           </div>
-          <SearchableCombobox
-            label="Farm"
-            items={farms}
-            value={farmFilter}
-            onValueChange={(value) => {
-              setFarmFilter(value);
-              setPage(1);
-            }}
-            placeholder="All farms"
-            showCode
-            codePosition="suffix"
-            className="w-full lg:w-72"
-          />
+          <BreederListParameters {...parameters} />
           <Button
             variant="outline"
             onClick={() => void load()}
@@ -240,7 +220,7 @@ export default function CleanupTable() {
                 {["Created", "Cycle", "Farm", "Building", "Age", "Date of Culling"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
                 <TableHead scope="colgroup" colSpan={3} className="bg-pink-100 text-center text-pink-900">Female</TableHead>
                 <TableHead scope="colgroup" colSpan={3} className="bg-sky-100 text-center text-sky-900">Male</TableHead>
-                {["TS/DR #", "Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
+                {["TS/DR #", "Body Weights", "Buyer Name", "Hauler Name", "Plate Number", "Remarks", "Created by", "Assigned TA", "Actions"].map(label => <TableHead key={label} scope="col" rowSpan={2}>{label}</TableHead>)}
               </TableRow>
               <TableRow>
                 {["Female", "Male"].flatMap(sex => ["Balance", "Culling Qty", "Condemn Variance"].map(label => <TableHead key={sex + label} scope="col" className={`min-w-24 text-right ${sex === "Female" ? "bg-pink-100 text-pink-900" : "bg-sky-100 text-sky-900"}`}>{label}</TableHead>))}
@@ -249,7 +229,7 @@ export default function CleanupTable() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={20} className="h-32 text-center">
+                  <TableCell colSpan={22} className="h-32 text-center">
                     <Loader2 className="mx-auto size-5 animate-spin" />
                   </TableCell>
                 </TableRow>
@@ -307,6 +287,8 @@ export default function CleanupTable() {
                         </div>
                       ) : null}
                     </TableCell>
+                    <TableCell className="max-w-32 truncate" title={record.createdByName}>{record.createdByName}</TableCell>
+                    <TableCell className="max-w-32 truncate" title={record.assignedTaLabel}>{record.assignedTaLabel}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         <Button
@@ -335,7 +317,7 @@ export default function CleanupTable() {
               {!loading && !filtered.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={20}
+                    colSpan={22}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No breeder Terminal Culling records found.

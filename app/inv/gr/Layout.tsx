@@ -189,7 +189,7 @@ export default function GoodsReceiveHistory() {
       <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
-          CurrentPageName="Item Stock In"
+          CurrentPageName="Feed Stock In"
         />
 
         <PageHeaderActions>
@@ -199,7 +199,7 @@ export default function GoodsReceiveHistory() {
             </Button>
           <Button type="button" size="sm" onClick={openNewGoodsReceipt}>
             <Plus className="size-4" />
-            New GR
+            Add Feeds Inventory
           </Button>
         </PageHeaderActions>
       </PageHeader>
@@ -240,7 +240,7 @@ export default function GoodsReceiveHistory() {
           actionsFirst
           loading={loading}
           initialFilters={[]}
-          title="Item Stock In"
+          title="Feed Stock In"
           description={`${rows.length} goods receipt(s)`}
           columns={columns}
           data={rows}

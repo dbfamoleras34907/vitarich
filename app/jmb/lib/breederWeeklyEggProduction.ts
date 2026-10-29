@@ -2,12 +2,12 @@ import { breederAgeDays } from "./breederAge";
 import { cobbEggProductionTarget } from "./data/queries/cobb500BreederEggProduction";
 import type { EggLaying } from "./data/repositories/breederEggLaying";
 
-type Placement = {
+export type EggCollectionPlacement = {
   id: number; farm_id: number; farm_name: string | null;
   building_id: number; building_no: string | null;
   placement_date: string; f_endingbalance: number | null;
 };
-type Population = {
+export type EggCollectionPopulation = {
   id: number; placement_id: number; daterec: string;
   inv_female: number | null; trans_in_female: number | null; trans_out_female: number | null;
   mc_female: number | null; cull_female: number | null; kitchen_female: number | null; condem_female: number | null;
@@ -40,6 +40,23 @@ export type EggRangeProduction = {
 
 const nonnegative = (value: number | null) => value != null && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
 const ratio = (numerator: number | null, denominator: number | null, scale = 1) => numerator != null && denominator != null && denominator > 0 ? numerator / denominator * scale : null;
+
+/** Closing live females for a placement on a supplied production date. */
+export function closingFemalePopulation(
+  placement: EggCollectionPlacement,
+  populationRows: readonly EggCollectionPopulation[],
+  date: string,
+) {
+  if (placement.placement_date.slice(0, 10) > date) return 0;
+  const latest = populationRows.findLast(row => row.daterec.slice(0, 10) <= date);
+  if (!latest) return nonnegative(placement.f_endingbalance);
+  const opening = nonnegative(latest.inv_female);
+  if (opening == null) return null;
+  return nonnegative(opening + Number(latest.trans_in_female ?? 0) - Number(latest.trans_out_female ?? 0)
+    - Number(latest.mc_female ?? 0) - Number(latest.cull_female ?? 0)
+    - Number(latest.kitchen_female ?? 0) - Number(latest.condem_female ?? 0));
+}
+
 function figures(totalEggs: number | null, goodEggs: number | null, standardEggs: number | null, females: number | null, femaleDays: number | null): EggRangeFigures {
   return {
     totalEggs, goodEggs, standardEggs, averageLiveFemales: females,
@@ -57,13 +74,13 @@ export const emptyEggRangeProduction = (): EggRangeProduction => ({ buildings: [
  */
 export function calculateEggRangeProduction(input: {
   from: string; to: string; farmId?: number;
-  placements: readonly Placement[]; performance: readonly Population[]; eggs: readonly Egg[];
+  placements: readonly EggCollectionPlacement[]; performance: readonly EggCollectionPopulation[]; eggs: readonly Egg[];
 }): EggRangeProduction {
   const result = emptyEggRangeProduction();
   const placements = input.placements.filter(p => !input.farmId || Number(p.farm_id) === input.farmId);
   const byId = new Map(placements.map(p => [Number(p.id), p]));
-  const buildingKey = (p: Placement) => `${p.farm_id}:${p.building_id}`;
-  const populations = new Map<number, Population[]>();
+  const buildingKey = (p: EggCollectionPlacement) => `${p.farm_id}:${p.building_id}`;
+  const populations = new Map<number, EggCollectionPopulation[]>();
   for (const record of input.performance) {
     const id = Number(record.placement_id);
     if (!byId.has(id)) continue;
@@ -72,17 +89,6 @@ export function calculateEggRangeProduction(input: {
     populations.set(id, rows);
   }
   populations.forEach(rows => rows.sort((a, b) => a.daterec.localeCompare(b.daterec) || a.id - b.id));
-  function femalesOn(p: Placement, date: string) {
-    if (p.placement_date.slice(0, 10) > date) return 0;
-    const rows = populations.get(Number(p.id)) ?? [];
-    const latest = rows.findLast(row => row.daterec.slice(0, 10) <= date);
-    if (!latest) return nonnegative(p.f_endingbalance);
-    const opening = nonnegative(latest.inv_female);
-    if (opening == null) return null;
-    return nonnegative(opening + Number(latest.trans_in_female ?? 0) - Number(latest.trans_out_female ?? 0)
-      - Number(latest.mc_female ?? 0) - Number(latest.cull_female ?? 0)
-      - Number(latest.kitchen_female ?? 0) - Number(latest.condem_female ?? 0));
-  }
   const eggsByBuilding = new Map<string, Egg[]>();
   const seen = new Set<number>();
   for (const egg of input.eggs) {
@@ -120,7 +126,7 @@ export function calculateEggRangeProduction(input: {
     }
     for (const date of days) {
       for (const p of pens) {
-        const females = femalesOn(p, date);
+        const females = closingFemalePopulation(p, populations.get(Number(p.id)) ?? [], date);
         if (females == null) { populationAvailable = false; continue; }
         femaleDays += females;
         if (!females) continue;

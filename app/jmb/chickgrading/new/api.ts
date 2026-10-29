@@ -4,6 +4,8 @@ export type ChickGradingProcess = {
   id: number;
   created_at: string;
   created_by: string | null;
+  createdByName?: string;
+  assignedTaLabel?: string;
   updated_at: string | null;
   updated_by: string | null;
 

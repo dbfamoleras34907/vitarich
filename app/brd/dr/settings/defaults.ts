@@ -10,6 +10,6 @@ export type HarvestDeliveryDefaults = Pick<
  * settings yet. Edit these values when the Farm Setup defaults change.
  */
 export const HARVEST_DELIVERY_DEFAULTS: HarvestDeliveryDefaults = {
-  target_delivery_age: 28,
+  target_delivery_age: 0,
   batch_auto_selection: true,
 };

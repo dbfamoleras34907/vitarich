@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTableCopyDown } from "@/hooks/useTableCopyDown";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   createBreederDispatch,
   dispatchItemKey,
@@ -226,6 +227,7 @@ export default function MultipleBreederDispatchForm() {
   const dispatchId = Number(searchParams.get("id"));
   const isViewing = Number.isInteger(dispatchId) && dispatchId > 0;
   const [farmId, setFarmId] = useState("");
+  useSyncDefaultFarm(farmId);
   const [items, setItems] = useState<AvailableDispatchItem[]>([]);
   const [buildings, setBuildings] = useState<BreederDispatchBuilding[]>([]);
   const [hatcheryFarms, setHatcheryFarms] = useState<HatcheryFarmLookup[]>([]);

@@ -886,7 +886,7 @@ export const NavFolders: NavFolder[] = [
           {
             id: 51,
             type: "Module",
-            title: "Item Stock In",
+            title: "Feed Stock In",
             url: "/inv/gr",
             inventoriable: true,
             section: "IV",

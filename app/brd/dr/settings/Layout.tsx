@@ -6,10 +6,9 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import UserFarmSearchCombobox, { getAllowedUserFarms, type UserFarm } from "@/components/ui/UserFarmSearchCombobox";
+import UserFarmSearchCombobox, { type UserFarm } from "@/components/ui/UserFarmSearchCombobox";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { usePermission } from "@/hooks/usePermission";
-import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { ModuleSettingsHeader, SettingRow, SettingsCategory } from "@/components/settings/ModuleSettingsLayout";
 import {
   getBrDeliverySettings,
@@ -47,10 +46,6 @@ export default function BrDeliverySettingsLayout({
   onSaved,
 }: BrDeliverySettingsLayoutProps = {}) {
   const canEdit = usePermission(`${permissionBasePath}/edit`);
-  const { getValue } = useGlobalContext();
-  const session = getValue("UserInfoAuthSession");
-  const rawFarmDB = getValue("getFarmDB");
-  const rawUserFarms = session?.[0]?.users_farms;
   const [settings, setSettings] = useState<BrDeliverySettings | null>(null);
   const [selectedFarm, setSelectedFarm] = useState<UserFarm | null>(null);
   const [selectedFarmId, setSelectedFarmId] = useState("");
@@ -60,17 +55,8 @@ export default function BrDeliverySettingsLayout({
   const [saving, setSaving] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState("");
 
-  const singleAllowedFarm = useMemo(() => {
-    const allowedFarms = getAllowedUserFarms(
-      (rawFarmDB || []) as UserFarm[],
-      (rawUserFarms || []) as unknown[],
-    );
-
-    return allowedFarms.length === 1 ? allowedFarms[0] : null;
-  }, [rawFarmDB, rawUserFarms]);
-
-  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId || (singleAllowedFarm ? String(singleAllowedFarm.id) : "");
-  const activeFarm = fixedFarm ?? selectedFarm ?? (activeFarmId === String(singleAllowedFarm?.id) ? singleAllowedFarm : null);
+  const activeFarmId = fixedFarmId ? String(fixedFarmId) : selectedFarmId;
+  const activeFarm = fixedFarm ?? selectedFarm;
   const currentSnapshot = JSON.stringify({ farmId: activeFarmId, batchAutoSelection, targetDeliveryAge });
   const isDirty = Boolean(savedSnapshot) && currentSnapshot !== savedSnapshot;
 

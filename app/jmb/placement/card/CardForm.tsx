@@ -46,11 +46,12 @@ import {
   listDailyPerformance,
   listFeedTypes,
   listPlacementPens,
-  saveDailyPerformance,
+  saveDailyPerformanceBatch,
   loadPopulationDraft,
   savePopulationDraft,
   deletePopulationDraft,
   type BreederDailyPerformance,
+  type BreederDailyPerformancePayload,
   type FeedType,
 } from "./api";
 import BreederCardExportMenu, {
@@ -178,6 +179,13 @@ const dailyEntryFields = Object.keys(zeroFields) as Array<
   keyof typeof zeroFields
 >;
 
+const persistedInputFields: Array<keyof EditableRow> = [
+  ...dailyEntryFields,
+  "remarks",
+  "male_feedtype_id",
+  "female_feedtype_id",
+];
+
 function dailyDepletion(row: EditableRow, sex: "male" | "female") {
   return (
     row[`mc_${sex}`] +
@@ -195,6 +203,39 @@ function hasDailyRecord(row: EditableRow) {
     row.male_feedtype_id != null ||
     row.female_feedtype_id != null
   );
+}
+
+function hasEnteredDailyValue(row: EditableRow) {
+  return (
+    dailyEntryFields.some((field) => Number(row[field]) !== 0) ||
+    Boolean(row.remarks?.trim()) ||
+    row.male_feedtype_id != null ||
+    row.female_feedtype_id != null
+  );
+}
+
+function persistedInputValue(row: EditableRow, field: keyof EditableRow) {
+  const value = row[field];
+  if (typeof value === "string") return value.trim() || null;
+  return value ?? null;
+}
+
+function hasPersistedInputChange(
+  row: EditableRow,
+  persisted: BreederDailyPerformance | undefined,
+) {
+  if (!persisted) return hasEnteredDailyValue(row);
+  return persistedInputFields.some(
+    (field) => persistedInputValue(row, field) !== persistedInputValue(persisted, field),
+  );
+}
+
+function toDailyPerformancePayload(
+  row: EditableRow,
+): BreederDailyPerformancePayload {
+  const payload = { ...row };
+  delete payload.id;
+  return payload;
 }
 
 function localDate(date = new Date()) {
@@ -433,6 +474,9 @@ export default function CardForm() {
   const [penPlacements, setPenPlacements] = useState<Placement[]>([]);
   const [feedTypes, setFeedTypes] = useState<FeedType[]>([]);
   const [rows, setRows] = useState<EditableRow[]>([]);
+  const [persistedRowsByDate, setPersistedRowsByDate] = useState<
+    Record<string, BreederDailyPerformance>
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<number | null>(null);
@@ -720,6 +764,9 @@ export default function CardForm() {
         setPlacement(placementRow);
         setFeedTypes(feedRows);
         setPenPlacements(penRows);
+        setPersistedRowsByDate(
+          Object.fromEntries(dailyRows.map((row) => [row.daterec, row])),
+        );
         const postedByDate = new Map(
           dailyRows.map((row) => [row.daterec, row]),
         );
@@ -926,7 +973,18 @@ export default function CardForm() {
     if (!placement || !rows.length || saving || savingDraft) return;
     setSavingDraft(true);
     try {
-      await savePopulationDraft(placement.id, rows);
+      const draftRows = rows
+        .filter((row, index) => {
+          const hasExplicitZero = [...explicitZeroCells].some((cell) =>
+            cell.startsWith(`${index}:`),
+          );
+          return (
+            hasExplicitZero ||
+            hasPersistedInputChange(row, persistedRowsByDate[row.daterec])
+          );
+        })
+        .map(toDailyPerformancePayload);
+      await savePopulationDraft(placement.id, draftRows);
       setHasDraft(true);
       toast.success("Population Record saved as draft.");
     } catch (error) {
@@ -954,20 +1012,43 @@ export default function CardForm() {
     let trackingProgress = true;
     try {
       const eligibleRows = rows.filter((row) => row.daterec <= localDate());
-      let completedRows = 0;
-      const saved = await Promise.all(
-        eligibleRows.map(async (row) => {
-          const savedRow = await saveDailyPerformance(row);
-          completedRows += 1;
-          if (trackingProgress) {
-            setSaveProgress(
-              Math.min(99, Math.floor((completedRows / eligibleRows.length) * 100)),
-            );
-          }
-          return savedRow;
-        }),
-      );
-      setRows(buildDailyRows(placement, saved));
+      const changedIndexes = eligibleRows
+        .map((row, index) => {
+          const hasExplicitZero = [...explicitZeroCells].some((cell) =>
+            cell.startsWith(`${index}:`),
+          );
+          return hasExplicitZero || hasPersistedInputChange(
+            row,
+            persistedRowsByDate[row.daterec],
+          )
+            ? index
+            : -1;
+        })
+        .filter((index) => index >= 0);
+
+      if (!changedIndexes.length) {
+        toast.success("No Population Record changes to post.");
+        setSaveProgress(100);
+        return;
+      }
+
+      const firstChangedIndex = Math.min(...changedIndexes);
+      const rowsToPersist = eligibleRows
+        .filter((row, index) =>
+          changedIndexes.includes(index) ||
+          (index >= firstChangedIndex && persistedRowsByDate[row.daterec] != null),
+        )
+        .map(toDailyPerformancePayload);
+      setSaveProgress(20);
+      const saved = await saveDailyPerformanceBatch(rowsToPersist);
+      if (trackingProgress) setSaveProgress(85);
+      const nextPersistedRowsByDate = {
+        ...persistedRowsByDate,
+        ...Object.fromEntries(saved.map((row) => [row.daterec, row])),
+      };
+      setPersistedRowsByDate(nextPersistedRowsByDate);
+      setRows(buildDailyRows(placement, Object.values(nextPersistedRowsByDate)));
+      setExplicitZeroCells(new Set());
       toast.success("Population Record posted.");
       try {
         await deletePopulationDraft(placement.id);

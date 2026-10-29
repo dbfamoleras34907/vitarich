@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   createBreederDispatch, dispatchItemKey, EGG_CATEGORIES, getBreederDispatchById, getDefaultFarm,
   dispatchCategoryOrder, listAvailableDispatchItems, listHatcheryFarms, POPULATION_CATEGORIES, updateBreederDispatch,
@@ -41,6 +42,7 @@ export default function BreederDispatchForm() {
   const dispatchId = Number(searchParams.get("id"));
   const isEdit = Number.isInteger(dispatchId) && dispatchId > 0;
   const [form, setForm] = useState<FormState>(initialForm);
+  useSyncDefaultFarm(form.farm_id);
   const [items, setItems] = useState<AvailableDispatchItem[]>([]);
   const [hatcheryFarms, setHatcheryFarms] = useState<HatcheryFarmLookup[]>([]);
   const [quantities, setQuantities] = useState<QuantityState>({});
@@ -90,7 +92,7 @@ export default function BreederDispatchForm() {
     let cancelled = false; setLoadingItems(true);
     listAvailableDispatchItems(form.dispatch_date).then((rows) => {
       if (cancelled) return; setItems(rows);
-      setForm((current) => current.farm_id && rows.some((row) => String(row.farm_id) === current.farm_id) ? current : { ...current, farm_id: rows[0] ? String(rows[0].farm_id) : "" });
+      setForm((current) => current.farm_id && rows.some((row) => String(row.farm_id) === current.farm_id) ? current : { ...current, farm_id: "" });
     }).catch((loadError) => { console.error(loadError); if (!cancelled) setError("Unable to load dispatchable Population Record and Egg Laying quantities."); })
       .finally(() => { if (!cancelled) setLoadingItems(false); });
     return () => { cancelled = true; };

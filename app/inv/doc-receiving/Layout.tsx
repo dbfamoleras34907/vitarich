@@ -67,6 +67,8 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
   rejectReceived: number
   shortCount: number
   status: string
+  createdBy: string
+  assignedTa: string
   receipt: GoodsReceipt
 }
 
@@ -146,6 +148,8 @@ export default function GoodsReceiveHistory() {
           rejectReceived: summary.reject,
           shortCount: summary.shortCount,
           status: receipt.status,
+          createdBy: receipt.createdByName || '—',
+          assignedTa: receipt.assignedTaLabel || 'Farm unavailable',
           receipt,
         }
       }),
@@ -181,6 +185,8 @@ export default function GoodsReceiveHistory() {
         ),
         align: "center"
       },
+      { key: 'createdBy', label: 'Created by', width: 150, render: row => <span className="block max-w-36 truncate" title={row.createdBy}>{row.createdBy}</span> },
+      { key: 'assignedTa', label: 'Assigned TA', width: 180, render: row => <span className="block max-w-44 truncate" title={row.assignedTa}>{row.assignedTa}</span> },
       {
         key: 'action',
         label: 'Action',

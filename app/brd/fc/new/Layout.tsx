@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import SearchableCombobox from "@/components/SearchableCombobox";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import type { Items, WarehouseData } from "@/lib/types";
 import { getUserFarms } from "@/app/admin/user/new/api";
 import { ArrowRightCircle, ChevronDown, ChevronUp, Copy, Eraser, Loader2, MousePointerClick, PackageCheck, RotateCcw, Save, WandSparkles, X } from "lucide-react";
@@ -307,6 +308,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [flockCardCardNo, setFlockCardCardNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [selectedFarmId, setSelectedFarmId] = useState("");
+  useSyncDefaultFarm(selectedFarmId);
   const [selectedBuildingId, setSelectedBuildingId] = useState("");
   const [selectedWarehouseCode, setSelectedWarehouseCode] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
@@ -942,7 +944,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     const requestedFarm = farms.find(farm => String(farm.id) === requestedFarmId);
     const defaultFarmId = getValue("DefaultFarmId");
     const defaultFarm = farms.find(farm => String(farm.id) === String(defaultFarmId));
-    const nextFarm = requestedFarm ?? defaultFarm ?? farms[0];
+    const nextFarm = requestedFarm ?? defaultFarm;
 
     if (nextFarm) setSelectedFarmId(String(nextFarm.id));
   }, [farms, getValue, requestedFarmId, selectedFarmId]);

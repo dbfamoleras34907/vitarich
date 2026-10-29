@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import Breadcrumb from "@/lib/Breadcrumb";
 import { STANDARD_FEED_BY_WEEK } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { getUserInfo, listBreederCycles, listBreederFarms, listFarmLocationLookup, type BreederCycle, type BreederFarm, type FarmLocationLookup } from "@/app/jmb/placement/new/api";
 import {
@@ -187,6 +188,7 @@ export default function BreederReports() {
   const [reportType, setReportType] = useState<ReportType>("mortality");
   const [farms, setFarms] = useState<BreederFarm[]>([]); const [locations, setLocations] = useState<FarmLocationLookup[]>([]); const [cycles, setCycles] = useState<BreederCycle[]>([]);
   const [farmId, setFarmId] = useState(""); const [cycleNumber, setCycleNumber] = useState(ALL); const [buildingId, setBuildingId] = useState(ALL); const [penId, setPenId] = useState(ALL);
+  useSyncDefaultFarm(farmId);
   const [dateFrom, setDateFrom] = useState(() => { const date = new Date(); date.setDate(1); return localDate(date); }); const [dateTo, setDateTo] = useState(() => localDate(new Date()));
   const [performanceRows, setPerformanceRows] = useState<MortalityReportRow[]>([]); const [vaccinationRows, setVaccinationRows] = useState<VaccinationReportRow[]>([]);
   const [medicationRows, setMedicationRows] = useState<MedicationReportRow[]>([]); const [regradingRows, setRegradingRows] = useState<RegradingReportRow[]>([]);
@@ -198,7 +200,7 @@ export default function BreederReports() {
     let cancelled = false;
     Promise.all([listBreederFarms(), listFarmLocationLookup(), listBreederCycles(), getUserInfo().catch(() => [])]).then(([farmRows, locationRows, cycleRows, defaults]) => {
       if (cancelled) return; setFarms(farmRows); setLocations(locationRows); setCycles(cycleRows);
-      const initial = farmRows.find((farm) => Number(farm.id) === Number(defaults[0]?.id)) ?? farmRows[0]; if (initial) setFarmId(String(initial.id));
+      const initial = farmRows.find((farm) => Number(farm.id) === Number(defaults[0]?.id)); if (initial) setFarmId(String(initial.id));
     }).catch((loadError) => { console.error(loadError); if (!cancelled) setError("Unable to load breeder report filters."); }).finally(() => { if (!cancelled) setLoadingSetup(false); });
     return () => { cancelled = true; };
   }, []);

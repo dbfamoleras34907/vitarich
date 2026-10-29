@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -41,9 +41,10 @@ import { copyRow, copyTable } from "@/lib/tableActions";
 
 import { usePermission } from "@/hooks/usePermission";
 import {
-  attachFarmFilterFromRefs,
+  attachProcessListAttributionsFromRefs,
   buildDefaultFarmInitialFilters,
 } from "@/lib/farmFilter";
+import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
 
 export default function EggsetterTable() {
   const [items, setItems] = useState<RowDataKey[]>([]);
@@ -51,17 +52,18 @@ export default function EggsetterTable() {
 
   const router = useRouter();
 
-  const { getValue, setValue } = useGlobalContext();
+  const { setValue } = useGlobalContext();
+  const parameters = useHatcheryListParameters();
   const defaultFarmFilters = useMemo(
-    () => buildDefaultFarmInitialFilters(getValue("DefaultFarmId")),
-    [getValue],
+    () => buildDefaultFarmInitialFilters(parameters.farmId),
+    [parameters.farmId],
   );
 
   const canView = usePermission("/jmb/eggsetter/view");
   const canInsert = usePermission("/jmb/eggsetter/insert");
   const canEdit = usePermission("/jmb/eggsetter/edit");
 
-  const formatDateTime = (value?: string | null) => {
+  const formatDateTime = useCallback((value?: string | null) => {
     if (!value) return "-";
 
     const d = new Date(value);
@@ -71,7 +73,7 @@ export default function EggsetterTable() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
       d.getDate(),
     )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
+  }, []);
 
   const tableColumns: ColumnConfig[] = useMemo(
     () => [
@@ -172,11 +174,13 @@ export default function EggsetterTable() {
         type: "text",
         disabled: true,
       },
+      { key: "createdByName", label: "Created by", type: "text", disabled: true },
+      { key: "assignedTaLabel", label: "Assigned TA", type: "text", disabled: true },
     ],
     [],
   );
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
 
     try {
@@ -184,8 +188,9 @@ export default function EggsetterTable() {
 
       const mapped =
         Array.isArray(data)
-          ? data.map((item: SetterIncubation, index: number) => ({
+          ? data.filter(item => isWithinHatcheryDateRange(item.setting_date ?? item.created_at, parameters.dateFrom, parameters.dateTo)).map((item: SetterIncubation, index: number) => ({
             id: item.id,
+            created_by: item.created_by,
 
             "#": index + 1,
 
@@ -223,18 +228,18 @@ export default function EggsetterTable() {
           }))
           : [];
 
-      setItems(await attachFarmFilterFromRefs(mapped, (row) => row.ref_no));
+      setItems(await attachProcessListAttributionsFromRefs(mapped, (row) => row.ref_no));
     } catch (e) {
       console.error(e);
       setItems([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [formatDateTime, parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     refreshSessionx(router);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     (async () => {
@@ -242,11 +247,11 @@ export default function EggsetterTable() {
 
       await fetchData();
     })();
-  }, []);
+  }, [fetchData, router]);
 
   useEffect(() => {
     setValue("loading_g", loading);
-  }, [loading]);
+  }, [loading, setValue]);
 
   const getRowActions = (row: RowDataKey): RowAction[] => {
     return [
@@ -325,6 +330,8 @@ export default function EggsetterTable() {
           New Record
         </Button>
       </div>
+
+      <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
 
       <div className="mt-4">
         <DynamicTable

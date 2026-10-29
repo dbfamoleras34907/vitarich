@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
+import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
@@ -266,6 +267,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
   const cannotInsert = usePermission('/inv/it/insert')
   const cannotEdit = usePermission('/inv/it/edit')
   const [transfer, setTransfer] = useState<InventoryTransfer | null>(null)
+  useSyncDefaultFarm(transfer?.farmId)
   const [items, setItems] = useState<Items[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [farms, setFarms] = useState<GoodsReceiptFarm[]>([])
@@ -359,6 +361,23 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
     () => farms.find(farm => farm.id === transfer?.farmId),
     [farms, transfer?.farmId],
   )
+
+  useEffect(() => {
+    if (loadingReferences || transfer?.farmId || farms.length === 0) return
+    const defaultFarmReference = getValue('DefaultFarmId')
+      ?? getValue('UserInfoAuthSession')?.[0]?.default_farm
+    const farm = farms.find(candidate =>
+      String(candidate.id) === String(defaultFarmReference ?? '')
+      || candidate.code === String(defaultFarmReference ?? ''),
+    )
+    if (!farm) return
+    setTransfer(current => current ? {
+      ...current,
+      farmId: farm.id,
+      farmCode: farm.code ?? '',
+      farmName: farm.name ?? '',
+    } : current)
+  }, [farms, getValue, loadingReferences, transfer?.farmId])
 
   const farmWarehouses = useMemo(
     () => getWarehousesForFarm(selectedFarm, warehouses),
@@ -1384,7 +1403,7 @@ export default function NewInventoryTransfer({ mode = 'draft' }: NewInventoryTra
                 {canPostDocument && (
                   <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
                     <Save className="size-4" />
-                    {saving ? 'Posting...' : 'Post Document'}
+                    {saving ? 'Posting...' : 'Save Document'}
                   </Button>
                 )}
               </div>

@@ -66,8 +66,7 @@ export function LoginForm({
           router.push("/signup_update")
           return
         }
-        await setGlobals({ autoSelectSingleFarm: true })
-        setValue('openDefaultfarmModal', true)
+        await setGlobals()
         setValue('loading_g', true)
         router.push("/init");
         setloading(false)

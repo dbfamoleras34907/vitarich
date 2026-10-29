@@ -6,7 +6,7 @@ export type SavedDefaultFarm = {
   code: string;
   name: string;
   farmType: string;
-  fmsType: "Broiler" | "Breeder" | "Hatchery" | null;
+  fmsType: "Broiler" | "Breeder" | "Hatchery";
 };
 
 let saveQueue: Promise<unknown> = Promise.resolve();

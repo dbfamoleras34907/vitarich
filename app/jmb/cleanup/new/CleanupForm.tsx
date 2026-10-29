@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTableCopyDown } from "@/hooks/useTableCopyDown";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
+import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { createBreederCleanups, getBreederCleanupById, getUserInfo, listBreederFarms,
   listBreederCleanupCycles, updateBreederCleanup, type BreederFarm, type BreederCleanupInput,
   type BreederCleanupRow } from "./api";
@@ -65,6 +66,7 @@ export default function CleanupForm() {
   const { setValue } = useGlobalContext();
   const [farms, setFarms] = useState<BreederFarm[]>([]);
   const [farmId, setFarmId] = useState("");
+  useSyncDefaultFarm(farmId);
   const [groups, setGroups] = useState<CullingBuilding[]>([]);
   const [rows, setRows] = useState<RowInput[]>(() => [emptyRow()]);
   const [record, setRecord] = useState<BreederCleanupRow | null>(null);
@@ -121,7 +123,7 @@ export default function CleanupForm() {
           }]);
         }
         setRecord(saved); setGroups(options); setFarms(farmRows);
-        setFarmId(String(saved?.farm_id ?? farmRows.find(farm => farm.id === Number(defaults[0]?.id))?.id ?? farmRows[0]?.id ?? ""));
+        setFarmId(String(saved?.farm_id ?? farmRows.find(farm => farm.id === Number(defaults[0]?.id))?.id ?? ""));
       }).catch(loadError => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Unable to load Terminal Culling buildings."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
