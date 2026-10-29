@@ -150,8 +150,6 @@ export default function UserFarmSearchCombobox({
   const selectedFarm = filteredFarms.find(farm => farm.code === reference)
     ?? filteredFarms.find(farm => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
-  const defaultFarmReference = getValue("DefaultFarmId")
-    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
     if (selectedFarm) onFarmResolved?.(selectedFarm);

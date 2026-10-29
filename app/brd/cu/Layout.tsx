@@ -6,6 +6,7 @@ export default function Layout() {
       config={{
         triggeredBy: 'BR-CU',
         documentPrefix: 'BR-CU',
+        newActionLabel: 'New Clean up',
         basePath: '/brd/cu',
         permissionPath: '/brd/cu',
         parentLabel: 'Broiler',

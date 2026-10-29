@@ -22,7 +22,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -81,7 +80,6 @@ export default function CycleMasterLayout() {
   const editBlocked = usePermission('/brd/cycle-master/edit')
   const [selectedFarmId, setSelectedFarmId] = useState('')
   const [rows, setRows] = useState<CycleMasterListRow[]>([])
-  const [cycleTab, setCycleTab] = useState<'open' | 'closed'>('open')
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [actionTarget, setActionTarget] = useState<{ row: CycleMasterListRow; action: 'close' | 'reopen' } | null>(null)
@@ -383,7 +381,6 @@ export default function CycleMasterLayout() {
             </section>
           ))}
         </div>
-        </Tabs>
       </section>
 
       <Dialog open={pastCycleOpen} onOpenChange={open => !savingPastCycle && setPastCycleOpen(open)}>

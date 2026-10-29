@@ -53,10 +53,10 @@ import { useSidebar } from '@/lib/sidebar/SidebarProvider'
 import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
 import { resolveCycleDisplayNumber } from '@/lib/broiler/cycleMask'
+import { getFirstDocPlacementDates } from '@/lib/data/queries/broilerDocPlacementDates'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
-  getFirstDocPlacementDates,
   getGoodsReceiptById,
   GoodsReceipt,
   GoodsReceiptDocLine,
