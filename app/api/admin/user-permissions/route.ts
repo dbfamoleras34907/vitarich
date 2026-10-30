@@ -6,13 +6,12 @@ import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import {
   USER_TYPE,
   adminAccessError,
-  canManageUser,
-  requireAdminActor,
+  requireModuleActor,
   type ManagedUserProfile,
 } from "@/lib/auth/adminAccess"
-import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 const ACTIONS = new Set(["list", "view", "insert", "edit", "void", "approval"])
+const USER_PERMISSIONS_ACCESS_LINK = "/admin/user-permissions/view"
 
 function permissionDefinition(groupName: string, title: string) {
   const slashIndex = title.lastIndexOf("/")
@@ -44,31 +43,18 @@ async function getTarget(authId: string) {
   return { ...data, user_type: Number(data.user_type ?? USER_TYPE.USER) } as ManagedUserProfile
 }
 
-function canGrantForTarget(actor: ManagedUserProfile, target: ManagedUserProfile, fmsTypes?: string[]) {
-  if (!canManageUser(actor, target)) return false
-  const targetFmsTypes = normalizeUserFmsTypes(target.fms_types, target.fms_type)
-  if (actor.user_type === USER_TYPE.SUPER_ADMIN) {
-    return targetFmsTypes.length === 0 || !fmsTypes?.length || userFmsTypesOverlap(targetFmsTypes, fmsTypes)
-  }
-  return !fmsTypes?.length || userFmsTypesOverlap(actor.fms_types, fmsTypes, actor.fms_type)
-}
-
 export async function GET(request: Request) {
   try {
-    const actor = await requireAdminActor(request)
+    const actor = await requireModuleActor(request, USER_PERMISSIONS_ACCESS_LINK)
     const url = new URL(request.url)
     const targetAuthId = url.searchParams.get("userId")
 
     if (!targetAuthId) {
-      let query = admin_db
+      const query = admin_db
         .from("users")
         .select("id, auth_id, email, firstname, middlename, lastname, created_at, updated_at, isactive, fms_type, fms_types, user_type, issuper")
         .not("auth_id", "is", null)
         .order("firstname", { ascending: true })
-
-      if (actor.user_type === USER_TYPE.ADMIN) {
-        query = query.eq("user_type", USER_TYPE.USER).containedBy("fms_types", normalizeUserFmsTypes(actor.fms_types, actor.fms_type))
-      }
 
       const { data, error } = await query
       if (error) throw error
@@ -107,7 +93,7 @@ export async function GET(request: Request) {
     }
 
     const target = await getTarget(targetAuthId)
-    if (!target || !canManageUser(actor, target)) throw new Error("FORBIDDEN")
+    if (!target) throw new Error("FORBIDDEN")
 
     const { data, error } = await admin_db
       .from("user_permissions")
@@ -125,7 +111,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireAdminActor(request)
+    const actor = await requireModuleActor(request, USER_PERMISSIONS_ACCESS_LINK)
     const body = await request.json() as {
       userId?: string
       changes?: Array<{ groupName?: string; title?: string; checked?: boolean }>
@@ -151,7 +137,7 @@ export async function POST(request: Request) {
     const updatedAt = new Date().toISOString()
     const rows = uniqueChanges.map(change => {
       const definition = permissionDefinition(change.groupName, change.title)
-      if (!definition || !canGrantForTarget(actor, target, definition.folder.fmsTypes)) {
+      if (!definition) {
         throw new Error("FORBIDDEN")
       }
 
