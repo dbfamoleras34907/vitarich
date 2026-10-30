@@ -49,7 +49,7 @@ function loadApi(rows) {
       return query
     },
   }
-  const source = fs.readFileSync(path.join(root, 'app/inv/doc-receiving/api.ts'), 'utf8')
+  const source = fs.readFileSync(path.join(root, 'lib/data/queries/broilerDocPlacementDates.ts'), 'utf8')
   const code = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -60,7 +60,6 @@ function loadApi(rows) {
   const mod = { exports: {} }
   const localRequire = specifier => {
     if (specifier === '@/lib/Supabase/supabaseClient') return { db }
-    if (specifier === '@/lib/data/repositories/receivingSources') return {}
     return require(specifier)
   }
   new Function('require', 'module', 'exports', code)(localRequire, mod, mod.exports)

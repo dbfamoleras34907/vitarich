@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CalendarDays, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowRightCircle, CalendarDays, ChevronDown, List, Loader2, PackageCheck, Plus, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import SearchableCombobox from '@/components/SearchableCombobox'
+import BatchTransactionTimeline from '@/components/inventory/BatchTransactionTimeline'
+import BatchWarehouseReportButton from '@/components/inventory/BatchWarehouseReportButton'
 import BroilerCycleSelect from '@/components/broiler/BroilerCycleSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogClose,
@@ -25,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
 import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
+import { calculateBirdAgeFromPlacementDate } from '@/app/brd/fc/age'
 import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -68,6 +72,18 @@ import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
 import { getCleanupCycleInventoryBatches } from '@/lib/data/repositories/brCleanup'
+import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
+import {
+  getBatchTransactionTrail,
+  type BatchTransactionTrail,
+} from '@/lib/data/repositories/batchTransactionTrail'
+import { createUuid } from '@/lib/utils/createUuid'
+import { formatNumberRanges } from '@/lib/utils/formatNumberRanges'
+import { quantityExceeds, QUANTITY_TOLERANCE } from '@/lib/utils/quantityComparison'
+import {
+  planBatchQuantityReallocation,
+  type BatchReallocationAllocation,
+} from '@/lib/functions/reallocateBatchQuantities'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -80,6 +96,41 @@ type DeliveryPlacementBatch = GoodsIssueOnHandBatch & {
   itemName?: string
 }
 
+type DeliveryReallocationCandidate = DeliveryPlacementBatch & {
+  key: string
+  warehouseId: number | null
+  warehouseName: string
+  flockCard: GoodsIssueFlockCardInfo | null
+}
+
+type BatchTrailTarget = {
+  line: GoodsIssueLine
+  quantityLabel: string
+  quantityValue: number
+}
+
+type PostBatchSummary = {
+  key: string
+  batchNumber: string
+  itemCode: string
+  warehouseCode: string
+  lineNumbers: number[]
+  requiredQty: number
+  onHandQty: number
+  remainingQty: number
+  isLoading: boolean
+  balanceError: string
+  hasStockError: boolean
+  hasAllocationError: boolean
+  hasError: boolean
+}
+
+type PostBatchBalance = {
+  loading: boolean
+  onHandQty: number | null
+  error: string
+}
+
 const today = () => {
   const date = new Date()
   const offset = date.getTimezoneOffset()
@@ -87,7 +138,7 @@ const today = () => {
 }
 
 const newLine = (): GoodsIssueLine => {
-  const id = crypto.randomUUID()
+  const id = createUuid()
   return {
     id,
     allocationGroupKey: id,
@@ -163,9 +214,7 @@ const getCachedWarehouses = (value: unknown): WarehouseData[] => {
 }
 
 const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null) return JSON.stringify(error)
-  return String(error)
+  return getPostgresErrorMessage(error, 'An unexpected error occurred. Please retry.')
 }
 
 const formatQuantity = (value: number) =>
@@ -407,16 +456,22 @@ export default function NewGoodsIssue({
   const handledAutoBatchSelectionRef = useRef<Record<string, string>>({})
   const initializedDeliveryFarmRef = useRef<string>('')
   const [activeBatchLineId, setActiveBatchLineId] = useState<GoodsIssueLine['id'] | null>(null)
+  const [batchTrailTarget, setBatchTrailTarget] = useState<BatchTrailTarget | null>(null)
+  const [batchTrailCache, setBatchTrailCache] = useState<Record<string, BatchTransactionTrail[]>>({})
+  const [loadingBatchTrailKey, setLoadingBatchTrailKey] = useState('')
+  const [batchTrailErrors, setBatchTrailErrors] = useState<Record<string, string>>({})
   const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
   const [eligibleDeliveryBuildingCodes, setEligibleDeliveryBuildingCodes] = useState<Set<string> | null>(null)
   const [noAvailableDeliveryBuildings, setNoAvailableDeliveryBuildings] = useState(false)
   const [deliverySettingsError, setDeliverySettingsError] = useState('')
   const [deliverySettingsRetry, setDeliverySettingsRetry] = useState(0)
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
+  const [postBatchBalances, setPostBatchBalances] = useState<Record<string, PostBatchBalance>>({})
   const [lineCount, setLineCount] = useState(1)
   const [loadingReferences, setLoadingReferences] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pastingDelivery, setPastingDelivery] = useState(false)
+  const [reallocatingQuantities, setReallocatingQuantities] = useState(false)
   const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
   const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
@@ -506,7 +561,7 @@ export default function NewGoodsIssue({
                   : line.allocationGroupKey || String(line.id)
                 return {
                   ...line,
-                  id: crypto.randomUUID(),
+                  id: createUuid(),
                   requestedAltQty: requestedQtyByGroup.get(groupKey) ?? Number(line.altQty || 0),
                 }
               }),
@@ -821,7 +876,11 @@ export default function NewGoodsIssue({
           lines: current.lines.map(line => {
             const lookupKey = getLineFlockCardLookupKey(current.farmId, current.farmCycleId, line)
             const info = lookupKey ? lineFlockCardCacheRef.current[lookupKey]?.info : null
-            const age = line.harvestAge === undefined ? info?.age : line.harvestAge
+            if (current.status !== 'Draft') return line
+            const age = calculateBirdAgeFromPlacementDate(
+              info?.placementDate ?? '',
+              line.deliveredDate ?? '',
+            )
             const averageLiveWeight = line.averageLiveWeight === undefined && age != null
               ? info?.bodyWeightsByAge[String(age)] ?? null
               : line.averageLiveWeight
@@ -1484,7 +1543,7 @@ export default function NewGoodsIssue({
               candidate,
               {
                 ...updatedLine,
-                id: crypto.randomUUID(),
+                id: createUuid(),
                 batchRuleId: batchRule?.id ?? null,
               },
             ]
@@ -1539,7 +1598,7 @@ export default function NewGoodsIssue({
 
       const allocation: GoodsIssueLine = {
         ...line,
-        id: allocations.length === 0 ? line.id : crypto.randomUUID(),
+        id: allocations.length === 0 ? line.id : createUuid(),
         itemId: selectedItem?.id ?? line.itemId,
         itemCode: selectedItem?.item_code ?? batch.itemCode ?? line.itemCode,
         description: selectedItem?.item_name || selectedItem?.description || line.description,
@@ -1577,12 +1636,290 @@ export default function NewGoodsIssue({
     })
   }
 
+  const reallocateDeliveryQuantities = async () => {
+    const snapshot = issueSnapshotRef.current
+    if (!snapshot || triggeredBy !== 'BR-DR' || snapshot.status !== 'Draft' || !snapshot.farmId) return
+
+    const enteredLines = snapshot.lines
+      .filter(lineHasEnteredItem)
+      .map(getLineWithRecalculatedQuantity)
+    if (enteredLines.length === 0) {
+      toast('Enter at least one delivery quantity before re-allocating.')
+      return
+    }
+
+    setReallocatingQuantities(true)
+    try {
+      const settings = await getBrDeliverySettings(Number(snapshot.farmId))
+      const availableCards = await getAvailableDeliveryFlockCards({
+        farmId: Number(snapshot.farmId),
+        farmCycleId: snapshot.farmCycleId,
+        targetAge: Number(settings?.target_delivery_age ?? 0),
+      })
+
+      const warehousesByCode = new Map(
+        deliveryFarmWarehouses.map(warehouse => [
+          String(warehouse.whse_code ?? '').trim().toUpperCase(),
+          warehouse,
+        ]),
+      )
+      const candidateByKey = new Map<string, DeliveryReallocationCandidate>()
+      availableCards.forEach(card => {
+        ;(card.placementBatches ?? []).forEach(batch => {
+          const warehouseCode = batch.warehouseCode || card.buildingCode
+          const warehouse = warehousesByCode.get(warehouseCode.trim().toUpperCase())
+          const candidateLine = {
+            itemCode: batch.itemCode,
+            fromWarehouseCode: warehouseCode,
+            batchNumber: batch.batchNumber,
+          }
+          const key = allocatedBatchKey(candidateLine)
+          candidateByKey.set(key, {
+            ...batch,
+            key,
+            warehouseCode,
+            warehouseId: card.buildingWarehouseId ?? warehouse?.id ?? null,
+            warehouseName: card.buildingName || warehouse?.whse_name || warehouseCode,
+            flockCard: card,
+          })
+        })
+      })
+
+      const selectedBatchLines = Array.from(new Map(
+        enteredLines
+          .filter(line => line.itemCode.trim() && line.fromWarehouseCode.trim() && line.batchNumber.trim())
+          .map(line => [allocatedBatchKey(line), line]),
+      ).entries())
+      const selectedBalances = await Promise.all(selectedBatchLines.map(async ([key, line]) => ({
+        key,
+        line,
+        onHandQty: await getItemWarehouseOnHand(line.itemCode, line.fromWarehouseCode, line.batchNumber),
+      })))
+
+      selectedBalances.forEach(({ key, line, onHandQty }) => {
+        const existing = candidateByKey.get(key)
+        const warehouse = warehousesByCode.get(line.fromWarehouseCode.trim().toUpperCase())
+        const flockCard = lineFlockCardInfo[String(line.id)]?.info ?? null
+        candidateByKey.set(key, {
+          itemCode: line.itemCode,
+          itemName: existing?.itemName ?? line.description,
+          batchNumber: line.batchNumber,
+          manufacturingDate: existing?.manufacturingDate ?? line.manufacturingDate,
+          expiryDate: existing?.expiryDate ?? line.expiryDate,
+          warehouseCode: line.fromWarehouseCode,
+          onHandQty,
+          key,
+          warehouseId: line.fromWarehouseId ?? warehouse?.id ?? null,
+          warehouseName: line.fromWarehouseName || warehouse?.whse_name || line.fromWarehouseCode,
+          flockCard: existing?.flockCard ?? flockCard,
+        })
+      })
+
+      if (issueSnapshotRef.current !== snapshot) {
+        throw new Error('The document changed while batch balances were loading. Please run Re-Allocate Quantity again.')
+      }
+
+      const linesByGroup = enteredLines.reduce((groups, line) => {
+        const key = getAllocationGroupKey(line)
+        groups.set(key, [...(groups.get(key) ?? []), line])
+        return groups
+      }, new Map<string, GoodsIssueLine[]>())
+      const requestedBaseQtyByGroup = new Map<string, number>()
+      linesByGroup.forEach((group, key) => {
+        const firstLine = group[0]
+        const requestedAltQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
+          ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
+        const calculatedBaseQty = calculateBaseQty(requestedAltQty, firstLine.altUom, firstLine.baseUom)
+        requestedBaseQtyByGroup.set(
+          key,
+          calculatedBaseQty > 0
+            ? calculatedBaseQty
+            : group.reduce((total, line) => total + Number(line.baseQty || 0), 0),
+        )
+      })
+
+      const plan = planBatchQuantityReallocation(
+        enteredLines.map(line => ({
+          id: String(line.id),
+          groupKey: getAllocationGroupKey(line),
+          itemCode: line.itemCode,
+          batchKey: line.batchNumber.trim() ? allocatedBatchKey(line) : '',
+          allocatedBaseQty: Number(line.baseQty || 0),
+          requestedBaseQty: requestedBaseQtyByGroup.get(getAllocationGroupKey(line)) ?? 0,
+        })),
+        Array.from(candidateByKey.values()).map(candidate => ({
+          key: candidate.key,
+          itemCode: candidate.itemCode,
+          warehouseCode: candidate.warehouseCode,
+          batchNumber: candidate.batchNumber,
+          onHandBaseQty: candidate.onHandQty,
+          oldestDate: candidate.manufacturingDate || candidate.expiryDate,
+        })),
+        QUANTITY_TOLERANCE,
+      )
+
+      if (plan.reallocatedBaseQty <= QUANTITY_TOLERANCE) {
+        if (plan.shortageBaseQty > QUANTITY_TOLERANCE) {
+          toast.error(`No additional same-item batch stock is available. ${formatQuantity(plan.shortageBaseQty)} remains short.`)
+        } else {
+          toast('All delivery quantities are already covered by their selected batches.')
+        }
+        return
+      }
+
+      const originalLineById = new Map(enteredLines.map(line => [String(line.id), line]))
+      const allocationsByGroup = plan.allocations.reduce((groups, allocation) => {
+        groups.set(allocation.groupKey, [...(groups.get(allocation.groupKey) ?? []), allocation])
+        return groups
+      }, new Map<string, BatchReallocationAllocation[]>())
+      const replacementLinesByGroup = new Map<string, GoodsIssueLine[]>()
+
+      linesByGroup.forEach((group, groupKey) => {
+        const allocations = allocationsByGroup.get(groupKey)
+        if (!allocations || allocations.length === 0) return
+
+        const combinedAllocations = new Map<string, BatchReallocationAllocation>()
+        allocations.forEach(allocation => {
+          const existing = combinedAllocations.get(allocation.candidateKey)
+          if (existing) {
+            existing.baseQty += allocation.baseQty
+            if (allocation.status === 'shortage') {
+              existing.status = 'shortage'
+              existing.sourceLineId = allocation.sourceLineId
+            }
+          } else {
+            combinedAllocations.set(allocation.candidateKey, { ...allocation })
+          }
+        })
+
+        const allocationsByWarehouse = new Map<string, BatchReallocationAllocation[]>()
+        Array.from(combinedAllocations.values()).forEach(allocation => {
+          const sourceLine = originalLineById.get(allocation.sourceLineId) ?? group[0]
+          const candidate = candidateByKey.get(allocation.candidateKey)
+          const warehouseCode = candidate?.warehouseCode || sourceLine.fromWarehouseCode
+          const warehouseKey = warehouseCode.trim().toUpperCase()
+          allocationsByWarehouse.set(warehouseKey, [
+            ...(allocationsByWarehouse.get(warehouseKey) ?? []),
+            allocation,
+          ])
+        })
+
+        const usedLineIds = new Set<string>()
+        const replacementLines: GoodsIssueLine[] = []
+        Array.from(allocationsByWarehouse.values()).forEach((warehouseAllocations, warehouseIndex) => {
+          const allocationGroupKey = warehouseIndex === 0 ? groupKey : createUuid()
+          const requestedBaseQty = warehouseAllocations.reduce((total, allocation) => total + allocation.baseQty, 0)
+          const firstSourceLine = originalLineById.get(warehouseAllocations[0].sourceLineId) ?? group[0]
+          const baseQtyPerAltQty = calculateBaseQty(1, firstSourceLine.altUom, firstSourceLine.baseUom)
+          const requestedAltQty = baseQtyPerAltQty > 0
+            ? requestedBaseQty / baseQtyPerAltQty
+            : requestedBaseQty
+
+          warehouseAllocations.forEach(allocation => {
+            const sourceLine = originalLineById.get(allocation.sourceLineId) ?? firstSourceLine
+            const candidate = candidateByKey.get(allocation.candidateKey)
+            const flockCard = candidate?.flockCard
+            const warehouse = candidate
+              ? warehousesByCode.get(candidate.warehouseCode.trim().toUpperCase())
+              : warehousesByCode.get(sourceLine.fromWarehouseCode.trim().toUpperCase())
+            const preferredId = String(sourceLine.id)
+            const id = usedLineIds.has(preferredId) ? createUuid() : sourceLine.id
+            usedLineIds.add(String(id))
+            const altQty = baseQtyPerAltQty > 0 ? allocation.baseQty / baseQtyPerAltQty : allocation.baseQty
+            const harvestAge = flockCard
+              ? calculateBirdAgeFromPlacementDate(flockCard.placementDate, sourceLine.deliveredDate ?? '')
+              : sourceLine.harvestAge
+
+            replacementLines.push({
+              ...sourceLine,
+              id,
+              allocationGroupKey,
+              requestedAltQty,
+              altQty,
+              baseQty: allocation.baseQty,
+              fromWarehouseId: candidate?.warehouseId ?? sourceLine.fromWarehouseId ?? warehouse?.id ?? null,
+              fromWarehouseCode: candidate?.warehouseCode ?? sourceLine.fromWarehouseCode,
+              fromWarehouseName: candidate?.warehouseName ?? (sourceLine.fromWarehouseName || warehouse?.whse_name || ''),
+              flockCardId: flockCard?.id ?? sourceLine.flockCardId,
+              flockCardNo: flockCard?.cardNo ?? sourceLine.flockCardNo,
+              cycleNumber: flockCard?.cycleNumber ?? sourceLine.cycleNumber,
+              cycleMask: flockCard?.cycleMask ?? sourceLine.cycleMask,
+              harvestAge,
+              averageLiveWeight: harvestAge == null
+                ? sourceLine.averageLiveWeight
+                : flockCard?.bodyWeightsByAge[String(harvestAge)] ?? sourceLine.averageLiveWeight,
+              batchNumber: candidate?.batchNumber ?? sourceLine.batchNumber,
+              manufacturingDate: candidate?.manufacturingDate ?? sourceLine.manufacturingDate,
+              expiryDate: candidate?.expiryDate ?? sourceLine.expiryDate,
+              onHandQty: candidate?.onHandQty ?? sourceLine.onHandQty,
+            })
+          })
+        })
+
+        replacementLinesByGroup.set(groupKey, replacementLines)
+      })
+
+      const emittedGroups = new Set<string>()
+      const nextLines = snapshot.lines.flatMap(line => {
+        const groupKey = getAllocationGroupKey(line)
+        const replacementLines = replacementLinesByGroup.get(groupKey)
+        if (!replacementLines) return [line]
+        if (emittedGroups.has(groupKey)) return []
+        emittedGroups.add(groupKey)
+        return replacementLines
+      })
+      setIssue(current => current === snapshot ? { ...current, lines: nextLines } : current)
+
+      if (plan.shortageBaseQty > QUANTITY_TOLERANCE) {
+        toast.warning(`Available quantities were re-allocated. ${formatQuantity(plan.shortageBaseQty)} remains short.`)
+      } else {
+        toast.success('Delivery quantities were re-allocated to the oldest available same-item batches.')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : 'Unable to re-allocate delivery quantities.')
+    } finally {
+      setReallocatingQuantities(false)
+    }
+  }
+
   const openBatchSelector = (line: GoodsIssueLine) => {
     if (!canOpenBatchSelector(line)) return
 
+    setBatchTrailTarget(null)
+    setBatchTrailCache({})
+    setBatchTrailErrors({})
     setActiveBatchLineId(line.id)
     if (issue?.status !== 'Posted' && canSearchLineInventory(line) && !lineHasPlacementBatchOptions(line)) {
       refreshLineOnHand(line).catch(console.error)
+    }
+  }
+
+  const batchTrailKey = (line: Pick<GoodsIssueLine, 'itemCode' | 'batchNumber'>) =>
+    `${line.itemCode.trim().toUpperCase()}|${line.batchNumber.trim().toUpperCase()}`
+
+  const openBatchTrail = async (
+    line: GoodsIssueLine,
+    force = false,
+    quantityLabel = 'Selected Quantity',
+    quantityValue = line.baseQty,
+  ) => {
+    if (!line.itemCode.trim() || !line.batchNumber.trim()) return
+
+    const key = batchTrailKey(line)
+    setBatchTrailTarget({ line, quantityLabel, quantityValue })
+    if (!force && Object.prototype.hasOwnProperty.call(batchTrailCache, key)) return
+
+    setLoadingBatchTrailKey(key)
+    setBatchTrailErrors(current => ({ ...current, [key]: '' }))
+    try {
+      const rows = await getBatchTransactionTrail(line.itemCode, line.batchNumber)
+      setBatchTrailCache(current => ({ ...current, [key]: rows }))
+    } catch (error) {
+      console.error(error)
+      setBatchTrailErrors(current => ({ ...current, [key]: 'Unable to load batch trail.' }))
+    } finally {
+      setLoadingBatchTrailKey(current => current === key ? '' : current)
     }
   }
 
@@ -1621,6 +1958,10 @@ export default function NewGoodsIssue({
         getAverageLiveWeight: async (line, age) => {
           const info = await getPasteFlockInfo(line.fromWarehouseId, line.fromWarehouseCode)
           return info?.bodyWeightsByAge[String(age)] ?? null
+        },
+        getHarvestAge: async (line, deliveredDate) => {
+          const info = await getPasteFlockInfo(line.fromWarehouseId, line.fromWarehouseCode)
+          return calculateBirdAgeFromPlacementDate(info?.placementDate ?? '', deliveredDate)
         },
         getPlacementBatches: warehouse => {
           const code = warehouse.whse_code ?? ''
@@ -1752,6 +2093,141 @@ export default function NewGoodsIssue({
   const completedLines = issue?.lines
     .filter(lineHasEnteredItem)
     .map(getLineWithRecalculatedQuantity) ?? []
+  const postBatchBalanceRequests = Array.from(completedLines.reduce((requests, line) => {
+    const itemCode = line.itemCode.trim()
+    const warehouseCode = line.fromWarehouseCode.trim()
+    const batchNumber = line.batchNumber.trim()
+    if (!itemCode || !warehouseCode || !batchNumber) return requests
+
+    const key = [itemCode, warehouseCode, batchNumber]
+      .map(value => value.toUpperCase())
+      .join('|')
+    if (!requests.has(key)) requests.set(key, { key, itemCode, warehouseCode, batchNumber })
+    return requests
+  }, new Map<string, { key: string; itemCode: string; warehouseCode: string; batchNumber: string }>()).values())
+  const postBatchBalanceSignature = JSON.stringify(postBatchBalanceRequests)
+
+  useEffect(() => {
+    if (!postConfirmOpen || postBatchBalanceSignature === '[]') {
+      if (!postConfirmOpen) setPostBatchBalances({})
+      return
+    }
+
+    let cancelled = false
+    const requests = JSON.parse(postBatchBalanceSignature) as typeof postBatchBalanceRequests
+    setPostBatchBalances(Object.fromEntries(requests.map(request => [request.key, {
+      loading: true,
+      onHandQty: null,
+      error: '',
+    }])))
+
+    void Promise.all(requests.map(async request => {
+      try {
+        const onHandQty = await getItemWarehouseOnHand(
+          request.itemCode,
+          request.warehouseCode,
+          request.batchNumber,
+        )
+        return [request.key, { loading: false, onHandQty, error: '' }] as const
+      } catch (error) {
+        console.error(error)
+        return [request.key, {
+          loading: false,
+          onHandQty: null,
+          error: 'Unable to check balance',
+        }] as const
+      }
+    })).then(results => {
+      if (!cancelled) setPostBatchBalances(Object.fromEntries(results))
+    })
+
+    return () => { cancelled = true }
+  }, [postBatchBalanceSignature, postConfirmOpen])
+
+  const postLineNumberByAllocationGroup = new Map<string, number>()
+  completedLines.forEach(line => {
+    const key = getAllocationGroupKey(line)
+    if (!postLineNumberByAllocationGroup.has(key)) {
+      postLineNumberByAllocationGroup.set(key, postLineNumberByAllocationGroup.size + 1)
+    }
+  })
+  const postUnbalancedAllocationGroups = new Set(
+    Array.from(completedLines.reduce((groups, line) => {
+      const key = getAllocationGroupKey(line)
+      groups.set(key, [...(groups.get(key) ?? []), line])
+      return groups
+    }, new Map<string, GoodsIssueLine[]>()).entries())
+      .filter(([, group]) => {
+        const requestedQty = group.find(line => line.requestedAltQty !== undefined)?.requestedAltQty
+          ?? group.reduce((total, line) => total + Number(line.altQty || 0), 0)
+        const selectedQty = group
+          .filter(line => line.batchNumber)
+          .reduce((total, line) => total + Number(line.altQty || 0), 0)
+        return Math.abs(Number(requestedQty) - selectedQty) > QUANTITY_TOLERANCE
+      })
+      .map(([key]) => key),
+  )
+  const postBatchSummaries = Array.from(completedLines.reduce((summaries, line) => {
+    if (!line.batchNumber.trim()) return summaries
+
+    const itemCode = line.itemCode.trim()
+    const warehouseCode = line.fromWarehouseCode.trim()
+    const batchNumber = line.batchNumber.trim()
+    const key = [itemCode, warehouseCode, batchNumber]
+      .map(value => value.toUpperCase())
+      .join('|')
+    const rawBatch = getRawBatchOptionsForLine(line).find(option =>
+      option.batchNumber.trim().toUpperCase() === batchNumber.toUpperCase() &&
+      (!option.itemCode || option.itemCode.trim().toUpperCase() === itemCode.toUpperCase()),
+    )
+    const liveBalance = postBatchBalances[key]
+    const onHandQty = Number(liveBalance?.onHandQty ?? rawBatch?.onHandQty ?? line.onHandQty ?? 0)
+    const lineNumber = postLineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
+    const isLoading = postConfirmOpen
+      ? liveBalance?.loading ?? true
+      : Boolean(loadingLinePlacementBatches[String(line.id)])
+    const balanceError = postConfirmOpen ? liveBalance?.error ?? '' : ''
+    const hasAllocationError = postUnbalancedAllocationGroups.has(getAllocationGroupKey(line))
+    const current = summaries.get(key)
+
+    if (current) {
+      current.requiredQty += Number(line.baseQty || 0)
+      current.onHandQty = Math.max(current.onHandQty, onHandQty)
+      current.isLoading ||= isLoading
+      current.balanceError ||= balanceError
+      current.hasAllocationError ||= hasAllocationError
+      if (!current.lineNumbers.includes(lineNumber)) current.lineNumbers.push(lineNumber)
+      return summaries
+    }
+
+    summaries.set(key, {
+      key,
+      batchNumber,
+      itemCode,
+      warehouseCode,
+      lineNumbers: [lineNumber],
+      requiredQty: Number(line.baseQty || 0),
+      onHandQty,
+      remainingQty: 0,
+      isLoading,
+      balanceError,
+      hasStockError: false,
+      hasAllocationError,
+      hasError: false,
+    })
+    return summaries
+  }, new Map<string, PostBatchSummary>()).values()).map(summary => ({
+    ...summary,
+    remainingQty: Math.max(summary.onHandQty - summary.requiredQty, 0),
+    hasStockError: !summary.isLoading && !summary.balanceError && quantityExceeds(summary.requiredQty, summary.onHandQty),
+    hasError: !summary.isLoading && (
+      Boolean(summary.balanceError) ||
+      quantityExceeds(summary.requiredQty, summary.onHandQty) ||
+      summary.hasAllocationError
+    ),
+  }))
+  const postBatchErrorCount = postBatchSummaries.filter(summary => summary.hasError).length
+  const postBatchSummaryLoading = postBatchSummaries.some(summary => summary.isLoading)
   const totalQuantity = completedLines.reduce(
     (total, line) => total + Number(line.baseQty || 0),
     0,
@@ -1800,9 +2276,36 @@ export default function NewGoodsIssue({
       toast(`Please select a ${warehouseLabel.toLowerCase()}.`)
       return
     }
+    // The Harvest grid displays transport details once per allocation group, while
+    // split batches are persisted as separate lines. Keep those hidden lines in
+    // sync with the visible row before validating and saving the document.
+    const harvestTransportByAllocationGroup = new Map<string, Pick<GoodsIssueLine,
+      'deliveredDate' | 'haulerName' | 'plateNumber' | 'destination' | 'liveSalesCustomerName' | 'truckSeal'
+    >>()
+    if (triggeredBy === 'BR-DR') {
+      completedLines.forEach(line => {
+        const key = getAllocationGroupKey(line)
+        if (!harvestTransportByAllocationGroup.has(key)) {
+          harvestTransportByAllocationGroup.set(key, {
+            deliveredDate: line.deliveredDate,
+            haulerName: line.haulerName,
+            plateNumber: line.plateNumber,
+            destination: line.destination,
+            liveSalesCustomerName: line.liveSalesCustomerName,
+            truckSeal: line.truckSeal,
+          })
+        }
+      })
+    }
+    const completedLinesForSave = triggeredBy === 'BR-DR'
+      ? completedLines.map(line => ({
+          ...line,
+          ...harvestTransportByAllocationGroup.get(getAllocationGroupKey(line)),
+        }))
+      : completedLines
     const linesToSave = isCleanup
-      ? completedLines.map(line => {
-          const group = completedLines.filter(candidate =>
+      ? completedLinesForSave.map(line => {
+          const group = completedLinesForSave.filter(candidate =>
             candidate.fromWarehouseCode === line.fromWarehouseCode && candidate.itemCode === line.itemCode,
           )
           const batchTotalQty = getTotalBatchOnHandForLine(line)
@@ -1813,7 +2316,7 @@ export default function NewGoodsIssue({
             varianceQty: Math.max(batchTotalQty - cleanedQty, 0),
           }
         })
-      : completedLines
+      : completedLinesForSave
 
     if (linesToSave.length === 0) {
       toast('Please select at least one item.')
@@ -1831,10 +2334,10 @@ export default function NewGoodsIssue({
 
     if (triggeredBy === 'BR-DR') {
       const invalidAgeLine = linesToSave.find(line =>
-        line.harvestAge == null || !Number.isInteger(Number(line.harvestAge)) || Number(line.harvestAge) < 0,
+        line.harvestAge == null || !Number.isInteger(Number(line.harvestAge)) || Number(line.harvestAge) < 1,
       )
       if (invalidAgeLine) {
-        toast(`Line ${getDocumentLineNumber(invalidAgeLine)}: Age is required and must be a whole number, zero or greater.`)
+        toast(`Line ${getDocumentLineNumber(invalidAgeLine)}: Delivery Date must be on or after the DOC Placement Date so Age can be calculated.`)
         return
       }
       try {
@@ -1911,11 +2414,12 @@ export default function NewGoodsIssue({
       toast('Each item needs a UoM group, Alt UoM, and valid quantity.')
       return
     }
-    const overOnHandLine = requiresStockValidation
-      ? linesToSave.find(line => line.batchNumber && line.baseQty > getAvailableOnHandForLine(line))
+    const overOnHandBatch = requiresStockValidation
+      ? postBatchSummaries.find(summary => summary.hasStockError)
       : undefined
-    if (overOnHandLine) {
-      toast(`Line ${getDocumentLineNumber(overOnHandLine)}, batch ${overOnHandLine.batchNumber}: ${lineQuantityLabel} for ${overOnHandLine.itemCode} must be less than or equal to the remaining on-hand quantity.`)
+    if (overOnHandBatch) {
+      const lineText = overOnHandBatch.lineNumbers.length === 1 ? 'Line' : 'Lines'
+      toast(`${lineText} ${overOnHandBatch.lineNumbers.join(', ')}, batch ${overOnHandBatch.batchNumber}: ${lineQuantityLabel} for ${overOnHandBatch.itemCode} must be less than or equal to the on-hand quantity (${formatQuantity(overOnHandBatch.requiredQty)} required, ${formatQuantity(overOnHandBatch.onHandQty)} on hand).`)
       return
     }
     const missingWarehouseLine = usesLineWarehouse
@@ -2016,7 +2520,7 @@ export default function NewGoodsIssue({
       if (savedIssue) setIssue(savedIssue)
     } catch (error) {
       console.error(error)
-      toast('Error: ' + (error instanceof Error ? error.message : `Unable to save ${listLabel.toLowerCase()}`))
+      toast.error(getPostgresErrorMessage(error, `Unable to save ${listLabel.toLowerCase()}.`))
     } finally {
       setSaving(false)
     }
@@ -2028,6 +2532,9 @@ export default function NewGoodsIssue({
   const activeBatchAllocationLines = activeBatchLine
     ? issue.lines.filter(line => isSameAllocationGroup(line, activeBatchLine) && Boolean(line.batchNumber))
     : []
+  const trailBatchLine = batchTrailTarget?.line ?? null
+  const activeBatchTrailKey = trailBatchLine ? batchTrailKey(trailBatchLine) : ''
+  const activeBatchTrailRows = activeBatchTrailKey ? batchTrailCache[activeBatchTrailKey] ?? [] : []
   const activeBatchKey = activeBatchLine ? batchOptionKey(activeBatchLine) : ''
   const activeBatchOptions = activeBatchLine ? getBatchOptionsForLine(activeBatchLine) : []
   const activeRequiredAltQty = activeBatchLine
@@ -2335,6 +2842,8 @@ export default function NewGoodsIssue({
                  enableMobileLineModal={triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'}
                  canEdit={canSave}
                 showTransportFields={triggeredBy === 'BR-DR'}
+                reallocatingQuantities={reallocatingQuantities}
+                onReallocateQuantities={triggeredBy === 'BR-DR' ? reallocateDeliveryQuantities : undefined}
                 onPasteRows={triggeredBy === 'BR-DR' ? pasteDeliveryRows : undefined}
                 enableCopyDown={triggeredBy === 'BR-DR' && canSave}
                 getAllocationGroupKey={getAllocationGroupKey}
@@ -2695,7 +3204,14 @@ export default function NewGoodsIssue({
             )}
           </Tabs>
 
-          <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => !open && setActiveBatchLineId(null)}>
+          <Dialog open={Boolean(activeBatchLine)} onOpenChange={open => {
+            if (open) return
+            setActiveBatchLineId(null)
+            setBatchTrailTarget(null)
+            setBatchTrailCache({})
+            setBatchTrailErrors({})
+            setLoadingBatchTrailKey('')
+          }}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
               <DialogHeader>
                 <DialogTitle>{activeDocumentIsPosted ? 'Batch Information' : 'Batch Selection'}</DialogTitle>
@@ -2761,15 +3277,18 @@ export default function NewGoodsIssue({
                       activeBatchLine.batchNumber ? (
                         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <PackageCheck className="size-4 text-emerald-700" />
-                              <span className="truncate font-semibold text-emerald-950">
-                                {activeBatchLine.batchNumber}
-                              </span>
+                            <button
+                              type="button"
+                              title={`View ${activeBatchLine.batchNumber} batch trail`}
+                              onClick={() => void openBatchTrail(activeBatchLine)}
+                              className="flex min-h-9 min-w-0 items-center gap-1.5 text-left font-semibold text-amber-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 md:min-h-7"
+                            >
+                              <ArrowRightCircle className="size-4 shrink-0" />
+                              <span className="truncate">{activeBatchLine.batchNumber}</span>
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Used by this GI</Badge>
                             </div>
-                            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                              Used by this GI
-                            </Badge>
                           </div>
 
                           <div className="mt-3 grid gap-2 text-xs text-stone-700 sm:grid-cols-3">
@@ -2830,7 +3349,26 @@ export default function NewGoodsIssue({
                                   <div key={batch.batchNumber} className="grid grid-cols-[36px_minmax(100px,1fr)_90px_100px_84px] items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0">
                                     <div className="text-muted-foreground">{index + 1}</div>
                                     <div className="min-w-0">
-                                      <div className="truncate font-semibold">{batch.batchNumber}</div>
+                                      <button
+                                        type="button"
+                                        title={`View ${batch.batchNumber} batch trail`}
+                                        onClick={() => void openBatchTrail(
+                                          {
+                                            ...activeBatchLine,
+                                            batchNumber: batch.batchNumber,
+                                            manufacturingDate: batch.manufacturingDate,
+                                            expiryDate: batch.expiryDate,
+                                            onHandQty: batch.onHandQty,
+                                          },
+                                          false,
+                                          'Available Quantity',
+                                          batch.onHandQty,
+                                        )}
+                                        className="flex min-h-9 max-w-full items-center gap-1.5 text-left font-semibold text-amber-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 md:min-h-7"
+                                      >
+                                        <ArrowRightCircle className="size-3.5 shrink-0" />
+                                        <span className="truncate">{batch.batchNumber}</span>
+                                      </button>
                                       <div className="truncate text-xs text-muted-foreground">MFG: {formatDateValue(batch.manufacturingDate)}</div>
                                     </div>
                                     <div className="text-right font-semibold tabular-nums">{formatQuantity(batch.onHandQty)}</div>
@@ -3028,6 +3566,55 @@ export default function NewGoodsIssue({
             </DialogContent>
           </Dialog>
 
+          <Dialog open={Boolean(trailBatchLine)} onOpenChange={open => {
+            if (!open) setBatchTrailTarget(null)
+          }}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>Batch Trail</DialogTitle>
+                <DialogDescription>
+                  {trailBatchLine
+                    ? `${trailBatchLine.batchNumber} complete inventory movement history across all warehouses.`
+                    : 'Complete inventory movement history for the selected batch across all warehouses.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              {trailBatchLine && (
+                <BatchTransactionTimeline
+                  itemCode={trailBatchLine.itemCode}
+                  itemLabel={[trailBatchLine.itemCode, trailBatchLine.description].filter(Boolean).join(' - ')}
+                  batchNumber={trailBatchLine.batchNumber}
+                  warehouseCode={trailBatchLine.fromWarehouseCode}
+                  warehouseLabel={warehouseLabel}
+                  showAllWarehouses
+                  quantityLabel={batchTrailTarget?.quantityLabel ?? 'Selected Quantity'}
+                  quantityValue={`${formatQuantity(batchTrailTarget?.quantityValue ?? trailBatchLine.baseQty)} ${getSelectedGroup(trailBatchLine.baseUom)?.baseUomCode ?? trailBatchLine.altUom}`}
+                  rows={activeBatchTrailRows}
+                  loading={loadingBatchTrailKey === activeBatchTrailKey}
+                  error={batchTrailErrors[activeBatchTrailKey] ?? ''}
+                  onRetry={() => void openBatchTrail(
+                    trailBatchLine,
+                    true,
+                    batchTrailTarget?.quantityLabel,
+                    batchTrailTarget?.quantityValue,
+                  )}
+                />
+              )}
+
+              <DialogFooter className="sticky bottom-0 z-10 -mx-4 -mb-4 border-t bg-background px-4 py-3">
+                {trailBatchLine && (
+                  <BatchWarehouseReportButton
+                    batchNumber={trailBatchLine.batchNumber}
+                    rows={activeBatchTrailRows}
+                  />
+                )}
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">Close</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div className="mt-6 flex flex-col items-end gap-4">
             <div className="w-full rounded-lg border bg-card text-card-foreground">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -3092,7 +3679,7 @@ export default function NewGoodsIssue({
       </PageSection>
 
       <Dialog open={postConfirmOpen} onOpenChange={open => !saving && setPostConfirmOpen(open)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Post this {listLabel.toLowerCase()}?</DialogTitle>
             <DialogDescription>
@@ -3120,6 +3707,89 @@ export default function NewGoodsIssue({
             )}
           </div>
 
+          {triggeredBy === 'BR-DR' && postBatchSummaries.length > 0 && (
+            <Collapsible defaultOpen={false} className="rounded-md border">
+              <CollapsibleTrigger className={`group flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left ${postBatchErrorCount > 0 ? 'bg-destructive/5 text-destructive' : 'bg-muted/20'}`}>
+                <span className="flex min-w-0 items-center gap-2">
+                  {postBatchErrorCount > 0 && <AlertTriangle className="size-4 shrink-0" />}
+                  <span className="truncate text-sm font-medium">
+                    Batch Summary ({postBatchSummaries.length})
+                  </span>
+                  {postBatchSummaryLoading && (
+                    <Badge variant="outline"><Loader2 className="size-3 animate-spin" /> Checking</Badge>
+                  )}
+                  {postBatchErrorCount > 0 && (
+                    <Badge variant="destructive">{postBatchErrorCount} error{postBatchErrorCount === 1 ? '' : 's'}</Badge>
+                  )}
+                </span>
+                <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="border-t">
+                <div className="max-w-full overflow-x-auto">
+                  <table className="w-full min-w-[620px] table-fixed text-xs">
+                    <colgroup>
+                      <col className="w-[9%]" />
+                      <col className="w-[19%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
+                    </colgroup>
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-2 text-left font-medium">Line</th>
+                        <th className="px-2 py-2 text-left font-medium">Batch</th>
+                        <th className="px-2 py-2 text-left font-medium">Item</th>
+                        <th className="px-2 py-2 text-left font-medium">Building</th>
+                        <th className="px-2 py-2 text-right font-medium">Harvest Qty</th>
+                        <th className="px-2 py-2 text-right font-medium">On Hand</th>
+                        <th className="px-2 py-2 text-right font-medium">Remaining</th>
+                        <th className="px-2 py-2 text-left font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {postBatchSummaries.map(summary => (
+                        <tr
+                          key={summary.key}
+                          className={summary.hasError
+                            ? 'border-t border-destructive/30 bg-destructive/10 text-destructive'
+                            : 'border-t'}
+                        >
+                          <td className="px-2 py-2 align-top">{formatNumberRanges(summary.lineNumbers)}</td>
+                          <td className="break-all px-2 py-2 align-top font-semibold">{summary.batchNumber}</td>
+                          <td className="break-words px-2 py-2 align-top">{summary.itemCode}</td>
+                          <td className="break-words px-2 py-2 align-top">{summary.warehouseCode}</td>
+                          <td className="px-2 py-2 text-right align-top tabular-nums">{formatQuantity(summary.requiredQty)}</td>
+                          <td className="px-2 py-2 text-right align-top tabular-nums">
+                            {summary.isLoading ? 'Checking...' : formatQuantity(summary.onHandQty)}
+                          </td>
+                          <td className="px-2 py-2 text-right align-top font-medium tabular-nums">
+                            {summary.isLoading
+                              ? '-'
+                              : formatQuantity(summary.remainingQty <= QUANTITY_TOLERANCE ? 0 : summary.remainingQty)}
+                          </td>
+                          <td className="break-words px-2 py-2 align-top font-medium">
+                            {summary.isLoading
+                              ? 'Checking'
+                              : summary.balanceError || (
+                                summary.hasStockError
+                                  ? `Short ${formatQuantity(summary.requiredQty - summary.onHandQty)}`
+                                  : summary.hasAllocationError
+                                    ? 'Not balanced'
+                                    : 'OK'
+                              )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={saving}>
@@ -3128,7 +3798,7 @@ export default function NewGoodsIssue({
             </DialogClose>
             <Button
               type="button"
-              disabled={!canSave}
+              disabled={!canSave || (triggeredBy === 'BR-DR' && (postBatchSummaryLoading || postBatchErrorCount > 0))}
               onClick={async () => {
                 await handleSave('Posted')
                 setPostConfirmOpen(false)

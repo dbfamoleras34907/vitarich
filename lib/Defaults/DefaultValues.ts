@@ -1125,17 +1125,6 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
-            id: 73,
-            type: "Module",
-            title: "Cycle Master",
-            url: "/brd/cycle-master",
-            view: true,
-            insert: false,
-            edit: true,
-            approval: false,
-          },
-
-          {
             id: 57,
             type: "Module",
             title: "DOC Placement",
@@ -1222,6 +1211,16 @@ export const NavFolders: NavFolder[] = [
       {
         group: "Report",
         children: [
+          {
+            id: 73,
+            type: "Module",
+            title: "Farm/Growth Cycle",
+            url: "/brd/cycle-master",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
           {
             id: 74,
             type: "Report",
@@ -1446,6 +1445,17 @@ export const NavFolders: NavFolder[] = [
             view: false,
             insert: false,
             edit: false,
+            approval: false,
+          },
+
+          {
+            id: 87,
+            type: "Module",
+            title: "System Settings",
+            url: "/admin/system-settings",
+            view: true,
+            insert: false,
+            edit: true,
             approval: false,
           },
 

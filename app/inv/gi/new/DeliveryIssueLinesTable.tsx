@@ -1,5 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { PackageCheck, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Loader2, PackageCheck, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
@@ -18,6 +19,7 @@ import { DELIVERY_COLUMNS, calculateHarvestAlw, parseDeliveryPaste, type Deliver
 import { useTableCopyDown } from '@/hooks/useTableCopyDown'
 import type { DeliveryPasteKey } from './deliverySpreadsheet'
 import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
+import { calculateBirdAgeFromPlacementDate } from '@/app/brd/fc/age'
 
 const COPY_COLUMNS = DELIVERY_COLUMNS.flatMap(([, key]) => key ? [key] : [])
 
@@ -25,6 +27,11 @@ const getGrowingBodyWeightForAge = (
   info: GoodsIssueFlockCardInfo | null | undefined,
   age: number | null | undefined,
 ) => age == null ? null : info?.bodyWeightsByAge[String(age)] ?? null
+
+const getAutomaticHarvestAge = (
+  info: GoodsIssueFlockCardInfo | null | undefined,
+  deliveredDate: string | null | undefined,
+) => calculateBirdAgeFromPlacementDate(info?.placementDate ?? '', deliveredDate ?? '')
 
 type LineFlockCardState = {
   loading: boolean
@@ -58,6 +65,8 @@ type DeliveryIssueLinesTableProps = {
   enableMobileLineModal?: boolean
   canEdit?: boolean
   showTransportFields?: boolean
+  reallocatingQuantities?: boolean
+  onReallocateQuantities?: () => Promise<void>
   onPasteRows?: (rows: DeliveryPasteRow[], startRow: number) => Promise<void>
   enableCopyDown?: boolean
   getAllocationGroupKey: (line: GoodsIssueLine) => string
@@ -110,6 +119,8 @@ export default function DeliveryIssueLinesTable({
   enableMobileLineModal = false,
   canEdit = true,
   showTransportFields = false,
+  reallocatingQuantities = false,
+  onReallocateQuantities,
   onPasteRows,
   enableCopyDown = false,
   getAllocationGroupKey,
@@ -293,14 +304,29 @@ export default function DeliveryIssueLinesTable({
     <>
     {enableMobileLineModal && issue.status === 'Draft' && (
       <div className="flex justify-end border-b bg-muted/20 p-2 md:hidden">
-        <Button type="button" size="sm" onClick={addMobileLine} disabled={!canEdit}>
+        <Button type="button" size="sm" onClick={addMobileLine}>
           <Plus className="size-4" /> Add Line
         </Button>
       </div>
     )}
     {spreadsheetEnabled && <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
       <p className="text-xs text-muted-foreground">Right-click an editable cell and choose Copy down, or press Ctrl+Down, to fill the rows below. Paste Excel cells to add extra rows automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
-      <Button type="button" size="sm" variant="outline" onClick={async () => {
+      <div className="flex flex-wrap items-center gap-2">
+        {onReallocateQuantities && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canEdit || issue.status !== 'Draft' || pasting || reallocatingQuantities}
+            onClick={() => void onReallocateQuantities()}
+          >
+            {reallocatingQuantities
+              ? <Loader2 className="size-4 animate-spin" />
+              : <RefreshCw className="size-4" />}
+            Re-Allocate Quantity
+          </Button>
+        )}
+        <Button type="button" size="sm" variant="outline" disabled={reallocatingQuantities} onClick={async () => {
         try {
           const { default: writeXlsxFile } = await import('write-excel-file/browser')
           const groups = new Map<string, GoodsIssueLine[]>()
@@ -308,7 +334,9 @@ export default function DeliveryIssueLinesTable({
           const rows = Array.from(groups.values()).map((lines, index) => {
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
-            const harvestAge = line.harvestAge === undefined ? info?.age : line.harvestAge
+            const harvestAge = issue.status === 'Draft'
+              ? getAutomaticHarvestAge(info, line.deliveredDate)
+              : line.harvestAge
             return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), harvestAge ?? '', line.averageLiveWeight ?? getGrowingBodyWeightForAge(info, harvestAge) ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
@@ -336,7 +364,8 @@ export default function DeliveryIssueLinesTable({
         } catch (error) {
           toast.error(error instanceof Error ? error.message : 'Unable to export delivery lines.')
         }
-      }}>Export Table</Button>
+        }}>Export Table</Button>
+      </div>
     </div>}
     <fieldset disabled={pasting} className="min-w-0 border-0 p-0">
     <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'} aria-busy={pasting}>
@@ -434,7 +463,9 @@ export default function DeliveryIssueLinesTable({
             const hasSearchedBatches = Object.prototype.hasOwnProperty.call(batchOptions, batchKey)
             const canSearchBatches = canOpenBatchSelector(line)
             const flockState = lineFlockCardInfo[String(line.id)]
-            const harvestAge = line.harvestAge === undefined ? flockState?.info?.age : line.harvestAge
+            const harvestAge = issue.status === 'Draft'
+              ? getAutomaticHarvestAge(flockState?.info, line.deliveredDate)
+              : line.harvestAge
             const automaticAverageLiveWeight = getGrowingBodyWeightForAge(flockState?.info, harvestAge)
             const averageLiveWeight = line.averageLiveWeight === undefined
               ? automaticAverageLiveWeight
@@ -489,7 +520,15 @@ export default function DeliveryIssueLinesTable({
                 {spreadsheetEnabled && <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'deliveredDate')}>
                   <Input type="date" value={line.deliveredDate ?? ''} required readOnly={activeDocumentIsPosted}
                     aria-label={`Delivered Date row ${index + 1}`}
-                    onChange={event => updateAllocationGroup(allocationGroupKey, { deliveredDate: event.target.value })}
+                    onChange={event => {
+                      const deliveredDate = event.target.value
+                      const harvestAge = getAutomaticHarvestAge(flockState?.info, deliveredDate)
+                      updateAllocationGroup(allocationGroupKey, {
+                        deliveredDate,
+                        harvestAge,
+                        averageLiveWeight: getGrowingBodyWeightForAge(flockState?.info, harvestAge),
+                      })
+                    }}
                     className="h-8 rounded-sm shadow-none focus-visible:ring-1" />
                 </TableCopyDownCell>}
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'fromWarehouseCode')}>
@@ -529,28 +568,19 @@ export default function DeliveryIssueLinesTable({
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
                   />
                 </td>
-                <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'harvestAge')}>
+                <td className="border-r p-1 align-middle">
                   <Input
                     type={showHarvestWeight ? 'number' : 'text'}
                     min={showHarvestWeight ? 0 : undefined}
                     step={showHarvestWeight ? 1 : undefined}
                     value={showHarvestWeight
-                      ? line.harvestAge === undefined
-                        ? flockState?.info?.age ?? ''
-                        : line.harvestAge ?? ''
+                      ? harvestAge ?? ''
                       : flockState?.info?.age != null ? String(flockState.info.age) : ''}
-                    readOnly={!showHarvestWeight || activeDocumentIsPosted}
+                    readOnly
                     aria-label={`Age row ${index + 1}`}
-                    onChange={showHarvestWeight ? event => {
-                      const harvestAge = event.target.value === '' ? null : numberValue(event.target.value)
-                      updateAllocationGroup(allocationGroupKey, {
-                        harvestAge,
-                        averageLiveWeight: getGrowingBodyWeightForAge(flockState?.info, harvestAge),
-                      })
-                    } : undefined}
-                    className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
+                    className="h-8 rounded-sm border-0 bg-muted/40 text-right shadow-none focus-visible:ring-1"
                   />
-                </TableCopyDownCell>
+                </td>
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'averageLiveWeight')}>
                   <Input
                     type="number"
@@ -694,7 +724,7 @@ export default function DeliveryIssueLinesTable({
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={lockCycleCloseout || !canSearchBatches}
+                        disabled={!canSearchBatches}
                         onClick={() => openBatchSelector(line)}
                         className={`h-8 w-full justify-between rounded-sm px-2 font-normal ${batchSummary ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'bg-white text-stone-800'}`}
                       >
@@ -875,7 +905,15 @@ export default function DeliveryIssueLinesTable({
             {showTransportFields && (
               <div className="space-y-1.5">
                 <Label required>Delivered Date</Label>
-                <Input type="date" value={mobileLine.deliveredDate ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { deliveredDate: event.target.value })} />
+                <Input type="date" value={mobileLine.deliveredDate ?? ''} onChange={event => {
+                  const deliveredDate = event.target.value
+                  const harvestAge = getAutomaticHarvestAge(mobileFlockState?.info, deliveredDate)
+                  updateAllocationGroup(mobileLineGroupKey!, {
+                    deliveredDate,
+                    harvestAge,
+                    averageLiveWeight: getGrowingBodyWeightForAge(mobileFlockState?.info, harvestAge),
+                  })
+                }} />
               </div>
             )}
             <div className="space-y-1.5">
@@ -933,7 +971,7 @@ export default function DeliveryIssueLinesTable({
             </div>
             <div className="space-y-1.5">
               <Label required>Batch</Label>
-              <Button type="button" variant="outline" className="w-full justify-start" disabled={lockCycleCloseout || !canOpenBatchSelector(mobileLine)} onClick={() => openBatchSelector(mobileLine)}>
+              <Button type="button" variant="outline" className="w-full justify-start" disabled={!canOpenBatchSelector(mobileLine)} onClick={() => openBatchSelector(mobileLine)}>
                 <PackageCheck className="size-4" />
                 <span className="truncate">{mobileBatchSummary || 'Select batches'}</span>
               </Button>
@@ -954,7 +992,7 @@ export default function DeliveryIssueLinesTable({
               </select>
             </div>
             {showHarvestWeight && <>
-              <div className="space-y-1.5"><Label>Age</Label><Input type="number" min="0" value={mobileLine.harvestAge ?? mobileFlockState?.info?.age ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { harvestAge: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
+              <div className="space-y-1.5"><Label>Age</Label><Input type="number" min="1" value={issue.status === 'Draft' ? getAutomaticHarvestAge(mobileFlockState?.info, mobileLine.deliveredDate) ?? '' : mobileLine.harvestAge ?? ''} readOnly className="bg-muted/40" /></div>
               <div className="space-y-1.5"><Label>{bodyWeightLabel}</Label><Input type="number" min="0" step="any" value={mobileLine.averageLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { averageLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
               <div className="space-y-1.5"><Label>Net Live Weight</Label><Input type="number" min="0" step="any" value={mobileLine.netLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { netLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
               {showTsDrNumber && <div className="space-y-1.5"><Label>TS/DR #</Label><Input value={mobileLine.tsDrNo ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { tsDrNo: event.target.value })} /></div>}
@@ -962,7 +1000,27 @@ export default function DeliveryIssueLinesTable({
             {showTransportFields && <>
               <div className="space-y-1.5"><Label required>Hauler Name</Label><Input value={mobileLine.haulerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { haulerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Plate Number</Label><Input value={mobileLine.plateNumber ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { plateNumber: event.target.value })} /></div>
-              <div className="space-y-1.5"><Label required>Destination</Label><Select value={mobileLine.destination ?? ''} onValueChange={value => updateAllocationGroup(mobileLineGroupKey!, { destination: value, liveSalesCustomerName: '' })}><SelectTrigger className="w-full"><SelectValue placeholder="Select destination" /></SelectTrigger><SelectContent><SelectItem value="Dressing Plant">Dressing Plant</SelectItem><SelectItem value="Live Sales">Live Sales</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5">
+                <Label required>Destination</Label>
+                <RadioGroup
+                  value={mobileLine.destination ?? ''}
+                  onValueChange={destination => updateAllocationGroup(mobileLineGroupKey!, {
+                    destination,
+                    liveSalesCustomerName: '',
+                  })}
+                  className="grid grid-cols-2 gap-2"
+                >
+                  {['Dressing Plant', 'Live Sales'].map(destination => (
+                    <Label
+                      key={destination}
+                      className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 font-normal hover:bg-muted/50"
+                    >
+                      <RadioGroupItem value={destination} />
+                      <span>{destination}</span>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
               <div className="space-y-1.5"><Label required>Destination Details</Label><Input value={mobileLine.liveSalesCustomerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { liveSalesCustomerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Truck Seal</Label><Input type="number" value={mobileLine.truckSeal ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { truckSeal: event.target.value === '' ? null : Number(event.target.value) })} /></div>
             </>}

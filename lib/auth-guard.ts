@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { db } from "./Supabase/supabaseClient";
 import { NavFolders } from "./Defaults/DefaultValues";
 import { getNavigationPermissionTitle } from "./sidebar/navigationPermissions";
+import { userFmsTypesOverlap } from "./auth/fmsAccess";
 
 export async function checkAuth() {
     const headerList = await headers();
@@ -22,7 +23,7 @@ export async function checkAuth() {
 
     const { data: profile } = await db
         .from('users')
-        .select('user_type, fms_type')
+        .select('user_type, fms_type, fms_types')
         .eq('auth_id', user.id)
         .maybeSingle();
 
@@ -47,7 +48,7 @@ export async function checkAuth() {
             group.children.some(child => child.title === activeModule.title)));
         const userType = Number(profile?.user_type ?? 3);
         const hasFmsAccess = userType === 1 || Boolean(
-            profile?.fms_type && folder?.fmsTypes?.includes(profile.fms_type as "Broiler" | "Breeder" | "Hatchery")
+            folder?.fmsTypes?.length && userFmsTypesOverlap(profile?.fms_types, folder.fmsTypes, profile?.fms_type)
         );
         const hasPermission = userType === 1 || (hasFmsAccess && userPermissions?.some(
             (p) =>

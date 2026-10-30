@@ -5,7 +5,7 @@ import { RegistrationError } from "./registration.server"
 
 export async function listPendingActivations(actor: ManagedUserProfile) {
   const { data, error } = await admin_db.from("users")
-    .select("id, auth_id, email, firstname, middlename, lastname, created_at, isactive, docStatus, approval_status, fms_type, user_type, issuper")
+    .select("id, auth_id, email, firstname, middlename, lastname, created_at, isactive, docStatus, approval_status, fms_type, fms_types, user_type, issuper")
     .eq("approval_status", "pending").order("created_at", { ascending: false })
   if (error) {
     if ((error.code === "42703" || error.code === "PGRST204") && error.message.includes("approval_status")) {

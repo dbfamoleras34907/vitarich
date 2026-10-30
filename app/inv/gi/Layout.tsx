@@ -39,6 +39,7 @@ import {
 type GoodsIssueHistoryConfig = {
   triggeredBy: string
   documentPrefix: string
+  newActionLabel?: string
   basePath: string
   permissionPath: string
   parentLabel: string
@@ -357,7 +358,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
             </Button>
           <Button type="button" size="sm" onClick={openNewGoodsIssue} disabled={cannotInsert}>
             <Plus className="size-4" />
-            New {config.documentPrefix}
+            {config.newActionLabel ?? `New ${config.documentPrefix}`}
           </Button>
         </PageHeaderActions>
       </PageHeader>

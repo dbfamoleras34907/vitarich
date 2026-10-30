@@ -10,6 +10,7 @@ import {
   requireAdminActor,
   type ManagedUserProfile,
 } from "@/lib/auth/adminAccess"
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 const ACTIONS = new Set(["list", "view", "insert", "edit", "void", "approval"])
 
@@ -34,7 +35,7 @@ function permissionDefinition(groupName: string, title: string) {
 async function getTarget(authId: string) {
   const { data, error } = await admin_db
     .from("users")
-    .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
+    .select("id, auth_id, email, firstname, lastname, fms_type, fms_types, user_type, issuper")
     .eq("auth_id", authId)
     .maybeSingle()
 
@@ -45,10 +46,11 @@ async function getTarget(authId: string) {
 
 function canGrantForTarget(actor: ManagedUserProfile, target: ManagedUserProfile, fmsTypes?: string[]) {
   if (!canManageUser(actor, target)) return false
+  const targetFmsTypes = normalizeUserFmsTypes(target.fms_types, target.fms_type)
   if (actor.user_type === USER_TYPE.SUPER_ADMIN) {
-    return !target.fms_type || !fmsTypes?.length || fmsTypes.includes(target.fms_type)
+    return targetFmsTypes.length === 0 || !fmsTypes?.length || userFmsTypesOverlap(targetFmsTypes, fmsTypes)
   }
-  return Boolean(actor.fms_type) && Boolean(fmsTypes?.includes(actor.fms_type as string))
+  return !fmsTypes?.length || userFmsTypesOverlap(actor.fms_types, fmsTypes, actor.fms_type)
 }
 
 export async function GET(request: Request) {
@@ -60,12 +62,12 @@ export async function GET(request: Request) {
     if (!targetAuthId) {
       let query = admin_db
         .from("users")
-        .select("id, auth_id, email, firstname, middlename, lastname, created_at, updated_at, isactive, fms_type, user_type, issuper")
+        .select("id, auth_id, email, firstname, middlename, lastname, created_at, updated_at, isactive, fms_type, fms_types, user_type, issuper")
         .not("auth_id", "is", null)
         .order("firstname", { ascending: true })
 
       if (actor.user_type === USER_TYPE.ADMIN) {
-        query = query.eq("user_type", USER_TYPE.USER).eq("fms_type", actor.fms_type)
+        query = query.eq("user_type", USER_TYPE.USER).containedBy("fms_types", normalizeUserFmsTypes(actor.fms_types, actor.fms_type))
       }
 
       const { data, error } = await query
@@ -99,7 +101,7 @@ export async function GET(request: Request) {
       }
 
       return NextResponse.json({
-        actor: { auth_id: actor.auth_id, user_type: actor.user_type, fms_type: actor.fms_type },
+        actor: { auth_id: actor.auth_id, user_type: actor.user_type, fms_type: actor.fms_type, fms_types: actor.fms_types },
         users: (data ?? []).map(user => ({ ...user, user_type: Number(user.user_type ?? USER_TYPE.USER) })),
       })
     }

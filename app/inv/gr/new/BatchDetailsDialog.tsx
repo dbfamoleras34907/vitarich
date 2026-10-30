@@ -15,6 +15,7 @@ type BatchDetailsDialogProps = {
   open: boolean
   itemCode?: string
   children: ReactNode
+  footerAction?: ReactNode
   onClose: () => void
   onCloseAutoFocus?: () => boolean
 }
@@ -23,6 +24,7 @@ export default function BatchDetailsDialog({
   open,
   itemCode,
   children,
+  footerAction,
   onClose,
   onCloseAutoFocus,
 }: BatchDetailsDialogProps) {
@@ -52,6 +54,7 @@ export default function BatchDetailsDialog({
         {children}
 
         <DialogFooter>
+          {footerAction}
           <DialogClose asChild>
             <Button type="button">Done</Button>
           </DialogClose>

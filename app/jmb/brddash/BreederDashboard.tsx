@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Bird, Boxes, CalendarDays, Egg, HeartCrack, Percent, Scale, Wheat } from "lucide-react";
+import { Bird, Boxes, CalendarDays, Egg, HeartCrack, Info, Percent, Scale, Wheat } from "lucide-react";
 
 import Breadcrumb from "@/lib/Breadcrumb";
 import { DatePickerWithRange } from "@/lib/DatePickerWithRange";
@@ -11,6 +11,7 @@ import SearchableCombobox from "@/components/SearchableCombobox";
 import { formatFarmNameCode } from "@/lib/utils/farmDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -48,7 +49,7 @@ const showEggNumber = (value: number | null | undefined, suffix = "", whole = fa
   value == null ? "N/A" : `${(whole ? integer : decimal).format(value)}${suffix}`;
 
 function EggRangeDetails({ rows, metric }: { rows: EggRangeBuilding[]; metric: "tep" | "hen" | "recovery" }) {
-  return rows.length ? <div className="max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
+  return rows.length ? <div className="max-h-40 space-y-2 overflow-y-auto pr-1 text-[0.594rem]">
     {rows.map(row => <div key={row.key} className="space-y-0.5 border-t pt-1">
       <p className="font-semibold text-foreground">{row.buildingName}</p>
       <p>{row.from} – {row.to} · {row.recordedDays}/{row.daysInRange} production days recorded{row.partial ? " (partial)" : ""}</p>
@@ -64,14 +65,16 @@ function EggRangeDetails({ rows, metric }: { rows: EggRangeBuilding[]; metric: "
 function StatCard({
   title,
   value,
-  helper,
+  details,
+  info,
   icon,
   accent,
   className,
 }: {
   title: string;
   value: string;
-  helper: React.ReactNode;
+  details?: React.ReactNode;
+  info?: React.ReactNode;
   icon: React.ReactNode;
   accent: string;
   className?: string;
@@ -92,10 +95,23 @@ function StatCard({
         <div className="flex items-start justify-between gap-3 p-4">
           <div className="min-w-0 space-y-2">
             <p className={`inline-block rounded-md px-3 py-1.5 text-xs font-bold uppercase ${titleColors[accent] ?? "bg-muted text-foreground"}`}>{title}</p>
-            <p className="text-3xl font-bold text-foreground">{value}</p>
-            <div className="text-sm text-muted-foreground">{helper}</div>
+            <p className="text-[1.125rem] font-bold text-foreground">{value}</p>
+            {details ? <div className="text-[0.693rem] text-muted-foreground">{details}</div> : null}
           </div>
-          <div className="shrink-0 rounded-md bg-current/10 p-2">{icon}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {info ? <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More information about ${title}`}>
+                  <Info className="size-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="max-h-[min(60vh,28rem)] w-80 overflow-y-auto p-3 text-sm">
+                <p className="mb-2 font-semibold text-foreground">{title}</p>
+                <div className="text-muted-foreground">{info}</div>
+              </PopoverContent>
+            </Popover> : null}
+            <div className="rounded-md bg-current/10 p-2">{icon}</div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -218,7 +234,7 @@ export default function BreederDashboard() {
     : 0;
 
   return (
-    <main className="min-h-screen bg-background p-6">
+    <main className="min-h-screen bg-background p-6 text-[13px]">
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="space-y-3">
           <Breadcrumb SecondPreviewPageName="Breeder" CurrentPageName="Breeder Dashboard" />
@@ -254,16 +270,15 @@ export default function BreederDashboard() {
         ) : null}
 
         {loading && !summary ? (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 9 }, (_, index) => <Skeleton key={index} className="h-48 w-full" />)}
           </div>
         ) : (
-          <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading}>
+          <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4" aria-busy={loading}>
             <StatCard
             title="Population"
             value={loading ? "Loading..." : integer.format(population)}
-            helper={<div className="space-y-2">
-              <p>Growing Population: {integer.format(population)} (live males + females)</p>
+            details={<div className="space-y-2">
               <p>Male {integer.format(totals?.populationMale ?? 0)} / Female {integer.format(totals?.populationFemale ?? 0)}</p>
               <p>Hen House Population: {integer.format(totals?.populationFemale ?? 0)} live females.</p>
               <p>Hen House per building as of {filter?.to}:</p>
@@ -278,6 +293,7 @@ export default function BreederDashboard() {
                 </dl>
               ) : !loading ? <p>No population records for this farm.</p> : null}
             </div>}
+            info="Growing Population is the live male and female balance from the latest Population Record for each building as of the selected end date."
             icon={<Bird className="size-6 text-violet-700" />}
             accent="text-violet-500"
           />
@@ -285,19 +301,18 @@ export default function BreederDashboard() {
             title="Latest Flock Age"
             value={loading ? "Loading..." : latestFlockAge
               ? `${Math.floor(latestFlockAge.ageDays / 7)}.${latestFlockAge.ageDays % 7}` : "N/A"}
-            helper={latestFlockAge ? <div className="space-y-1">
-              <p>Weeks.Day as of {filter?.to}. Placement day is 0.1.</p>
+            details={latestFlockAge ? <div className="space-y-1">
               <p>{latestFlockAge.farmName} / {latestFlockAge.buildingName} / {latestFlockAge.penName}</p>
               <p>Latest placement: {latestFlockAge.placementDate} (#{latestFlockAge.placementId})</p>
             </div> : "No flock with a valid placement date for the selected farm and end date."}
+            info="Age is shown as Weeks.Day on the selected end date. Placement day is 0.1."
             icon={<CalendarDays className="size-6 text-cyan-700" />}
             accent="text-cyan-600"
           />
             <StatCard
             title="Depletion"
             value={loading ? "Loading..." : integer.format(depletion)}
-            helper={<div className="space-y-2">
-              <p>Total depletion in the selected date range.</p>
+            details={<div className="space-y-2">
               <dl className="space-y-1">
                 {depletionRows.map(({ label, value, period }) => {
                   const rate = period ? summary?.depletionRates[period] : undefined;
@@ -314,21 +329,22 @@ export default function BreederDashboard() {
                 })}
               </dl>
             </div>}
+            info="Depletion is the total Mortality, Sold/Culls, Transfer Out, Kitchen, and Condemn recorded in the selected date range."
             icon={<HeartCrack className="size-6 text-rose-700" />}
             accent="text-rose-500"
           />
             <StatCard
               title="Body Weight"
               value={`${decimal.format(combinedAlw)} kg`}
-              helper={`Male ${decimal.format(totals?.alwMale ?? 0)} / Female ${decimal.format(totals?.alwFemale ?? 0)} kg`}
+              details={`Male ${decimal.format(totals?.alwMale ?? 0)} / Female ${decimal.format(totals?.alwFemale ?? 0)} kg`}
+              info="Body Weight is the current live-population-weighted average from the latest available records."
               icon={<Scale className="size-6 text-blue-700" />}
               accent="text-blue-500"
             />
             <StatCard
             title="Uniformity"
             value={loading ? "Loading..." : `Male ${summary?.latestUniformity.male ? decimal.format(summary.latestUniformity.male.value) + "%" : "N/A"} / Female ${summary?.latestUniformity.female ? decimal.format(summary.latestUniformity.female.value) + "%" : "N/A"}`}
-            helper={<div className="space-y-1">
-              <p>{summary?.weightSampleStorageAvailable === false ? "Weight sample storage is not installed." : "Latest 50-bird samples for the latest flock."}</p>
+            details={<div className="space-y-1">
               <p>{latestFlockAge ? `${latestFlockAge.farmName} / ${latestFlockAge.buildingName} / ${latestFlockAge.penName}` : "No flock selected."}</p>
               {(["male", "female"] as const).map(sex => {
                 const reading = summary?.latestUniformity[sex];
@@ -338,14 +354,14 @@ export default function BreederDashboard() {
                 </p>;
               })}
             </div>}
+            info={summary?.weightSampleStorageAvailable === false ? "Weight sample storage is not installed." : "Uniformity uses the latest saved 50-bird samples for the latest flock."}
             icon={<Percent className="size-6 text-violet-700" />}
             accent="text-violet-500"
           />
             <StatCard
               title="Feed Consumption"
               value={`${decimal.format(totals?.averageFeedGrams ?? 0)} g/bird`}
-              helper={<div className="space-y-2">
-                <p>Average daily feed per bird in the selected date range.</p>
+              details={<div className="space-y-2">
                 {latestFeed ? <>
                   <p>Latest flock record: {latestFeed.date}<br />
                     Age {latestFeed.ageDays == null ? "N/A" : `${Math.floor(latestFeed.ageDays / 7)}.${latestFeed.ageDays % 7}`} (Weeks.Day)
@@ -353,49 +369,47 @@ export default function BreederDashboard() {
                   <p>Actual: {latestFeed.gramsPerBird == null ? "N/A" : `${decimal.format(latestFeed.gramsPerBird)} g/bird`}<br />
                     Standard: {feedStandard ? `${decimal.format(feedStandard.gramsPerBird)} g/bird (Week ${feedStandard.week})` : "Not configured"}
                   </p>
-                  <p className="text-xs">{latestFlockAge?.farmName} / {latestFlockAge?.buildingName} / {latestFlockAge?.penName}. Breeder Reports feed schedule.</p>
+                  <p className="text-[0.594rem]">{latestFlockAge?.farmName} / {latestFlockAge?.buildingName} / {latestFlockAge?.penName}. Breeder Reports feed schedule.</p>
                 </> : <p>No feed record for the latest flock.</p>}
               </div>}
+              info="Feed Consumption is the average daily feed per live bird in the selected date range."
               icon={<Wheat className="size-6 text-amber-700" />}
               accent="text-amber-500"
             />
             <StatCard
               title="TEP"
               value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.totalEggs, " eggs", true)}
-              helper={<div className="space-y-1">
+              details={<div className="space-y-1">
                 <p className="font-semibold text-foreground">Standard: {showEggNumber(eggRangeTotals?.standardEggs, " eggs", true)}</p>
                 <p>Production: {showEggNumber(eggRangeTotals?.productionPercent, "%")} / Std {showEggNumber(eggRangeTotals?.standardPercent, "%")}</p>
                 <p>Per Hen House: {showEggNumber(eggRangeTotals?.eggsPerHen, " eggs/hen")} / Std {showEggNumber(eggRangeTotals?.standardEggsPerHen, " eggs/hen")}</p>
-                <p>Totals for the selected Production Date Range.</p>
                 <EggRangeDetails rows={eggRange?.buildings ?? []} metric="tep" />
-                <p className="text-xs">{eggStandardLink}. Actual and standard use the same recorded days.</p>
-                {!!eggRange?.excludedRecords && <p className="text-xs text-amber-700">{eggRange.excludedRecords} unmatched egg records excluded.</p>}
               </div>}
+              info={<div className="space-y-1"><p>Totals cover the selected Production Date Range. Actual and standard use the same recorded days.</p><p>{eggStandardLink}.</p>{!!eggRange?.excludedRecords && <p className="text-amber-700">{eggRange.excludedRecords} unmatched egg records excluded.</p>}</div>}
               icon={<Egg className="size-6 text-emerald-700" />}
               accent="text-emerald-500"
             />
             <StatCard
               title="Hatch Recovery"
               value={loading ? "Loading..." : showEggNumber(eggRangeTotals?.hatchRecovery, "%")}
-              helper={<div className="space-y-1">
-                <p>Good Egg ÷ TEP × 100</p>
+              details={<div className="space-y-1">
                 <p>Good Egg: {showEggNumber(eggRangeTotals?.goodEggs, "", true)} / TEP: {showEggNumber(eggRangeTotals?.totalEggs, "", true)}</p>
-                <p>Good Egg uses Egg Laying&apos;s Hatching Egg count.</p>
                 <EggRangeDetails rows={eggRange?.buildings ?? []} metric="recovery" />
               </div>}
+              info="Hatch Recovery is Good Egg ÷ TEP × 100. Good Egg uses Egg Laying’s Hatching Egg count."
               icon={<Percent className="size-6 text-blue-700" />}
               accent="text-blue-500"
             />
             <StatCard
               title="Overstay Egg Storage"
               value={loading ? "Loading..." : `${integer.format(eggStorage?.overstayQuantity ?? 0)} eggs`}
-              helper={<div className="space-y-1">
-                <p>{eggStorage?.overstayAgeDays ?? 4}+ storage days as of {filter?.to ?? "—"}.</p>
+              details={<div className="space-y-1">
                 <p>Undispatched: {integer.format(eggStorage?.totalRemainingQuantity ?? 0)} · Oldest: {eggStorage?.oldestAgeDays == null ? "N/A" : `${eggStorage.oldestAgeDays} days`}</p>
                 <p>Warning {eggStorage?.overstayAgeDays ?? 4}–{(eggStorage?.criticalAgeDays ?? 8) - 1} days: {integer.format(eggStorage?.warningQuantity ?? 0)} · Critical {eggStorage?.criticalAgeDays ?? 8}+: {integer.format(eggStorage?.criticalQuantity ?? 0)}</p>
                 <p>{eggStorage?.overstaySourceDays ?? 0} source days · {eggStorage?.overstayBuildingCount ?? 0} buildings</p>
-                <Button variant="link" className="h-auto px-0 py-0 text-sm" onClick={() => setEggStorageOpen(true)} disabled={loading || !eggStorage?.rows.length}>View daily / weekly breakdown</Button>
+                <Button variant="link" className="h-auto px-0 py-0 text-[0.693rem]" onClick={() => setEggStorageOpen(true)} disabled={loading || !eggStorage?.rows.length}>View daily / weekly breakdown</Button>
               </div>}
+              info={`${eggStorage?.overstayAgeDays ?? 4}+ storage days as of ${filter?.to ?? "—"}. Only Posted dispatches dated on or before the selected end date reduce the remaining inventory.`}
               icon={<Boxes className="size-6 text-amber-700" />}
               accent="text-amber-500"
             />

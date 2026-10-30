@@ -1,4 +1,5 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
+import { hasUserFmsType } from "@/lib/auth/fmsAccess"
 import type { DispatchDocUpsertPayload } from "@/app/jmb/docdispatchv2/newv2/api"
 
 type DispatchAction = "insert" | "edit"
@@ -6,14 +7,14 @@ type DispatchAction = "insert" | "edit"
 export async function requireHatcheryDocDispatchAccess(authId: string, action: DispatchAction) {
   const { data: profile, error: profileError } = await admin_db
     .from("users")
-    .select("user_type, fms_type, isactive")
+    .select("user_type, fms_type, fms_types, isactive")
     .eq("auth_id", authId)
     .maybeSingle()
 
   if (profileError) throw profileError
   if (!profile || String(profile.isactive ?? "").trim() !== "1") throw new Error("FORBIDDEN")
   if (Number(profile.user_type ?? 3) === 1) return
-  if (String(profile.fms_type ?? "").trim().toLowerCase() !== "hatchery") throw new Error("FORBIDDEN")
+  if (!hasUserFmsType(profile.fms_types, "Hatchery", profile.fms_type)) throw new Error("FORBIDDEN")
 
   const { data: permission, error: permissionError } = await admin_db
     .from("user_permissions")

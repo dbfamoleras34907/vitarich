@@ -20,6 +20,12 @@ export type DocReceivingSettings = {
 
 export type DocCycleExcludedBuilding = {
   building_whse_id: number
+  do_not_format_cycle_number: boolean | null
+}
+
+export type DocCycleExcludedBuildingSetting = {
+  buildingWarehouseId: number
+  doNotFormatCycleNumber: boolean
 }
 
 export async function getDocItemOptions() {
@@ -125,26 +131,36 @@ export async function updateDocReceivingSettings(id: number, payload: DocReceivi
   return data as DocReceivingSettings
 }
 
-export async function getDocCycleExcludedBuildingIds(farmId: number) {
+export async function getDocCycleExcludedBuildingSettings(farmId: number): Promise<DocCycleExcludedBuildingSetting[]> {
   if (!Number.isFinite(farmId) || farmId <= 0) return []
   const { data, error } = await db
     .from('doc_cycle_excluded_buildings')
-    .select('building_whse_id')
+    .select('building_whse_id, do_not_format_cycle_number')
     .eq('farm_id', farmId)
   if (error) throw error
-  return (data as DocCycleExcludedBuilding[]).map(row => Number(row.building_whse_id))
+  return (data as DocCycleExcludedBuilding[]).map(row => ({
+    buildingWarehouseId: Number(row.building_whse_id),
+    doNotFormatCycleNumber: Boolean(row.do_not_format_cycle_number),
+  }))
 }
 
-export async function saveDocCycleExcludedBuildingIds(farmId: number, buildingIds: number[]) {
-  const { error } = await db.rpc('save_doc_cycle_excluded_buildings', {
+export async function saveDocCycleExcludedBuildingSettings(
+  farmId: number,
+  settings: DocCycleExcludedBuildingSetting[],
+) {
+  const { error } = await db.rpc('save_doc_cycle_excluded_building_settings', {
     p_farm_id: farmId,
-    p_building_whse_ids: buildingIds,
+    p_buildings: settings.map(setting => ({
+      building_whse_id: setting.buildingWarehouseId,
+      do_not_format_cycle_number: setting.doNotFormatCycleNumber,
+    })),
   })
   if (error) throw error
-  const savedIds = await getDocCycleExcludedBuildingIds(farmId)
-  const requestedIds = new Set(buildingIds)
-  if (savedIds.length !== requestedIds.size || savedIds.some(id => !requestedIds.has(id))) {
+  const savedSettings = await getDocCycleExcludedBuildingSettings(farmId)
+  const requested = new Map(settings.map(setting => [setting.buildingWarehouseId, setting.doNotFormatCycleNumber]))
+  if (savedSettings.length !== requested.size || savedSettings.some(setting =>
+    requested.get(setting.buildingWarehouseId) !== setting.doNotFormatCycleNumber)) {
     throw new Error('Excluded Cycle Buildings did not match the requested selection after saving. Refresh the settings and try again. If this continues, the database save function or access policies need to be checked.')
   }
-  return savedIds
+  return savedSettings
 }

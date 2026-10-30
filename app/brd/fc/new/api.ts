@@ -605,9 +605,15 @@ export async function reverseFlockCardMortalityThinning(lineId: number, reason?:
     throw new Error("Unable to reverse mortality/thinning: no line was returned");
   }
 
+  const reversedId = Number(reversedLine.id);
+  const reversedAge = Number(reversedLine.age);
+  if (!Number.isSafeInteger(reversedId) || reversedId !== lineId || !Number.isFinite(reversedAge)) {
+    throw new Error("Unable to reverse mortality/thinning: the database did not confirm the requested line");
+  }
+
   return {
-    id: Number(reversedLine.id),
-    age: Number(reversedLine.age),
+    id: reversedId,
+    age: reversedAge,
   };
 }
 

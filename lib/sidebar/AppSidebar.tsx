@@ -26,6 +26,7 @@ import type { NavFolder, NavGroup } from "../types"
 import { getProfileByAuthId } from "@/app/admin/user/api"
 import { canInsertDocument, getNavigationPermissionTitle } from "./navigationPermissions"
 import NotificationCenter from "@/components/notifications/NotificationCenter"
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 export { getNavigationPermissionTitle } from "./navigationPermissions"
 
@@ -34,6 +35,7 @@ type FilteredNavFolder = NavFolder & { items: NavGroup[] }
 type SidebarAccessProfile = {
   user_type?: number | null
   fms_type?: string | null
+  fms_types?: string[] | null
   default_farm?: string | number | null
 }
 
@@ -99,14 +101,11 @@ export function AppSidebar() {
 
   const userInfo = getValue("UserInfoAuthSession")?.[0] as SidebarAccessProfile | undefined
   const farmList = (getValue("getFarmDB") ?? []) as SidebarFarm[]
-  const rawFmsType = String(accessProfile?.fms_type ?? userInfo?.fms_type ?? "").trim().toLowerCase()
-  const fmsTypeLabel = rawFmsType === "broiler"
-    ? "Broiler"
-    : rawFmsType === "breeder"
-      ? "Breeder"
-      : rawFmsType === "hatchery" || rawFmsType === "hatcher"
-        ? "Hatchery"
-        : null
+  const profileFmsTypes = normalizeUserFmsTypes(
+    accessProfile?.fms_types ?? userInfo?.fms_types,
+    accessProfile?.fms_type ?? userInfo?.fms_type,
+  )
+  const fmsTypeLabel = profileFmsTypes.length === 1 ? profileFmsTypes[0] : null
   const sidebarTitle = fmsTypeLabel ? `Vita ${fmsTypeLabel}` : "Vita FMS"
   const defaultFarmReference = getValue("DefaultFarmId") ?? accessProfile?.default_farm ?? userInfo?.default_farm
   const defaultFarm = farmList.find(farm =>
@@ -174,7 +173,8 @@ export function AppSidebar() {
       try {
         const profile = await getProfileByAuthId(session.user.id)
         setAccessProfile(profile)
-        const fmsType = String(profile?.fms_type ?? "").trim().toLowerCase()
+        const types = normalizeUserFmsTypes(profile?.fms_types, profile?.fms_type)
+        const fmsType = types.length === 1 ? types[0].toLowerCase() : ""
         setPreferredFmsFolder(FMS_FOLDER_TITLES.has(fmsType) ? fmsType : null)
       } catch (error) {
         console.error("Unable to load the user's FMS type:", error)
@@ -552,7 +552,7 @@ interface Permission {
 export function filterNavFolders(
   navFolders: NavFolder[],
   permissions: Permission[],
-  profile?: { user_type?: number | null; fms_type?: string | null } | null,
+  profile?: { user_type?: number | null; fms_type?: string | null; fms_types?: string[] | null } | null,
 ): FilteredNavFolder[] {
   const userType = Number(profile?.user_type ?? 3)
   if (userType === 1) {
@@ -561,12 +561,11 @@ export function filterNavFolders(
       .filter((folder): folder is FilteredNavFolder => Boolean(folder.items.length))
   }
 
-  if (!profile?.fms_type) return []
-
-  const fmsType = profile.fms_type as "Broiler" | "Breeder" | "Hatchery"
+  const fmsTypes = normalizeUserFmsTypes(profile?.fms_types, profile?.fms_type)
+  if (fmsTypes.length === 0) return []
 
   return navFolders
-    .filter(folder => Boolean(folder.fmsTypes?.includes(fmsType)))
+    .filter(folder => Boolean(folder.fmsTypes?.length && userFmsTypesOverlap(fmsTypes, folder.fmsTypes)))
     .map(folder => ({
       ...folder,
       items: folder.items

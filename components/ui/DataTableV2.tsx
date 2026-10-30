@@ -42,6 +42,7 @@ export type Column<T> = {
   width?: number
   minWidth?: number
   maxWidth?: number
+  fitWidth?: string
   frozen?: boolean
 }
 
@@ -82,6 +83,7 @@ type Props<T> = {
   variant?: 'card' | 'plain'
   enableExport?: boolean
   headerActions?: React.ReactNode
+  fitToContainer?: boolean
 }
 
 type SortState = {
@@ -190,6 +192,7 @@ export default function DynamicTable<T extends Record<string, unknown>>({
   variant = 'card',
   enableExport = true,
   headerActions,
+  fitToContainer = false,
 }: Props<T>) {
   const columns = useMemo(() => {
     if (!actionsFirst) return suppliedColumns
@@ -826,12 +829,17 @@ export default function DynamicTable<T extends Record<string, unknown>>({
           enableRowActions={excelRowActions}
         />
       ) : (
-      <div className="block w-full min-w-0 max-w-full overflow-x-auto">
+      <div className={`block w-full min-w-0 max-w-full ${fitToContainer ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
         <table
-          className="w-full table-auto border-collapse text-xs"
-          style={{ minWidth: tableMinWidth }}
+          className={`w-full border-collapse text-xs ${fitToContainer ? 'table-fixed' : 'table-auto'}`}
+          style={{ minWidth: fitToContainer ? undefined : tableMinWidth }}
           aria-busy={loading}
         >
+          {fitToContainer && (
+            <colgroup>
+              {columns.map(column => <col key={String(column.key)} style={{ width: column.fitWidth }} />)}
+            </colgroup>
+          )}
           <thead className="bg-secondary">
             <tr>
               {columns.map(column => {

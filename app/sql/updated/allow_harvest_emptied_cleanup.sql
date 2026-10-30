@@ -77,6 +77,11 @@ declare v_definition text;
 begin
   select pg_get_functiondef('public.post_br_cleanup_inventory()'::regprocedure) into v_definition;
   v_definition := replace(v_definition, chr(13), '');
+  -- The cycle-scoped zero-closeout migration supersedes this legacy Harvest patch.
+  -- Preserve that newer trigger and continue with the rest of this deployment.
+  if position('get_cleanup_cycle_inventory_batches(new.farm_id, new.farm_cycle_id)' in v_definition) > 0 then
+    return;
+  end if;
   if position('get_harvest_emptied_cleanup_batches' in v_definition) = 0 then
     if position('Clean up requires at least one positive quantity line.' in v_definition) = 0 then
       raise exception 'Unexpected cleanup posting function; inspect before applying the zero-harvest change.';

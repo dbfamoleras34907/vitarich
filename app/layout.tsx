@@ -15,6 +15,8 @@ import RouteGuard from '@/lib/SignupUpdateGuard';
 import GlobalLoaderController from '@/lib/context/GlobalLoaderController';
 import DefaultFarm from './utils/DefaultFarm';
 import CollapsedSidebarLabel from '@/lib/sidebar/CollapsedSidebarLabel';
+import { DesktopStatusBar } from '@/components/ui/DesktopStatusBar';
+import InactivityTimeoutGuard from '@/components/auth/InactivityTimeoutGuard';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,6 +57,7 @@ export default function RootLayout({
             enableSystem={false} // Prevents the OS from overriding your light default
             disableTransitionOnChange
           >
+            <InactivityTimeoutGuard />
             <ConfirmProvider>
               <FloatingDialogProvider>
                 {/* <GlobalLoading /> */}
@@ -67,6 +70,7 @@ export default function RootLayout({
                         <RouteGuard>{children}</RouteGuard>
                     </main>
                   </div>
+                  <DesktopStatusBar />
                 </SidebarProvider>
                 <DefaultFarm/>
               </FloatingDialogProvider>

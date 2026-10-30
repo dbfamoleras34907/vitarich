@@ -26,6 +26,7 @@ export type PermissionUser = {
   updated_at: string | null
   isactive: string | boolean | null
   fms_type: string | null
+  fms_types: string[] | null
   user_type: number
 }
 
@@ -51,7 +52,7 @@ export type PermissionMatrixUser = PermissionUser & {
 export async function getManageableUsers() {
   const response = await fetchWithInternetErrorNotice("/api/admin/user-permissions", { headers: await authHeaders() })
   return parseResponse<{
-    actor: { auth_id: string; user_type: number; fms_type: string | null }
+    actor: { auth_id: string; user_type: number; fms_type: string | null; fms_types: string[] | null }
     users: PermissionUser[]
   }>(response)
 }

@@ -3,7 +3,8 @@ import {
   getNotificationActorByToken,
   hasNotificationSetupPermission,
 } from "@/lib/data/repositories/notifications.server"
-import type { FmsType, NotificationRuleAccess } from "@/lib/notifications/types"
+import type { NotificationRuleAccess } from "@/lib/notifications/types"
+import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess"
 
 function bearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? ""
@@ -29,7 +30,7 @@ export async function requireNotificationRuleActor(request: Request, action: "vi
   return {
     authId: actor.auth_id,
     userType: actor.user_type,
-    fmsType: actor.fms_type as FmsType | null,
+    fmsTypes: normalizeUserFmsTypes(actor.fms_types, actor.fms_type),
   } satisfies NotificationRuleAccess
 }
 

@@ -1,6 +1,7 @@
 // app/a_dean/warehouse/api.ts
 import { db } from "@/lib/Supabase/supabaseClient"
 import { WarehouseData } from "@/lib/types"
+import { getWarehouseRows } from '@/lib/data/repositories/warehouses'
 
 type SupabaseErrorLike = {
     message?: string
@@ -87,9 +88,7 @@ export async function getWarehouses(id?: string) {
             if (error) throw error;
             return { success: true, data: data as WarehouseData };
         }
-        const { data, error } = await query;
-        if (error) throw error;
-        return { success: true, data: data as WarehouseData[] };
+        return { success: true, data: await getWarehouseRows() };
 
     } catch (error: unknown) {
         const message = getErrorMessage(error, 'Unable to fetch warehouse');

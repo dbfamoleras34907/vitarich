@@ -19,10 +19,10 @@ Clean Up may post a zero-quantity line when the current active cycle has no rema
 Apply to the app's target database in this order:
 
 1. Current `app/admin/notifications/notification_system.sql` and existing Clean Up schema/posting migrations.
-2. `app/brd/cu/allow_harvest_emptied_cleanup.sql`.
-3. `app/brd/cu/save_br_cleanup_transaction.sql`.
+2. `app/sql/updated/allow_harvest_emptied_cleanup.sql`.
+3. `app/sql/updated/save_br_cleanup_transaction.sql`.
 
-For an existing database with the prerequisites installed, `app/brd/cu/deploy_harvest_emptied_cleanup.sql` combines steps 2 and 3 into one transaction and can be run as one file in Supabase SQL Editor. A live API probe on September 12 returned `PGRST202` for `get_harvest_emptied_cleanup_batches`, confirming that the app's target did not yet expose this function. The form now displays a database-update message and Retry control instead of logging the raw error object as `{}`.
+For an existing database with the prerequisites installed, `app/sql/updated/deploy_harvest_emptied_cleanup.sql` combines steps 2 and 3 into one transaction and can be run as one file in Supabase SQL Editor. The bundle persists and validates the selected `farm_cycle_id`; deploy it before `get_cleanup_cycle_inventory_batches.sql` so zero-quantity posting revalidates the same cycle shown by the form. A live API probe on September 12 returned `PGRST202` for `get_harvest_emptied_cleanup_batches`, confirming that the app's target did not yet expose this function. The form now displays a database-update message and Retry control instead of logging the raw error object as `{}`.
 
 Deploy the SQL before releasing the form. The zero-quantity migration patches the existing posting function, preserves its age/variance implementation, checks that the patch matched, and can be reapplied. Reapplying an older canonical or repair Clean Up script afterward requires reapplying this migration.
 

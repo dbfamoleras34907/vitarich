@@ -345,7 +345,7 @@ export default function GoodsReceiveHistory() {
           <DialogHeader>
             <DialogTitle>Reverse this DOC Placement?</DialogTitle>
             <DialogDescription>
-              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked if its consolidated batch is already used in Growing inventory.
+              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked only if removing this placement would make its consolidated inventory negative.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

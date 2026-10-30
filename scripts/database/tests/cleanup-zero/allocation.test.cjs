@@ -28,6 +28,7 @@ async function select({ cleanup = true, zeroBalance = true, stock = 0, requested
     issue: { status: 'Draft', lines: [line] },
     getBatchOptionsForLine: () => [batch], items: [item], getSelectedItem: () => item,
     getGroupUoms: () => [{ uomCode: 'HEAD' }], getDefaultAltUom: () => 'HEAD',
+    getRequestedLineQuantity: candidate => candidate.requestedAltQty ?? candidate.altQty ?? 0,
     isSameAllocationGroup: () => true, calculateBaseQty: qty => qty,
     isCleanup: cleanup, toast: message => messages.push(message), lineQuantityLabel: 'Clean up Quantity',
     getBatchRuleForLine: () => null, usesLineWarehouse: true, triggeredBy: cleanup ? 'BR-CU' : 'BR-DR',

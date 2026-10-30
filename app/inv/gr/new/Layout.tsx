@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowRightCircle,
   FileSpreadsheet,
   FileUp,
   Hash,
@@ -19,6 +18,8 @@ import readXlsxFile from 'read-excel-file/browser'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import BatchTransactionTimeline from '@/components/inventory/BatchTransactionTimeline'
+import BatchWarehouseReportButton from '@/components/inventory/BatchWarehouseReportButton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -51,9 +52,9 @@ import {
   UomGroupOption,
 } from './api'
 import {
-  BatchTransactionTrail,
   getBatchTransactionTrail,
-} from '../../btch/api'
+  type BatchTransactionTrail,
+} from '@/lib/data/repositories/batchTransactionTrail'
 import GoodsReceiveLoadingShell from './GoodsReceiveLoadingShell'
 import BatchDetailsDialog from './BatchDetailsDialog'
 import PostGoodsReceiptDialog from './PostGoodsReceiptDialog'
@@ -66,7 +67,6 @@ import {
   duplicateReceipt,
   emptyReceipt,
   formatBatchDatePart,
-  formatDateTime,
   formatQuantity,
   getAssociatedWarehouseCode,
   getDefaultReceivingWarehouse,
@@ -110,6 +110,8 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
   const goodsReceiptLinesImportInputRef = useRef<HTMLInputElement>(null)
   const [batchTrailRows, setBatchTrailRows] = useState<BatchTransactionTrail[]>([])
   const [loadingBatchTrail, setLoadingBatchTrail] = useState(false)
+  const [batchTrailError, setBatchTrailError] = useState('')
+  const [batchTrailRetry, setBatchTrailRetry] = useState(0)
   const [batchMatches, setBatchMatches] = useState<Record<string, GoodsReceiptExistingBatch | null>>({})
   const [postConfirmOpen, setPostConfirmOpen] = useState(false)
   const [lineCount, setLineCount] = useState(1)
@@ -399,12 +401,14 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     if (!activeBatchLineId || !batchTrailItemCode || !batchTrailNumber) {
       setBatchTrailRows([])
       setLoadingBatchTrail(false)
+      setBatchTrailError('')
       return
     }
 
     let cancelled = false
     setLoadingBatchTrail(true)
     setBatchTrailRows([])
+    setBatchTrailError('')
 
     getBatchTransactionTrail(
       batchTrailItemCode,
@@ -417,7 +421,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
         console.error(error)
         if (!cancelled) {
           setBatchTrailRows([])
-          toast.error('Unable to load batch transaction trail')
+          setBatchTrailError('Unable to load batch trail.')
         }
       })
       .finally(() => {
@@ -427,7 +431,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
     return () => {
       cancelled = true
     }
-  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber])
+  }, [activeBatchLineId, batchTrailItemCode, batchTrailNumber, batchTrailRetry])
 
   if (!receipt) return <GoodsReceiveLoadingShell />
 
@@ -1608,6 +1612,12 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           <BatchDetailsDialog
             open={Boolean(activeBatchLine)}
             itemCode={activeBatchLine?.itemCode}
+            footerAction={activeBatchLine ? (
+              <BatchWarehouseReportButton
+                batchNumber={activeBatchLine.batchNumber}
+                rows={batchTrailRows}
+              />
+            ) : undefined}
             onClose={closeBatchDialog}
             onCloseAutoFocus={focusQuantityAfterBatchClose}
           >
@@ -1616,7 +1626,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                 <Tabs defaultValue="details" className="space-y-4">
                   <TabsList>
                     <TabsTrigger value="details">Batch Details</TabsTrigger>
-                    <TabsTrigger value="trail">Transaction Trail</TabsTrigger>
+                    <TabsTrigger value="trail">Batch Trail</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="details" className="space-y-4">
@@ -1821,104 +1831,17 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
                   </TabsContent>
 
                   <TabsContent value="trail" className="space-y-4">
-                    <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
-                      <div>
-                        <div className="text-xs font-medium text-amber-700">Batch</div>
-                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.batchNumber || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-amber-700">Item</div>
-                        <div className="truncate font-semibold text-stone-950">{activeBatchLine.itemCode || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-amber-700">Warehouse</div>
-                        <div className="font-semibold text-stone-950">{activeBatchLine.warehouseCode || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-amber-700">Line Quantity</div>
-                        <div className="font-semibold tabular-nums text-stone-950">{formatQuantity(activeBatchLine.baseQty)}</div>
-                      </div>
-                    </div>
-
-                    {loadingBatchTrail && (
-                      <div className="flex min-h-32 items-center justify-center gap-2 rounded-md border border-dashed border-stone-300 bg-white text-sm text-stone-600">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading transaction trail...
-                      </div>
-                    )}
-
-                    {!loadingBatchTrail && (!activeBatchLine.batchNumber || !activeBatchLine.itemCode) && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                        Enter an item and batch number to view the transaction trail.
-                      </div>
-                    )}
-
-                    {!loadingBatchTrail && activeBatchLine.batchNumber && activeBatchLine.itemCode && batchTrailRows.length === 0 && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                        No inventory postings were found for this batch.
-                      </div>
-                    )}
-
-                    {!loadingBatchTrail && batchTrailRows.length > 0 && (
-                      <div className="relative space-y-3 pl-5">
-                        <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
-                        {batchTrailRows.map(row => {
-                          const isOut = row.signedQty < 0
-                          const movementLabel = isOut ? 'OUT' : 'IN'
-
-                          return (
-                            <div key={row.id} className="relative rounded-md border border-stone-200 bg-white p-3 shadow-sm">
-                              <div className={`absolute -left-[17px] top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-white ${isOut ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-700'}`}>
-                                <ArrowRightCircle className={`h-4 w-4 ${isOut ? 'rotate-180' : ''}`} />
-                              </div>
-
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                                      {movementLabel}
-                                    </span>
-                                    <span className="font-semibold text-stone-950">{row.documentLabel}</span>
-                                    <span className="text-xs text-stone-500">{row.sourceDocType || '-'}</span>
-                                  </div>
-                                  <div className="mt-1 text-xs text-stone-500">
-                                    {formatDateTime(row.createdAt)}
-                                  </div>
-                                </div>
-
-                                <div className="text-right">
-                                  <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
-                                    {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
-                                  </div>
-                                  <div className="text-xs text-stone-500">
-                                    Balance {formatQuantity(row.runningQty)}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
-                                <div className="rounded-md bg-stone-50 px-2 py-1">
-                                  <span className="block font-medium text-stone-500">Warehouse</span>
-                                  <span className="text-stone-900">{row.warehouseCode || '-'}</span>
-                                </div>
-                                <div className="rounded-md bg-stone-50 px-2 py-1">
-                                  <span className="block font-medium text-stone-500">Bin</span>
-                                  <span className="text-stone-900">{row.binCode || '-'}</span>
-                                </div>
-                                <div className="rounded-md bg-stone-50 px-2 py-1">
-                                  <span className="block font-medium text-stone-500">Reference</span>
-                                  <span className="text-stone-900">{row.ref || row.ref2 || '-'}</span>
-                                </div>
-                                <div className="rounded-md bg-stone-50 px-2 py-1">
-                                  <span className="block font-medium text-stone-500">Posting ID</span>
-                                  <span className="text-stone-900">#{row.id}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <BatchTransactionTimeline
+                      itemCode={activeBatchLine.itemCode}
+                      batchNumber={activeBatchLine.batchNumber}
+                      warehouseCode={activeBatchLine.warehouseCode}
+                      quantityLabel="Line Quantity"
+                      quantityValue={formatQuantity(activeBatchLine.baseQty)}
+                      rows={batchTrailRows}
+                      loading={loadingBatchTrail}
+                      error={batchTrailError}
+                      onRetry={() => setBatchTrailRetry(value => value + 1)}
+                    />
                   </TabsContent>
                 </Tabs>
               )}

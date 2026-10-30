@@ -19,7 +19,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, FileSpreadsheet, Loader2, Printer } from 'lucide-react'
 import Link from 'next/link'
-import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   getWarehouseReport,
@@ -31,28 +32,29 @@ import {
 } from './api'
 import { exportWarehouseReportExcel } from './excelExport'
 import { printWarehouseReport } from './pdfExport'
-
-const dateInput = (date: Date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+import { isDateInput, toLocalDateInput } from '@/lib/reports/warehouseReportLink'
 
 const formatQuantity = (value: number) =>
   Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 6 })
 
 export default function Layout() {
+  const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
   const today = useMemo(() => new Date(), [])
   const monthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today])
+  const requestedFarmId = searchParams.get('farmId')?.trim() ?? ''
+  const requestedWarehouseCode = searchParams.get('warehouse')?.trim() ?? ''
+  const requestedFrom = searchParams.get('from')?.trim() ?? ''
+  const requestedTo = searchParams.get('to')?.trim() ?? ''
+  const autoGenerateFromBatchTrail = searchParams.get('source') === 'batchTrail'
+  const autoGenerateHandledRef = useRef(false)
   const [farms, setFarms] = useState<WarehouseReportFarm[]>([])
   const [selectedFarmCode, setSelectedFarmCode] = useState('')
   const [warehouses, setWarehouses] = useState<WarehouseReportWarehouse[]>([])
   const [selectedCodes, setSelectedCodes] = useState<string[]>([])
   const [warehouseSearch, setWarehouseSearch] = useState('')
-  const [from, setFrom] = useState(dateInput(monthStart))
-  const [to, setTo] = useState(dateInput(today))
+  const [from, setFrom] = useState(() => isDateInput(requestedFrom) ? requestedFrom : toLocalDateInput(monthStart))
+  const [to, setTo] = useState(() => isDateInput(requestedTo) ? requestedTo : toLocalDateInput(today))
   const [separateByBatch, setSeparateByBatch] = useState(true)
   const [rows, setRows] = useState<WarehouseReportRow[]>([])
   const [loadingFarms, setLoadingFarms] = useState(true)
@@ -72,7 +74,7 @@ export default function Layout() {
         toast.error('Unable to load farms')
       })
       .finally(() => setLoadingFarms(false))
-  }, [getValue])
+  }, [getValue, requestedFarmId])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.code === selectedFarmCode),
@@ -93,7 +95,14 @@ export default function Layout() {
     setLoadingWarehouses(true)
     getWarehouseReportWarehouses(selectedFarm.id)
       .then(data => {
-        if (active) setWarehouses(data)
+        if (!active) return
+
+        setWarehouses(data)
+        if (String(selectedFarm.id) === requestedFarmId && requestedWarehouseCode) {
+          const requestedWarehouse = data.find(warehouse =>
+            warehouse.code.toUpperCase() === requestedWarehouseCode.toUpperCase())
+          setSelectedCodes(requestedWarehouse ? [requestedWarehouse.code] : [])
+        }
       })
       .catch(error => {
         console.error(error)
@@ -104,7 +113,7 @@ export default function Layout() {
       })
 
     return () => { active = false }
-  }, [selectedFarm])
+  }, [requestedFarmId, requestedWarehouseCode, selectedFarm])
 
   const selectedLabel = selectedCodes.length === 0
     ? 'Select warehouses'
@@ -132,7 +141,7 @@ export default function Layout() {
     )
   }
 
-  const generate = async () => {
+  const generate = useCallback(async () => {
     if (!selectedFarm) {
       toast.warning('Select a farm')
       return
@@ -165,7 +174,26 @@ export default function Layout() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [from, selectedCodes, selectedFarm, separateByBatch, to])
+
+  useEffect(() => {
+    if (!autoGenerateFromBatchTrail || autoGenerateHandledRef.current) return
+    if (loadingFarms || loadingWarehouses || !selectedFarm || selectedCodes.length === 0) return
+    if (String(selectedFarm.id) !== requestedFarmId) return
+    if (!selectedCodes.some(code => code.toUpperCase() === requestedWarehouseCode.toUpperCase())) return
+
+    autoGenerateHandledRef.current = true
+    void generate()
+  }, [
+    autoGenerateFromBatchTrail,
+    generate,
+    loadingFarms,
+    loadingWarehouses,
+    requestedFarmId,
+    requestedWarehouseCode,
+    selectedCodes,
+    selectedFarm,
+  ])
 
   const columns = useMemo(() => [
     {

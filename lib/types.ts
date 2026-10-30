@@ -100,6 +100,7 @@ export interface UserInsert {
   region?: string | null;
   archipelago?: string | null;
   fms_type?: string | null;
+  fms_types?: Array<'Broiler' | 'Breeder' | 'Hatchery'> | null;
   users_group_id?: string | number | null;
   user_type?: number | null;
 }
@@ -134,6 +135,7 @@ export interface UserRow {
   region?: string | null;
   archipelago?: string | null;
   fms_type?: string | null;
+  fms_types?: Array<'Broiler' | 'Breeder' | 'Hatchery'> | null;
   users_group_id?: string | number | null;
   user_type?: number | null;
 

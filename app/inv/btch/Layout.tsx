@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
+import BatchTransactionTimeline from '@/components/inventory/BatchTransactionTimeline'
+import BatchWarehouseReportButton from '@/components/inventory/BatchWarehouseReportButton'
 import DynamicTable from '@/components/ui/DataTableV2'
 import {
   Dialog,
@@ -29,7 +31,6 @@ import {
   FileSliders,
   Hash,
   ListFilter,
-  Loader2,
   PackageSearch,
   Plus,
   RotateCcw,
@@ -50,11 +51,9 @@ import {
   BatchResetType,
   BatchRule,
   BatchRulePayload,
-  BatchTransactionTrail,
   CreatedBatchInventory,
   deleteBatchNumberSeries,
   deleteBatchRule,
-  getBatchTransactionTrail,
   getBatchNumberSeries,
   getCreatedBatchInventory,
   getBatchReferences,
@@ -62,6 +61,10 @@ import {
   saveBatchNumberSeries,
   saveBatchRule,
 } from './api'
+import {
+  getBatchTransactionTrail,
+  type BatchTransactionTrail,
+} from '@/lib/data/repositories/batchTransactionTrail'
 
 type BatchSeriesForm = {
   code: string
@@ -407,6 +410,7 @@ export default function Layout() {
   const [trailHeader, setTrailHeader] = useState<BatchTrailHeader | null>(null)
   const [trailRows, setTrailRows] = useState<BatchTransactionTrail[]>([])
   const [loadingTrail, setLoadingTrail] = useState(false)
+  const [trailError, setTrailError] = useState('')
 
   const seriesMap = useMemo(() => makeOptionMap(series.map(item => ({
     id: item.id,
@@ -648,9 +652,10 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const openBatchTrail = async (batch: CreatedBatchInventoryRow) => {
+  const openBatchTrail = async (batch: BatchTrailHeader) => {
     setTrailHeader(batch)
     setTrailRows([])
+    setTrailError('')
     setLoadingTrail(true)
 
     try {
@@ -661,7 +666,7 @@ export default function Layout() {
       setTrailRows(rows)
     } catch (error) {
       console.error(error)
-      toast.error('Unable to load batch transaction trail')
+      setTrailError('Unable to load batch trail.')
     } finally {
       setLoadingTrail(false)
     }
@@ -1187,11 +1192,12 @@ export default function Layout() {
             if (open) return
             setTrailHeader(null)
             setTrailRows([])
+            setTrailError('')
           }}
         >
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
             <DialogHeader>
-              <DialogTitle>Batch Transaction Trail</DialogTitle>
+              <DialogTitle>Batch Trail</DialogTitle>
               <DialogDescription>
                 {trailHeader
                   ? `${trailHeader.batchNumber} movement history for ${trailHeader.itemCode}.`
@@ -1200,105 +1206,29 @@ export default function Layout() {
             </DialogHeader>
 
             {trailHeader && (
-              <div className="space-y-4">
-                <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm sm:grid-cols-4">
-                  <div>
-                    <div className="text-xs font-medium text-amber-700">Batch</div>
-                    <div className="truncate font-semibold text-stone-950">{trailHeader.batchNumber}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-amber-700">Item</div>
-                    <div className="truncate font-semibold text-stone-950">{trailHeader.item_label}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-amber-700">Selected Warehouse</div>
-                    <div className="font-semibold text-stone-950">{trailHeader.warehouse_label}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-amber-700">Current On Hand</div>
-                    <div className="font-semibold tabular-nums text-stone-950">{trailHeader.on_hand_label}</div>
-                  </div>
-                </div>
-
-                {loadingTrail && (
-                  <div className="flex min-h-32 items-center justify-center gap-2 rounded-md border border-dashed border-stone-300 bg-white text-sm text-stone-600">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading transaction trail...
-                  </div>
-                )}
-
-                {!loadingTrail && trailRows.length === 0 && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                    No inventory postings were found for this batch.
-                  </div>
-                )}
-
-                {!loadingTrail && trailRows.length > 0 && (
-                  <div className="relative space-y-3 pl-5">
-                    <div className="absolute left-[11px] top-2 h-[calc(100%-1rem)] w-px bg-amber-200" />
-                    {trailRows.map(row => {
-                      const isOut = row.signedQty < 0
-                      const movementLabel = isOut ? 'OUT' : 'IN'
-
-                      return (
-                        <div key={row.id} className="relative rounded-md border border-stone-200 bg-white p-3 shadow-sm">
-                          <div className={`absolute -left-[17px] top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-white ${isOut ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-700'}`}>
-                            <ArrowRightCircle className={`h-4 w-4 ${isOut ? 'rotate-180' : ''}`} />
-                          </div>
-
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                                  {movementLabel}
-                                </span>
-                                <span className="font-semibold text-stone-950">{row.documentLabel}</span>
-                                <span className="text-xs text-stone-500">{row.sourceDocType || '-'}</span>
-                              </div>
-                              <div className="mt-1 text-xs text-stone-500">
-                                {formatDateTime(row.createdAt)}
-                              </div>
-                            </div>
-
-                            <div className="text-right">
-                              <div className={`text-sm font-semibold tabular-nums ${isOut ? 'text-red-700' : 'text-emerald-700'}`}>
-                                {isOut ? '-' : '+'}{formatQuantity(Math.abs(row.signedQty))}
-                              </div>
-                              <div className="text-xs text-stone-500">Movement</div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-5">
-                            <div className="rounded-md bg-amber-50 px-2 py-1">
-                              <span className="block font-medium text-amber-700">Running Balance</span>
-                              <span className="font-semibold tabular-nums text-amber-900">{formatQuantity(row.runningQty)}</span>
-                            </div>
-                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Warehouse</span>
-                              <span className="text-stone-900">{row.warehouseCode || '-'}</span>
-                            </div>
-                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Bin</span>
-                              <span className="text-stone-900">{row.binCode || '-'}</span>
-                            </div>
-                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Reference</span>
-                              <span className="text-stone-900">{row.ref || row.ref2 || '-'}</span>
-                            </div>
-                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                              <span className="block font-medium text-stone-500">Posting ID</span>
-                              <span className="text-stone-900">#{row.id}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
+              <BatchTransactionTimeline
+                itemCode={trailHeader.itemCode}
+                itemLabel={trailHeader.item_label}
+                batchNumber={trailHeader.batchNumber}
+                warehouseCode={trailHeader.warehouseCode}
+                warehouseValue={trailHeader.warehouse_label}
+                warehouseLabel="Selected Warehouse"
+                quantityLabel="Current On Hand"
+                quantityValue={trailHeader.on_hand_label}
+                rows={trailRows}
+                loading={loadingTrail}
+                error={trailError}
+                onRetry={() => void openBatchTrail(trailHeader)}
+              />
             )}
 
             <DialogFooter>
+              {trailHeader && (
+                <BatchWarehouseReportButton
+                  batchNumber={trailHeader.batchNumber}
+                  rows={trailRows}
+                />
+              )}
               <DialogClose asChild>
                 <Button type="button" variant="outline">Close</Button>
               </DialogClose>

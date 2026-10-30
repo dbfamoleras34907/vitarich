@@ -21,6 +21,9 @@ declare
   v_line jsonb;
   v_line_id bigint;
   v_line_no integer := 0;
+  v_placement_date date;
+  v_delivery_date date;
+  v_harvest_age integer;
   v_header jsonb;
   v_lines jsonb;
   v_fingerprint text;
@@ -46,15 +49,6 @@ begin
   if jsonb_typeof(p_document->'lines') is distinct from 'array'
      or jsonb_array_length(p_document->'lines') = 0 then
     raise exception 'Harvest & Delivery requires at least one line.';
-  end if;
-
-  if exists (
-    select 1
-    from jsonb_array_elements(p_document->'lines') input(line)
-    where nullif(input.line->>'harvestAge', '') is null
-       or (input.line->>'harvestAge') !~ '^[0-9]+$'
-  ) then
-    raise exception 'Every Harvest & Delivery line requires an Age that is a whole number, zero or greater.';
   end if;
 
   if v_farm_cycle_id is null or not exists (
@@ -163,6 +157,40 @@ begin
       else null
     end;
 
+    v_delivery_date := nullif(v_line->>'deliveredDate', '')::date;
+
+    select min(doc.receive_date)
+    into v_placement_date
+    from public.goods_receipt_doc doc
+    join public.goods_receipt receipt
+      on receipt.id = doc.goods_reciept_id
+     and receipt.status in ('Draft', 'Posted', 'Received')
+    where doc.void = '1'
+      and doc.flock_card_id = (
+        select card.id
+        from public.flock_card card
+        where card.farm_cycle_id = v_farm_cycle_id
+          and card.farm_id = v_farm_id
+          and card.void = '1'
+          and card.status = 'Saved'
+          and (
+            card.building_whse_id = nullif(v_line->>'fromWarehouseId', '')::bigint
+            or upper(btrim(card.building_code)) = upper(btrim(v_line->>'fromWarehouseCode'))
+          )
+        order by card.start_date desc, card.id desc
+        limit 1
+      );
+
+    if v_placement_date is null then
+      raise exception 'Line % has no active DOC Placement Date for the selected flock card.', v_line_no;
+    end if;
+
+    if v_delivery_date is null or v_delivery_date < v_placement_date then
+      raise exception 'Line % Delivery Date must be on or after DOC Placement Date %.', v_line_no, v_placement_date;
+    end if;
+
+    v_harvest_age := (v_delivery_date - v_placement_date) + 1;
+
     if v_line_id is not null and exists (
       select 1
       from public.br_delivery_lines existing_line
@@ -173,11 +201,11 @@ begin
       set
         line_no = v_line_no,
         allocation_group_key = coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), v_line_id::text),
-        harvest_age = (v_line->>'harvestAge')::integer,
+        harvest_age = v_harvest_age,
         average_live_weight = nullif(v_line->>'averageLiveWeight', '')::numeric,
         net_live_weight = nullif(v_line->>'netLiveWeight', '')::numeric,
         ts_dr_no = nullif(trim(v_line->>'tsDrNo'), ''),
-        delivered_date = nullif(v_line->>'deliveredDate', '')::date,
+        delivered_date = v_delivery_date,
         hauler_name = nullif(trim(v_line->>'haulerName'), ''),
         plate_number = nullif(trim(v_line->>'plateNumber'), ''),
         destination = nullif(trim(v_line->>'destination'), ''),
@@ -235,11 +263,11 @@ begin
         v_document_id,
         v_line_no,
         coalesce(nullif(trim(v_line->>'allocationGroupKey'), ''), gen_random_uuid()::text),
-        (v_line->>'harvestAge')::integer,
+        v_harvest_age,
         nullif(v_line->>'averageLiveWeight', '')::numeric,
         nullif(v_line->>'netLiveWeight', '')::numeric,
         nullif(trim(v_line->>'tsDrNo'), ''),
-        nullif(v_line->>'deliveredDate', '')::date,
+        v_delivery_date,
         nullif(trim(v_line->>'haulerName'), ''),
         nullif(trim(v_line->>'plateNumber'), ''),
         nullif(trim(v_line->>'destination'), ''),

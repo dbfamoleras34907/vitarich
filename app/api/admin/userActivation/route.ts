@@ -4,8 +4,6 @@ import { after, NextResponse } from "next/server"
 import { requireAdminActor, adminAccessError } from "@/lib/auth/adminAccess"
 import { RegistrationError } from "@/lib/data/repositories/registration.server"
 import { listPendingActivations, decideRegistration } from "@/lib/data/repositories/userActivation.server"
-import { processPendingNotificationEvents } from "@/lib/data/repositories/notifications.server"
-import { processPendingNotificationEmails } from "@/lib/notifications/processEmailDeliveries.server"
 import { processTransactionalEmails } from "@/lib/email/processTransactionalEmails.server"
 
 function failure(error: unknown) {
@@ -27,11 +25,11 @@ export async function POST(request: Request) {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new RegistrationError("Invalid decision.")
     const user = await decideRegistration(actor, input)
     after(async () => {
-      const results = await Promise.allSettled([
-        processTransactionalEmails(20),
-        processPendingNotificationEvents(50).then(() => processPendingNotificationEmails(20)),
-      ])
-      for (const result of results) if (result.status === "rejected") console.error("Account notification processing failed:", result.reason)
+      try {
+        await processTransactionalEmails(20)
+      } catch (error) {
+        console.error("Account email processing failed:", error)
+      }
     })
     return NextResponse.json({ user })
   } catch (error) { return failure(error) }

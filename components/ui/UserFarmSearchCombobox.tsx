@@ -61,6 +61,23 @@ function matchesFarmType(farm: UserFarm, farmType?: keyof typeof FARM_TYPE_LABEL
   return value === farmType || value === FARM_TYPE_LABELS[farmType];
 }
 
+export function getFarmsForSelector(
+  farms: UserFarm[],
+  farmType: keyof typeof FARM_TYPE_LABELS | undefined,
+  defaultFarmReference: unknown,
+) {
+  if (!farmType) return farms;
+
+  const preferred = String(defaultFarmReference ?? "").trim();
+  return farms.filter((farm) =>
+    matchesFarmType(farm, farmType)
+    || (preferred !== "" && (
+      String(farm.id) === preferred
+      || String(farm.code).trim() === preferred
+    )),
+  );
+}
+
 export default function UserFarmSearchCombobox({
   label = "Default Farm",
   required,
@@ -74,10 +91,13 @@ export default function UserFarmSearchCombobox({
   const { getValue } = useGlobalContext();
   const selectDefaultFarm = useDefaultFarmSelection();
   const session = getValue("UserInfoAuthSession");
+  const sessionUserId = session?.[0]?.id;
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
   const [typedFarms, setTypedFarms] = useState<UserFarm[] | null>(null);
   const [buttonSearch, setButtonSearch] = useState("");
+  const defaultFarmReference = getValue("DefaultFarmId")
+    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
     if (!farmType) {
@@ -112,8 +132,8 @@ export default function UserFarmSearchCombobox({
   );
 
   const filteredFarms = useMemo(
-    () => allowedFarms.filter((farm) => matchesFarmType(farm, farmType)),
-    [allowedFarms, farmType]
+    () => getFarmsForSelector(allowedFarms, farmType, defaultFarmReference),
+    [allowedFarms, defaultFarmReference, farmType]
   );
 
   const items = useMemo(
@@ -130,8 +150,6 @@ export default function UserFarmSearchCombobox({
   const selectedFarm = filteredFarms.find(farm => farm.code === reference)
     ?? filteredFarms.find(farm => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
-  const defaultFarmReference = getValue("DefaultFarmId")
-    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
     if (selectedFarm) onFarmResolved?.(selectedFarm);

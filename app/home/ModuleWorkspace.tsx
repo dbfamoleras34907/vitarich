@@ -7,6 +7,7 @@ import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
 import { getModuleIcon } from '@/lib/sidebar/moduleIcons'
+import { normalizeUserFmsTypes } from '@/lib/auth/fmsAccess'
 
 type Permission = {
   group_name: string
@@ -74,7 +75,7 @@ export default function ModuleWorkspace() {
       (landingFolderOrder.get(right.title) ?? Number.MAX_SAFE_INTEGER),
     )
 
-  const fmsType = String(profile.fms_type ?? '').trim()
+  const fmsType = normalizeUserFmsTypes(profile.fms_types, profile.fms_type).join(' / ')
   const moduleCount = folders.reduce(
     (total, folder) => total + folder.items.reduce((folderTotal, group) => folderTotal + group.children.length, 0),
     0,

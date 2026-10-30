@@ -346,7 +346,20 @@ export async function getBreederDashboard(
       weightSampleStorageAvailable: true,
       eggRangeProduction: emptyEggRangeProduction(),
       eggStorage,
-      eggCollectionForecast: { points: [], actualThrough: null, message: "No active breeder placement is available for forecasting." },
+      eggCollectionForecast: {
+        points: [],
+        reportRows: [],
+        header: {
+          farmName: null,
+          ageAtFivePercentDays: null,
+          henHoused: null,
+          tepPerHenHoused: null,
+          hatchingEggPerHenHoused: null,
+          hatchingEggRecoveryPercent: null,
+        },
+        actualThrough: null,
+        message: "No active breeder placement is available for forecasting.",
+      },
       latestUniformity: { male: null, female: null },
       latestFlockAge: null,
       latestFeed: null,
@@ -620,6 +633,12 @@ export async function getBreederDashboard(
     .map(row => ({ id: row.id, placementDate: row.placement_date,
       farmName: row.farm_name || "Unspecified farm", buildingName: row.building_no || "Unspecified building",
       penName: row.pen_no || "Unspecified pen" }));
+  const activePlacementIds = new Set(activePlacements.map(placement => Number(placement.id)));
+  // The worksheet needs the first 5% production date and the last three
+  // actual weeks even when the dashboard's visible date range is shorter.
+  const forecastEggHistory = activePlacementIds.size
+    ? await listBreederEggLayings({ placementIds: [...activePlacementIds], to: filter.to, ascending: true })
+    : [];
   const depletionRate = (openings: Map<number, number | null>, deaths: number) => {
     const populations = [...openings.values()];
     const openingPopulation = populations.length && populations.every(value => value != null)
@@ -637,9 +656,9 @@ export async function getBreederDashboard(
     from: filter.from,
     to: filter.to,
     placements,
-    activePlacementIds: new Set(activePlacements.map(placement => Number(placement.id))),
+    activePlacementIds,
     performance,
-    eggs,
+    eggs: forecastEggHistory,
   });
   return { buildings: result, totals, weeklyBodyWeights, latestFlockAge, latestFeed, latestUniformity, activePlacements, depletionRates, weightSampleStorageAvailable: weightSamples.available, eggRangeProduction, eggStorage, eggCollectionForecast };
 }
