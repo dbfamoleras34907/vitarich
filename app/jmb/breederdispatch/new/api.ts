@@ -1,6 +1,7 @@
 import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
 import { EGG_DISPATCH_CATEGORIES, eggDispatchQuantity } from "@/app/jmb/lib/breederEggCategories";
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
@@ -142,7 +143,10 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   ]);
   if (placementError) throw placementError;
   if (farmError) throw farmError;
-  const placementIds = (placements ?? []).map((row) => row.id);
+  const correctedPlacements = await applyPostedFemaleInventoryCorrections(
+    (placements ?? []) as Placement[],
+  );
+  const placementIds = correctedPlacements.map((row) => row.id);
   let dailyRows: Record<string, unknown>[] = [];
   if (placementIds.length) {
     const { data, error } = await db.from("tbl_breeder_daily_performance").select("placement_id, daterec, inv_male, inv_female, mc_male, mc_female, cull_male, cull_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female, kitchen_male, kitchen_female, condem_male, condem_female, avg_body_weight_male, avg_body_weight_female").in("placement_id", placementIds).eq("isactive", true).lte("daterec", dispatchDate).order("daterec");
@@ -152,7 +156,7 @@ export async function listAvailableBreederFlocks(dispatchDate: string, farmId?: 
   const byPlacement = new Map<number, Record<string, unknown>[]>();
   dailyRows.forEach((row) => { const id = Number(row.placement_id); byPlacement.set(id, [...(byPlacement.get(id) ?? []), row]); });
   const farmCode = new Map((farms ?? []).map((row) => [Number(row.id), row.code as string | null]));
-  return ((placements ?? []) as Placement[]).sort((left, right) =>
+  return correctedPlacements.sort((left, right) =>
     compareNaturalText(left.building_no, right.building_no) ||
     compareNaturalText(left.pen_no, right.pen_no) ||
     left.id - right.id,
