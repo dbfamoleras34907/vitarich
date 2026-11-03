@@ -1,6 +1,42 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 
 const TABLE = "egg_storage_mngt"; // ✅ CHANGE THIS if your real table name is different
+const CLASSIFICATION_REFERENCE_PAGE_SIZE = 500;
+
+export type EggStorageClassificationReference = {
+  classi_ref_no: string;
+  date_classify: string | null;
+};
+
+/**
+ * Lists every Classification reference that can be selected for Egg Storage.
+ *
+ * PostgREST caps un-ranged responses, so the lookup is paged to keep older
+ * eligible classifications available in the form.
+ */
+export async function listEggStorageClassificationReferences(): Promise<
+  EggStorageClassificationReference[]
+> {
+  const references: EggStorageClassificationReference[] = [];
+
+  for (let from = 0; ; from += CLASSIFICATION_REFERENCE_PAGE_SIZE) {
+    const { data, error } = await db
+      .from("view_eggclassi_for_eggstorage")
+      .select("classi_ref_no,date_classify")
+      .order("date_classify", { ascending: false })
+      .order("classi_ref_no", { ascending: false })
+      .range(from, from + CLASSIFICATION_REFERENCE_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const page = (data ?? []) as EggStorageClassificationReference[];
+    references.push(...page);
+
+    if (page.length < CLASSIFICATION_REFERENCE_PAGE_SIZE) break;
+  }
+
+  return references;
+}
 
 // Insert payload (what the form sends)
 export type EggStorageInsert = {

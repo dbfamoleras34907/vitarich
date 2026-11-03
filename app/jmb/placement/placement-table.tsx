@@ -23,7 +23,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import BreederListParameters, {
-  isWithinDateRange,
   useBreederListParameters,
 } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
@@ -158,20 +157,16 @@ export default function PlacementTable() {
   const selectedFarmPlacements = useMemo(
     () =>
       placements.filter(
-        (placement) =>
-          String(placement.farm_id) === effectiveFarmId &&
-          isWithinDateRange(placement.placement_date, parameters.dateFrom, parameters.dateTo),
+        (placement) => String(placement.farm_id) === effectiveFarmId,
       ),
-    [effectiveFarmId, parameters.dateFrom, parameters.dateTo, placements],
+    [effectiveFarmId, placements],
   );
   const selectedFarmHistory = useMemo(
     () =>
       buildingHistory.filter(
-        (record) =>
-          String(record.farm_id) === effectiveFarmId &&
-          isWithinDateRange(record.placement_date, parameters.dateFrom, parameters.dateTo),
+        (record) => String(record.farm_id) === effectiveFarmId,
       ),
-    [buildingHistory, effectiveFarmId, parameters.dateFrom, parameters.dateTo],
+    [buildingHistory, effectiveFarmId],
   );
   const activeCycleHistoryKeys = useMemo(
     () =>
@@ -269,7 +264,7 @@ export default function PlacementTable() {
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <BreederListParameters {...parameters} />
+            <BreederListParameters {...parameters} showDateRange={false} />
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-md border bg-background px-3 py-2">
