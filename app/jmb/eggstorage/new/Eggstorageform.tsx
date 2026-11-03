@@ -19,11 +19,12 @@ import {
 } from "@/components/ui/dialog";
 
 import Breadcrumb from "@/lib/Breadcrumb";
-import { db } from "@/lib/Supabase/supabaseClient";
 import {
   createEggStorage,
   getEggStorageById,
+  listEggStorageClassificationReferences,
   updateEggStorage,
+  type EggStorageClassificationReference,
   type EggStorageInsert,
 } from "./api";
 import FormActionButtons from "@/components/FormActionButtons";
@@ -32,11 +33,6 @@ import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import TemperatureConverter from "@/components/TemperatureConverter";
 import SearchableDropdown1 from "@/lib/SearchableDropdown1";
 import { usePermission } from "@/hooks/usePermission";
-
-type HatchClassiRefOption = {
-  classi_ref_no: string;
-  date_classify: string | null;
-};
 
 type TemperatureFieldKey = "stor_temp" | "room_temp";
 
@@ -146,7 +142,9 @@ export default function Eggstorageform() {
   const [classiRefNos, setClassiRefNos] = useState<string[]>(
     isWizard && !isEdit ? [wizardRef] : [],
   );
-  const [classiRefs, setClassiRefs] = useState<HatchClassiRefOption[]>([]);
+  const [classiRefs, setClassiRefs] = useState<
+    EggStorageClassificationReference[]
+  >([]);
   const [classiRefLoading, setClassiRefLoading] = useState(false);
 
   const [stor_temp, setStorTemp] = useState("");
@@ -162,14 +160,7 @@ export default function Eggstorageform() {
     const loadClassiRefs = async () => {
       try {
         setClassiRefLoading(true);
-        const { data, error } = await db
-          .from("view_eggclassi_for_eggstorage")
-          .select("classi_ref_no,date_classify")
-          .order("date_classify", { ascending: false })
-          .order("classi_ref_no", { ascending: false });
-
-        if (error) throw error;
-        const rows = (data ?? []) as HatchClassiRefOption[];
+        const rows = await listEggStorageClassificationReferences();
         setClassiRefs(
           isWizard && !rows.some((row) => row.classi_ref_no === wizardRef)
             ? [{ classi_ref_no: wizardRef, date_classify: null }, ...rows]
