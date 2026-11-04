@@ -62,6 +62,7 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   inputClassName?: string
   onInputFocus?: React.FocusEventHandler<HTMLInputElement>
   dataGridCell?: boolean
+  deferValueCommitUntilClose?: boolean
 }
 
 type SingleProps = {
@@ -114,6 +115,7 @@ export default function SearchableCombobox(props: Props) {
   const [internalOpen, setInternalOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
   const [highlightedIndex, setHighlightedIndex] = React.useState(0)
+  const [pendingMultipleValue, setPendingMultipleValue] = React.useState<string[] | null>(null)
   const anchor = useComboboxAnchor()
   const searchRef = React.useRef<HTMLInputElement>(null)
   const singleInputRef = React.useRef<HTMLInputElement>(null)
@@ -157,6 +159,9 @@ export default function SearchableCombobox(props: Props) {
 
     return props.value ?? ""
   }, [props.multiple, props.value])
+  const deferMultipleValueCommit = props.multiple
+    ? Boolean(props.deferValueCommitUntilClose)
+    : false
 
   const uniqueItems = React.useMemo(() => {
     const seen = new Set<string>()
@@ -169,10 +174,21 @@ export default function SearchableCombobox(props: Props) {
     })
   }, [items])
 
-  const selectedCodes = React.useMemo(
-    () => props.multiple ? normalizedValue as string[] : [],
-    [normalizedValue, props.multiple]
-  )
+  const selectedCodes = React.useMemo(() => {
+    if (!props.multiple) return []
+    if (deferMultipleValueCommit && pendingMultipleValue) return pendingMultipleValue
+    return normalizedValue as string[]
+  }, [deferMultipleValueCommit, normalizedValue, pendingMultipleValue, props.multiple])
+
+  const commitMultipleValue = (values: string[]) => {
+    if (!props.multiple) return
+    const nextValue = uniqueStrings(values)
+    if (deferMultipleValueCommit) {
+      setPendingMultipleValue(nextValue)
+      return
+    }
+    props.onValueChange(nextValue)
+  }
 
   const filteredItems = React.useMemo(() => {
     if (!search) return uniqueItems
@@ -211,13 +227,13 @@ export default function SearchableCombobox(props: Props) {
 
   const removeItem = (code: string) => {
     if (!props.multiple) return
-    props.onValueChange(selectedCodes.filter((value) => value !== code))
+    commitMultipleValue(selectedCodes.filter((value) => value !== code))
   }
 
   const selectItem = (code: string) => {
     if (props.multiple) {
       if (!selectedCodes.includes(code)) {
-        props.onValueChange([...selectedCodes, code])
+        commitMultipleValue([...selectedCodes, code])
       }
       return
     }
@@ -238,6 +254,14 @@ export default function SearchableCombobox(props: Props) {
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
+    if (props.multiple && deferMultipleValueCommit) {
+      if (nextOpen) {
+        setPendingMultipleValue(normalizedValue as string[])
+      } else if (pendingMultipleValue) {
+        props.onValueChange(pendingMultipleValue)
+        setPendingMultipleValue(null)
+      }
+    }
     setOpen(nextOpen)
     setHighlightedIndex(0)
 
@@ -273,10 +297,10 @@ export default function SearchableCombobox(props: Props) {
         multiple={props.multiple}
         autoHighlight={autoHighlight}
           items={filteredItems}
-          value={normalizedValue}
+          value={props.multiple ? selectedCodes : normalizedValue}
           onValueChange={(val) => {
             if (props.multiple) {
-            props.onValueChange(uniqueStrings(Array.isArray(val) ? val : val ? [val] : []))
+            commitMultipleValue(Array.isArray(val) ? val : val ? [val] : [])
           } else {
             props.onValueChange(Array.isArray(val) ? val[0] ?? "" : val ?? "")
             setOpen(false)
@@ -472,7 +496,7 @@ export default function SearchableCombobox(props: Props) {
                   disabled={filteredItems.length === 0}
                   onClick={() => {
                     const filteredCodes = filteredItems.map((item) => item.code)
-                    props.onValueChange(Array.from(new Set([...selectedCodes, ...filteredCodes])))
+                    commitMultipleValue(Array.from(new Set([...selectedCodes, ...filteredCodes])))
                   }}
                 >
                   Select results
@@ -482,7 +506,7 @@ export default function SearchableCombobox(props: Props) {
                   type="button"
                   className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={selectedCodes.length === 0}
-                  onClick={() => props.onValueChange([])}
+                  onClick={() => commitMultipleValue([])}
                 >
                   Clear
                 </button>

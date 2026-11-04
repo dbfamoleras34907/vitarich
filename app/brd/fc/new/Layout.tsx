@@ -236,7 +236,7 @@ function buildMultiFeedQuantities(
       return;
     }
 
-    const currentQuantity = currentQuantities[feedTypeId] ?? "";
+    const currentQuantity = currentQuantities[feedTypeId] ?? "0";
     quantities[feedTypeId] = currentQuantity;
     const numericQuantity = Number(currentQuantity);
     if (Number.isInteger(numericQuantity) && numericQuantity > 0) {
@@ -335,7 +335,7 @@ function MultiFeedBreakdownSheet({
                   </div>
                   <Input
                     type="number"
-                    min={1}
+                    min={0}
                     step={1}
                     inputMode="numeric"
                     value={quantity}
@@ -523,7 +523,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
   const pendingCopyFeedBatchRowsRef = useRef<number[]>([]);
-  const pendingMultiFeedDrawerRowRef = useRef<number | null>(null);
+  const pendingMultiFeedDrawerSelectionRef = useRef<{ rowIndex: number; feedTypeIds: string[] } | null>(null);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
 
@@ -941,15 +941,38 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const activeMultiFeedRequiredQty = multiFeedDrawerRowIndex == null
     ? 0
     : getNumericValue(gridValues[multiFeedDrawerRowIndex]?.[feedDailyKgColumnIndex] ?? "");
-  const activeMultiFeedAvailableByType = activeMultiFeedDraft?.feedTypeIds.reduce<Record<string, number>>(
-    (availableByType, feedTypeId) => ({
-      ...availableByType,
-      [feedTypeId]: multiFeedDrawerRowIndex == null
-        ? 0
-        : getAvailableFeedQuantityForType(multiFeedDrawerRowIndex, feedTypeId),
-    }),
-    {},
-  ) ?? {};
+  const activeMultiFeedAvailableByType = useMemo(() => {
+    if (multiFeedDrawerRowIndex == null || !activeMultiFeedDraft) return {};
+
+    const selectedFeedTypeIds = new Set(activeMultiFeedDraft.feedTypeIds.map(Number));
+    const activeRowAllocatedQtyByBatchId = new Map<string, number>();
+    (feedBatchAllocationsByRow[multiFeedDrawerRowIndex] ?? []).forEach(allocation => {
+      activeRowAllocatedQtyByBatchId.set(
+        allocation.batchId,
+        (activeRowAllocatedQtyByBatchId.get(allocation.batchId) ?? 0) + Number(allocation.selectedQty || 0),
+      );
+    });
+
+    return fifoFeedBatchRows.reduce<Record<string, number>>((availableByType, batch) => {
+      const feedTypeId = feedItemTypeIdByCode.get(batch.itemCode.trim().toUpperCase()) ?? null;
+      if (feedTypeId == null || !selectedFeedTypeIds.has(feedTypeId)) return availableByType;
+
+      const allocatedQty = feedBatchAllocatedQtyByBatchId.get(batch.id) ?? 0;
+      const activeRowAllocatedQty = activeRowAllocatedQtyByBatchId.get(batch.id) ?? 0;
+      const allocatedOutsideRow = Math.max(allocatedQty - activeRowAllocatedQty, 0);
+      const availableQty = Math.max(Number(batch.onHandQty || 0) - allocatedOutsideRow, 0);
+      const key = String(feedTypeId);
+      availableByType[key] = (availableByType[key] ?? 0) + availableQty;
+      return availableByType;
+    }, {});
+  }, [
+    activeMultiFeedDraft,
+    feedBatchAllocatedQtyByBatchId,
+    feedBatchAllocationsByRow,
+    feedItemTypeIdByCode,
+    fifoFeedBatchRows,
+    multiFeedDrawerRowIndex,
+  ]);
 
   const feedBatchColumnWidth = useMemo(() => {
     const longestBatchLength = gridValues.reduce((longest, row) => {
@@ -1486,12 +1509,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       toast(`Enter the Actual FC quantity for age ${rows[rowIndex]?.age ?? rowIndex} before selecting multiple feed types.`);
       return;
     }
-    pendingMultiFeedDrawerRowRef.current = feedTypeIds.length > 1 ? rowIndex : null;
+    pendingMultiFeedDrawerSelectionRef.current = { rowIndex, feedTypeIds };
 
-    setFeedBatchAllocationsByRow(current => ({
-      ...current,
-      [rowIndex]: [],
-    }));
     setMultiFeedDraftByRow(current => {
       const next = { ...current };
       if (feedTypeIds.length > 1) {
@@ -1510,6 +1529,10 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       return next;
     });
     startGridTransition(() => {
+      setFeedBatchAllocationsByRow(current => ({
+        ...current,
+        [rowIndex]: [],
+      }));
       setGridValues(currentValues => currentValues.map((row, currentRowIndex) => {
         if (currentRowIndex !== rowIndex) return row;
 
@@ -4765,16 +4788,20 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               items={feedTypeOptions}
                               value={rowFeedTypeIds}
                               onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
+                              deferValueCommitUntilClose
                               placeholder="Select"
                               open
                               onOpenChange={(open) => {
                                 setOpenFeedTypeRow(current => open ? rowIndex : current === rowIndex ? null : current);
-                                if (!open && (
-                                  pendingMultiFeedDrawerRowRef.current === rowIndex ||
-                                  getFeedTypeIdsForRow(rowIndex).length > 1
-                                )) {
-                                  pendingMultiFeedDrawerRowRef.current = null;
-                                  setMultiFeedDrawerRowIndex(rowIndex);
+                                if (!open) {
+                                  const pendingSelection = pendingMultiFeedDrawerSelectionRef.current?.rowIndex === rowIndex
+                                    ? pendingMultiFeedDrawerSelectionRef.current.feedTypeIds
+                                    : null;
+                                  pendingMultiFeedDrawerSelectionRef.current = null;
+                                  const closingFeedTypeIds = pendingSelection ?? getFeedTypeIdsForRow(rowIndex);
+                                  if (closingFeedTypeIds.length > 1) {
+                                    setMultiFeedDrawerRowIndex(rowIndex);
+                                  }
                                 }
                               }}
                               allowSelectAll={false}
