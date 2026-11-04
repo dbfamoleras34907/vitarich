@@ -7,7 +7,7 @@ import type {
   ReactNode,
   RefCallback,
 } from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { TableHead } from "@/components/ui/table";
 import {
@@ -45,17 +45,27 @@ export function CellInput({
   required?: boolean;
 }) {
   const valueOnFocus = useRef(value);
+  const elementRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const input = elementRef.current;
+    if (!input || document.activeElement === input || input.value === value) return;
+
+    input.value = value;
+  }, [value]);
 
   return (
     <Input
-      key={`${id}-${value}`}
       id={id}
       name={id}
       disabled={disabled}
       placeholder={placeholder}
       required={required}
       defaultValue={value}
-      ref={inputRef}
+      ref={(input) => {
+        elementRef.current = input;
+        inputRef(input);
+      }}
       onBlur={(event) => {
         const nextValue = event.currentTarget.value;
         const previousValue = valueOnFocus.current;

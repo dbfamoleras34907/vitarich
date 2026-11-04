@@ -1716,26 +1716,28 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           });
         });
       });
+
+      if (shouldClearFeedBatch) {
+        setFeedBatchAllocationsByRow(current => ({
+          ...current,
+          [rowIndex]: [],
+        }));
+      }
+
+      if (autoMortalityBatchAllocations) {
+        setMortalityBatchAllocationsByRow(current => ({
+          ...current,
+          [rowIndex]: autoMortalityBatchAllocations.allocations,
+        }));
+      } else if (shouldClearMortalityBatch) {
+        setMortalityBatchAllocationsByRow(current => ({
+          ...current,
+          [rowIndex]: [],
+        }));
+      }
     });
 
-    if (shouldClearFeedBatch) {
-      setFeedBatchAllocationsByRow(current => ({
-        ...current,
-        [rowIndex]: [],
-      }));
-    }
-
-    if (autoMortalityBatchAllocations) {
-      setMortalityBatchAllocationsByRow(current => ({
-        ...current,
-        [rowIndex]: autoMortalityBatchAllocations.allocations,
-      }));
-    } else if (shouldClearMortalityBatch) {
-      setMortalityBatchAllocationsByRow(current => ({
-        ...current,
-        [rowIndex]: [],
-      }));
-    } else if (
+    if (
       colIndex === feedDailyKgColumnIndex &&
       feedQuantityChanged &&
       nextFeedQuantity > 0

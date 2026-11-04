@@ -842,6 +842,9 @@ declare
   v_expected_allocation_count integer;
   v_saved_allocation_count integer;
   v_invalid_feed_items text;
+  v_feed_items jsonb;
+  v_allocated_qty numeric(18, 6);
+  v_distinct_feed_count integer;
 begin
   if jsonb_typeof(coalesce(p_allocations, '[]'::jsonb)) <> 'array' then
     raise exception 'Unable to save feed intake: allocations must be an array';
@@ -895,20 +898,79 @@ begin
     raise exception 'Unable to save feed intake: select an active feed item';
   end if;
 
+  if not exists (
+    select 1
+    from jsonb_array_elements(p_allocations) allocation
+    join public.items item
+      on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
+    where item.id = p_feed_type_id
+  ) then
+    raise exception 'Unable to save feed intake: the primary feed item must be included in the allocations';
+  end if;
+
   select string_agg(format('item %s, batch %s',
     allocation->>'itemCode', allocation->>'batchNumber'), '; ')
   into v_invalid_feed_items
   from jsonb_array_elements(p_allocations) allocation
   left join public.items item
     on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
-  where item.id is distinct from p_feed_type_id
+  where item.id is null
      or btrim(coalesce(item.void::text, '0')) <> '1'
+     or (
+       nullif(btrim(allocation->>'itemId'), '') is not null
+       and nullif(btrim(allocation->>'itemId'), '')::bigint is distinct from item.id
+     )
      or nullif(btrim(allocation->>'warehouseCode'), '') is distinct from nullif(btrim(v_card.feed_whse_code), '');
 
   if v_invalid_feed_items is not null then
-    raise exception 'Unable to save feed intake: selected item % must match batches in the document feed warehouse: %',
-      p_feed_type_id, v_invalid_feed_items;
+    raise exception 'Unable to save feed intake: every selected item must be active and match its batches in the document feed warehouse: %',
+      v_invalid_feed_items;
   end if;
+
+  select
+    coalesce(sum(nullif(allocation->>'allocatedQty', '')::numeric), 0),
+    count(distinct item.id)::integer
+  into v_allocated_qty, v_distinct_feed_count
+  from jsonb_array_elements(p_allocations) allocation
+  join public.items item
+    on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'));
+
+  if v_distinct_feed_count > 1 and v_allocated_qty is distinct from p_feed_kg then
+    raise exception 'Unable to save feed intake: feed allocations (%) must equal Actual FC (%).',
+      v_allocated_qty, p_feed_kg;
+  end if;
+
+  if v_distinct_feed_count > 1 and (
+    p_feed_kg is distinct from trunc(p_feed_kg)
+    or exists (
+      select 1
+      from jsonb_array_elements(p_allocations) allocation
+      group by upper(btrim(allocation->>'itemCode'))
+      having sum(nullif(allocation->>'allocatedQty', '')::numeric)
+        is distinct from trunc(sum(nullif(allocation->>'allocatedQty', '')::numeric))
+    )
+  ) then
+    raise exception 'Unable to save feed intake: multiple-feed breakdown quantities must be whole numbers';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'feedItemId', selected_feed.id,
+    'feedItemCode', selected_feed.item_code,
+    'feedItemName', selected_feed.item_name,
+    'quantity', selected_feed.quantity
+  ) order by selected_feed.item_code), '[]'::jsonb)
+  into v_feed_items
+  from (
+    select
+      item.id,
+      item.item_code,
+      coalesce(item.item_name, item.description, item.item_code) as item_name,
+      sum(nullif(allocation->>'allocatedQty', '')::numeric) as quantity
+    from jsonb_array_elements(p_allocations) allocation
+    join public.items item
+      on upper(btrim(item.item_code)) = upper(btrim(allocation->>'itemCode'))
+    group by item.id, item.item_code, item.item_name, item.description
+  ) selected_feed;
 
   v_user := coalesce(auth.uid(), v_line.updated_by, v_line.created_by, v_card.updated_by, v_card.created_by);
 
@@ -977,7 +1039,13 @@ begin
     feed_bird = p_feed_bird,
     feed_guideline = p_feed_guideline,
     feed_batch_text = nullif(btrim(coalesce(p_feed_batch_text, '')), ''),
-    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId') || (select jsonb_build_object('feedItemId', item.id, 'feedItemCode', item.item_code, 'feedItemName', coalesce(item.item_name, item.description, item.item_code)) from public.items item where item.id = p_feed_type_id),
+    extra = (coalesce(brd_fc_line.extra, '{}'::jsonb) - 'feedTypeId' - 'feedItems')
+      || (select jsonb_build_object(
+        'feedItemId', item.id,
+        'feedItemCode', item.item_code,
+        'feedItemName', coalesce(item.item_name, item.description, item.item_code),
+        'feedItems', v_feed_items
+      ) from public.items item where item.id = p_feed_type_id),
     is_locked = true,
     updated_by = v_user,
     reversed_at = null,
