@@ -151,6 +151,9 @@ const gridColumnByField = Object.fromEntries(
 const gridInputClass =
   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 const PERIOD_DAYS = 30;
+const POPULATION_DATE_COLUMN_WIDTH = 104;
+const POPULATION_AGE_COLUMN_WIDTH = 44;
+const POPULATION_GRID_WIDTH = 2394;
 
 const zeroFields = {
   m_body_weight: null as number | null,
@@ -736,6 +739,17 @@ export default function CardForm() {
   useEffect(() => {
     refreshSessionx(router);
   }, [router]);
+
+  useEffect(() => {
+    const phone = window.matchMedia("(max-width: 767px)");
+    const collapseHeaderOnPhone = () => {
+      if (phone.matches) setHeaderOpen(false);
+    };
+
+    collapseHeaderOnPhone();
+    phone.addEventListener("change", collapseHeaderOnPhone);
+    return () => phone.removeEventListener("change", collapseHeaderOnPhone);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1761,9 +1775,20 @@ export default function CardForm() {
             <div className="relative border-b bg-white px-4 pb-6 pt-3 dark:bg-card">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-lg font-semibold text-foreground">
-                    Population Record
-                  </h1>
+                  <div className="flex items-center justify-between gap-2">
+                    <h1 className="text-lg font-semibold text-foreground">
+                      Population Record
+                    </h1>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setHeaderOpen(false)}
+                      className="shrink-0 md:hidden"
+                    >
+                      <ChevronUp className="size-4" /> Hide details
+                    </Button>
+                  </div>
                   <div className="mb-2 mt-1 text-xs font-semibold uppercase text-muted-foreground">
                     Farm / Pen
                   </div>
@@ -1947,18 +1972,29 @@ export default function CardForm() {
                   {placement.cycle_no ?? "-"} | Rows {rows.length}
                 </div>
               </div>
-              <BreederCardExportMenu
-                farm={placement.farm_name || ""}
-                building={placement.building_no || ""}
-                pen={penLabel}
-                placementDate={placement.placement_date}
-                placedBirds={placedTotal}
-                liveBirds={periodClosingFemale + periodClosingMale}
-                rows={exportRows}
-                templateRows={templateRows}
-                importing={importing}
-                onImport={importExcel}
-              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setHeaderOpen(true)}
+                className="shrink-0 md:hidden"
+              >
+                <ChevronDown className="size-4" /> Details
+              </Button>
+              <div className="hidden md:block">
+                <BreederCardExportMenu
+                  farm={placement.farm_name || ""}
+                  building={placement.building_no || ""}
+                  pen={penLabel}
+                  placementDate={placement.placement_date}
+                  placedBirds={placedTotal}
+                  liveBirds={periodClosingFemale + periodClosingMale}
+                  rows={exportRows}
+                  templateRows={templateRows}
+                  importing={importing}
+                  onImport={importExcel}
+                />
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -1968,11 +2004,12 @@ export default function CardForm() {
                     `/jmb/placement/transfer?sourcePlacementId=${placement.id}`,
                   )
                 }
+                className="hidden md:inline-flex"
               >
                 <ArrowLeftRight className="size-4" /> Transfer History
               </Button>
               {hasDraft ? (
-                <span className="text-sm text-amber-700">Draft</span>
+                <span className="hidden text-sm text-amber-700 md:inline">Draft</span>
               ) : null}
               <Button
                 type="button"
@@ -1980,6 +2017,7 @@ export default function CardForm() {
                 size="sm"
                 onClick={saveDraft}
                 disabled={saving || savingDraft}
+                className="hidden md:inline-flex"
               >
                 {savingDraft ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -1988,7 +2026,7 @@ export default function CardForm() {
                 )}{" "}
                 Save as Draft
               </Button>
-              <div className="flex flex-col gap-1">
+              <div className="hidden flex-col gap-1 md:flex">
                 <Button
                   type="button"
                   size="sm"
@@ -2010,7 +2048,7 @@ export default function CardForm() {
                 size="icon-sm"
                 onClick={() => setHeaderOpen(true)}
                 title="Show header details"
-                className="absolute bottom-0 left-1/2 z-[60] -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md dark:bg-card"
+                className="absolute bottom-0 left-1/2 z-[60] hidden -translate-x-1/2 translate-y-1/2 rounded-full border bg-white shadow-md dark:bg-card md:inline-flex"
               >
                 <ChevronDown className="size-4" />
               </Button>
@@ -2018,23 +2056,65 @@ export default function CardForm() {
           ) : null}
         </Collapsible>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-4 py-2 dark:bg-background/50">
+        <div className="flex shrink-0 items-center gap-2 border-b bg-white px-3 py-2 dark:bg-card md:hidden">
+          <div className="min-w-0 flex-1">
+            {hasDraft ? (
+              <div className="text-xs font-medium text-amber-700">Draft</div>
+            ) : null}
+            {savingStatus}
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            onClick={saveDraft}
+            disabled={saving || savingDraft}
+            className="min-h-11 shrink-0"
+          >
+            {savingDraft ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}{" "}
+            Draft
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={save}
+            disabled={saving || savingDraft}
+            className="min-h-11 shrink-0"
+          >
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Send className="size-4" />
+            )}{" "}
+            Post
+          </Button>
+        </div>
+
+        <div className="grid shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2 border-b bg-slate-50 px-3 py-2 dark:bg-background/50 md:flex md:flex-wrap md:justify-between md:gap-3 md:px-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Previous 30 days"
+            title="Previous 30 days"
             onClick={() =>
               setPeriodIndex((current) => Math.max(0, current - 1))
             }
             disabled={periodIndex === 0}
+            className="max-md:size-11 max-md:p-0"
           >
-            <ChevronLeft className="size-4" /> Previous 30 Days
+            <ChevronLeft className="size-4" />
+            <span className="hidden md:inline">Previous 30 Days</span>
           </Button>
           <div className="text-center">
             <div className="text-sm font-semibold">
               Days {periodStartIndex + 1}-{periodStartIndex + PERIOD_DAYS}
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="hidden text-xs text-muted-foreground md:block">
               {formatDate(periodFirstRow?.daterec)} –{" "}
               {formatDate(periodLastRow?.daterec)} · Inventory carries over from
               the previous period
@@ -2044,10 +2124,14 @@ export default function CardForm() {
             type="button"
             variant="outline"
             size="sm"
+            aria-label="Next 30 days"
+            title="Next 30 days"
             onClick={showNextPeriod}
             disabled={!canShowNextPeriod}
+            className="max-md:size-11 max-md:p-0"
           >
-            Next 30 Days <ChevronRight className="size-4" />
+            <span className="hidden md:inline">Next 30 Days</span>
+            <ChevronRight className="size-4" />
           </Button>
         </div>
 
@@ -2055,11 +2139,11 @@ export default function CardForm() {
           <table
             ref={gridRef}
             className="fc-grid-table table-fixed border-separate border-spacing-0 caption-bottom text-xs [&_input]:px-1 [&_input]:text-xs"
-            style={{ width: 2430, minWidth: 2430 }}
+            style={{ width: POPULATION_GRID_WIDTH, minWidth: POPULATION_GRID_WIDTH }}
           >
             <colgroup>
-              <col style={{ width: 132 }} />
-              <col style={{ width: 52 }} />
+              <col style={{ width: POPULATION_DATE_COLUMN_WIDTH }} />
+              <col style={{ width: POPULATION_AGE_COLUMN_WIDTH }} />
               {[
                 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 84,
                 76, 76, 76, 76, 150, 150, 150, 76, 76, 76, 76, 76, 76,
@@ -2072,14 +2156,17 @@ export default function CardForm() {
                 <th
                   rowSpan={2}
                   className="fc-grid-header fc-grid-header-border sticky left-0 top-0 z-40 text-center text-xs"
-                  style={{ minWidth: 132 }}
+                  style={{ minWidth: POPULATION_DATE_COLUMN_WIDTH }}
                 >
                   Date
                 </th>
                 <th
                   rowSpan={2}
-                  className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky left-[132px] top-0 z-40 text-center text-xs"
-                  style={{ minWidth: 52 }}
+                  className="fc-grid-header fc-grid-age-header fc-grid-header-border sticky top-0 z-40 text-center text-xs"
+                  style={{
+                    left: POPULATION_DATE_COLUMN_WIDTH,
+                    minWidth: POPULATION_AGE_COLUMN_WIDTH,
+                  }}
                 >
                   Age
                 </th>
@@ -2143,7 +2230,7 @@ export default function CardForm() {
                   >
                     <td
                       className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider(rowIndex)}`}
-                      style={{ minWidth: 132 }}
+                      style={{ minWidth: POPULATION_DATE_COLUMN_WIDTH }}
                     >
                       <Input
                         type="date"
@@ -2154,8 +2241,11 @@ export default function CardForm() {
                       />
                     </td>
                     <td
-                      className={`fc-grid-age sticky left-[132px] z-20 p-0 text-center font-semibold ${rowDivider(rowIndex)}`}
-                      style={{ minWidth: 52 }}
+                      className={`fc-grid-age sticky z-20 p-0 text-center font-semibold ${rowDivider(rowIndex)}`}
+                      style={{
+                        left: POPULATION_DATE_COLUMN_WIDTH,
+                        minWidth: POPULATION_AGE_COLUMN_WIDTH,
+                      }}
                     >
                       <div className="flex h-8 items-center justify-center">
                         {formatAge(
@@ -2251,7 +2341,10 @@ export default function CardForm() {
                 <td className="fc-grid-footer-cell sticky bottom-0 left-0 z-40 h-9 text-center font-semibold">
                   Summary
                 </td>
-                <td className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 left-[132px] z-40 text-center font-semibold">
+                <td
+                  className="fc-grid-footer-cell fc-grid-footer-age sticky bottom-0 z-40 text-center font-semibold"
+                  style={{ left: POPULATION_DATE_COLUMN_WIDTH }}
+                >
                   {visibleRows.length} days
                 </td>
                 {[
