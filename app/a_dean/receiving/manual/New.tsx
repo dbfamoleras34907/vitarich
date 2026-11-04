@@ -482,7 +482,7 @@ export default function ApprovalDecisionForm() {
                 : prev
         )
     }, [header?.soldTo, farms])
-// 
+    // 
 
     return (
         <form onSubmit={handleSubmit}>
@@ -506,7 +506,8 @@ export default function ApprovalDecisionForm() {
                                     if (items.some(item => item.source_allocations?.length) && header.soldTo && header.soldTo !== first.originFarmCode) throw new Error('Select dispatches from the same breeder farm as the existing receiving lines.')
                                     const totals = allocationTotals(allocations)
                                     const current = items.find(item => String(item.id) === key)
-                                    const next: DraftItem = { ...(current ?? { id: Date.now(), brdr_ref_no: '', brdr_ref_noVx: '', sku: '', UoM: 'PCS', isNew: true }),
+                                    const next: DraftItem = {
+                                        ...(current ?? { id: Date.now(), brdr_ref_no: '', brdr_ref_noVx: '', sku: '', UoM: 'PCS', isNew: true }),
                                         source_allocations: allocations, total: totals.quantity, actual_total: totals.actual,
                                         prod_date: current?.prod_date || first.productionDate,
                                         brdr_ref_no: current?.brdr_ref_no || first.documentNo,
@@ -524,7 +525,7 @@ export default function ApprovalDecisionForm() {
                             <Button type="submit" disabled={loading}>
                                 <Save className="mr-2 h-4 w-4" /> Save Record
                             </Button>
-                         
+
                         </div>
                     </div>
                 </CardHeader>

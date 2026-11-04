@@ -95,20 +95,18 @@ begin
   for v_card in select * from public.flock_card where id = any(v_cards) loop
     v_closed_at := nullif(v_card.extra->>'closed_at', '')::timestamptz;
     if v_closed_at is null then raise exception 'Cycle closeout timestamp is missing; reversal requires review.'; end if;
+    -- Flock-card IDs and farm-cycle numbers are not chronological for legacy/imported
+    -- records. Only an actually later placement for this building blocks reversal.
     if exists (select 1 from public.flock_card newer
       where newer.farm_id = v_card.farm_id and newer.building_whse_id = v_card.building_whse_id
         and newer.id <> v_card.id and newer.void = '1' and newer.status <> 'Cancelled'
-        and (newer.id > v_card.id or newer.start_date > v_card.start_date)) then
+        and newer.start_date > v_card.start_date) then
       raise exception 'A newer cycle exists for building %.', v_card.building_code;
     end if;
-    if v_card.farm_cycle_id is not null and (
-      not exists (select 1 from public.doc_farm_cycles f where f.id = v_card.farm_cycle_id
-        and f.farm_id = v_header.farm_id and f.status in ('Saved', 'Past Open'))
-      or exists (select 1 from public.doc_farm_cycles newer join public.doc_farm_cycles original
-        on original.id = v_card.farm_cycle_id where newer.farm_id = original.farm_id
-        and newer.id <> original.id and newer.status <> 'Cancelled'
-        and (newer.cycle_no > original.cycle_no or newer.status = 'Saved'))
-    ) then raise exception 'Open the farm cycle in Cycle Master first, and make sure no newer-cycle blocker exists.'; end if;
+    if v_card.farm_cycle_id is not null and not exists (
+      select 1 from public.doc_farm_cycles f where f.id = v_card.farm_cycle_id
+        and f.farm_id = v_header.farm_id and f.status in ('Saved', 'Past Open')
+    ) then raise exception 'Open the farm cycle in Cycle Master first.'; end if;
 
     if exists (select 1 from public.inventory_postings p
       where upper(btrim(p.warehouse_code)) = upper(btrim(v_card.building_code))

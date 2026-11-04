@@ -1,5 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { Loader2, PackageCheck, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ListPlus, Loader2, PackageCheck, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
@@ -20,6 +20,8 @@ import { useTableCopyDown } from '@/hooks/useTableCopyDown'
 import type { DeliveryPasteKey } from './deliverySpreadsheet'
 import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
 import { calculateBirdAgeFromPlacementDate } from '@/app/brd/fc/age'
+import CleanupTypeAllocationSheet from './CleanupTypeAllocationSheet'
+import { cleanupAllocationMatchesLine, cleanupLineGroupQuantity } from '@/lib/functions/cleanupTypeAllocations'
 
 const COPY_COLUMNS = DELIVERY_COLUMNS.flatMap(([, key]) => key ? [key] : [])
 
@@ -42,12 +44,12 @@ type DeliveryIssueLinesTableProps = {
   issue: GoodsIssue
   warehouseLabel: string
   farmWarehouses: WarehouseData[]
+  loadingBuildings?: boolean
   loadingBatchOptions: Record<string, boolean>
   batchOptions: Record<string, GoodsIssueOnHandBatch[]>
   lineFlockCardInfo: Record<string, LineFlockCardState>
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
-  canCleanupAtZero?: (line: GoodsIssueLine) => boolean
   allowBuildingSelection?: boolean
   lockCycleCloseout?: boolean
   allowLockedRowDelete?: boolean
@@ -63,6 +65,7 @@ type DeliveryIssueLinesTableProps = {
   lockedQuantityEditable?: boolean
   allowDuplicateBuildings?: boolean
   enableMobileLineModal?: boolean
+  enableCleanupTypeAllocations?: boolean
   canEdit?: boolean
   showTransportFields?: boolean
   reallocatingQuantities?: boolean
@@ -96,6 +99,7 @@ export default function DeliveryIssueLinesTable({
   issue,
   warehouseLabel,
   farmWarehouses,
+  loadingBuildings = false,
   loadingBatchOptions,
   batchOptions,
   lineFlockCardInfo,
@@ -103,7 +107,6 @@ export default function DeliveryIssueLinesTable({
   activeDocumentIsPosted,
   lockCycleCloseout = false,
   allowBuildingSelection = false,
-  canCleanupAtZero = () => false,
   allowLockedRowDelete = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
@@ -117,6 +120,7 @@ export default function DeliveryIssueLinesTable({
   lockedQuantityEditable = false,
   allowDuplicateBuildings = false,
   enableMobileLineModal = false,
+  enableCleanupTypeAllocations = false,
   canEdit = true,
   showTransportFields = false,
   reallocatingQuantities = false,
@@ -150,6 +154,7 @@ export default function DeliveryIssueLinesTable({
   const [mobileLineGroupKey, setMobileLineGroupKey] = useState<string | null>(null)
   const [mobileLineSnapshot, setMobileLineSnapshot] = useState<GoodsIssueLine[] | null>(null)
   const [mobileLineIsNew, setMobileLineIsNew] = useState(false)
+  const [cleanupTypeGroupKey, setCleanupTypeGroupKey] = useState<string | null>(null)
   const spreadsheetEnabled = excelAppearance && showTransportFields && Boolean(onPasteRows)
   const allocationGroups = useMemo(() => {
     const groups = new Map<string, GoodsIssueLine[]>()
@@ -161,6 +166,14 @@ export default function DeliveryIssueLinesTable({
     })
     return Array.from(groups.values())
   }, [issue.lines, getAllocationGroupKey])
+  const cleanupTypeGroup = cleanupTypeGroupKey == null
+    ? null
+    : allocationGroups.find(group => getAllocationGroupKey(group[0]) === cleanupTypeGroupKey) ?? null
+  const cleanupTypeLine = cleanupTypeGroup?.[0] ?? null
+  const cleanupTypeTargetQuantity = cleanupTypeGroup ? cleanupLineGroupQuantity(cleanupTypeGroup) : 0
+  const cleanupTypeAllocations = cleanupTypeLine
+    ? (issue.cleanupTypeAllocations ?? []).filter(allocation => cleanupAllocationMatchesLine(allocation, cleanupTypeLine))
+    : []
   const copyDisabled = !spreadsheetEnabled || !enableCopyDown || pasting
     || activeDocumentIsPosted || issue.status !== 'Draft'
   const canCopyCell = (key: DeliveryPasteKey, group: GoodsIssueLine[]) => {
@@ -217,7 +230,7 @@ export default function DeliveryIssueLinesTable({
     ...(showOnHandQuantity ? [120] : []),
     ...(showTransportFields ? [180, 130, 150, 190, 100] : []),
     ...(showLineRemarks ? [180] : []),
-    38,
+    ...(enableCleanupTypeAllocations ? [126] : [38]),
   ]
 
   const updateAllocationGroup = (allocationGroupKey: string, changes: Partial<GoodsIssueLine>) => {
@@ -264,7 +277,7 @@ export default function DeliveryIssueLinesTable({
       toast.error('Select an item.')
       return
     }
-    if (mobileQuantity < 1 && !(showVariance && mobileQuantity === 0 && canCleanupAtZero(mobileLine))) {
+    if (!showVariance && mobileQuantity < 1) {
       toast.error(`${quantityLabel} must be at least 1.`)
       return
     }
@@ -440,7 +453,7 @@ export default function DeliveryIssueLinesTable({
               <th className="w-[140px] border-r px-3 py-2">Truck Seal {requiredMark}</th>
             </>}
             {showLineRemarks && <th className="w-[16%] border-r px-3 py-2">Remarks</th>}
-            <th className="w-[54px] px-2 py-2" />
+            <th className={`${enableCleanupTypeAllocations ? 'w-[126px]' : 'w-[54px]'} px-2 py-2`} />
           </tr>
         </thead>
         <tbody>
@@ -484,7 +497,6 @@ export default function DeliveryIssueLinesTable({
               : getTotalBatchOnHandForLine(line)
             const remainingOnHandQty = getRemainingOnHandForLine(line)
             const baseQtyPerAltQty = calculateBaseQty(1, line.altUom, line.baseUom)
-            const maxTransferQty = baseQtyPerAltQty > 0 ? totalAvailableQty / baseQtyPerAltQty : totalAvailableQty
             const cleanUpBaseQty = totalTransferQty * baseQtyPerAltQty
             const varianceQty = activeDocumentIsPosted
               ? Number(line.varianceQty ?? Math.max(totalAvailableQty - cleanUpBaseQty, 0))
@@ -532,18 +544,26 @@ export default function DeliveryIssueLinesTable({
                     className="h-8 rounded-sm shadow-none focus-visible:ring-1" />
                 </TableCopyDownCell>}
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'fromWarehouseCode')}>
-                  <SearchableDropdown
-                    list={availableBuildings}
-                    codeLabel="whse_code"
-                    nameLabel="whse_name"
-                    value={line.fromWarehouseCode}
-                    placeholder={issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
-                    width={300}
-                    onChange={(value) => {
-                      selectLineWarehouse(line, value).catch(console.error)
-                    }}
-                    disabled={issue.status !== 'Draft' || (lockCycleCloseout && !allowBuildingSelection)}
-                  />
+                  <div className="relative">
+                    <SearchableDropdown
+                      list={availableBuildings}
+                      codeLabel="whse_code"
+                      nameLabel="whse_name"
+                      value={line.fromWarehouseCode}
+                      placeholder={loadingBuildings ? `Loading ${warehouseLabel.toLowerCase()}s...` : issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
+                      width={300}
+                      onChange={(value) => {
+                        selectLineWarehouse(line, value).catch(console.error)
+                      }}
+                      disabled={issue.status !== 'Draft' || (lockCycleCloseout && !allowBuildingSelection)}
+                    />
+                    {loadingBuildings && (
+                      <Loader2
+                        aria-hidden="true"
+                        className="pointer-events-none absolute right-8 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+                      />
+                    )}
+                  </div>
                 </TableCopyDownCell>
                 <td className="border-r p-1 align-middle">
                   <Input
@@ -619,21 +639,27 @@ export default function DeliveryIssueLinesTable({
                   <Input
                     type={showVariance ? 'text' : 'number'}
                     inputMode={showVariance ? 'decimal' : undefined}
-                    min={showVariance && !canCleanupAtZero(line) ? 1 : 0}
-                    max={showVariance ? maxTransferQty : undefined}
+                    min={0}
                     step="any"
                     value={quantityInputValue}
                     readOnly={activeDocumentIsPosted || (lockCycleCloseout && !lockedQuantityEditable)}
                     onChange={event => {
                       if (showVariance) {
-                        setQuantityDrafts(current => ({ ...current, [quantityDraftKey]: event.target.value }))
+                        const rawValue = event.target.value
+                        setQuantityDrafts(current => ({ ...current, [quantityDraftKey]: rawValue }))
+                        const requestedTotal = Number(rawValue.trim())
+                        if (rawValue.trim() && Number.isFinite(requestedTotal) && requestedTotal >= 0) {
+                          updateLine(line.id, {
+                            requestedAltQty: requestedTotal,
+                            ...(!line.batchNumber ? {
+                              altQty: requestedTotal,
+                              baseQty: calculateBaseQty(requestedTotal, line.altUom, line.baseUom),
+                            } : {}),
+                          })
+                        }
                         return
                       }
-                      const minimumQty = showVariance ? 1 : 0
-                      const requestedTotal = Math.min(
-                        Math.max(numberValue(event.target.value), minimumQty),
-                        showVariance ? maxTransferQty : Number.POSITIVE_INFINITY,
-                      )
+                      const requestedTotal = Math.max(numberValue(event.target.value), 0)
                       updateLine(line.id, {
                         requestedAltQty: requestedTotal,
                         ...(!line.batchNumber ? {
@@ -661,17 +687,6 @@ export default function DeliveryIssueLinesTable({
                         clearDraft()
                         return
                       }
-                      if (requestedTotal < 1 && !(requestedTotal === 0 && canCleanupAtZero(line))) {
-                        toast('Clean up Quantity must be at least 1.')
-                        clearDraft()
-                        return
-                      }
-                      if (requestedTotal > maxTransferQty) {
-                        toast(`Clean up Quantity cannot exceed batch quantity (${formatQuantity(maxTransferQty)}).`)
-                        clearDraft()
-                        return
-                      }
-
                       updateLine(line.id, {
                         requestedAltQty: requestedTotal,
                         ...(!line.batchNumber ? {
@@ -869,22 +884,44 @@ export default function DeliveryIssueLinesTable({
                   </td>
                 )}
                 <td className="p-1 text-center align-middle">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => setIssue(current => {
-                      if (!current) return current
-                      const ids = new Set(allocationLines.map(allocation => allocation.id))
-                      const nextLines = current.lines.filter(candidate => !ids.has(candidate.id))
-                      return { ...current, lines: nextLines.length > 0 ? nextLines : [newLine()] }
-                    })}
-                    aria-label={`Delete row ${index + 1}`}
-                    disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-0.5">
+                    {enableCleanupTypeAllocations && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2 text-xs text-primary"
+                        title="Cleanup Types"
+                        aria-label={`Cleanup Types for row ${index + 1}`}
+                        disabled={!line.itemCode || !line.fromWarehouseCode}
+                        onClick={() => setCleanupTypeGroupKey(allocationGroupKey)}
+                      >
+                        <ListPlus className="size-4" /> Types
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => setIssue(current => {
+                        if (!current) return current
+                        const ids = new Set(allocationLines.map(allocation => allocation.id))
+                        const nextLines = current.lines.filter(candidate => !ids.has(candidate.id))
+                        const remainingAllocations = (current.cleanupTypeAllocations ?? [])
+                          .filter(allocation => !cleanupAllocationMatchesLine(allocation, line))
+                        return {
+                          ...current,
+                          lines: nextLines.length > 0 ? nextLines : [newLine()],
+                          cleanupTypeAllocations: remainingAllocations,
+                        }
+                      })}
+                      aria-label={`Delete row ${index + 1}`}
+                      disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             )
@@ -924,9 +961,15 @@ export default function DeliveryIssueLinesTable({
                 onChange={event => void selectLineWarehouse(mobileLine, event.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm md:h-8"
               >
-                <option value="">Select {warehouseLabel.toLowerCase()}...</option>
+                <option value="">{loadingBuildings ? `Loading ${warehouseLabel.toLowerCase()}s...` : `Select ${warehouseLabel.toLowerCase()}...`}</option>
                 {farmWarehouses.map(warehouse => <option key={warehouse.id} value={warehouse.whse_code ?? ''}>{warehouse.whse_code} - {warehouse.whse_name}</option>)}
               </select>
+              {loadingBuildings && (
+                <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                  Loading {warehouseLabel.toLowerCase()} list...
+                </span>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Flock Card</Label>
@@ -952,7 +995,7 @@ export default function DeliveryIssueLinesTable({
               <Label required>{quantityLabel}</Label>
               <Input
                 type="number"
-                min={showVariance && !canCleanupAtZero(mobileLine) ? 1 : 0}
+                min={0}
                 step="any"
                 value={mobileQuantity}
                 readOnly={lockCycleCloseout && !lockedQuantityEditable}
@@ -1033,6 +1076,31 @@ export default function DeliveryIssueLinesTable({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {cleanupTypeLine && (
+      <CleanupTypeAllocationSheet
+        open={cleanupTypeGroupKey != null}
+        editable={canEdit && issue.status === 'Draft'}
+        lineLabel={`${cleanupTypeLine.fromWarehouseCode} · ${cleanupTypeLine.itemCode}`}
+        targetQuantity={cleanupTypeTargetQuantity}
+        quantityUom={cleanupTypeLine.altUom}
+        scope={{
+          fromWarehouseId: cleanupTypeLine.fromWarehouseId,
+          fromWarehouseCode: cleanupTypeLine.fromWarehouseCode,
+          itemId: cleanupTypeLine.itemId,
+          itemCode: cleanupTypeLine.itemCode,
+        }}
+        allocations={cleanupTypeAllocations}
+        onOpenChange={open => { if (!open) setCleanupTypeGroupKey(null) }}
+        onConfirm={nextAllocations => setIssue(current => current ? {
+          ...current,
+          cleanupTypeAllocations: [
+            ...(current.cleanupTypeAllocations ?? []).filter(allocation => !cleanupAllocationMatchesLine(allocation, cleanupTypeLine)),
+            ...nextAllocations,
+          ],
+        } : current)}
+      />
+    )}
     </>
   )
 }

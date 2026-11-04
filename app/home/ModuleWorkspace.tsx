@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { Boxes } from 'lucide-react'
+import { Boxes, Search } from 'lucide-react'
 
+import { Input } from '@/components/ui/input'
 import { NavFolders } from '@/lib/Defaults/DefaultValues'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { filterNavFolders } from '@/lib/sidebar/AppSidebar'
@@ -34,6 +36,7 @@ function parsePermissions(value: unknown): Permission[] | null {
 }
 
 export default function ModuleWorkspace() {
+  const [searchQuery, setSearchQuery] = useState('')
   const { getValue, setValue } = useGlobalContext()
   const profile = getValue('UserInfoAuthSession')?.[0]
   const permissions = parsePermissions(getValue('UserPermission'))
@@ -80,6 +83,22 @@ export default function ModuleWorkspace() {
     (total, folder) => total + folder.items.reduce((folderTotal, group) => folderTotal + group.children.length, 0),
     0,
   )
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase()
+  const filteredFolders = normalizedSearchQuery
+    ? folders
+      .map(folder => ({
+        ...folder,
+        items: folder.items
+          .map(group => ({
+            ...group,
+            children: group.children.filter(child =>
+              child.title.toLocaleLowerCase().includes(normalizedSearchQuery),
+            ),
+          }))
+          .filter(group => group.children.length > 0),
+      }))
+      .filter(folder => folder.items.length > 0)
+    : folders
 
   return (
     <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-4">
@@ -93,9 +112,22 @@ export default function ModuleWorkspace() {
             Open any module assigned to your account.
           </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {moduleCount} {moduleCount === 1 ? 'module' : 'modules'} available
-        </p>
+        <div className="w-full space-y-1.5 sm:w-72">
+          <p className="text-right text-xs text-muted-foreground">
+            {moduleCount} {moduleCount === 1 ? 'module' : 'modules'} available
+          </p>
+          <div className="relative">
+            <Input
+              autoFocus
+              type="search"
+              value={searchQuery}
+              onChange={event => setSearchQuery(event.target.value)}
+              placeholder="Search modules..."
+              aria-label="Search available modules"
+              className="h-9 pl-8"
+            />
+          </div>
+        </div>
       </header>
 
       {folders.length === 0 ? (
@@ -106,9 +138,17 @@ export default function ModuleWorkspace() {
             Your account does not have any modules assigned yet. Please contact your administrator to add modules to your account.
           </p>
         </div>
+      ) : filteredFolders.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-10 text-center">
+          <Search className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
+          <h2 className="font-medium">No matching modules</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+            No assigned modules match “{searchQuery.trim()}”. Try a different search.
+          </p>
+        </div>
       ) : (
         <div className="columns-1 gap-3 sm:columns-2 xl:columns-3">
-          {folders.map(folder => {
+          {filteredFolders.map(folder => {
             const FolderIcon = folder.icon
             return (
               <section key={folder.id} className="mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-lg border bg-card shadow-sm">
