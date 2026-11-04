@@ -805,7 +805,7 @@ begin
     feed_bird = null,
     feed_guideline = null,
     feed_batch_text = null,
-    extra = coalesce(line.extra, '{}'::jsonb) - 'feedTypeId' - 'feedItemId' - 'feedItemCode' - 'feedItemName',
+    extra = coalesce(line.extra, '{}'::jsonb) - 'feedTypeId' - 'feedItemId' - 'feedItemCode' - 'feedItemName' - 'feedItems',
     is_locked = false,
     updated_by = v_user,
     reversed_by = v_user,

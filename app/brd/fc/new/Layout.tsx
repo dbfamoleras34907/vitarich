@@ -28,6 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -115,6 +123,7 @@ import type {
   FeedWarehouseAssociation,
   FlockCardNavigationContext,
   FlockCardSettingsState,
+  MultiFeedBreakdownDraft,
   MortalityBatchAllocation,
 } from "./flockCardTypes";
 
@@ -210,6 +219,227 @@ function getMortalityThinningTotal(row: string[]) {
     getNumericValue(row[4] ?? "");
 }
 
+function buildMultiFeedQuantities(
+  feedTypeIds: string[],
+  currentQuantities: Record<string, string>,
+  totalQuantity: number,
+) {
+  const quantities: Record<string, string> = {};
+  let assignedQuantity = 0;
+
+  feedTypeIds.forEach((feedTypeId, index) => {
+    if (index === feedTypeIds.length - 1) {
+      const remainingQuantity = totalQuantity - assignedQuantity;
+      quantities[feedTypeId] = Number.isInteger(remainingQuantity) && remainingQuantity >= 0
+        ? String(remainingQuantity)
+        : "";
+      return;
+    }
+
+    const currentQuantity = currentQuantities[feedTypeId] ?? "";
+    quantities[feedTypeId] = currentQuantity;
+    const numericQuantity = Number(currentQuantity);
+    if (Number.isInteger(numericQuantity) && numericQuantity > 0) {
+      assignedQuantity += numericQuantity;
+    }
+  });
+
+  return quantities;
+}
+
+function MultiFeedBreakdownSheet({
+  rowIndex,
+  age,
+  totalQuantity,
+  draft,
+  feedTypeOptions,
+  availableQuantityByFeedType,
+  onPreviewBatches,
+  onClose,
+  onApply,
+}: {
+  rowIndex: number | null;
+  age: number | null;
+  totalQuantity: number;
+  draft: MultiFeedBreakdownDraft | null;
+  feedTypeOptions: Array<{ code: string; name: string }>;
+  availableQuantityByFeedType: Record<string, number>;
+  onPreviewBatches: (feedTypeId: string, quantity: number) => FeedBatchAllocation[];
+  onClose: (quantities?: Record<string, string>) => void;
+  onApply: (rowIndex: number, quantities: Record<string, string>) => boolean;
+}) {
+  const [quantities, setQuantities] = useState<Record<string, string>>(() => draft
+    ? buildMultiFeedQuantities(draft.feedTypeIds, draft.quantities, totalQuantity)
+    : {}
+  );
+  const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState("quantity");
+
+  const assignedQuantity = draft?.feedTypeIds.reduce(
+    (total, feedTypeId) => total + Number(quantities[feedTypeId] || 0),
+    0,
+  ) ?? 0;
+  const batchPreviewByFeedType = activeTab === "batches" ? draft?.feedTypeIds.map(feedTypeId => {
+    const requiredQuantity = Number(quantities[feedTypeId] || 0);
+    const allocations = requiredQuantity > 0
+      ? onPreviewBatches(feedTypeId, requiredQuantity)
+      : [];
+    return {
+      feedTypeId,
+      requiredQuantity,
+      allocatedQuantity: allocations.reduce((total, allocation) => total + allocation.selectedQty, 0),
+      allocations,
+    };
+  }) ?? [] : [];
+
+  const close = () => onClose(dirty ? quantities : undefined);
+
+  return (
+    <Sheet open={rowIndex != null} onOpenChange={(open) => { if (!open) close(); }}>
+      <SheetContent side="right" className="flex w-full flex-col sm:max-w-lg">
+        <SheetHeader className="border-b">
+          <SheetTitle>Feed quantity breakdown</SheetTitle>
+          <SheetDescription>
+            Age {age ?? ""}: distribute {formatQuantity(totalQuantity)} kg across the selected feed types.
+          </SheetDescription>
+        </SheetHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1 px-4 py-3">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="quantity">Quantity breakdown</TabsTrigger>
+            <TabsTrigger value="batches">Batch auto selection</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="quantity" className="mt-3 space-y-3 overflow-y-auto">
+            {draft?.feedTypeIds.map((feedTypeId, index) => {
+              const feedType = feedTypeOptions.find(option => option.code === feedTypeId);
+              const availableQuantity = availableQuantityByFeedType[feedTypeId] ?? 0;
+              const quantity = quantities[feedTypeId] ?? "";
+              const isLastFeedType = index === draft.feedTypeIds.length - 1;
+              const hasShortage = Number(quantity || 0) > availableQuantity;
+
+              return (
+                <div key={feedTypeId} className="rounded-md border bg-card p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{feedType?.name ?? feedTypeId}</div>
+                      <div className={`text-xs ${hasShortage ? "text-destructive" : "text-muted-foreground"}`}>
+                        Available: {formatQuantity(availableQuantity)} kg
+                      </div>
+                    </div>
+                    {isLastFeedType ? (
+                      <span className="shrink-0 rounded border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        Auto remaining
+                      </span>
+                    ) : null}
+                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={quantity}
+                    readOnly={isLastFeedType}
+                    aria-label={`${feedType?.name ?? feedTypeId} quantity`}
+                    onChange={(event) => {
+                      if (!draft || isLastFeedType) return;
+                      const digitsOnly = event.target.value.replace(/\D/g, "");
+                      setQuantities(current => buildMultiFeedQuantities(
+                        draft.feedTypeIds,
+                        { ...current, [feedTypeId]: digitsOnly },
+                        totalQuantity,
+                      ));
+                      setDirty(true);
+                    }}
+                    className={hasShortage ? "border-destructive focus-visible:ring-destructive" : ""}
+                  />
+                  {hasShortage ? (
+                    <p className="mt-1 text-xs text-destructive">Quantity exceeds available inventory.</p>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            <div className={`rounded-md border px-3 py-2 text-sm ${
+              assignedQuantity === totalQuantity
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-amber-200 bg-amber-50 text-amber-900"
+            }`}>
+              Breakdown total: <span className="font-semibold">{formatQuantity(assignedQuantity)} kg</span>
+              <span className="mx-1">/</span>
+              {formatQuantity(totalQuantity)} kg
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Closing this drawer keeps a temporary browser draft. Refreshing the page removes it, and Save remains blocked until the breakdown is applied.
+            </p>
+          </TabsContent>
+
+          <TabsContent value="batches" className="mt-3 space-y-3 overflow-y-auto">
+            {batchPreviewByFeedType.map(preview => {
+              const feedType = feedTypeOptions.find(option => option.code === preview.feedTypeId);
+              const hasShortage = preview.allocatedQuantity !== preview.requiredQuantity;
+
+              return (
+                <div key={preview.feedTypeId} className="rounded-md border bg-card p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{feedType?.name ?? preview.feedTypeId}</div>
+                      <div className={`text-xs ${hasShortage ? "text-destructive" : "text-muted-foreground"}`}>
+                        Auto selected {formatQuantity(preview.allocatedQuantity)} / {formatQuantity(preview.requiredQuantity)} kg
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      FIFO
+                    </span>
+                  </div>
+
+                  {preview.allocations.length > 0 ? (
+                    <div className="space-y-2">
+                      {preview.allocations.map(allocation => (
+                        <div key={allocation.batchId} className="rounded border bg-muted/30 px-2.5 py-2 text-xs">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold">{allocation.batchNumber}</div>
+                              <div className="truncate text-muted-foreground">{allocation.itemCode} - {allocation.itemName}</div>
+                            </div>
+                            <div className="shrink-0 text-right font-semibold tabular-nums">
+                              {formatQuantity(allocation.selectedQty)} kg
+                            </div>
+                          </div>
+                          <div className="mt-1 text-muted-foreground">
+                            Available in batch: {formatQuantity(allocation.availableQty)} kg
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                      {preview.requiredQuantity > 0 ? "No available batch can cover this feed type." : "Enter a quantity to preview batches."}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </TabsContent>
+        </Tabs>
+
+        <SheetFooter className="border-t">
+          <Button type="button" variant="outline" onClick={close}>Close</Button>
+          <Button
+            type="button"
+            onClick={() => {
+              if (rowIndex != null && onApply(rowIndex, quantities)) setDirty(false);
+            }}
+          >
+            Apply breakdown
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function FlockCardPageSkeleton() {
   const skeletonColumns = [
     "w-16",
@@ -293,10 +523,10 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const finishFeedBatchAllocationRef = useRef<() => void>(() => undefined);
   const autoSelectedFeedBatchFromShortcutRef = useRef(false);
   const pendingCopyFeedBatchRowsRef = useRef<number[]>([]);
+  const pendingMultiFeedDrawerRowRef = useRef<number | null>(null);
 
   const [gridValues, setGridValues] = useState(initialGridValues);
 
-  const [activeCell, setActiveCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [savedLineByRowIndex, setSavedLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
   const [savedMortalityLineByRowIndex, setSavedMortalityLineByRowIndex] = useState<Record<number, { id: number; age: number }>>({});
   const [reversingMortalityLineId, setReversingMortalityLineId] = useState<number | null>(null);
@@ -320,13 +550,14 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [rawFeedBatchRows, setFeedBatchRows] = useState<FeedBatchOnHand[]>([]);
   const feedInventoryCache = useRef(new Map<string, Promise<FeedBatchOnHand[]>>());
   const [feedInventoryRevision, setFeedInventoryRevision] = useState(0);
-  const [loadedFeedInventoryKey, setLoadedFeedInventoryKey] = useState("");
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
   const [feedBatchDialogMode, setFeedBatchDialogMode] = useState<FeedBatchDialogMode>("onHand");
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
   const [feedBatchAllocationsByRow, setFeedBatchAllocationsByRow] = useState<Record<number, FeedBatchAllocation[]>>({});
+  const [multiFeedDraftByRow, setMultiFeedDraftByRow] = useState<Record<number, MultiFeedBreakdownDraft>>({});
+  const [multiFeedDrawerRowIndex, setMultiFeedDrawerRowIndex] = useState<number | null>(null);
   const [mortalityBatchRows, setMortalityBatchRows] = useState<FeedBatchOnHand[]>([]);
   const [loadingMortalityBatches, setLoadingMortalityBatches] = useState(false);
   const [mortalityBatchError, setMortalityBatchError] = useState("");
@@ -704,6 +935,21 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const mortalityBatchSelectionAge = mortalityBatchSelectionRowIndex == null
     ? null
     : rows[mortalityBatchSelectionRowIndex]?.age ?? null;
+  const activeMultiFeedDraft = multiFeedDrawerRowIndex == null
+    ? null
+    : multiFeedDraftByRow[multiFeedDrawerRowIndex] ?? null;
+  const activeMultiFeedRequiredQty = multiFeedDrawerRowIndex == null
+    ? 0
+    : getNumericValue(gridValues[multiFeedDrawerRowIndex]?.[feedDailyKgColumnIndex] ?? "");
+  const activeMultiFeedAvailableByType = activeMultiFeedDraft?.feedTypeIds.reduce<Record<string, number>>(
+    (availableByType, feedTypeId) => ({
+      ...availableByType,
+      [feedTypeId]: multiFeedDrawerRowIndex == null
+        ? 0
+        : getAvailableFeedQuantityForType(multiFeedDrawerRowIndex, feedTypeId),
+    }),
+    {},
+  ) ?? {};
 
   const feedBatchColumnWidth = useMemo(() => {
     const longestBatchLength = gridValues.reduce((longest, row) => {
@@ -1016,7 +1262,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       setFeedBatchRows([]);
       setFeedBatchError("");
       setLoadingFeedBatches(false);
-      setLoadedFeedInventoryKey("");
       return;
     }
 
@@ -1036,7 +1281,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         if (cancelled) return;
 
         setFeedBatchRows(rows);
-        setLoadedFeedInventoryKey(feedInventoryKey);
       })
       .catch(error => {
         if (cache.get(feedInventoryKey) === request) cache.delete(feedInventoryKey);
@@ -1056,10 +1300,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }, [feedInventoryKey, feedInventoryRevision]);
 
   useEffect(() => {
-    if (!pendingFeedTypeFocus || loadingFeedBatches || loadedFeedInventoryKey !== feedInventoryKey) return;
+    if (!pendingFeedTypeFocus || loadingFeedBatches) return;
     const { rowIndex, value } = pendingFeedTypeFocus;
     if (deferredGridValues[rowIndex]?.[feedDailyKgColumnIndex] !== value) return;
-    // Wait for the deferred grid and combobox DOM to settle before opening.
     const frame = requestAnimationFrame(() => {
       const input = inputRefs.current[rowIndex]?.[feedTypeColumnIndex];
       if (!input || input.hasAttribute("disabled")) return;
@@ -1068,7 +1311,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       setPendingFeedTypeFocus(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [deferredGridValues, pendingFeedTypeFocus, loadingFeedBatches, loadedFeedInventoryKey, feedInventoryKey]);
+  }, [deferredGridValues, pendingFeedTypeFocus, loadingFeedBatches]);
 
   function refreshFeedInventory() {
     feedInventoryCache.current.clear();
@@ -1216,37 +1459,180 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   function getFeedTypeIdForRow(rowIndex: number) {
+    const multiFeedTypeId = multiFeedDraftByRow[rowIndex]?.feedTypeIds[0];
+    if (multiFeedTypeId) return Number(multiFeedTypeId);
+
     const feedTypeId = Number(gridValues[rowIndex]?.[feedTypeColumnIndex] ?? 0);
     return Number.isFinite(feedTypeId) && feedTypeId > 0 ? feedTypeId : null;
   }
 
-  function handleFeedTypeChange(rowIndex: number, value: string) {
+  function getFeedTypeIdsForRow(rowIndex: number) {
+    const draftIds = multiFeedDraftByRow[rowIndex]?.feedTypeIds ?? [];
+    if (draftIds.length > 0) return draftIds;
+
+    const feedTypeId = getFeedTypeIdForRow(rowIndex);
+    return feedTypeId == null ? [] : [String(feedTypeId)];
+  }
+
+  function handleFeedTypeChange(rowIndex: number, values: string[]) {
     if (isRowAgeLocked(rowIndex) || isFeedIntakeLocked(rowIndex)) return;
 
-    const currentValue = String(gridValues[rowIndex]?.[feedTypeColumnIndex] ?? "");
-    if (currentValue === value) return;
+    const feedTypeIds = Array.from(new Set(values.filter(Boolean)));
+    const currentFeedTypeIds = getFeedTypeIdsForRow(rowIndex);
+    if (feedTypeIds.join("|") === currentFeedTypeIds.join("|")) return;
+
+    const requiredQty = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "");
+    if (feedTypeIds.length > 1 && requiredQty <= 0) {
+      toast(`Enter the Actual FC quantity for age ${rows[rowIndex]?.age ?? rowIndex} before selecting multiple feed types.`);
+      return;
+    }
+    pendingMultiFeedDrawerRowRef.current = feedTypeIds.length > 1 ? rowIndex : null;
 
     setFeedBatchAllocationsByRow(current => ({
       ...current,
       [rowIndex]: [],
     }));
+    setMultiFeedDraftByRow(current => {
+      const next = { ...current };
+      if (feedTypeIds.length > 1) {
+        next[rowIndex] = {
+          feedTypeIds,
+          quantities: buildMultiFeedQuantities(
+            feedTypeIds,
+            current[rowIndex]?.quantities ?? {},
+            requiredQty,
+          ),
+          applied: false,
+        };
+      } else {
+        delete next[rowIndex];
+      }
+      return next;
+    });
     startGridTransition(() => {
       setGridValues(currentValues => currentValues.map((row, currentRowIndex) => {
         if (currentRowIndex !== rowIndex) return row;
 
         return row.map((cellValue, currentColIndex) => {
-          if (currentColIndex === feedTypeColumnIndex) return value;
+          if (currentColIndex === feedTypeColumnIndex) return feedTypeIds[0] ?? "";
           if (currentColIndex === feedBatchColumnIndex) return "";
           return cellValue;
         });
       }));
     });
 
-    const requiredQty = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "");
-    const feedTypeId = Number(value);
-    if (requiredQty > 0 && Number.isFinite(feedTypeId) && feedTypeId > 0) {
+    const feedTypeId = Number(feedTypeIds[0]);
+    if (feedTypeIds.length === 1 && requiredQty > 0 && Number.isFinite(feedTypeId) && feedTypeId > 0) {
       applyAutoFeedBatchSelection(rowIndex, requiredQty, feedTypeId);
     }
+  }
+
+  function getAvailableFeedQuantityForType(rowIndex: number, feedTypeId: string) {
+    const numericFeedTypeId = Number(feedTypeId);
+
+    return fifoFeedBatchRows.reduce((total, batch) => {
+      if (getFeedItemTypeId(batch.itemCode) !== numericFeedTypeId) return total;
+      const allocatedOutsideRow = getFeedBatchAllocatedQtyFromRows(
+        batch.id,
+        rowIndex,
+        feedBatchAllocationsByRow,
+      );
+      return total + Math.max(Number(batch.onHandQty || 0) - allocatedOutsideRow, 0);
+    }, 0);
+  }
+
+  function closeMultiFeedDrawer(quantities?: Record<string, string>) {
+    const rowIndex = multiFeedDrawerRowIndex;
+    if (rowIndex != null && quantities) {
+      setMultiFeedDraftByRow(current => {
+        const draft = current[rowIndex];
+        if (!draft) return current;
+
+        return {
+          ...current,
+          [rowIndex]: { ...draft, quantities, applied: false },
+        };
+      });
+    }
+    setMultiFeedDrawerRowIndex(null);
+  }
+
+  function applyMultiFeedBreakdown(rowIndex: number, drawerQuantities?: Record<string, string>) {
+    const draft = multiFeedDraftByRow[rowIndex];
+    const requiredQty = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "");
+    if (!draft || draft.feedTypeIds.length < 2) return false;
+
+    if (!Number.isInteger(requiredQty) || requiredQty <= 0) {
+      toast("Multiple feed quantities require a positive whole-number Actual FC total.");
+      return false;
+    }
+
+    const quantities = buildMultiFeedQuantities(
+      draft.feedTypeIds,
+      drawerQuantities ?? draft.quantities,
+      requiredQty,
+    );
+    const invalidFeedTypeId = draft.feedTypeIds.find(feedTypeId => {
+      const quantity = Number(quantities[feedTypeId]);
+      return !Number.isInteger(quantity) || quantity <= 0;
+    });
+    if (invalidFeedTypeId) {
+      toast("Enter a positive whole-number quantity for every selected feed type.");
+      return false;
+    }
+
+    const totalQuantity = draft.feedTypeIds.reduce(
+      (total, feedTypeId) => total + Number(quantities[feedTypeId]),
+      0,
+    );
+    if (totalQuantity !== requiredQty) {
+      toast(`Feed breakdown must equal the Actual FC total of ${formatQuantity(requiredQty)} kg.`);
+      return false;
+    }
+
+    const insufficientFeedTypeId = draft.feedTypeIds.find(feedTypeId =>
+      Number(quantities[feedTypeId]) > getAvailableFeedQuantityForType(rowIndex, feedTypeId)
+    );
+    if (insufficientFeedTypeId) {
+      const feedLabel = feedTypeOptions.find(option => option.code === insufficientFeedTypeId)?.name ?? "Selected feed";
+      toast(`${feedLabel} does not have enough available inventory.`);
+      return false;
+    }
+
+    const allocationsByRow = { ...feedBatchAllocationsByRow, [rowIndex]: [] as FeedBatchAllocation[] };
+    const allocations = draft.feedTypeIds.flatMap(feedTypeId => {
+      const requiredFeedQty = Number(quantities[feedTypeId]);
+      return getFifoFeedBatchAllocations(rowIndex, requiredFeedQty, Number(feedTypeId), allocationsByRow);
+    });
+
+    if (allocations.reduce((total, allocation) => total + allocation.selectedQty, 0) !== requiredQty) {
+      toast("Available feed batches could not cover the full breakdown quantity.");
+      return false;
+    }
+
+    setFeedBatchAllocationsForRow(rowIndex, allocations);
+    setMultiFeedDraftByRow(current => ({
+      ...current,
+      [rowIndex]: { ...draft, quantities, applied: true },
+    }));
+    setMultiFeedDrawerRowIndex(null);
+    return true;
+  }
+
+  function isMultiFeedBreakdownComplete(rowIndex: number) {
+    const draft = multiFeedDraftByRow[rowIndex];
+    if (!draft || draft.feedTypeIds.length < 2 || !draft.applied) return false;
+
+    const requiredQty = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "");
+    if (!Number.isInteger(requiredQty) || requiredQty <= 0) return false;
+
+    return draft.feedTypeIds.every(feedTypeId => {
+      const requiredFeedQty = Number(draft.quantities[feedTypeId]);
+      const allocatedFeedQty = (feedBatchAllocationsByRow[rowIndex] ?? [])
+        .filter(allocation => getFeedItemTypeId(allocation.itemCode) === Number(feedTypeId))
+        .reduce((total, allocation) => total + allocation.selectedQty, 0);
+      return Number.isInteger(requiredFeedQty) && requiredFeedQty > 0 && allocatedFeedQty === requiredFeedQty;
+    });
   }
 
   function handleCellChange(
@@ -1409,6 +1795,11 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     });
 
     setFeedBatchAllocationsByRow(current => {
+      const next = { ...current };
+      delete next[rowIndex];
+      return next;
+    });
+    setMultiFeedDraftByRow(current => {
       const next = { ...current };
       delete next[rowIndex];
       return next;
@@ -2081,6 +2472,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     || loadingFeedBatches || loadingMortalityBatches;
   const canCopyGrowingCell = (colIndex: number, rowIndex: number) => {
     if (copyDisabled || isRowAgeLocked(rowIndex) || columnDisabledFlags[colIndex]) return false;
+    if (colIndex === feedDailyKgColumnIndex && getFeedTypeIdsForRow(rowIndex).length > 1) return false;
     // Allocations are selected and validated separately for each age.
     if (colIndex === feedBatchColumnIndex || colIndex === mortalityBatchColumnIndex) return false;
     if (isFeedIntakeLocked(rowIndex) && feedIntakeColumnIndexes.has(colIndex)) return false;
@@ -2499,6 +2891,10 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       [rowIndex]: [],
     }));
     handleCellChange(rowIndex, feedBatchColumnIndex, "");
+    setMultiFeedDraftByRow(current => current[rowIndex]
+      ? { ...current, [rowIndex]: { ...current[rowIndex], applied: false } }
+      : current
+    );
     setReviewFeedBatch(null);
   }
 
@@ -2590,6 +2986,18 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     if (missingFeedTypeRowIndex >= 0) {
       toast(`Please select a Feed Type for age ${rows[missingFeedTypeRowIndex]?.age ?? missingFeedTypeRowIndex}.`);
       focusCell(missingFeedTypeRowIndex, feedTypeColumnIndex);
+      return;
+    }
+
+    const incompleteMultiFeedRowIndex = gridValues.findIndex((row, rowIndex) =>
+      !savedLineByRowIndex[rowIndex] &&
+      getNumericValue(row[feedDailyKgColumnIndex] ?? "") > 0 &&
+      getFeedTypeIdsForRow(rowIndex).length > 1 &&
+      !isMultiFeedBreakdownComplete(rowIndex)
+    );
+    if (incompleteMultiFeedRowIndex >= 0) {
+      toast(`Complete the multiple-feed quantity breakdown for age ${rows[incompleteMultiFeedRowIndex]?.age ?? incompleteMultiFeedRowIndex}.`);
+      setMultiFeedDrawerRowIndex(incompleteMultiFeedRowIndex);
       return;
     }
 
@@ -2758,6 +3166,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
         return next;
       });
+      setMultiFeedDraftByRow({});
       refreshFeedInventory();
       toast(`Flock card saved: ${savedCard.fcNo}`);
     } catch (error) {
@@ -2866,7 +3275,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       return false;
     }
 
-    setActiveCell({ rowIndex, colIndex });
     input.focus();
     if (input instanceof HTMLInputElement) input.select();
     return true;
@@ -3326,6 +3734,25 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
             </div>
           ) : null}
         </Collapsible>
+
+        <MultiFeedBreakdownSheet
+          key={`multi-feed-${multiFeedDrawerRowIndex ?? "closed"}`}
+          rowIndex={multiFeedDrawerRowIndex}
+          age={multiFeedDrawerRowIndex == null ? null : rows[multiFeedDrawerRowIndex]?.age ?? null}
+          totalQuantity={activeMultiFeedRequiredQty}
+          draft={activeMultiFeedDraft}
+          feedTypeOptions={feedTypeOptions}
+          availableQuantityByFeedType={activeMultiFeedAvailableByType}
+          onPreviewBatches={(feedTypeId, quantity) => multiFeedDrawerRowIndex == null
+            ? []
+            : getFifoFeedBatchAllocations(
+              multiFeedDrawerRowIndex,
+              quantity,
+              Number(feedTypeId),
+            )}
+          onClose={closeMultiFeedDrawer}
+          onApply={applyMultiFeedBreakdown}
+        />
 
         <Dialog
           open={mortalityBatchDialogOpen}
@@ -4185,6 +4612,18 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 const rowAgeLocked = isRowAgeLocked(rowIndex);
                 const feedIntakeLocked = isFeedIntakeLocked(rowIndex);
                 const hasActualFc = getNumericValue(gridValues[rowIndex]?.[feedDailyKgColumnIndex] ?? "") > 0;
+                const rowFeedTypeIds = getFeedTypeIdsForRow(rowIndex);
+                const hasMultipleFeedTypes = rowFeedTypeIds.length > 1;
+                const feedTypeDisplayLabels = feedIntakeLocked
+                  ? (feedBatchAllocationsByRow[rowIndex] ?? [])
+                    .map(batch => `${batch.itemCode} - ${batch.itemName || batch.itemCode}`)
+                    .filter((label, index, labels) => labels.indexOf(label) === index)
+                  : rowFeedTypeIds.map(feedTypeId =>
+                    feedTypeOptions.find(option => option.code === feedTypeId)?.name ?? feedTypeId
+                  );
+                const feedTypeDisplay = feedTypeDisplayLabels.length > 1
+                  ? `${feedTypeDisplayLabels[0]} +${feedTypeDisplayLabels.length - 1}`
+                  : feedTypeDisplayLabels[0] ?? (hasActualFc ? "Select" : "Not required");
                 const hasMortality = getNumericValue(gridValues[rowIndex]?.[0] ?? "") +
                   getNumericValue(gridValues[rowIndex]?.[1] ?? "") !== 0;
                 const mortalityThinningLocked = isMortalityThinningLocked(rowIndex);
@@ -4193,7 +4632,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 return (
                   <TableRow
                     key={row.age}
-                    className={`fc-grid-row border-0 ${activeCell?.rowIndex === rowIndex ? "fc-grid-row-active" : ""}`}
+                    className="fc-grid-row border-0"
                   >
                     <TableCell
                       className="fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold"
@@ -4257,7 +4696,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                       const disabled = rowAgeLocked || feedIntakeCellLocked || mortalityThinningCellLocked || columnDisabledFlags[colIndex];
                       const inputDisabled = colIndex === feedBatchColumnIndex || colIndex === mortalityBatchColumnIndex
                         ? rowAgeLocked || mortalityThinningCellLocked || columnDisabledFlags[colIndex]
-                        : disabled;
+                        : disabled || (colIndex === feedDailyKgColumnIndex && hasMultipleFeedTypes);
                       const feedBatchCellCanOpen =
                         !rowAgeLocked &&
                         (!feedIntakeCellLocked || rowHasFeedBatchData(rowIndex)) &&
@@ -4266,10 +4705,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                         !rowAgeLocked &&
                         (!mortalityThinningCellLocked || rowHasMortalityBatchData(rowIndex)) &&
                         (getMortalityThinningTotal(gridValues[rowIndex] ?? []) > 0 || rowHasMortalityBatchData(rowIndex));
-
-                      const active =
-                        activeCell?.rowIndex === rowIndex &&
-                        activeCell.colIndex === colIndex;
 
                       return (
                         <TableCopyDownCell
@@ -4280,7 +4715,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                             copyColumns.findIndex(column => column.index === colIndex),
                             sourceValue,
                           )}
-                          className={`fc-grid-cell ${disabled ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} ${bodyEmphasisClasses[colIndex]} ${active ? "fc-grid-cell-active" : ""} p-0 ${bodyBorderClasses[colIndex]}`}
+                          className={`fc-grid-cell ${disabled ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} ${bodyEmphasisClasses[colIndex]} p-0 ${bodyBorderClasses[colIndex]}`}
                         >
                           {colIndex === mortalityBatchColumnIndex ? (
                             <div className="flex min-h-8 w-full items-stretch" style={{ minWidth: mortalityBatchColumnWidth }}>
@@ -4291,7 +4726,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   inputRefs.current[rowIndex] ??= [];
                                   inputRefs.current[rowIndex][colIndex] = element;
                                 }}
-                                onFocus={() => setActiveCell({ rowIndex, colIndex })}
                                 onClick={() => openMortalityBatchSelection(rowIndex)}
                                 onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
                                 disabled={!mortalityBatchCellCanOpen}
@@ -4323,21 +4757,26 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                 </button>
                               ) : null}
                             </div>
-                          ) : colIndex === feedTypeColumnIndex ? (
+                          ) : colIndex === feedTypeColumnIndex && openFeedTypeRow === rowIndex && !disabled && hasActualFc ? (
                             <SearchableCombobox
-                              items={isFeedIntakeLocked(rowIndex) ? [{
-                                code: computedGridValues[rowIndex][colIndex] ?? "",
-                                name: (feedBatchAllocationsByRow[rowIndex] ?? [])
-                                  .map(batch => `${batch.itemCode} - ${batch.itemName || batch.itemCode}`)
-                                  .filter((label, index, labels) => labels.indexOf(label) === index).join(", ") || "Saved feed",
-                              }] : feedTypeOptions}
-                              value={computedGridValues[rowIndex][colIndex] ?? ""}
+                              multiple
+                              items={feedTypeOptions}
+                              value={rowFeedTypeIds}
                               onValueChange={(value) => handleFeedTypeChange(rowIndex, value)}
-                              placeholder={hasActualFc ? "Select" : "Not required"}
-                              disabled={disabled || !hasActualFc}
-                              open={openFeedTypeRow === rowIndex}
-                              onOpenChange={(open) => setOpenFeedTypeRow(current => open ? rowIndex : current === rowIndex ? null : current)}
-                              openOnFocus
+                              placeholder="Select"
+                              open
+                              onOpenChange={(open) => {
+                                setOpenFeedTypeRow(current => open ? rowIndex : current === rowIndex ? null : current);
+                                if (!open && (
+                                  pendingMultiFeedDrawerRowRef.current === rowIndex ||
+                                  getFeedTypeIdsForRow(rowIndex).length > 1
+                                )) {
+                                  pendingMultiFeedDrawerRowRef.current = null;
+                                  setMultiFeedDrawerRowIndex(rowIndex);
+                                }
+                              }}
+                              allowSelectAll={false}
+                              showSelectionCount={false}
                               inputId={`row-${rowIndex}-col-${colIndex}`}
                               inputAriaLabel={`Feed Type for age ${row.age}`}
                               dataGridCell
@@ -4345,14 +4784,34 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                 inputRefs.current[rowIndex] ??= [];
                                 inputRefs.current[rowIndex][colIndex] = element;
                               }}
-                              onInputFocus={() => setActiveCell({ rowIndex, colIndex })}
                               onGridKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
-                              className="h-8 min-h-8 w-full min-w-[150px] rounded-none border-0 bg-white px-1.5 py-0 shadow-none hover:border-0 dark:bg-card disabled:bg-transparent"
+                              className="h-8 min-h-8 w-full min-w-[150px] overflow-hidden rounded-none border-0 bg-white px-1.5 py-0 shadow-none hover:border-0 dark:bg-card disabled:bg-transparent"
                               inputClassName="h-8 min-w-0 px-0 text-xs text-[#4f4a43] focus:font-semibold focus:text-emerald-950 disabled:text-[#7c766c] dark:text-foreground dark:focus:text-emerald-100 dark:disabled:text-muted-foreground"
                               contentPositionerClassName="z-[80]"
                               contentClassName="w-[420px] min-w-[300px] max-w-[calc(100vw-2rem)]"
                               wrapItemLabels
                             />
+                          ) : colIndex === feedTypeColumnIndex ? (
+                            <button
+                              id={`row-${rowIndex}-col-${colIndex}`}
+                              type="button"
+                              data-fc-cell="true"
+                              ref={(element) => {
+                                inputRefs.current[rowIndex] ??= [];
+                                inputRefs.current[rowIndex][colIndex] = element;
+                              }}
+                              onClick={() => setOpenFeedTypeRow(rowIndex)}
+                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
+                              disabled={disabled || !hasActualFc}
+                              aria-label={`Feed Type for age ${row.age}`}
+                              aria-haspopup="listbox"
+                              aria-expanded="false"
+                              title={feedTypeDisplayLabels.join(", ") || feedTypeDisplay}
+                              className="flex h-8 min-h-8 w-full min-w-[150px] items-center justify-between gap-1 overflow-hidden bg-white px-1.5 text-left text-xs text-[#4f4a43] shadow-none transition-none focus:font-semibold focus:text-emerald-950 focus:outline-none disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[#7c766c] dark:bg-card dark:text-foreground dark:focus:text-emerald-100 dark:disabled:bg-transparent dark:disabled:text-muted-foreground"
+                            >
+                              <span className="min-w-0 flex-1 truncate">{feedTypeDisplay}</span>
+                              {!disabled && hasActualFc ? <ChevronDown className="size-3.5 shrink-0 opacity-60" aria-hidden="true" /> : null}
+                            </button>
                           ) : colIndex === feedBatchColumnIndex ? (
                             <div className="flex min-h-8 w-full items-stretch" style={{ minWidth: feedBatchColumnWidth }}>
                               <button
@@ -4362,8 +4821,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   inputRefs.current[rowIndex] ??= [];
                                   inputRefs.current[rowIndex][colIndex] = element;
                                 }}
-                                onFocus={() => setActiveCell({ rowIndex, colIndex })}
-                                onClick={() => openFeedBatchReview(rowIndex)}
+                                onClick={() => hasMultipleFeedTypes
+                                  ? setMultiFeedDrawerRowIndex(rowIndex)
+                                  : openFeedBatchReview(rowIndex)}
                                 onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
                                 onPaste={(event) => handleGridPaste(event, rowIndex, colIndex)}
                                 disabled={!feedBatchCellCanOpen}
@@ -4399,10 +4859,19 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                 </button>
                               ) : null}
                             </div>
+                          ) : inputDisabled ? (
+                            <div
+                              id={`row-${rowIndex}-col-${colIndex}`}
+                              aria-disabled="true"
+                              style={{ minWidth: dataColumnWidth }}
+                              className="flex h-8 items-center justify-center bg-transparent px-1.5 text-center text-sm text-[#7c766c] dark:text-muted-foreground"
+                            >
+                              {computedGridValues[rowIndex][colIndex]}
+                            </div>
                           ) : (
                             <CellInput
                               id={`row-${rowIndex}-col-${colIndex}`}
-                              disabled={inputDisabled}
+                              disabled={false}
                               placeholder={colIndex === mortalityRemarksColumnIndex && hasMortality ? "Required" : undefined}
                               required={colIndex === mortalityRemarksColumnIndex && hasMortality}
                               value={computedGridValues[rowIndex][colIndex]}
@@ -4428,7 +4897,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   setPendingFeedTypeFocus({ rowIndex, value });
                                 }
                               }}
-                              onFocus={() => setActiveCell({ rowIndex, colIndex })}
                               onKeyDown={(event) =>
                                 handleCellKeyDown(event, rowIndex, colIndex)
                               }

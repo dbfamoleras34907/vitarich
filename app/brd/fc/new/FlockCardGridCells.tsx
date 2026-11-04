@@ -38,7 +38,7 @@ export function CellInput({
   inputRef: RefCallback<HTMLInputElement>;
   onCommit: (value: string) => void;
   onBlur: (value: string, previousValue: string) => void;
-  onFocus: (event: FocusEvent<HTMLInputElement>) => void;
+  onFocus?: (event: FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
   placeholder?: string;
@@ -67,7 +67,7 @@ export function CellInput({
       }}
       onFocus={(event) => {
         valueOnFocus.current = event.currentTarget.value;
-        onFocus(event);
+        onFocus?.(event);
       }}
       onKeyDown={onKeyDown}
       onPaste={onPaste}

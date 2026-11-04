@@ -34,7 +34,7 @@ export const feedIntakeColumnIndexes = new Set([
 ]);
 
 export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i);
-const hiddenColumnIndexes = new Set([1, 2, 3, 4, 5, 9, 16, 17, 18, 19, 20, 21, 22, 23]);
+const hiddenColumnIndexes = new Set([2, 3, 4, 5, 9, 16, 17, 18, 19, 20, 21, 22, 23]);
 export const visibleColumnIndexes = columnIndexes
   .filter((colIndex) => !hiddenColumnIndexes.has(colIndex) && colIndex !== waterGuidelineColumnIndex)
   .filter((colIndex) => colIndex !== feedTypeColumnIndex && colIndex !== mortalityRemarksColumnIndex)
@@ -81,7 +81,7 @@ export const columnDisabledFlags = columnIndexes.map(
   (colIndex) => !editableColumnIndexes.has(colIndex)
 );
 
-const groupEndColumnIndexes = new Set([2, 4, 7, mortalityRemarksColumnIndex, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, remarksColumnIndex]);
+const groupEndColumnIndexes = new Set([1, 2, 4, 7, mortalityRemarksColumnIndex, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, remarksColumnIndex]);
 const emphasizedColumnIndexes = new Set([2, 5, cumulativeTotalColumnIndex]);
 
 const stickyHeaderClass = "fc-grid-header sticky z-30";
@@ -152,7 +152,7 @@ export const bodyEmphasisClasses = columnIndexes.map((colIndex) =>
 );
 
 export const topHeaderCells: HeaderCellConfig[] = [
-  { label: "Mortality", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
+  { label: "Mortality", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Batch", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Mortality Remarks", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Feeds Consumption", colSpan: 4, groupEnd: true, className: groupHeaderClass },
@@ -163,6 +163,8 @@ export const topHeaderCells: HeaderCellConfig[] = [
 ];
 
 export const middleHeaderCells: HeaderCellConfig[] = [
+  { label: "AM", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "PM", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { label: "DOC Batch", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Cumulative", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
   { label: "Actual FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },

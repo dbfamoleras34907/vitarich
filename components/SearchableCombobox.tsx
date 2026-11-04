@@ -54,6 +54,14 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   actionDisabled?: boolean
   disabled?: boolean
   inputAriaLabel?: string
+  gridRow?: number
+  gridColumn?: number
+  onGridKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
+  inputRef?: (element: HTMLInputElement | null) => void
+  inputId?: string
+  inputClassName?: string
+  onInputFocus?: React.FocusEventHandler<HTMLInputElement>
+  dataGridCell?: boolean
 }
 
 type SingleProps = {
@@ -336,8 +344,15 @@ export default function SearchableCombobox(props: Props) {
                     )}
 
                     <ComboboxChipsInput
+                      ref={props.inputRef}
+                      id={props.inputId}
                       aria-label={props.inputAriaLabel ?? props.label}
-                      className="min-w-28 flex-1 text-sm placeholder:text-muted-foreground"
+                      data-fc-cell={props.dataGridCell ? "true" : undefined}
+                      data-grid-row={props.gridRow}
+                      data-grid-column={props.gridColumn}
+                      onKeyDown={props.onGridKeyDown}
+                      onFocus={props.onInputFocus}
+                      className={cn("min-w-28 flex-1 text-sm placeholder:text-muted-foreground", props.inputClassName)}
                       placeholder={selectedItems.length === 0 ? placeholder : "Search..."}
                     />
                   </div>

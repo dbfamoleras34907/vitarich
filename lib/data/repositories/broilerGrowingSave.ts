@@ -1,5 +1,6 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { isInternetError } from '@/lib/networkError'
+import { createUuid } from '@/lib/utils/createUuid'
 
 export type GrowingSavePayload = {
   id: number | null
@@ -85,7 +86,7 @@ export async function saveBroilerGrowingTransaction(payload: GrowingSavePayload)
     request = null
   }
   if (!request) {
-    request = { signature, requestId: crypto.randomUUID() }
+    request = { signature, requestId: createUuid() }
     persistPendingSave(request)
   }
 
