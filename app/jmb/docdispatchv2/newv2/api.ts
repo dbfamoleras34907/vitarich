@@ -69,6 +69,13 @@ export type DispatchDocUpsertPayload = {
   items: DispatchDocItemInsert[];
 };
 
+export type DispatchDocAvailability = Omit<DispatchDocItemInsert, "qty"> & {
+  key: string;
+  source_qty: number;
+  dispatched_qty: number;
+  available_qty: number;
+};
+
 async function getRequiredAccessToken() {
   const {
     data: { session },
@@ -182,10 +189,13 @@ export async function getDispatchDocById(id: number) {
   };
 }
 
-export async function createDispatchDoc(payload: DispatchDocUpsertPayload) {
+export async function createDispatchDoc(
+  payload: DispatchDocUpsertPayload,
+  post = false,
+) {
   const { id } = await requestDocDispatchWrite<{ id: number }>(
     "POST",
-    payload,
+    { payload, post },
   );
 
   return id;
@@ -194,8 +204,9 @@ export async function createDispatchDoc(payload: DispatchDocUpsertPayload) {
 export async function updateDispatchDoc(
   id: number,
   payload: DispatchDocUpsertPayload,
+  post = false,
 ) {
-  await requestDocDispatchWrite("PUT", { id, payload });
+  await requestDocDispatchWrite("PUT", { id, payload, post });
 }
 
 export async function postDispatchDoc(id: number) {
@@ -251,57 +262,85 @@ export async function generateNextDrNo(doc_date_ymd: string): Promise<string> {
 }
 
 // ✅ DOC Batch Code dropdown source
-export async function listDocBatchCodes(): Promise<string[]> {
-  const { data, error } = await db
-    .from("chick_grading_process")
-    .select("batch_code")
-    .order("batch_code", { ascending: false });
+const REFERENCE_PAGE_SIZE = 500;
 
-  if (error) throw error;
+const DOC_SKU_SOURCES: Array<{
+  sku_name: string;
+  classification: SkuClassification;
+  field: string;
+}> = [
+  { sku_name: "Class A", classification: "SALEABLE", field: "class_a" },
+  { sku_name: "Class A Junior", classification: "BY_PRODUCT", field: "class_a_junior" },
+  { sku_name: "Class B", classification: "BY_PRODUCT", field: "class_b" },
+  { sku_name: "Class C", classification: "BY_PRODUCT", field: "class_c" },
+  { sku_name: "Infertile", classification: "BY_PRODUCT", field: "infertile" },
+  { sku_name: "Live PIP", classification: "BY_PRODUCT", field: "live_pip" },
+  { sku_name: "Dead Chick", classification: "BY_PRODUCT", field: "dead_chicks" },
+  { sku_name: "Dead Germ", classification: "BY_PRODUCT", field: "dead_germ" },
+];
 
-  const set = new Set<string>();
-  for (const r of data ?? []) {
-    if (r?.batch_code) set.add(r.batch_code);
+type GradingRow = { batch_code: string } & Record<string, number | string | null>;
+
+async function listAllGradingRows() {
+  const rows: GradingRow[] = [];
+  for (let from = 0; ; from += REFERENCE_PAGE_SIZE) {
+    const { data, error } = await db
+      .from("chick_grading_process")
+      .select("batch_code, class_a, class_a_junior, class_b, class_c, infertile, live_pip, dead_chicks, dead_germ")
+      .order("batch_code", { ascending: false })
+      .range(from, from + REFERENCE_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as GradingRow[];
+    rows.push(...page);
+    if (page.length < REFERENCE_PAGE_SIZE) return rows;
   }
-  return Array.from(set);
 }
 
-export type ChickGradingQtyRow = {
-  batch_code: string;
-  class_a: number | null;
-  class_b: number | null;
-  class_a_junior: number | null;
-  class_c: number | null;
-  cull_chicks: number | null;
-  dead_chicks: number | null;
-  infertile: number | null;
-  dead_germ: number | null;
-  live_pip: number | null;
-  dead_pip: number | null;
-  unhatched: number | null;
-  rotten: number | null;
-  exploder: number | null;
-  unhatched_good: number | null;
-  unhatched_bad: number | null;
-  infertile_good: number | null;
-  infertile_bad: number | null;
-};
+async function listAllPostedDispatchItems() {
+  const rows: Array<{ doc_batch_code: string; sku_name: string; qty: number | null }> = [];
+  for (let from = 0; ; from += REFERENCE_PAGE_SIZE) {
+    const { data, error } = await db
+      .from("dispatch_doc_item")
+      .select("doc_batch_code, sku_name, qty, dispatch_doc!inner(status, is_active)")
+      .eq("dispatch_doc.status", "Posted")
+      .eq("dispatch_doc.is_active", true)
+      .range(from, from + REFERENCE_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Array<{ doc_batch_code: string; sku_name: string; qty: number | null }>;
+    rows.push(...page);
+    if (page.length < REFERENCE_PAGE_SIZE) return rows;
+  }
+}
 
-export async function getChickGradingQtyByBatchCode(batch_code: string) {
-  const { data, error } = await db
-    .from("chick_grading_process")
-    .select(
-      `
-      batch_code,
-      class_a, class_b, class_a_junior, class_c,
-      cull_chicks, dead_chicks, infertile, dead_germ,
-      live_pip, dead_pip, unhatched, rotten , exploder, unhatched_good ,unhatched_bad, infertile_good, infertile_bad
+/**
+ * Read-only availability for the dispatch grid. Final availability is always
+ * revalidated by the authoritative server transaction before posting.
+ */
+export async function listAvailableDispatchDocItems(): Promise<DispatchDocAvailability[]> {
+  const [gradingRows, postedItems] = await Promise.all([
+    listAllGradingRows(),
+    listAllPostedDispatchItems(),
+  ]);
+  const dispatchedByKey = new Map<string, number>();
+  for (const item of postedItems) {
+    const key = `${String(item.doc_batch_code).trim()}::${String(item.sku_name).trim()}`;
+    dispatchedByKey.set(key, (dispatchedByKey.get(key) ?? 0) + Number(item.qty ?? 0));
+  }
 
-    `,
-    )
-    .eq("batch_code", batch_code)
-    .maybeSingle();
-
-  if (error) throw error;
-  return (data ?? null) as ChickGradingQtyRow | null;
+  return gradingRows.flatMap((row) => DOC_SKU_SOURCES.flatMap((sku) => {
+    const source_qty = Math.max(0, Number(row[sku.field] ?? 0));
+    if (!row.batch_code?.trim() || source_qty <= 0) return [];
+    const key = `${row.batch_code.trim()}::${sku.sku_name}`;
+    const dispatched_qty = Math.max(0, dispatchedByKey.get(key) ?? 0);
+    return [{
+      key,
+      doc_batch_code: row.batch_code.trim(),
+      sku_name: sku.sku_name,
+      classification: sku.classification,
+      uom: "PCS" as UomType,
+      source_qty,
+      dispatched_qty,
+      available_qty: Math.max(0, source_qty - dispatched_qty),
+    }];
+  }));
 }

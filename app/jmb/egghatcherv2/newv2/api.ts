@@ -20,6 +20,7 @@ export type EggHatcheryProcess = {
 };
 
 const TABLE = "egg_hatchery_process";
+const REFERENCE_PAGE_SIZE = 500;
 let classiRefNosPromise: Promise<string[]> | null = null;
 
 export async function listEggHatcheryProcess() {
@@ -90,16 +91,27 @@ export async function listClassiRefNos(): Promise<string[]> {
   if (classiRefNosPromise) return classiRefNosPromise;
 
   classiRefNosPromise = (async () => {
-    const { data, error } = await db
-      .from("view_for_egg_hatcher")
-      .select("ref_no")
-      .not("ref_no", "is", null)
-      .order("ref_no", { ascending: true });
+    const vals: string[] = [];
+    // PostgREST caps un-ranged responses. Page the lookup so the Hatcher
+    // reference picker remains complete as eligible transfers grow.
+    for (let from = 0; ; from += REFERENCE_PAGE_SIZE) {
+      const { data, error } = await db
+        .from("view_for_egg_hatcher")
+        .select("ref_no")
+        .not("ref_no", "is", null)
+        .order("ref_no", { ascending: true })
+        .range(from, from + REFERENCE_PAGE_SIZE - 1);
 
-    if (error) throw error;
-    const vals = (data ?? [])
-      .map((r: { ref_no: string | null }) => String(r.ref_no ?? "").trim())
-      .filter(Boolean);
+      if (error) throw error;
+
+      const page = (data ?? []) as Array<{ ref_no: string | null }>;
+      vals.push(
+        ...page
+          .map((row) => String(row.ref_no ?? "").trim())
+          .filter(Boolean),
+      );
+      if (page.length < REFERENCE_PAGE_SIZE) break;
+    }
 
     return Array.from(new Set(vals));
   })().catch((error) => {

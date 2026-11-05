@@ -16,6 +16,12 @@ const nullableNumericFields = [
   "m_uniformity",
   "f_uniformity",
 ] as const;
+const nullableIntegerFields = [
+  "water_am",
+  "water_pm",
+  "temp_am",
+  "temp_pm",
+] as const;
 
 type DailyPerformanceInput = Record<string, unknown>;
 type ExistingDailyPerformance = {
@@ -70,6 +76,17 @@ function normalizeInput(input: DailyPerformanceInput) {
     const raw = input[field];
     const value = raw == null || raw === "" ? null : Number(raw);
     if (value != null && (!Number.isFinite(value) || value < 0)) {
+      throw new Error(`${field} must be zero or greater.`);
+    }
+    payload[field] = value;
+  });
+  nullableIntegerFields.forEach((field) => {
+    const raw = input[field];
+    const value = raw == null || raw === "" ? null : Number(raw);
+    if (value != null && !Number.isInteger(value)) {
+      throw new Error(`${field} must be a whole number.`);
+    }
+    if (field.startsWith("water_") && value != null && value < 0) {
       throw new Error(`${field} must be zero or greater.`);
     }
     payload[field] = value;

@@ -105,6 +105,10 @@ type NumericKey = keyof Pick<
   | "f_body_weight"
   | "m_uniformity"
   | "f_uniformity"
+  | "water_am"
+  | "water_pm"
+  | "temp_am"
+  | "temp_pm"
 >;
 
 type FeedTypeKey = "male_feedtype_id" | "female_feedtype_id";
@@ -116,6 +120,7 @@ type PopulationPasteColumn =
 const populationPasteColumns: PopulationPasteColumn[] = [
   { kind: "numeric", field: "mc_male" },
   { kind: "numeric", field: "mc_female" },
+  { kind: "text", field: "remarks" },
   { kind: "numeric", field: "condem_male" },
   { kind: "numeric", field: "condem_female" },
   { kind: "numeric", field: "kitchen_male" },
@@ -130,7 +135,6 @@ const populationPasteColumns: PopulationPasteColumn[] = [
   { kind: "locked" },
   { kind: "locked" },
   { kind: "locked" },
-  { kind: "text", field: "remarks" },
   { kind: "numeric", field: "feed_consumption_male" },
   { kind: "feedType", field: "male_feedtype_id" },
   { kind: "numeric", field: "feed_consumption_female" },
@@ -141,25 +145,47 @@ const populationPasteColumns: PopulationPasteColumn[] = [
   { kind: "numeric", field: "f_body_weight" },
   { kind: "numeric", field: "m_uniformity" },
   { kind: "numeric", field: "f_uniformity" },
+  { kind: "numeric", field: "water_am" },
+  { kind: "numeric", field: "water_pm" },
+  { kind: "numeric", field: "temp_am" },
+  { kind: "numeric", field: "temp_pm" },
 ];
 const gridColumnByField = Object.fromEntries(
   populationPasteColumns.flatMap((column, index) =>
     column.kind === "numeric" ? [[column.field, index]] : [],
   ),
 ) as Partial<Record<NumericKey, number>>;
+const remarksGridColumn = populationPasteColumns.findIndex(
+  (column) => column.kind === "text" && column.field === "remarks",
+);
 
 const gridInputClass =
   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 const PERIOD_DAYS = 30;
 const POPULATION_DATE_COLUMN_WIDTH = 104;
 const POPULATION_AGE_COLUMN_WIDTH = 44;
-const POPULATION_GRID_WIDTH = 2394;
+const POPULATION_GRID_WIDTH = 2666;
+
+const nullableDailyNumericFields = new Set<NumericKey>([
+  "m_body_weight",
+  "f_body_weight",
+  "m_uniformity",
+  "f_uniformity",
+  "water_am",
+  "water_pm",
+  "temp_am",
+  "temp_pm",
+]);
 
 const zeroFields = {
   m_body_weight: null as number | null,
   f_body_weight: null as number | null,
   m_uniformity: null as number | null,
   f_uniformity: null as number | null,
+  water_am: null as number | null,
+  water_pm: null as number | null,
+  temp_am: null as number | null,
+  temp_pm: null as number | null,
   mc_male: 0,
   mc_female: 0,
   cull_male: 0,
@@ -519,7 +545,9 @@ export default function CardForm() {
     )
       return;
     const parsedValue = rawValue === "" ? 0 : Number(rawValue);
-    if (!Number.isFinite(parsedValue) || parsedValue < 0) return;
+    const allowsNegative = field === "temp_am" || field === "temp_pm";
+    if (!Number.isFinite(parsedValue) || (!allowsNegative && parsedValue < 0))
+      return;
     const cellKey = numericCellKey(rowIndex, field);
     setExplicitZeroCells((current) => {
       const next = new Set(current);
@@ -530,7 +558,9 @@ export default function CardForm() {
     updateRow(
       rowIndex,
       field,
-      rawValue === "" && /^(m_|f_)/.test(field) ? null : parsedValue,
+      rawValue === "" && nullableDailyNumericFields.has(field)
+        ? null
+        : parsedValue,
     );
   }
 
@@ -897,6 +927,10 @@ export default function CardForm() {
           row.f_body_weight ?? "",
           row.m_uniformity ?? "",
           row.f_uniformity ?? "",
+          row.water_am ?? "",
+          row.water_pm ?? "",
+          row.temp_am ?? "",
+          row.temp_pm ?? "",
         ],
       };
     });
@@ -914,6 +948,10 @@ export default function CardForm() {
         f_body_weight: row.f_body_weight,
         m_uniformity: row.m_uniformity,
         f_uniformity: row.f_uniformity,
+        water_am: row.water_am,
+        water_pm: row.water_pm,
+        temp_am: row.temp_am,
+        temp_pm: row.temp_pm,
         remarks: row.remarks,
         daterec: row.daterec,
         inv_male: row.inv_male,
@@ -1171,6 +1209,10 @@ export default function CardForm() {
         "kitchen_female",
         "condem_male",
         "condem_female",
+        "water_am",
+        "water_pm",
+        "temp_am",
+        "temp_pm",
       ]);
       const nullableFeedFields = new Set<string>([
         "male_feedtype_id",
@@ -1203,7 +1245,7 @@ export default function CardForm() {
             return;
           }
           if (
-            /^(m_|f_)/.test(field) &&
+            nullableDailyNumericFields.has(field as NumericKey) &&
             (raw == null || String(raw).trim() === "")
           ) {
             values[field] = null;
@@ -1233,13 +1275,14 @@ export default function CardForm() {
             return;
           }
           const parsed = Number(raw);
+          const allowsNegative = field === "temp_am" || field === "temp_pm";
           if (
             !Number.isFinite(parsed) ||
-            parsed < 0 ||
+            (!allowsNegative && parsed < 0) ||
             (integerFields.has(field) && !Number.isInteger(parsed))
           ) {
             errors.push(
-              `Row ${rowNumber}: ${field} must be ${integerFields.has(field) ? "a whole number" : "a number"} zero or greater.`,
+              `Row ${rowNumber}: ${field} must be ${integerFields.has(field) ? "a whole number" : "a number"}${allowsNegative ? "" : " zero or greater"}.`,
             );
           }
           if (integerFields.has(field) && parsed > Number.MAX_SAFE_INTEGER) {
@@ -1274,6 +1317,10 @@ export default function CardForm() {
           f_body_weight: typed.f_body_weight,
           m_uniformity: typed.m_uniformity,
           f_uniformity: typed.f_uniformity,
+          water_am: typed.water_am,
+          water_pm: typed.water_pm,
+          temp_am: typed.temp_am,
+          temp_pm: typed.temp_pm,
           remarks: values.remarks == null ? null : String(values.remarks),
           ...(existingRow?.id ? { id: existingRow.id } : {}),
           placement_id: placement.id,
@@ -1373,7 +1420,7 @@ export default function CardForm() {
       >
         <Input
           type="number"
-          min="0"
+          min={field === "temp_am" || field === "temp_pm" ? undefined : "0"}
           step={decimal ? "0.001" : "1"}
           value={
             !readOnly &&
@@ -2145,8 +2192,9 @@ export default function CardForm() {
               <col style={{ width: POPULATION_DATE_COLUMN_WIDTH }} />
               <col style={{ width: POPULATION_AGE_COLUMN_WIDTH }} />
               {[
-                68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 84,
-                76, 76, 76, 76, 150, 150, 150, 76, 76, 76, 76, 76, 76,
+                68, 68, 68, 68, 150, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68,
+                84, 76, 76, 76, 76, 150, 150, 76, 76, 76, 76, 76, 76, 68, 68,
+                68, 68,
               ].map((width, index) => (
                 <col key={index} style={{ width }} />
               ))}
@@ -2180,21 +2228,21 @@ export default function CardForm() {
                   "Transfer Out (pc)",
                   "Total Daily Depletion (pc)",
                   "Cumulative Depletion (pc)",
-                  "Remarks",
                   "Feeds (kg)",
                   "Grams/Bird (g/pc)",
                   "Body Weight",
                   "Uniformity",
+                  "Water Intake",
+                  "Temperature",
                 ].map((label) => (
                   <th
                     key={label}
-                    rowSpan={label === "Remarks" ? 2 : 1}
+                    rowSpan={1}
                     colSpan={
-                      label === "Remarks"
-                        ? 1
-                        : label === "Transfer Out (pc)"
-                          ? 3
-                          : 2
+                      label === "Mortality (pc)" ||
+                      label === "Transfer Out (pc)"
+                        ? 3
+                        : 2
                     }
                     className={`${headerClass(true)} fc-grid-header-group`}
                     style={{ top: 0 }}
@@ -2204,9 +2252,13 @@ export default function CardForm() {
                 ))}
               </tr>
               <tr style={{ height: 28 }}>
-                {Array.from({ length: 13 }, (_, groupIndex) =>
-                  (groupIndex === 6
+                {Array.from({ length: 15 }, (_, groupIndex) =>
+                  (groupIndex === 1
+                    ? ["Male", "Female", "Remarks"]
+                    : groupIndex === 6
                     ? ["Male", "Female", "Transfer"]
+                    : groupIndex >= 13
+                      ? ["AM", "PM"]
                     : ["Male", "Female"]
                   ).map((label, columnIndex, labels) => (
                     <th
@@ -2256,7 +2308,32 @@ export default function CardForm() {
                     {renderNumericCell(row, rowIndex, "inv_male")}
                     {renderNumericCell(row, rowIndex, "inv_female", true)}
                     {renderNumericCell(row, rowIndex, "mc_male")}
-                    {renderNumericCell(row, rowIndex, "mc_female", true)}
+                    {renderNumericCell(row, rowIndex, "mc_female")}
+                    <td
+                      className={`fc-grid-cell ${row.daterec > localDate() ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} fc-grid-group-divider p-0 ${rowDivider(rowIndex)}`}
+                    >
+                      <Input
+                        aria-label="Remarks"
+                        value={row.remarks ?? ""}
+                        disabled={row.daterec > localDate()}
+                        data-pop-row={rowIndex}
+                        data-pop-column={remarksGridColumn}
+                        onKeyDown={(event) =>
+                          handleGridKeyDown(event, rowIndex, remarksGridColumn)
+                        }
+                        onPaste={(event) =>
+                          handleGridPaste(event, rowIndex, remarksGridColumn)
+                        }
+                        onChange={(event) =>
+                          updateRow(
+                            rowIndex,
+                            "remarks",
+                            event.target.value || null,
+                          )
+                        }
+                        className="h-8 rounded-none border-0 bg-transparent"
+                      />
+                    </td>
                     {renderNumericCell(row, rowIndex, "condem_male")}
                     {renderNumericCell(row, rowIndex, "condem_female", true)}
                     {renderNumericCell(row, rowIndex, "kitchen_male")}
@@ -2294,31 +2371,6 @@ export default function CardForm() {
                     ))}
                     {renderCumulativeCell(row, rowIndex, "male")}
                     {renderCumulativeCell(row, rowIndex, "female", true)}
-                    <td
-                      className={`fc-grid-cell ${row.daterec > localDate() ? "fc-grid-cell-readonly" : "fc-grid-cell-editable"} fc-grid-group-divider p-0 ${rowDivider(rowIndex)}`}
-                    >
-                      <Input
-                        aria-label="Remarks"
-                        value={row.remarks ?? ""}
-                        disabled={row.daterec > localDate()}
-                        data-pop-row={rowIndex}
-                        data-pop-column={16}
-                        onKeyDown={(event) =>
-                          handleGridKeyDown(event, rowIndex, 16)
-                        }
-                        onPaste={(event) =>
-                          handleGridPaste(event, rowIndex, 16)
-                        }
-                        onChange={(event) =>
-                          updateRow(
-                            rowIndex,
-                            "remarks",
-                            event.target.value || null,
-                          )
-                        }
-                        className="h-8 rounded-none border-0 bg-transparent"
-                      />
-                    </td>
                     {renderFeedCell(row, rowIndex, "male")}
                     {renderFeedCell(row, rowIndex, "female", true)}
                     {renderNumericCell(row, rowIndex, "avg_body_weight_male")}
@@ -2332,6 +2384,10 @@ export default function CardForm() {
                     {renderNumericCell(row, rowIndex, "f_body_weight", true)}
                     {renderNumericCell(row, rowIndex, "m_uniformity")}
                     {renderNumericCell(row, rowIndex, "f_uniformity", true)}
+                    {renderNumericCell(row, rowIndex, "water_am")}
+                    {renderNumericCell(row, rowIndex, "water_pm", true)}
+                    {renderNumericCell(row, rowIndex, "temp_am")}
+                    {renderNumericCell(row, rowIndex, "temp_pm", true)}
                   </tr>
                 );
               })}
@@ -2352,6 +2408,7 @@ export default function CardForm() {
                   null,
                   periodTotals.mcMale,
                   periodTotals.mcFemale,
+                  null,
                   periodTotals.condemMale,
                   periodTotals.condemFemale,
                   periodTotals.kitchenMale,
@@ -2379,12 +2436,16 @@ export default function CardForm() {
                   periodLatestRecord?.f_body_weight,
                   periodLatestRecord?.m_uniformity,
                   periodLatestRecord?.f_uniformity,
+                  periodLatestRecord?.water_am,
+                  periodLatestRecord?.water_pm,
+                  periodLatestRecord?.temp_am,
+                  periodLatestRecord?.temp_pm,
                 ].map((value, index) => (
                   <td
                     key={index}
                     className="fc-grid-footer-cell sticky bottom-0 text-center font-semibold"
                     title={
-                      index === 17 || index === 18
+                      index === 18 || index === 19
                         ? "Cumulative depletion at the end of this period"
                         : index >= 20 && index <= 23
                           ? "Daily average for recorded days in this period; excludes future dates and unused blank rows"

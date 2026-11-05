@@ -9,6 +9,7 @@ interface BreadcrumbProps {
   FirstPreviewsPageLink?: string;
   SecondPreviewPageName?: string;
   SecondPreviewPageLink?: string;
+  showTitle?: boolean;
 }
 
 const getBrowserTitle = (
@@ -33,6 +34,7 @@ const Breadcrumb = ({
   FirstPreviewsPageLink,
   SecondPreviewPageName,
   SecondPreviewPageLink,
+  showTitle = true,
 }: BreadcrumbProps) => {
   useEffect(() => {
     document.title = getBrowserTitle(CurrentPageName, FirstPreviewsPageName);
@@ -40,9 +42,9 @@ const Breadcrumb = ({
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 flex-col-reverse gap-0.5">
-      <h1 className="truncate text-xl font-semibold leading-6 tracking-tight text-foreground">
+      {showTitle && <h1 className="truncate text-xl font-semibold leading-6 tracking-tight text-foreground">
         {CurrentPageName}
-      </h1>
+      </h1>}
 
       <ol className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] leading-4 text-muted-foreground">
         {SecondPreviewPageName && (
