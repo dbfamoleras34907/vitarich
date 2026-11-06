@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import PermissionEditor, { type PermissionEditorHandle } from "./PermissionEditor"
 import PermissionMatrix from "./PermissionMatrix"
 import { getManageableUsers, type PermissionFolder, type PermissionUser } from "./api"
+import { PermissionTemplateAssignment, PermissionTemplatesManager } from "./PermissionTemplates"
 import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess"
 
 function userLabel(user: PermissionUser) {
@@ -48,6 +49,7 @@ export default function Layout({ permissionFolders, requestedUserId = "" }: { pe
   const [selectedId, setSelectedId] = useState("")
   const [loading, setLoading] = useState(true)
   const [actorUserType, setActorUserType] = useState<number | null>(null)
+  const [editorVersion, setEditorVersion] = useState(0)
   const editorRef = useRef<PermissionEditorHandle>(null)
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export default function Layout({ permissionFolders, requestedUserId = "" }: { pe
         <TabsList>
           <TabsTrigger value="manage">Manage Permissions</TabsTrigger>
           <TabsTrigger value="matrix">Permission Matrix</TabsTrigger>
+          {actorUserType === 1 && <TabsTrigger value="templates">Permission Templates</TabsTrigger>}
         </TabsList>
         <TabsContent value="manage" className="space-y-4">
           <div className="rounded-md border bg-card p-4 shadow-sm">
@@ -114,15 +117,23 @@ export default function Layout({ permissionFolders, requestedUserId = "" }: { pe
                   Remove All
                 </Button>
               </div>
+              {actorUserType === 1 && <PermissionTemplateAssignment
+                users={users}
+                selectedUserId={selectedId}
+                onApplied={userIds => { if (userIds.includes(selectedId)) setEditorVersion(version => version + 1) }}
+              />}
             </div>
           </div>
           {selectedUser
-            ? <PermissionEditor ref={editorRef} key={selectedUser.auth_id} user={selectedUser} permissionFolders={permissionFolders} />
+            ? <PermissionEditor ref={editorRef} key={`${selectedUser.auth_id}:${editorVersion}`} user={selectedUser} permissionFolders={permissionFolders} />
             : <div className="rounded-md border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">Select a user to manage permissions.</div>}
         </TabsContent>
         <TabsContent value="matrix">
           <PermissionMatrix permissionFolders={permissionFolders} />
         </TabsContent>
+        {actorUserType === 1 && <TabsContent value="templates">
+          <PermissionTemplatesManager permissionFolders={permissionFolders} />
+        </TabsContent>}
       </Tabs>
       </>}
     </div>

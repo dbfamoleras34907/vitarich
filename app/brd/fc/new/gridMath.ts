@@ -1,6 +1,7 @@
 import docStandard from "@/app/json/doc_standard.json";
 import { bodyWeightByReferenceProfile } from "./broilerBodyWeightStandards";
 import { standardAdgColumnIndex as defaultStandardAdgColumnIndex } from "./flockCardGridConfig";
+import { feedBagsToBaseQty } from "./feedQuantity";
 
 export type GridValues = string[][];
 
@@ -160,7 +161,7 @@ export function computeGridValues({
         calculateFeedDailyPerBird({
           numberOfAnimals,
           cumulativeTotal,
-          dailyKgFlock: getNumericValue(row[feedDailyKgColumnIndex]),
+          dailyKgFlock: feedBagsToBaseQty(getNumericValue(row[feedDailyKgColumnIndex])) ?? 0,
         })
       );
     } else {

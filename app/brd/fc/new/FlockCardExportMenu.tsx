@@ -41,7 +41,7 @@ const exportHeaders = [
   "DOC Batch",
   "Cumulative",
   "Mortality Remarks",
-  "Feeds Consumption Actual FC",
+  "Feeds Consumption Actual FC (Bags)",
   "Feeds Consumption Feed Type",
   "Feed Intake Daily per Bird g/b",
   "Feeds Consumption Standard FC",

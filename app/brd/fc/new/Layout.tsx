@@ -126,6 +126,7 @@ import type {
   MultiFeedBreakdownDraft,
   MortalityBatchAllocation,
 } from "./flockCardTypes";
+import { feedBaseQtyToBags } from "./feedQuantity";
 
 const asArray = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? value as T[] : [];
@@ -300,7 +301,7 @@ function MultiFeedBreakdownSheet({
         <SheetHeader className="border-b">
           <SheetTitle>Feed quantity breakdown</SheetTitle>
           <SheetDescription>
-            Age {age ?? ""}: distribute {formatQuantity(totalQuantity)} kg across the selected feed types.
+            Age {age ?? ""}: distribute {formatQuantity(totalQuantity)} Bags across the selected feed types.
           </SheetDescription>
         </SheetHeader>
 
@@ -324,7 +325,7 @@ function MultiFeedBreakdownSheet({
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold">{feedType?.name ?? feedTypeId}</div>
                       <div className={`text-xs ${hasShortage ? "text-destructive" : "text-muted-foreground"}`}>
-                        Available: {formatQuantity(availableQuantity)} kg
+                        Available: {formatQuantity(availableQuantity)} Bags
                       </div>
                     </div>
                     {isLastFeedType ? (
@@ -365,9 +366,9 @@ function MultiFeedBreakdownSheet({
                 ? "border-emerald-200 bg-emerald-50 text-emerald-900"
                 : "border-amber-200 bg-amber-50 text-amber-900"
             }`}>
-              Breakdown total: <span className="font-semibold">{formatQuantity(assignedQuantity)} kg</span>
+              Breakdown total: <span className="font-semibold">{formatQuantity(assignedQuantity)} Bags</span>
               <span className="mx-1">/</span>
-              {formatQuantity(totalQuantity)} kg
+              {formatQuantity(totalQuantity)} Bags
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -386,7 +387,7 @@ function MultiFeedBreakdownSheet({
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold">{feedType?.name ?? preview.feedTypeId}</div>
                       <div className={`text-xs ${hasShortage ? "text-destructive" : "text-muted-foreground"}`}>
-                        Auto selected {formatQuantity(preview.allocatedQuantity)} / {formatQuantity(preview.requiredQuantity)} kg
+                        Auto selected {formatQuantity(preview.allocatedQuantity)} / {formatQuantity(preview.requiredQuantity)} Bags
                       </div>
                     </div>
                     <span className="shrink-0 rounded border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -404,11 +405,11 @@ function MultiFeedBreakdownSheet({
                               <div className="truncate text-muted-foreground">{allocation.itemCode} - {allocation.itemName}</div>
                             </div>
                             <div className="shrink-0 text-right font-semibold tabular-nums">
-                              {formatQuantity(allocation.selectedQty)} kg
+                              {formatQuantity(allocation.selectedQty)} Bags
                             </div>
                           </div>
                           <div className="mt-1 text-muted-foreground">
-                            Available in batch: {formatQuantity(allocation.availableQty)} kg
+                            Available in batch: {formatQuantity(allocation.availableQty)} Bags
                           </div>
                         </div>
                       ))}
@@ -918,7 +919,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     : String(flockCardNavigationContext?.buildingKey ?? "Select building");
   const animalMetricLabel = `${formatQuantity(numberOfAnimals)} birds`;
   const liveAnimalMetricLabel = `${formatQuantity(liveAnimals)} birds`;
-  const feedOnHandMetricLabel = loadingFeedBatches ? "Loading..." : `${formatQuantity(totalFeedOnHand)} kg`;
+  const feedOnHandMetricLabel = loadingFeedBatches ? "Loading..." : `${formatQuantity(totalFeedOnHand)} Bags`;
   const feedBatchMetricLabel = `${positiveAvailableFeedBatchRows.length} ${positiveAvailableFeedBatchRows.length === 1 ? "batch" : "batches"}`;
   const mortalityBatchMetricLabel = loadingMortalityBatches
     ? "Loading..."
@@ -1609,7 +1610,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       0,
     );
     if (totalQuantity !== requiredQty) {
-      toast(`Feed breakdown must equal the Actual FC total of ${formatQuantity(requiredQty)} kg.`);
+      toast(`Feed breakdown must equal the Actual FC total of ${formatQuantity(requiredQty)} Bags.`);
       return false;
     }
 
@@ -4018,7 +4019,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                     <div className="font-semibold text-foreground">{feedBatchSelectionAge ?? "-"}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-medium uppercase text-muted-foreground">Daily kg/Flock</div>
+                    <div className="text-xs font-medium uppercase text-muted-foreground">Daily Bags/Flock</div>
                     <div className="font-semibold tabular-nums text-foreground">{formatQuantity(activeFeedRequiredQty)}</div>
                   </div>
                   <div>
@@ -4236,7 +4237,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
                               <div className="text-right">
                                 <div className={`text-sm font-semibold tabular-nums ${isOut ? "text-red-700" : "text-emerald-700"}`}>
-                                  {isOut ? "-" : "+"}{formatQuantity(Math.abs(row.signedQty))}
+                                  {isOut ? "-" : "+"}{formatQuantity(feedBaseQtyToBags(Math.abs(row.signedQty)))} Bags
                                 </div>
                                 <div className="text-xs text-muted-foreground">Movement</div>
                               </div>
@@ -4245,7 +4246,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                             <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
                               <div className="rounded-md bg-amber-50 px-2 py-1">
                                 <span className="block font-medium text-amber-700">Running Balance</span>
-                                <span className="font-semibold tabular-nums text-amber-900">{formatQuantity(row.runningQty)}</span>
+                                <span className="font-semibold tabular-nums text-amber-900">{formatQuantity(feedBaseQtyToBags(row.runningQty))} Bags</span>
                               </div>
                               <div className="rounded-md bg-muted/40 px-2 py-1">
                                 <span className="block font-medium">Warehouse</span>

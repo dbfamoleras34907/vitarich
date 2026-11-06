@@ -174,7 +174,7 @@ export const topHeaderCells: HeaderCellConfig[] = [
 export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "DOC Batch", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Cumulative", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
-  { label: "Actual FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Actual FC (Bags)", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Feed Type", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Standard FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Feeds Batch", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },

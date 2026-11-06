@@ -1,4 +1,5 @@
 import { rows } from "./flockCardGridConfig";
+import { feedBaseQtyToBags } from "./feedQuantity";
 
 const round = (value: number, decimals = 0) => Number(value.toFixed(decimals));
 const randomBetween = (minimum: number, maximum: number) =>
@@ -47,7 +48,10 @@ export function populateSensibleSampleData({
       nextRow[3] = String(thinningAm);
       nextRow[4] = String(thinningPm);
     }
-    nextRow[8] = sampleValue(nextRow[8], round(dailyFeedKg * randomBetween(0.96, 1.04), 2));
+    nextRow[8] = sampleValue(
+      nextRow[8],
+      round(feedBaseQtyToBags(dailyFeedKg * randomBetween(0.96, 1.04)), 2),
+    );
     nextRow[12] = sampleValue(nextRow[12], round(dailyFeedKg * randomBetween(1.65, 1.9), 1));
     nextRow[14] = sampleValue(nextRow[14], round(bodyWeight * randomBetween(0.96, 1.04)));
     nextRow[16] = sampleValue(nextRow[16], round(targetTemperature - randomBetween(0.8, 1.5), 1));
