@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Egg, Hash, Loader2, Search, UsersRound } from "lucide-react";
 import BreederListParameters, {
-  isWithinDateRange,
   useBreederListParameters,
 } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
@@ -141,10 +140,8 @@ export default function EggLayingTable() {
   const effectiveFarmId = parameters.farmId;
   const selectedFarm = farms.find((farm) => String(farm.id) === effectiveFarmId) ?? null;
   const groupedItems = useMemo(() => groupPlacementsByFarmBuilding(items).filter(
-    (item) =>
-      String(item.farm_id) === effectiveFarmId &&
-      isWithinDateRange(item.placement_date, parameters.dateFrom, parameters.dateTo),
-  ), [effectiveFarmId, items, parameters.dateFrom, parameters.dateTo]);
+    (item) => String(item.farm_id) === effectiveFarmId,
+  ), [effectiveFarmId, items]);
   const farmBuildingCount = useMemo(() => new Set(locations
     .filter((location) => String(location.farm_id) === effectiveFarmId)
     .map((location) => location.building_id)).size, [effectiveFarmId, locations]);
@@ -168,7 +165,7 @@ export default function EggLayingTable() {
       <section className="m-3 mt-6 overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-card">
         <div className="border-b bg-muted/30 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <BreederListParameters {...parameters} />
+            <BreederListParameters {...parameters} showDateRange={false} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <SummaryCard icon={<Building2 className="size-3.5" />} label="Buildings" value={loading ? "..." : formatNumber(farmBuildingCount)} />
               <SummaryCard icon={<Hash className="size-3.5" />} label="Occupied" value={loading ? "..." : formatNumber(groupedItems.length)} />

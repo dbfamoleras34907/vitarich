@@ -29,30 +29,21 @@ export async function requireHatcheryDocDispatchAccess(authId: string, action: D
   if (!permission?.is_visible) throw new Error("FORBIDDEN")
 }
 
-export async function createHatcheryDocDispatchDraft(payload: DispatchDocUpsertPayload, userId: string) {
-  const { data, error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: null, p_payload: payload, p_actor: userId })
+export async function createHatcheryDocDispatchDraft(payload: DispatchDocUpsertPayload, userId: string, post = false) {
+  const { data, error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: null, p_payload: payload, p_actor: userId, p_post: post })
   if (error) throw error
   return Number(data)
 }
 
-export async function updateHatcheryDocDispatchDraft(id: number, payload: DispatchDocUpsertPayload, userId: string) {
-  const { error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: id, p_payload: payload, p_actor: userId })
+export async function updateHatcheryDocDispatchDraft(id: number, payload: DispatchDocUpsertPayload, userId: string, post = false) {
+  const { error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: id, p_payload: payload, p_actor: userId, p_post: post })
   if (error) throw error
 }
 
 export async function postHatcheryDocDispatch(id: number, userId: string) {
-  const { data, error } = await admin_db
-    .from("dispatch_doc")
-    .update({ status: "Posted", posted_by: userId, updated_by: userId })
-    .eq("id", id)
-    .eq("status", "Draft")
-    .eq("is_active", true)
-    .select("id, status, posting_version")
-    .maybeSingle()
-
+  const { data, error } = await admin_db.rpc("post_hatchery_dispatch_transaction", { p_id: id, p_actor: userId })
   if (error) throw error
-  if (!data) throw new Error("Only an active draft DOC Dispatch can be posted.")
-  return data
+  return Number(data)
 }
 
 export async function deleteHatcheryDocDispatchDraft(id: number, userId: string) {

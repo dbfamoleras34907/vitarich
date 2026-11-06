@@ -29,6 +29,7 @@ export type EggTransferUpdate = Partial<EggTransferInsert>;
 
 const TABLE = "egg_transfer_process";
 const SETTER_TABLE = "setter_incubation_process";
+const LOOKUP_PAGE_SIZE = 500;
 
 export type TransferClassiRefOption = {
   ref_no: string;
@@ -64,17 +65,27 @@ export async function listSetterInventoryRefs(
 ): Promise<
   TransferClassiRefOption[]
 > {
-  const { data: refRows, error: refError } = await db
-    .from("view_eggtransfer_ref_no")
-    .select("ref_no")
-    .not("ref_no", "is", null)
-    .order("ref_no", { ascending: true });
+  const refRows: EggTransferRefNoViewRow[] = [];
+  // PostgREST caps un-ranged responses. Read every eligible reference so
+  // older alphabetical references remain selectable.
+  for (let from = 0; ; from += LOOKUP_PAGE_SIZE) {
+    const { data, error } = await db
+      .from("view_eggtransfer_ref_no")
+      .select("ref_no")
+      .not("ref_no", "is", null)
+      .order("ref_no", { ascending: true })
+      .range(from, from + LOOKUP_PAGE_SIZE - 1);
 
-  if (refError) throw refError;
+    if (error) throw error;
+
+    const page = (data ?? []) as EggTransferRefNoViewRow[];
+    refRows.push(...page);
+    if (page.length < LOOKUP_PAGE_SIZE) break;
+  }
 
   const refs = Array.from(
     new Set([
-      ...((refRows ?? []) as EggTransferRefNoViewRow[])
+      ...refRows
         .map((row) => String(row.ref_no ?? "").trim())
         .filter(Boolean),
       ...includeRefs.map((ref) => ref.trim()).filter(Boolean),
@@ -85,16 +96,24 @@ export async function listSetterInventoryRefs(
 
   const allowedRefs = new Set(refs);
 
-  const { data, error } = await db
-    .from(SETTER_TABLE)
-    .select("ref_no, farm_source, qty_set_egg")
-    .order("id", { ascending: false });
+  const setterRows: SetterInventoryRow[] = [];
+  for (let from = 0; ; from += LOOKUP_PAGE_SIZE) {
+    const { data, error } = await db
+      .from(SETTER_TABLE)
+      .select("ref_no, farm_source, qty_set_egg")
+      .order("id", { ascending: false })
+      .range(from, from + LOOKUP_PAGE_SIZE - 1);
 
-  if (error) throw error;
+    if (error) throw error;
+
+    const page = (data ?? []) as SetterInventoryRow[];
+    setterRows.push(...page);
+    if (page.length < LOOKUP_PAGE_SIZE) break;
+  }
 
   const inventoryMap = new Map<string, TransferClassiRefOption>();
 
-  for (const row of (data ?? []) as SetterInventoryRow[]) {
+  for (const row of setterRows) {
     const qtySetEgg = Number(row.qty_set_egg ?? 0);
 
     for (const ref of parseRefNumbers(row.ref_no)) {
@@ -123,14 +142,20 @@ export async function listSetterInventoryRefs(
 }
 
 export async function listTransferHistory(): Promise<TransferHistoryRow[]> {
-  const { data, error } = await db
-    .from(TABLE)
-    .select("id, ref_no, total_egg_transfer")
-    .order("id", { ascending: false });
+  const rows: TransferHistoryRow[] = [];
+  for (let from = 0; ; from += LOOKUP_PAGE_SIZE) {
+    const { data, error } = await db
+      .from(TABLE)
+      .select("id, ref_no, total_egg_transfer")
+      .order("id", { ascending: false })
+      .range(from, from + LOOKUP_PAGE_SIZE - 1);
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return (data ?? []) as TransferHistoryRow[];
+    const page = (data ?? []) as TransferHistoryRow[];
+    rows.push(...page);
+    if (page.length < LOOKUP_PAGE_SIZE) return rows;
+  }
 }
 
 export async function listEggTransfers(): Promise<EggTransferProcess[]> {

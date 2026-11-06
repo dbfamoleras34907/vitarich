@@ -44,6 +44,10 @@ export type BreederDailyPerformance = {
   f_body_weight: number | null;
   m_uniformity: number | null;
   f_uniformity: number | null;
+  water_am: number | null;
+  water_pm: number | null;
+  temp_am: number | null;
+  temp_pm: number | null;
   remarks: string | null;
 };
 
