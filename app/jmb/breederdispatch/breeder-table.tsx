@@ -84,7 +84,7 @@ export default function BreederDispatchTable() {
       setRecords(await attachProcessListAttributions(await listBreederDispatches()));
     } catch (loadError) {
       console.error(loadError);
-      setError("Unable to load breeder dispatches. Run breeder_dispatch_tables.sql, then dispatch_category_sources.sql, in Supabase.");
+      setError(loadError instanceof Error ? loadError.message : "Unable to load breeder dispatches. Please refresh and try again.");
     } finally {
       setLoading(false);
     }
@@ -159,15 +159,16 @@ export default function BreederDispatchTable() {
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         <Table>
-          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Assigned TA</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Building</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Assigned TA</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={11} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
+            {loading ? <TableRow><TableCell colSpan={12} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
             {!loading && paginatedRecords.map((record, index) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
                 <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                 <TableCell>{formatDate(record.dispatch_date)}</TableCell>
                 <TableCell><div className="font-mono text-xs">{record.document_no}</div><div className="text-xs text-muted-foreground">{record.line_count} categor{record.line_count === 1 ? "y" : "ies"}</div></TableCell>
                 <TableCell><div className="font-medium">{record.farm_name}</div><div className="text-xs text-muted-foreground">{record.farm_code || "-"}</div></TableCell>
+                <TableCell><span className="block max-w-48 truncate" title={record.building_names?.join(", ")}>{record.building_names?.join(", ") || "-"}</span></TableCell>
                 <TableCell><div className="font-medium">{record.destination}</div><div className="text-xs text-muted-foreground">{[record.hauler_name, record.plate_number].filter(Boolean).join(" · ") || "-"}</div></TableCell>
                 <TableCell className="text-right tabular-nums">{Number(record.population_qty).toLocaleString()}</TableCell>
                 <TableCell className="text-right tabular-nums">{Number(record.egg_qty).toLocaleString()}</TableCell>
@@ -188,7 +189,7 @@ export default function BreederDispatchTable() {
                 </TableCell>
               </TableRow>
             ))}
-            {!loading && !filtered.length ? <TableRow><TableCell colSpan={11} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
+            {!loading && !filtered.length ? <TableRow><TableCell colSpan={12} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
         <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="dispatches" onPageChange={setPage} />

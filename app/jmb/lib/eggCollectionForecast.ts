@@ -115,7 +115,7 @@ function sameString(values: readonly (string | null)[]) {
 }
 
 function ageWeek(placement: EggCollectionPlacement, date: string) {
-  const days = breederAgeDays(placement.placement_date, date);
+  const days = breederAgeDays(placement, date);
   return days == null || days < 0 ? null : Math.ceil(days / 7);
 }
 
@@ -149,7 +149,7 @@ function firstFarmFivePercent(placements: readonly EggCollectionPlacement[], egg
     const henHoused = females.reduce<number>((total, female) => total + (female ?? 0), 0);
     if (henHoused > 0 && tep / henHoused >= 0.05) {
       const weightedAgeDays = placed.reduce((total, placement, index) => {
-        const ageDays = breederAgeDays(placement.placement_date, date);
+        const ageDays = breederAgeDays(placement, date);
         return total + (ageDays ?? 0) * (females[index] ?? 0);
       }, 0) / henHoused;
       return { date, henHoused, ageDays: Math.round(weightedAgeDays) } satisfies FarmFivePercent;

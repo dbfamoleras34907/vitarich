@@ -6,6 +6,7 @@ import { EGG_DISPATCH_CATEGORIES, eggDispatchQuantity } from "@/app/jmb/lib/bree
 import { db } from "@/lib/Supabase/supabaseClient";
 import type { DefaultFarm } from "@/lib/types";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
+import { fetchWithInternetErrorNotice, readJsonResponse } from "@/lib/network/http";
 import type { Placement } from "../../placement/new/api";
 
 const HEADER_TABLE = "tbl_brd_dispatch";
@@ -47,7 +48,7 @@ export type BreederDispatchRecord = {
   created_by?: string | null; createdByName?: string; assignedTaLabel?: string;
   farm_name: string; destination: string; farm_destination_id: number | null; hauler_name: string | null; plate_number: string | null;
   truck_seal: string | null; status: DispatchStatus; remarks: string | null; line_count: number;
-  population_qty: number; egg_qty: number; total_qty: number; created_at: string;
+  population_qty: number; egg_qty: number; total_qty: number; created_at: string; building_names?: string[];
 };
 
 export type BreederDispatchLine = {
@@ -131,7 +132,26 @@ export async function listBreederDispatchBuildings() {
 export async function listBreederDispatches() {
   const { data, error } = await db.from(REGISTER_VIEW).select("*").order("dispatch_date", { ascending: false }).order("id", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BreederDispatchRecord[];
+
+  const records = (data ?? []) as BreederDispatchRecord[];
+  if (!records.length) return records;
+
+  const { data: session, error: sessionError } = await db.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session.session) throw new Error("Please log in again.");
+
+  const response = await fetchWithInternetErrorNotice("/api/jmb/breeder-dispatch/buildings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.session.access_token}`,
+    },
+    body: JSON.stringify({ dispatchIds: records.map((record) => record.id) }),
+  });
+  const result = await readJsonResponse<{ data?: Array<{ dispatch_id: number; building_names: string[] }>; error?: string }>(response, "Unable to load dispatch buildings.");
+  const buildingsByDispatch = new Map((result.data ?? []).map((row) => [Number(row.dispatch_id), row.building_names]));
+
+  return records.map((record) => ({ ...record, building_names: buildingsByDispatch.get(record.id) ?? [] }));
 }
 
 // Retained as the shared live-bird balance provider used by Breeder Cleanup.

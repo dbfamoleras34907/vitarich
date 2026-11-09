@@ -18,6 +18,7 @@ import {
   type FarmLocationLookup,
 } from "@/app/jmb/placement/new/api";
 import { listLayingPlacements, type LayingPlacement } from "./new/api";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 
 type LayingPlacementGroup = {
   id: number;
@@ -43,13 +44,9 @@ function formatNumber(value?: number | null) {
   return Number(value).toLocaleString("en-PH");
 }
 
-function getAgeInDays(placementDate?: string | null, endDate = new Date()) {
-  if (!placementDate) return 0;
-  const start = new Date(`${placementDate}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return 0;
-  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-  const endUtc = Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
-  return Math.max(0, Math.floor((endUtc - startUtc) / 86_400_000));
+function getToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function formatAge(days: number) {
@@ -68,7 +65,7 @@ function groupPlacementsByFarmBuilding(rows: LayingPlacement[]) {
   for (const row of rows) {
     const key = [row.farm_id ?? row.farm_name, row.building_id ?? row.building_no].join("|");
     const existing = groups.get(key);
-    const rowAgeDays = getAgeInDays(row.placement_date);
+    const rowAgeDays = breederAgeDays(row, getToday()) ?? 0;
     if (!existing) {
       groups.set(key, {
         id: row.id,

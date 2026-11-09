@@ -19,7 +19,7 @@ import Breadcrumb from "@/lib/Breadcrumb";
 import FormActionButtons from "@/components/FormActionButtons";
 import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
-import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 import { formatFarmNameCodeId } from "@/lib/utils/farmDisplay";
 import {
   createGrading,
@@ -94,19 +94,6 @@ function getFarmKey(placement: GradingPlacement) {
     : (placement.farm_name?.trim() ?? "");
 }
 
-function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
-  if (!placementDate || !endDateValue) return 0;
-  const start = new Date(`${placementDate}T00:00:00`);
-  const end = new Date(`${endDateValue}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  const elapsedDays = Math.floor(
-    (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) -
-      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
-      86_400_000,
-  );
-  return elapsedDays < 0 ? 0 : elapsedDays + 1;
-}
-
 function formatWeeksDays(days: number) {
   if (days <= 0) return "0.0";
   return `${Math.floor(days / 7)}.${days % 7}`;
@@ -164,7 +151,7 @@ export default function GradingForm() {
 
   const disabledAll = saving || loadingRecord;
   const ageDays = selectedPlacement
-    ? getAgeInDays(breederAgeAnchorDate(selectedPlacement), form.daterec)
+    ? breederAgeDays(selectedPlacement, form.daterec) ?? 0
     : 0;
   const weekNumber = formatWeeksDays(ageDays);
   const farmOptions = useMemo(() => {

@@ -16,6 +16,7 @@ import { STANDARD_FEED_BY_WEEK } from "@/lib/data/queries/breederFeedStandard";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 import { getUserInfo, listBreederCycles, listBreederFarms, listFarmLocationLookup, type BreederCycle, type BreederFarm, type FarmLocationLookup } from "@/app/jmb/placement/new/api";
 import {
   listBreederPerformanceReport, listMedicationReport, listMortalityReport, listRegradingReport, listVaccinationReport,
@@ -55,11 +56,9 @@ function safeFilename(value: string) { return value.trim().replace(/[^a-z0-9-_]+
 function formatDate(value: string) {
   const date = new Date(`${value}T00:00:00`); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-US");
 }
-function ageWeek(placementDate: string, recordDate: string) {
-  const start = new Date(`${placementDate}T00:00:00`); const end = new Date(`${recordDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
-  return Math.ceil(days / 7);
+function ageWeek(placementDate: string, ageAnchorDate: string | null, recordDate: string) {
+  const days = breederAgeDays({ placement_date: placementDate, age_anchor_date: ageAnchorDate }, recordDate);
+  return days == null ? 0 : Math.ceil(days / 7);
 }
 
 function dailyFeedRows(rows: MortalityReportRow[]) {
@@ -67,7 +66,7 @@ function dailyFeedRows(rows: MortalityReportRow[]) {
   for (const row of rows) {
     const key = `${row.cycleNumber ?? "none"}:${row.recordDate}`;
     const current = dates.get(key) ?? { date: row.recordDate, cycleNumber: row.cycleNumber, ageWeek: 0, totalPopulation: 0, malePopulation: 0, femalePopulation: 0, maleFeedKg: 0, femaleFeedKg: 0 };
-    current.ageWeek = Math.max(current.ageWeek, ageWeek(row.placementDate, row.recordDate));
+    current.ageWeek = Math.max(current.ageWeek, ageWeek(row.placementDate, row.ageAnchorDate, row.recordDate));
     current.malePopulation += row.inventoryMale; current.femalePopulation += row.inventoryFemale;
     current.totalPopulation += row.inventoryMale + row.inventoryFemale;
     current.maleFeedKg += row.feedConsumptionMale; current.femaleFeedKg += row.feedConsumptionFemale;

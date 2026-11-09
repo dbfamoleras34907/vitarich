@@ -397,10 +397,13 @@ export default function PlacementForm() {
       setLoadingRecord(true);
       try {
         const record = await getPlacementById(id);
-        const buildingRecords = await listPlacementHistory({
-          farmId: record.farm_id,
-          buildingId: record.building_id,
-        });
+        const [buildingRecords, configuredLocations] = await Promise.all([
+          listPlacementHistory({
+            farmId: record.farm_id,
+            buildingId: record.building_id,
+          }),
+          listFarmLocationLookup(),
+        ]);
         const placementRecords = buildingRecords
           .filter(
             (candidate) => candidate.placement_date === record.placement_date,
@@ -412,6 +415,47 @@ export default function PlacementForm() {
               }) || left.id - right.id,
           );
         const records = placementRecords.length ? placementRecords : [record];
+        const recordByPenId = new Map(records.map((candidate) => [candidate.pen_id, candidate]));
+        const configuredPens = Array.from(
+          new Map(
+            configuredLocations
+              .filter(
+                (location) =>
+                  location.farm_id === record.farm_id &&
+                  location.building_id === record.building_id,
+              )
+              .map((location) => [location.pen_id, location]),
+          ).values(),
+        ).sort(
+          (left, right) =>
+            compareNaturalText(left.pen_no, right.pen_no) || left.pen_id - right.pen_id,
+        );
+        const placementRows = configuredPens.map((pen, index) => {
+          const candidate = recordByPenId.get(pen.pen_id);
+          return candidate
+            ? {
+                placement_id: candidate.id,
+                pen_id: String(candidate.pen_id),
+                pen_no: candidate.pen_no ?? "",
+                f_beg: String(candidate.f_beg ?? 0),
+                f_doa: String(candidate.f_doa ?? 0),
+                f_reject: String(candidate.f_reject ?? 0),
+                f_shortcount: String(candidate.f_shortcount ?? 0),
+                m_beg: String(candidate.m_beg ?? 0),
+                m_doa: String(candidate.m_doa ?? 0),
+                m_reject: String(candidate.m_reject ?? 0),
+                m_shortcount: String(candidate.m_shortcount ?? 0),
+                f_avg_bodyw: String(candidate.f_avg_bodyw ?? 0),
+                m_avg_bodyw: String(candidate.m_avg_bodyw ?? 0),
+                m_endingbalance: candidate.m_endingbalance ?? null,
+                f_endingbalance: candidate.f_endingbalance ?? null,
+              }
+            : {
+                ...createEmptyRow(index),
+                pen_id: String(pen.pen_id),
+                pen_no: pen.pen_no,
+              };
+        });
         const lockedIds = await listPlacementIdsWithPostedActivity(records);
         if (!mounted) return;
         if (lockedIds == null && !isView) {
@@ -428,30 +472,11 @@ export default function PlacementForm() {
           farm_name: record.farm_name ?? "",
           building_id: String(record.building_id),
           building_no: record.building_no ?? "",
-          pen_count: String(records.length),
+          pen_count: String(placementRows.length),
           source: record.f_source ?? record.m_source ?? "",
           remarks: record.remarks ?? "",
         });
-
-        setRows(
-          records.map((candidate) => ({
-            placement_id: candidate.id,
-            pen_id: String(candidate.pen_id),
-            pen_no: candidate.pen_no ?? "",
-            f_beg: String(candidate.f_beg ?? 0),
-            f_doa: String(candidate.f_doa ?? 0),
-            f_reject: String(candidate.f_reject ?? 0),
-            f_shortcount: String(candidate.f_shortcount ?? 0),
-            m_beg: String(candidate.m_beg ?? 0),
-            m_doa: String(candidate.m_doa ?? 0),
-            m_reject: String(candidate.m_reject ?? 0),
-            m_shortcount: String(candidate.m_shortcount ?? 0),
-            f_avg_bodyw: String(candidate.f_avg_bodyw ?? 0),
-            m_avg_bodyw: String(candidate.m_avg_bodyw ?? 0),
-            m_endingbalance: candidate.m_endingbalance ?? null,
-            f_endingbalance: candidate.f_endingbalance ?? null,
-          })),
-        );
+        setRows(placementRows);
       } catch (error: unknown) {
         alert(getErrorMessage(error, "Failed to load placement record."));
         router.push("/jmb/placement");
@@ -819,13 +844,21 @@ export default function PlacementForm() {
 
     setSaving(true);
     try {
+      const rowsToSave = isEdit
+        ? rows.filter(
+            (row) =>
+              row.placement_id != null ||
+              asNumber(row.f_beg) > 0 ||
+              asNumber(row.m_beg) > 0,
+          )
+        : rows;
       const cycleIdByPenId = await ensureBreederCycles({
         farmId: asNumber(form.farm_id),
         buildingId: asNumber(form.building_id),
-        penIds: rows.map((row) => asNumber(row.pen_id)),
+        penIds: rowsToSave.map((row) => asNumber(row.pen_id)),
         cycleNumber,
       });
-      const payloads: PlacementInsert[] = rows.map((row) => ({
+      const payloads: PlacementInsert[] = rowsToSave.map((row) => ({
         placement_date: form.placement_date,
         dr_no: "",
         file_attached: form.file_attached.trim() || null,
@@ -852,18 +885,21 @@ export default function PlacementForm() {
       }));
 
       if (isEdit) {
-        if (rows.some((row) => row.placement_id == null)) {
-          throw new Error(
-            "One or more placement rows are missing their record id.",
-          );
-        }
         await Promise.all(
-          rows.map((row, index) => {
+          rowsToSave
+            .map((row, index) => ({ row, payload: payloads[index] }))
+            .filter(({ row }) => row.placement_id != null)
+            .map(({ row, payload }) => {
             const placementId = row.placement_id as number;
-            const payload = payloads[index];
             return updatePlacement(placementId, payload);
-          }),
+            }),
         );
+        const newPayloads = rowsToSave
+          .map((row, index) => ({ row, payload: payloads[index] }))
+          .filter(({ row }) => row.placement_id == null)
+          .map(({ payload }) => payload);
+        if (newPayloads.length === 1) await createPlacement(newPayloads[0]);
+        else if (newPayloads.length > 1) await createPlacementBatch(newPayloads);
       } else if (payloads.length === 1) {
         await createPlacement(payloads[0]);
       } else {

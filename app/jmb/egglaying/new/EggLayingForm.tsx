@@ -16,7 +16,7 @@ import { Ban, ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, Plus, Tr
 import { toast } from "sonner";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { usePermission } from "@/hooks/usePermission";
-import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import {
   createEggLaying,
@@ -154,21 +154,6 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString("en-CA");
 }
 
-function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
-  if (!placementDate || !endDateValue) return 0;
-  const start = new Date(`${placementDate}T00:00:00`);
-  const end = new Date(`${endDateValue}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  const startUtc = Date.UTC(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate(),
-  );
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  const elapsedDays = Math.floor((endUtc - startUtc) / 86_400_000);
-  return elapsedDays >= 0 ? elapsedDays + 1 : 0;
-}
-
 function parseClipboardGrid(text: string) {
   return text
     .replace(/\r\n/g, "\n")
@@ -303,7 +288,7 @@ export default function EggLayingForm() {
     placement: LayingPlacement,
     dateLaying = form.date_laying,
   ) {
-    const ageDays = getAgeInDays(breederAgeAnchorDate(placement), dateLaying);
+    const ageDays = breederAgeDays(placement, dateLaying) ?? 0;
     setSelectedPlacement(placement);
     setForm((prev) => ({
       ...prev,
@@ -744,7 +729,7 @@ export default function EggLayingForm() {
       farm_name: form.farm_name || null,
       building: form.building || null,
       age: selectedPlacement
-        ? getAgeInDays(breederAgeAnchorDate(selectedPlacement), row.date_laying)
+        ? breederAgeDays(selectedPlacement, row.date_laying) ?? 0
         : Math.max(0, Math.floor(asNumber(form.age))),
       tep_collection: row.tep_collection
         ? asNumber(row.tep_collection)
@@ -915,7 +900,7 @@ export default function EggLayingForm() {
                       </td>
                       <td style={{ left: 140 }} className={`fc-grid-age sticky z-20 p-0 text-center text-xs font-semibold ${rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider"}`}>
                         <div className="flex h-8 items-center justify-center">
-                          {formatAge(selectedPlacement ? getAgeInDays(breederAgeAnchorDate(selectedPlacement), row.date_laying) : asNumber(form.age))}
+                          {formatAge(selectedPlacement ? breederAgeDays(selectedPlacement, row.date_laying) ?? 0 : asNumber(form.age))}
                         </div>
                       </td>
                       {productionNumberFields.map((field, fieldIndex) => (
