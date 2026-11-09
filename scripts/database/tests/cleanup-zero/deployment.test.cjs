@@ -25,6 +25,10 @@ for (const relativePath of deploymentFiles) {
 
   assert.match(sql, /v_farm_cycle_id bigint := nullif\(p_document->>'farmCycleId', ''\)::bigint;/,
     `${relativePath} must read the selected Cycle Master ID`)
+  assert.doesNotMatch(sql, /jsonb_array_length\(p_document->'cleanupTypeAllocations'\) = 0/,
+    `${relativePath} must allow an empty Cleanup Type list for a zero-quantity closeout`)
+  assert.match(sql, /abs\(line_group\.line_quantity - coalesce\(allocation_group\.allocated_quantity, 0\)\) > 0\.000001/,
+    `${relativePath} must treat a missing allocation as zero for a zero-quantity closeout`)
   assert.match(sql, /cycle\.id = v_farm_cycle_id and cycle\.farm_id = v_farm_id/,
     `${relativePath} must validate that the cycle belongs to the farm`)
   assert.match(sql, /farm_cycle_id = v_farm_cycle_id,/,

@@ -204,9 +204,8 @@ begin
     raise exception 'Clean Up requires at least one line.';
   end if;
 
-  if jsonb_typeof(p_document->'cleanupTypeAllocations') is distinct from 'array'
-     or jsonb_array_length(p_document->'cleanupTypeAllocations') = 0 then
-    raise exception 'Clean Up requires Cleanup Type allocations.';
+  if jsonb_typeof(p_document->'cleanupTypeAllocations') is distinct from 'array' then
+    raise exception 'Clean Up requires a valid Cleanup Type allocation list.';
   end if;
 
   if exists (
@@ -278,8 +277,7 @@ begin
     from line_groups line_group
     full join allocation_groups allocation_group using (warehouse_key, item_key)
     where line_group.warehouse_key is null
-       or allocation_group.warehouse_key is null
-       or abs(line_group.line_quantity - allocation_group.allocated_quantity) > 0.000001
+       or abs(line_group.line_quantity - coalesce(allocation_group.allocated_quantity, 0)) > 0.000001
   ) then
     raise exception 'Cleanup Type Quantity must equal the Clean Up line quantity for every line.';
   end if;

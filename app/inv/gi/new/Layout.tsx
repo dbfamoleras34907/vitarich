@@ -2350,6 +2350,10 @@ export default function NewGoodsIssue({
 
       const invalidAllocation = Array.from(cleanupGroups.entries())
         .map(([key, group]) => {
+          const lineQuantity = cleanupLineGroupQuantity(group)
+          // A zero-balance closeout has no cleanup quantity to classify.
+          if (Math.abs(lineQuantity) <= QUANTITY_TOLERANCE) return null
+
           const allocations = cleanupTypeAllocationsToSave.filter(allocation =>
             cleanupAllocationScopeKey(allocation) === key,
           )
@@ -2365,7 +2369,6 @@ export default function NewGoodsIssue({
             return { group, message: 'Each Cleanup Type can appear only once.' }
           }
           const allocatedTotal = allocations.reduce((total, allocation) => total + allocation.quantity, 0)
-          const lineQuantity = cleanupLineGroupQuantity(group)
           if (Math.abs(allocatedTotal - lineQuantity) > QUANTITY_TOLERANCE) {
             return {
               group,
