@@ -1,5 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
-import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
 
 const GRADING_TABLE = "tbl_grading";
@@ -190,10 +190,7 @@ export async function listGradingHistoryByFarm(params: {
     const placement = row.placement_id
       ? placementById.get(row.placement_id)
       : undefined;
-    const age = getAgeInDays(
-      breederAgeAnchorDate(placement ?? {}),
-      row.daterec ?? "",
-    );
+    const age = breederAgeDays(placement, row.daterec ?? "") ?? 0;
 
     return {
       id: row.id,
@@ -223,20 +220,6 @@ export async function getGradingPlacementById(id: number) {
 
   throwSupabaseError(error);
   return data as GradingPlacement;
-}
-
-function getAgeInDays(placementDate?: string | null, endDateValue?: string) {
-  if (!placementDate || !endDateValue) return 0;
-  const start = new Date(`${placementDate}T00:00:00`);
-  const end = new Date(`${endDateValue}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  const elapsedDays = Math.floor(
-    (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) -
-      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
-      86_400_000,
-  );
-
-  return elapsedDays < 0 ? 0 : elapsedDays + 1;
 }
 
 function formatWeeksDays(days: number) {

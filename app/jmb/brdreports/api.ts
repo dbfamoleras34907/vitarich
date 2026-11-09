@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 
 const PLACEMENT_TABLE = "tbl_placement";
 const PERFORMANCE_TABLE = "tbl_breeder_daily_performance";
@@ -8,6 +9,7 @@ type PlacementRow = {
   id: number;
   cycle_id: number | null;
   placement_date: string;
+  age_anchor_date: string | null;
   farm_id: number;
   farm_name: string;
   building_id: number;
@@ -40,6 +42,7 @@ export type MortalityReportRow = {
   id: number;
   placementId: number;
   placementDate: string;
+  ageAnchorDate: string | null;
   recordDate: string;
   farmId: number;
   farmName: string;
@@ -183,7 +186,7 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
   let placementQuery = db
     .from(PLACEMENT_TABLE)
     .select(
-      "id, cycle_id, placement_date, farm_id, farm_name, building_id, building_no, pen_id, pen_no",
+      "id, cycle_id, placement_date, age_anchor_date, farm_id, farm_name, building_id, building_no, pen_id, pen_no",
     )
     .eq("farm_id", filters.farmId);
 
@@ -227,6 +230,7 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
         id: Number(row.id),
         placementId: Number(row.placement_id),
         placementDate: placement.placement_date,
+        ageAnchorDate: placement.age_anchor_date,
         recordDate: row.daterec,
         farmId: Number(placement.farm_id),
         farmName: placement.farm_name || "Unspecified farm",
@@ -262,12 +266,9 @@ export async function listMortalityReport(filters: MortalityReportFilters) {
     );
 }
 
-function ageWeek(placementDate: string, recordDate: string) {
-  const start = new Date(`${placementDate}T00:00:00`);
-  const end = new Date(`${recordDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-  const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
-  return Math.ceil(days / 7);
+function ageWeek(placement: PlacementRow, recordDate: string) {
+  const days = breederAgeDays(placement, recordDate);
+  return days == null ? null : Math.ceil(days / 7);
 }
 
 /**
@@ -305,7 +306,7 @@ export async function listBreederPerformanceReport(filters: MortalityReportFilte
   const ensureWeek = (placementId: number, recordDate: string) => {
     const placement = placementById.get(placementId);
     if (!placement) return null;
-    const week = ageWeek(placement.placement_date, recordDate);
+    const week = ageWeek(placement, recordDate);
     if (week == null) return null;
     const key = `${placementId}:${week}`;
     const current = placementWeeks.get(key) ?? {

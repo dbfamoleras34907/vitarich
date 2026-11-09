@@ -1,6 +1,7 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { cullingAge } from "@/lib/data/queries/breederCullingAge";
 import { cullingBuildingName } from "@/lib/data/queries/cullingBuildingName";
+import { breederAgeAnchorDate } from "@/lib/utils/breederPlacement";
 import {
   listAvailableBreederFlocks,
   type AvailableBreederFlock,
@@ -70,6 +71,7 @@ export type BreederCleanupRecord = BreederCleanupRow & {
 
 export type BreederCleanupCycle = {
   placement_date: string | null;
+  age_anchor_date: string | null;
   id: number;
   cycle_no: number;
   status: string;
@@ -221,6 +223,7 @@ export async function listBreederCleanupCycles(includeCycleId?: number | number[
       return {
         id: cycle.id,
         placement_date: placements.filter(placement => placement.cycle_id === cycle.id && placement.farm_id === cycle.farm_id && placement.building_id === cycle.building_id && placement.pen_id === cycle.pen_id).map(placement => placement.placement_date.slice(0, 10)).sort()[0] ?? null,
+        age_anchor_date: placements.filter(placement => placement.cycle_id === cycle.id && placement.farm_id === cycle.farm_id && placement.building_id === cycle.building_id && placement.pen_id === cycle.pen_id).map(placement => breederAgeAnchorDate(placement)).filter(Boolean).sort()[0] ?? null,
         cycle_no: cycle.cycle_no,
         status: cycle.status,
         farm_id: cycle.farm_id,

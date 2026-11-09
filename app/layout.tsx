@@ -45,6 +45,7 @@ export default function RootLayout({
       className="h-full overflow-hidden print:h-auto print:overflow-visible"
     >
       <body
+        suppressHydrationWarning
         className="h-full overflow-hidden font-sans antialiased print:h-auto print:overflow-visible"
       >
         <NextTopLoader color="#00754A" showSpinner={false} />
