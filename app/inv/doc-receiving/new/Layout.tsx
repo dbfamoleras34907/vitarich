@@ -54,6 +54,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { Items, WarehouseData } from '@/lib/types'
 import { resolveCycleDisplayNumber } from '@/lib/broiler/cycleMask'
 import { getFirstDocPlacementDates } from '@/lib/data/queries/broilerDocPlacementDates'
+import type { CombinedTransactionFormProps } from '@/lib/types/combinedTransaction'
 import { getInventoryStatusBadgeClass } from '@/app/inv/statusStyles'
 import {
   createGoodsReceiptNumber,
@@ -564,13 +565,15 @@ const formatDateTime = (value: string) => {
 
 type GoodsReceiveFormMode = 'draft' | 'post'
 
-type NewGoodsReceiveProps = {
+type NewGoodsReceiveProps = CombinedTransactionFormProps & {
   mode?: GoodsReceiveFormMode
 }
 
-function GoodsReceiveLoadingShell() {
+function GoodsReceiveLoadingShell({ embedded = false }: { embedded?: boolean }) {
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
       <div className="flex items-center justify-between gap-3">
         <div className="h-6 w-56 rounded bg-muted" />
         <div className="h-8 w-24 rounded-md bg-muted" />
@@ -605,11 +608,16 @@ function GoodsReceiveLoadingShell() {
           </div>
         </div>
       </PageSection>
-    </PageShell>
+    </Shell>
   )
 }
 
-export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps) {
+export default function NewGoodsReceive({
+  mode = 'draft',
+  embedded = false,
+  onSaved,
+  onTransactionDateChange,
+}: NewGoodsReceiveProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { getValue } = useGlobalContext()
@@ -1447,7 +1455,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : current)
   }, [docDetailRows.length, loadingReferences, receipt?.farmId, receipt?.receiveDate, receipt?.status])
 
-  if (!receipt) return <GoodsReceiveLoadingShell />
+  if (!receipt) return <GoodsReceiveLoadingShell embedded={embedded} />
 
   const canEditDraft = receipt.status === 'Draft'
   const canPostDocument = receipt.status === 'Draft'
@@ -1522,6 +1530,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       const firstImportedDate = importedRows.find(row => row.receive_date)?.receive_date
       if (firstImportedDate && docDetailRows.length === 0) {
         setReceipt(current => current ? { ...current, receiveDate: firstImportedDate } : current)
+        onTransactionDateChange?.(firstImportedDate)
       }
       const missingCycles = importedRows.filter(row => !row.flock_card_id).length
       toast.success(
@@ -1561,6 +1570,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
 
     if (code === 'receive_date') {
       setReceipt(current => current ? { ...current, receiveDate: value } : current)
+      onTransactionDateChange?.(value)
     }
   }
 
@@ -2112,6 +2122,7 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : current.map(row => row.id === modalDocDetailEditingId ? normalizedRow : row))
     if (modalDocDetailRow.receive_date) {
       setReceipt(current => current ? { ...current, receiveDate: modalDocDetailRow.receive_date } : current)
+      onTransactionDateChange?.(modalDocDetailRow.receive_date)
     }
     setDocDetailsModalOpen(false)
     setModalDocDetailRow(null)
@@ -2260,6 +2271,15 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       })
       toast(posting ? 'Goods receipt posted successfully.' : 'Goods receipt draft saved.')
 
+      if (onSaved) {
+        onSaved({
+          id: savedReceipt?.id ?? null,
+          date: savedReceipt?.receiveDate || receipt.receiveDate,
+          status: savedReceipt?.status || targetStatus,
+        })
+        return
+      }
+
       if (posting) {
         router.push('/inv/doc-receiving')
         return
@@ -2336,9 +2356,11 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       : []
   })[0] ?? ''
 
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
-      <PageHeader>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
+      {!embedded && <PageHeader>
         <Breadcrumb
           SecondPreviewPageName="Inventory"
           SecondPreviewPageLink="/inv"
@@ -2375,9 +2397,9 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
               setDocDetailRows(rows => current ? rows.map(row => row.id === current.id ? next : row) : [...rows, next])
             }} />
         </PageHeaderActions>
-      </PageHeader>
+      </PageHeader>}
 
-      <PageSection className="flex min-h-[calc(100vh-8rem)] flex-col">
+      <PageSection className={`flex flex-col ${embedded ? '' : 'min-h-[calc(100vh-8rem)]'}`}>
         <div className="flex flex-col items-start gap-1 p-5">
           <div className="w-full max-w-md space-y-2">
             <label className="text-sm font-semibold">DOC Placement No.</label>
@@ -3589,6 +3611,6 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </Shell>
   )
 }

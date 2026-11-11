@@ -1,6 +1,7 @@
 import GoodsIssueHistory from '@/app/inv/gi/Layout'
+import type { CombinedTransactionHistoryProps } from '@/lib/types/combinedTransaction'
 
-export default function Layout() {
+export default function Layout(props: CombinedTransactionHistoryProps = {}) {
   return (
     <GoodsIssueHistory
       config={{
@@ -23,6 +24,7 @@ export default function Layout() {
         showWarehouseName: true,
         showProcessListAttribution: true,
       }}
+      {...props}
     />
   )
 }

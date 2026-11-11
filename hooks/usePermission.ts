@@ -23,7 +23,10 @@ export const usePermission = (link: string): boolean => {
             if (fmsTypes.length === 0) return false
 
             const folder = NavFolders.find(item => item.items?.some(group =>
-                group.children.some(child => link === child.url || link.startsWith(`${child.url}/`))))
+                group.children.some(child => {
+                    const permissionUrl = child.permissionUrl ?? child.url
+                    return link === permissionUrl || link.startsWith(`${permissionUrl}/`)
+                })))
             if (folder?.fmsTypes?.length && !userFmsTypesOverlap(fmsTypes, folder.fmsTypes)) return false
 
             const rawPermissions = getValue('UserPermission')

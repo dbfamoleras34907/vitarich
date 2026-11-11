@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addDays, format } from 'date-fns'
 import { Copy, Eye, MoreHorizontal, Plus, Printer, RefreshCw } from 'lucide-react'
@@ -35,6 +35,7 @@ import {
   attachProcessListAttributions,
   type ProcessListAttribution,
 } from '@/lib/data/repositories/processListAttribution'
+import type { CombinedTransactionHistoryProps } from '@/lib/types/combinedTransaction'
 
 type GoodsIssueHistoryConfig = {
   triggeredBy: string
@@ -95,7 +96,7 @@ type GoodsIssueTableRow = Record<string, unknown> & {
   issue: AttributedGoodsIssue
 }
 
-type GoodsIssueHistoryProps = {
+type GoodsIssueHistoryProps = CombinedTransactionHistoryProps & {
   config?: Partial<GoodsIssueHistoryConfig>
 }
 
@@ -136,7 +137,16 @@ function getErrorMessage(error: unknown) {
   return 'Delivery transactions could not be loaded.'
 }
 
-export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssueHistoryProps) {
+export default function GoodsIssueHistory({
+  config: configOverrides,
+  embedded = false,
+  autoLoad = true,
+  dateFrom: controlledDateFrom,
+  dateTo: controlledDateTo,
+  onDateFromChange,
+  onDateToChange,
+  refreshToken,
+}: GoodsIssueHistoryProps) {
   const config = { ...defaultConfig, ...configOverrides }
   const router = useRouter()
   const { getValue } = useGlobalContext()
@@ -151,12 +161,18 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       )
     : null
   const activeFarmId = defaultFarmId
-  const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
-  const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [internalDateFrom, setInternalDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
+  const [internalDateTo, setInternalDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const dateFrom = controlledDateFrom ?? internalDateFrom
+  const dateTo = controlledDateTo ?? internalDateTo
+  const setDateFrom = onDateFromChange ?? setInternalDateFrom
+  const setDateTo = onDateToChange ?? setInternalDateTo
   const [issues, setIssues] = useState<AttributedGoodsIssue[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(autoLoad)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
   const [reversalIssue, setReversalIssue] = useState<GoodsIssue | null>(null)
+  const handledRefreshToken = useRef(refreshToken)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -178,17 +194,25 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
       console.warn(`Goods issue history load failed: ${message}`)
       toast.error(message)
     } finally {
+      setHasLoaded(true)
       setLoading(false)
     }
   }, [activeFarmId, config.showDateFilter, config.showProcessListAttribution, config.triggeredBy, dateFrom, dateTo])
 
   useEffect(() => {
     router.prefetch(`${config.basePath}/new`)
+    if (!autoLoad) return
     const timer = window.setTimeout(() => {
       refresh()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [config.basePath, refresh, router])
+  }, [autoLoad, config.basePath, refresh, router])
+
+  useEffect(() => {
+    if (refreshToken === undefined || refreshToken === handledRefreshToken.current) return
+    handledRefreshToken.current = refreshToken
+    void refresh()
+  }, [refresh, refreshToken])
 
   const rows = useMemo<GoodsIssueTableRow[]>(
     () =>
@@ -343,9 +367,11 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
     router.push(`${config.basePath}/new`)
   }
 
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
-      <PageHeader>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
+      {!embedded && <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName={config.parentLabel}
           CurrentPageName={config.title}
@@ -361,11 +387,13 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
             {config.newActionLabel ?? `New ${config.documentPrefix}`}
           </Button>
         </PageHeaderActions>
-      </PageHeader>
+      </PageHeader>}
 
       <div className="space-y-3">
         {(config.showFarmFilter || config.showDateFilter) && (
-          <div className="grid gap-2 rounded-md border bg-muted/30 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px]">
+          <div className={`grid gap-2 rounded-md border bg-muted/30 p-3 ${embedded
+            ? 'md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_180px_auto]'
+            : 'md:grid-cols-[minmax(220px,320px)_180px_180px]'}`}>
             {config.showFarmFilter && (
               <UserFarmSearchCombobox
                 label="Farm"
@@ -399,6 +427,15 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
                 />
               </div>
             )}
+
+            {embedded && (
+              <div className="flex items-end">
+                <Button className="w-full md:w-auto" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+                  <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+                  {loading ? 'Loading...' : 'Refresh'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -412,7 +449,7 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           data={rows}
           rowKey={row => row.id ?? row.giNo}
           searchPlaceholder={config.searchPlaceholder}
-          emptyMessage={config.emptyMessage}
+          emptyMessage={embedded && !hasLoaded ? 'Click Refresh to load historical data' : config.emptyMessage}
           noResultsMessage={config.noResultsMessage}
           onRowClick={row => {
             if (row.id !== null && !cannotView) router.push(`${config.basePath}/post?id=${row.id}`)
@@ -438,6 +475,6 @@ export default function GoodsIssueHistory({ config: configOverrides }: GoodsIssu
           if (!open) setReceiptDeliveryId(null)
         }}
       />
-    </PageShell>
+    </Shell>
   )
 }

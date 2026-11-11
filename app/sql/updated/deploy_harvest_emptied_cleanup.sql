@@ -204,6 +204,31 @@ begin
     raise exception 'Clean Up requires at least one line.';
   end if;
 
+  if exists (
+    with line_groups as (
+      select
+        case when nullif(input.line->>'fromWarehouseId', '') is not null
+          then 'ID:' || (input.line->>'fromWarehouseId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'fromWarehouseCode', ''))) end as warehouse_key,
+        case when nullif(input.line->>'itemId', '') is not null
+          then 'ID:' || (input.line->>'itemId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'itemCode', ''))) end as item_key,
+        sum(coalesce((input.line->>'baseQty')::numeric, 0)) as cleaned_quantity,
+        min(coalesce((input.line->>'batchTotalQty')::numeric, 0)) as minimum_batch_total,
+        max(coalesce((input.line->>'batchTotalQty')::numeric, 0)) as maximum_batch_total,
+        max(abs(coalesce((input.line->>'varianceQty')::numeric, 0))) as maximum_variance
+      from jsonb_array_elements(p_document->'lines') input(line)
+      group by 1, 2
+    )
+    select 1
+    from line_groups line_group
+    where abs(line_group.maximum_batch_total - line_group.minimum_batch_total) > 0.000001
+       or abs(line_group.maximum_batch_total - line_group.cleaned_quantity) > 0.000001
+       or line_group.maximum_variance > 0.000001
+  ) then
+    raise exception 'Clean Up Variance is required to be Zero (0) before saving.';
+  end if;
+
   if jsonb_typeof(p_document->'cleanupTypeAllocations') is distinct from 'array' then
     raise exception 'Clean Up requires a valid Cleanup Type allocation list.';
   end if;

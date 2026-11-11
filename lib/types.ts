@@ -601,6 +601,7 @@ export interface NavChild extends NavPermission {
   type: NavItemType;
   title: string;
   url: string;
+  permissionUrl?: string;
   newDocumentUrl?: string;
   hideFromNavigation?: boolean;
 

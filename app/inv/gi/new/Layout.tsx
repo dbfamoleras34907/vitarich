@@ -72,6 +72,7 @@ import {
 import { getBrDeliverySettings } from '@/app/brd/dr/settings/api'
 import { getBrCleanupSettings } from '@/app/brd/cu/settings/api'
 import CleanupReversalButton from '@/app/brd/cu/CleanupReversalButton'
+import type { CombinedTransactionFormProps } from '@/lib/types/combinedTransaction'
 import { getCleanupCycleInventoryBatches } from '@/lib/data/repositories/brCleanup'
 import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
 import {
@@ -330,7 +331,7 @@ const normalizeLineCount = (value: string) =>
 
 type GoodsIssueFormMode = 'draft' | 'post'
 
-type NewGoodsIssueProps = {
+type NewGoodsIssueProps = CombinedTransactionFormProps & {
   mode?: GoodsIssueFormMode
   triggeredBy?: string
   documentPrefix?: string
@@ -361,9 +362,11 @@ type NewGoodsIssueProps = {
   showRemarksInActionRow?: boolean
 }
 
-function GoodsIssueLoadingShell() {
+function GoodsIssueLoadingShell({ embedded = false }: { embedded?: boolean }) {
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
       <div className="flex items-center justify-between gap-3">
         <div className="h-6 w-56 rounded bg-muted" />
         <div className="h-8 w-24 rounded-md bg-muted" />
@@ -378,7 +381,7 @@ function GoodsIssueLoadingShell() {
           ))}
         </div>
       </PageSection>
-    </PageShell>
+    </Shell>
   )
 }
 
@@ -411,6 +414,9 @@ export default function NewGoodsIssue({
   showLineVariance = false,
   lockedLineQuantityEditable = false,
   showRemarksInActionRow = false,
+  embedded = false,
+  onSaved,
+  onTransactionDateChange,
 }: NewGoodsIssueProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -2337,6 +2343,16 @@ export default function NewGoodsIssue({
     const getDocumentLineNumber = (line: GoodsIssueLine) =>
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
+    if (isCleanup) {
+      const unbalancedLine = linesToSave.find(line =>
+        Math.abs(Number(line.varianceQty ?? 0)) > QUANTITY_TOLERANCE,
+      )
+      if (unbalancedLine) {
+        toast(`Line ${getDocumentLineNumber(unbalancedLine)}: Clean Up Variance is required to be Zero (0) before saving.`)
+        return
+      }
+    }
+
     let cleanupTypeAllocationsToSave: CleanupTypeAllocation[] = issue.cleanupTypeAllocations ?? []
     if (isCleanup) {
       const cleanupGroups = new Map<string, GoodsIssueLine[]>()
@@ -2563,6 +2579,15 @@ export default function NewGoodsIssue({
 
       toast(posting ? `${listLabel} posted successfully.` : `${listLabel} draft saved.`)
 
+      if (onSaved) {
+        onSaved({
+          id: savedIssue?.id ?? null,
+          date: savedIssue?.issueDate || issueToSave.issueDate,
+          status: savedIssue?.status || targetStatus,
+        })
+        return
+      }
+
       if (posting) {
         router.push(basePath)
         return
@@ -2580,7 +2605,7 @@ export default function NewGoodsIssue({
     }
   }
 
-  if (!issue) return <GoodsIssueLoadingShell />
+  if (!issue) return <GoodsIssueLoadingShell embedded={embedded} />
 
   const activeBatchLine = issue.lines.find(line => line.id === activeBatchLineId) ?? null
   const activeBatchAllocationLines = activeBatchLine
@@ -2718,7 +2743,11 @@ export default function NewGoodsIssue({
             type="date"
             value={triggeredBy === 'BR-DR' && issue.status === 'Draft' ? today() : issue.issueDate}
             disabled={triggeredBy === 'BR-DR'}
-            onChange={event => setIssue(current => current ? { ...current, issueDate: event.target.value } : current)}
+            onChange={event => {
+              const date = event.target.value
+              setIssue(current => current ? { ...current, issueDate: date } : current)
+              onTransactionDateChange?.(date)
+            }}
             className="pl-9"
           />
         </label>
@@ -2814,9 +2843,11 @@ export default function NewGoodsIssue({
       : []),
   ]
 
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
-      <PageHeader>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
+      {!embedded && <PageHeader>
         <Breadcrumb
           SecondPreviewPageName={parentLabel}
           SecondPreviewPageLink={parentLink}
@@ -2830,7 +2861,7 @@ export default function NewGoodsIssue({
             {listLabel} List
           </Button>
         </PageHeaderActions>
-      </PageHeader>
+      </PageHeader>}
 
       <PageSection>
         <GoodsIssueHeaderSection fields={headerComponentList} />
@@ -3686,7 +3717,7 @@ export default function NewGoodsIssue({
                   </div>
                   {isCleanup && (
                     <div className="rounded-md border px-3 py-2">
-                      <div className="text-muted-foreground">Total Variance</div>
+                      <div className="text-muted-foreground">Total Variance (Required: 0)</div>
                       <div className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</div>
                     </div>
                   )}
@@ -3750,7 +3781,7 @@ export default function NewGoodsIssue({
                   <span className="font-semibold tabular-nums">{formatQuantity(totalQuantity)}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Total Variance</span>
+                  <span className="text-muted-foreground">Total Variance (Required: 0)</span>
                   <span className="font-semibold tabular-nums">{formatQuantity(cleanupVarianceTotal)}</span>
                 </div>
               </div>
@@ -3866,6 +3897,6 @@ export default function NewGoodsIssue({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </Shell>
   )
 }

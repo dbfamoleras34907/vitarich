@@ -10,7 +10,6 @@ import {
   Maximize2,
   Minimize2,
   Printer,
-  ShieldAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -271,8 +270,8 @@ export default function CycleReportLayout({ requestedCycleId, requestedFarmId, c
     }
   }
 
-  if (viewBlocked) return <main className="p-4"><div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-    <div className="flex items-center gap-2 font-semibold"><ShieldAlert className="size-4" />You do not have permission to view the Cycle Report.</div>
+  if (viewBlocked) return <main className="p-4"><div className="rounded-md border bg-card p-4 text-sm text-muted-foreground">
+    Cycle Report is unavailable for this account.
   </div></main>
 
   if (!cycleId) return <main className="p-4"><div className="rounded-md border p-6 text-center text-sm text-muted-foreground">The encrypted Cycle reference is invalid.</div></main>
