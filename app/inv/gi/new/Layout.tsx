@@ -44,6 +44,7 @@ import {
   getItemWarehouseOnHand,
   getOnHandBatches,
   GoodsIssue,
+  CleanupTypeAllocation,
   GoodsIssueLine,
   GoodsIssueOnHandBatch,
   GoodsIssueStatus,
@@ -84,6 +85,7 @@ import {
   planBatchQuantityReallocation,
   type BatchReallocationAllocation,
 } from '@/lib/functions/reallocateBatchQuantities'
+import { cleanupAllocationScopeKey, cleanupLineGroupQuantity } from '@/lib/functions/cleanupTypeAllocations'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -192,6 +194,7 @@ const emptyIssue = (giNo: string): GoodsIssue => ({
   liveSalesCustomerName: '',
   status: 'Draft',
   lines: Array.from({ length: INITIAL_LINE_COUNT }, newLine),
+  cleanupTypeAllocations: [],
   createdAt: new Date().toISOString(),
   createdBy: null,
 })
@@ -462,6 +465,7 @@ export default function NewGoodsIssue({
   const [batchTrailErrors, setBatchTrailErrors] = useState<Record<string, string>>({})
   const [deliveryBatchAutoSelection, setDeliveryBatchAutoSelection] = useState(false)
   const [eligibleDeliveryBuildingCodes, setEligibleDeliveryBuildingCodes] = useState<Set<string> | null>(null)
+  const [loadingEligibleBuildings, setLoadingEligibleBuildings] = useState(false)
   const [noAvailableDeliveryBuildings, setNoAvailableDeliveryBuildings] = useState(false)
   const [deliverySettingsError, setDeliverySettingsError] = useState('')
   const [deliverySettingsRetry, setDeliverySettingsRetry] = useState(0)
@@ -641,6 +645,7 @@ export default function NewGoodsIssue({
     async function loadDeliverySettings() {
       setDeliverySettingsError('')
       if (!isBroilerCycleIssue || !issue?.farmId) {
+        setLoadingEligibleBuildings(false)
         setDeliveryBatchAutoSelection(false)
         setEligibleDeliveryBuildingCodes(null)
         setNoAvailableDeliveryBuildings(false)
@@ -648,6 +653,7 @@ export default function NewGoodsIssue({
         return
       }
 
+      setLoadingEligibleBuildings(true)
       setEligibleDeliveryBuildingCodes(new Set())
       try {
         const cleanupSettings = triggeredBy === 'BR-CU'
@@ -723,6 +729,8 @@ export default function NewGoodsIssue({
           setEligibleDeliveryBuildingCodes(new Set())
           initializedDeliveryFarmRef.current = ''
         }
+      } finally {
+        if (!cancelled) setLoadingEligibleBuildings(false)
       }
     }
 
@@ -1567,10 +1575,7 @@ export default function NewGoodsIssue({
       (total, candidate) => total + Number(candidate.altQty || 0),
       0,
     )
-    if (requestedAltQty <= 0) {
-      toast(`Enter ${lineQuantityLabel} before using Auto Select.`)
-      return
-    }
+    if (requestedAltQty <= 0) return
 
     const rawOptions = [...getRawBatchOptionsForLine(line)].sort((left, right) => {
       const leftDate = left.manufacturingDate || left.expiryDate || '9999-12-31'
@@ -2332,6 +2337,54 @@ export default function NewGoodsIssue({
     const getDocumentLineNumber = (line: GoodsIssueLine) =>
       lineNumberByAllocationGroup.get(getAllocationGroupKey(line)) ?? 1
 
+    let cleanupTypeAllocationsToSave: CleanupTypeAllocation[] = issue.cleanupTypeAllocations ?? []
+    if (isCleanup) {
+      const cleanupGroups = new Map<string, GoodsIssueLine[]>()
+      linesToSave.forEach(line => {
+        const key = cleanupAllocationScopeKey(line)
+        cleanupGroups.set(key, [...(cleanupGroups.get(key) ?? []), line])
+      })
+      cleanupTypeAllocationsToSave = cleanupTypeAllocationsToSave.filter(allocation =>
+        cleanupGroups.has(cleanupAllocationScopeKey(allocation)),
+      )
+
+      const invalidAllocation = Array.from(cleanupGroups.entries())
+        .map(([key, group]) => {
+          const lineQuantity = cleanupLineGroupQuantity(group)
+          // A zero-balance closeout has no cleanup quantity to classify.
+          if (Math.abs(lineQuantity) <= QUANTITY_TOLERANCE) return null
+
+          const allocations = cleanupTypeAllocationsToSave.filter(allocation =>
+            cleanupAllocationScopeKey(allocation) === key,
+          )
+          if (allocations.length === 0) return { group, message: 'Cleanup Type allocation is required.' }
+          if (allocations.some(allocation => !allocation.remarks.trim())) {
+            return { group, message: 'Remarks are required for every Cleanup Type.' }
+          }
+          if (allocations.some(allocation => !Number.isFinite(allocation.quantity) || allocation.quantity < 0)) {
+            return { group, message: 'Cleanup Type Quantity must be zero or greater.' }
+          }
+          const typeIds = allocations.map(allocation => allocation.cleanupTypeId)
+          if (new Set(typeIds).size !== typeIds.length) {
+            return { group, message: 'Each Cleanup Type can appear only once.' }
+          }
+          const allocatedTotal = allocations.reduce((total, allocation) => total + allocation.quantity, 0)
+          if (Math.abs(allocatedTotal - lineQuantity) > QUANTITY_TOLERANCE) {
+            return {
+              group,
+              message: `Cleanup Type Quantity must total ${formatQuantity(lineQuantity)} ${group[0]?.altUom ?? ''}.`.trim(),
+            }
+          }
+          return null
+        })
+        .find((result): result is { group: GoodsIssueLine[]; message: string } => result !== null)
+
+      if (invalidAllocation) {
+        toast(`Line ${getDocumentLineNumber(invalidAllocation.group[0])}: ${invalidAllocation.message}`)
+        return
+      }
+    }
+
     if (triggeredBy === 'BR-DR') {
       const invalidAgeLine = linesToSave.find(line =>
         line.harvestAge == null || !Number.isInteger(Number(line.harvestAge)) || Number(line.harvestAge) < 1,
@@ -2505,6 +2558,7 @@ export default function NewGoodsIssue({
         triggeredBy,
         status: targetStatus,
         lines: linesToSave,
+        cleanupTypeAllocations: cleanupTypeAllocationsToSave,
       })
 
       toast(posting ? `${listLabel} posted successfully.` : `${listLabel} draft saved.`)
@@ -2819,6 +2873,7 @@ export default function NewGoodsIssue({
                 issue={issue}
                 warehouseLabel={warehouseLabel}
                 farmWarehouses={deliveryFarmWarehouses}
+                loadingBuildings={loadingEligibleBuildings}
                 loadingBatchOptions={loadingBatchOptions}
                 batchOptions={batchOptions}
                 lineFlockCardInfo={lineFlockCardInfo}
@@ -2826,7 +2881,6 @@ export default function NewGoodsIssue({
                 activeDocumentIsPosted={activeDocumentIsPosted}
                 lockCycleCloseout={isCleanup}
                 allowBuildingSelection={isCleanup && canSave}
-                canCleanupAtZero={canCleanupAtZero}
                 allowLockedRowDelete={allowLockedRowDelete}
                 showLineRemarks={showLineRemarks}
                 quantityLabel={lineQuantityLabel}
@@ -2840,6 +2894,7 @@ export default function NewGoodsIssue({
                 lockedQuantityEditable={lockedLineQuantityEditable}
                  allowDuplicateBuildings={triggeredBy === 'BR-DR'}
                  enableMobileLineModal={triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'}
+                 enableCleanupTypeAllocations={isCleanup}
                  canEdit={canSave}
                 showTransportFields={triggeredBy === 'BR-DR'}
                 reallocatingQuantities={reallocatingQuantities}

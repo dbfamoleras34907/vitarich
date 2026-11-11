@@ -206,7 +206,7 @@ export default function BreederDashboard() {
   const agePlacement = activePlacements[0];
   const ageOnCalendarDate = (date: Date) => {
     if (!agePlacement) return undefined;
-    const days = breederAgeDays(agePlacement.placementDate, format(date, "yyyy-MM-dd"));
+    const days = breederAgeDays({ placement_date: agePlacement.placementDate, age_anchor_date: agePlacement.ageAnchorDate }, format(date, "yyyy-MM-dd"));
     return days == null ? undefined : `${Math.floor(days / 7)}.${days % 7}`;
   };
   const latestFlockAge = summary?.latestFlockAge;

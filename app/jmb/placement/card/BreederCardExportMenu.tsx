@@ -47,6 +47,10 @@ export type BreederImportRow = {
   f_body_weight: number | null;
   m_uniformity: number | null;
   f_uniformity: number | null;
+  water_am: number | null;
+  water_pm: number | null;
+  temp_am: number | null;
+  temp_pm: number | null;
   remarks: string | null;
   daterec: string;
   inv_male: number;
@@ -98,6 +102,10 @@ export const BREEDER_IMPORT_HEADERS = [
   "m_uniformity",
   "f_uniformity",
   "remarks",
+  "water_am",
+  "water_pm",
+  "temp_am",
+  "temp_pm",
 ] as const;
 
 const headers = [
@@ -130,6 +138,10 @@ const headers = [
   "Body Weight Female",
   "Uniformity Male",
   "Uniformity Female",
+  "Water Intake AM",
+  "Water Intake PM",
+  "Temperature AM",
+  "Temperature PM",
 ];
 
 function clean(value: unknown) {

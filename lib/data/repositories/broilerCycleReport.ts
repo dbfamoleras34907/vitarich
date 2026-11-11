@@ -95,6 +95,7 @@ export type BroilerCycleBuilding = {
   remarks: string
   isVoided: boolean
   placements: CyclePlacementRecord[]
+  growingId: number | null
   growingNumber: string
   growingStatus: string
   growingLines: CycleGrowingLine[]
@@ -455,6 +456,7 @@ async function loadBroilerCycleReport(
       remarks: textValue(card.remarks),
       isVoided: textValue(card.void) !== '1' || textValue(card.status) === 'Cancelled',
       placements: placementRecords,
+      growingId: growingId || null,
       growingNumber: textValue(activeGrowingHeader?.fc_no),
       growingStatus: textValue(activeGrowingHeader?.status),
       growingLines: growingLines

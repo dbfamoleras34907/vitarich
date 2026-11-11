@@ -9,6 +9,19 @@ import { db } from '@/lib/Supabase/supabaseClient'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
 
+export type CleanupTypeAllocation = {
+  id: number | string
+  cleanupTypeId: number
+  cleanupTypeCode: string
+  cleanupTypeName: string
+  quantity: number
+  remarks: string
+  fromWarehouseId: number | null
+  fromWarehouseCode: string
+  itemId: number | null
+  itemCode: string
+}
+
 export type GoodsIssueLine = {
   flockCardId?: number | null
   flockCardNo?: string | null
@@ -68,6 +81,7 @@ export type GoodsIssue = {
   liveSalesCustomerName: string
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
+  cleanupTypeAllocations?: CleanupTypeAllocation[]
   createdAt: string
   createdBy: string | null
 }
@@ -129,6 +143,20 @@ type GoodsIssueItemRow = {
   destination?: string | null
   live_sales_customer_name?: string | null
   truck_seal?: number | null
+}
+
+type CleanupTypeAllocationRow = {
+  id: number
+  br_cleanup_id: number
+  cleanup_type_id: number
+  cleanup_type_code: string
+  cleanup_type_name: string
+  quantity: number
+  remarks: string
+  from_warehouse_id: number | null
+  from_warehouse_code: string | null
+  item_id: number | null
+  item_code: string
 }
 
 type GoodsIssueListItemRow = {
@@ -241,7 +269,24 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
   varianceQty: Number(row.variance_qty ?? 0),
 })
 
-const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
+const toCleanupTypeAllocation = (row: CleanupTypeAllocationRow): CleanupTypeAllocation => ({
+  id: row.id,
+  cleanupTypeId: Number(row.cleanup_type_id),
+  cleanupTypeCode: row.cleanup_type_code,
+  cleanupTypeName: row.cleanup_type_name,
+  quantity: Number(row.quantity),
+  remarks: row.remarks,
+  fromWarehouseId: row.from_warehouse_id,
+  fromWarehouseCode: row.from_warehouse_code ?? '',
+  itemId: row.item_id,
+  itemCode: row.item_code,
+})
+
+const toIssue = (
+  row: GoodsIssueRow,
+  lines: GoodsIssueItemRow[],
+  cleanupTypeAllocations: CleanupTypeAllocationRow[] = [],
+): GoodsIssue => ({
   id: row.id,
   giNo: row.gi_no,
   triggeredBy: row.triggered_by ?? 'GI',
@@ -262,6 +307,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   liveSalesCustomerName: row.live_sales_customer_name ?? '',
   status: row.status,
   lines: lines.map(line => toIssueLine(line, row)),
+  cleanupTypeAllocations: cleanupTypeAllocations.map(toCleanupTypeAllocation),
   createdAt: row.created_at,
   createdBy: row.created_by,
 })
@@ -548,7 +594,22 @@ export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise
 
   if (itemError) throw itemError
 
-  const issue = toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  const allocationResult = triggeredBy.trim().toUpperCase() === 'BR-CU'
+    ? await db
+      .from('br_cleanup_type_allocations')
+      .select('id, br_cleanup_id, cleanup_type_id, cleanup_type_code, cleanup_type_name, quantity, remarks, from_warehouse_id, from_warehouse_code, item_id, item_code')
+      .eq('br_cleanup_id', id)
+      .eq('void', '1')
+      .order('allocation_no', { ascending: true })
+    : { data: [], error: null }
+
+  if (allocationResult.error) throw allocationResult.error
+
+  const issue = toIssue(
+    issueRow as GoodsIssueRow,
+    (itemRows ?? []) as GoodsIssueItemRow[],
+    (allocationResult.data ?? []) as CleanupTypeAllocationRow[],
+  )
   return usesDedicatedIssueTables(triggeredBy) ? (await loadBroilerIssueCycles([issue]))[0] : issue
 }
 
@@ -565,6 +626,7 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
 type GoodsIssueTransactionResult = {
   header: GoodsIssueRow
   lines: GoodsIssueItemRow[]
+  allocations?: CleanupTypeAllocationRow[]
 }
 
 async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
@@ -614,7 +676,11 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   if (issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
     const result = await saveBroilerCleanup(issue)
     if (!result?.header || !Array.isArray(result.lines)) throw new Error('Clean Up transaction did not return the saved document.')
-    return toIssue(result.header as GoodsIssueRow, result.lines as GoodsIssueItemRow[])
+    return toIssue(
+      result.header as GoodsIssueRow,
+      result.lines as GoodsIssueItemRow[],
+      (result.allocations ?? []) as CleanupTypeAllocationRow[],
+    )
   }
   if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
     return saveBrDeliveryTransaction(issue)

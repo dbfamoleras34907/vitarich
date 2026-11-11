@@ -1,4 +1,4 @@
-import { breederAgeDays } from "../../breederAge";
+import { breederAgeDays, type BreederAgePlacement } from "../../breederAge";
 import { calculateEggRangeProduction, emptyEggRangeProduction, type EggRangeProduction } from "../../breederWeeklyEggProduction";
 import { calculateEggCollectionForecast, type EggCollectionForecast } from "../../eggCollectionForecast";
 import { listBreederEggLayings } from "./breederEggLaying";
@@ -17,6 +17,7 @@ type PlacementRow = {
   id: number;
   cycle_id: number | null;
   placement_date: string;
+  age_anchor_date: string | null;
   farm_id: number;
   farm_name: string | null;
   building_id: number;
@@ -123,7 +124,7 @@ export type BreederDashboardSummary = {
     growing: { openingPopulation: number | null; ratePercent: number | null };
     laying: { openingPopulation: number | null; ratePercent: number | null };
   };
-  activePlacements: { id: number; placementDate: string; farmName: string; buildingName: string; penName: string }[];
+  activePlacements: { id: number; placementDate: string; ageAnchorDate: string | null; farmName: string; buildingName: string; penName: string }[];
   latestUniformity: { male: BreederUniformityReading | null; female: BreederUniformityReading | null };
   latestFeed: { date: string; ageDays: number | null; gramsPerBird: number | null } | null;
   latestFlockAge: {
@@ -158,8 +159,8 @@ export type BreederTrendRow = {
 
 export { breederAgeDays } from "../../breederAge";
 
-export function mortalityAgeBucket(placementDate: string | undefined, recordDate: string) {
-  const days = breederAgeDays(placementDate, recordDate);
+export function mortalityAgeBucket(placement: BreederAgePlacement | null | undefined, recordDate: string) {
+  const days = breederAgeDays(placement, recordDate);
   if (days == null) return "otherAgeMortality";
   if (days >= 1 && days <= 175) return "growingMortality";
   if (days >= 176 && days <= 455) return "layingMortality";
@@ -231,7 +232,7 @@ export async function getBreederTrend(
 ): Promise<BreederTrendRow[]> {
   let placementQuery = db
     .from(PLACEMENT_TABLE)
-    .select("id, placement_date")
+    .select("id, placement_date, age_anchor_date")
     .lte("placement_date", filter.to);
 
   if (filter.farmId) placementQuery = placementQuery.eq("farm_id", filter.farmId);
@@ -239,7 +240,10 @@ export async function getBreederTrend(
   const { data: placementData, error: placementError } = await placementQuery;
 
   if (placementError) throw new Error(errorMessage(placementError));
-  const placementDates = new Map((placementData ?? []).map(row => [numeric(row.id), String(row.placement_date ?? "")]));
+  const placementsById = new Map((placementData ?? []).map(row => [numeric(row.id), {
+    placement_date: String(row.placement_date ?? ""),
+    age_anchor_date: row.age_anchor_date == null ? null : String(row.age_anchor_date),
+  }]));
   const placementIds = (placementData ?? []).map((row) => numeric(row.id));
   if (!placementIds.length) return [];
 
@@ -274,7 +278,7 @@ export async function getBreederTrend(
     };
     current.mortalityMale += numeric(record.mc_male);
     current.mortalityFemale += numeric(record.mc_female);
-    current[mortalityAgeBucket(placementDates.get(numeric(record.placement_id)), record.daterec)] += numeric(record.mc_male) + numeric(record.mc_female);
+    current[mortalityAgeBucket(placementsById.get(numeric(record.placement_id)), record.daterec)] += numeric(record.mc_male) + numeric(record.mc_female);
     current.feedMaleKg += numeric(record.feed_consumption_male);
     current.feedFemaleKg += numeric(record.feed_consumption_female);
     current.birdDays += numeric(record.inv_male) + numeric(record.inv_female);
@@ -324,7 +328,7 @@ export async function getBreederDashboard(
   const placements: PlacementRow[] = [];
   for (let page = 0; ; page += 1) {
     let query = db.from(PLACEMENT_TABLE)
-      .select("id, cycle_id, placement_date, farm_id, farm_name, building_id, building_no, pen_no, f_endingbalance, m_endingbalance")
+      .select("id, cycle_id, placement_date, age_anchor_date, farm_id, farm_name, building_id, building_no, pen_no, f_endingbalance, m_endingbalance")
       .lte("placement_date", filter.to)
       .order("id", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -456,7 +460,7 @@ export async function getBreederDashboard(
     row.condemn += numeric(record.condem_male) + numeric(record.condem_female);
     row.mortalityMale += numeric(record.mc_male);
     row.mortalityFemale += numeric(record.mc_female);
-    const agePeriod = mortalityAgeBucket(placement.placement_date, record.daterec);
+    const agePeriod = mortalityAgeBucket(placement, record.daterec);
     row[agePeriod] += numeric(record.mc_male) + numeric(record.mc_female);
     if (agePeriod !== "otherAgeMortality") {
       const openings = openingByAgePeriod[agePeriod];
@@ -571,7 +575,7 @@ export async function getBreederDashboard(
     const row = weightsByPlacement.get(numeric(record.placement_id));
     const placement = placementById.get(numeric(record.placement_id));
     if (!row || !placement) continue;
-    const ageDays = breederAgeDays(placement.placement_date, record.daterec);
+    const ageDays = breederAgeDays(placement, record.daterec);
     for (const [sex, value] of [["male", record.m_body_weight], ["female", record.f_body_weight]] as const) {
       if (value == null || !Number.isFinite(Number(value)) || Number(value) <= 0) continue;
       row[sex] = { date: record.daterec.slice(0, 10), ageDays, value: Number(value) };
@@ -585,7 +589,7 @@ export async function getBreederDashboard(
     if (!row || !placement || Number(sample.farm_id) !== Number(placement.farm_id)) continue;
     for (const sex of ["male", "female"] as const) {
       if (!row[sex] || sample.sample_date >= row[sex].date) {
-        row[sex] = { date: sample.sample_date, ageDays: breederAgeDays(placement.placement_date, sample.sample_date), value: Number(sample[`${sex}_mean`]) };
+        row[sex] = { date: sample.sample_date, ageDays: breederAgeDays(placement, sample.sample_date), value: Number(sample[`${sex}_mean`]) };
       }
     }
   }
@@ -593,7 +597,7 @@ export async function getBreederDashboard(
     || a.buildingName.localeCompare(b.buildingName, undefined, { numeric: true })
     || a.penName.localeCompare(b.penName, undefined, { numeric: true })
     || a.placementId - b.placementId);
-  const latestPlacement = placements.filter(row => breederAgeDays(row.placement_date, filter.to) != null)
+  const latestPlacement = placements.filter(row => breederAgeDays(row, filter.to) != null)
     .sort((a, b) => b.placement_date.localeCompare(a.placement_date) || b.id - a.id)[0];
   const latestFlockAge = latestPlacement ? {
     placementId: latestPlacement.id,
@@ -601,14 +605,14 @@ export async function getBreederDashboard(
     farmName: latestPlacement.farm_name || "Unspecified farm",
     buildingName: latestPlacement.building_no || "Unspecified building",
     penName: latestPlacement.pen_no || "Unspecified pen",
-    ageDays: breederAgeDays(latestPlacement.placement_date, filter.to)!,
+    ageDays: breederAgeDays(latestPlacement, filter.to)!,
   } : null;
   const latestFeedRecord = latestPlacement ? latestByPlacement.get(Number(latestPlacement.id)) : undefined;
   const latestFeedPopulation = latestFeedRecord
     ? numeric(latestFeedRecord.inv_male) + numeric(latestFeedRecord.inv_female) : 0;
   const latestFeed = latestFeedRecord && latestPlacement ? {
     date: latestFeedRecord.daterec.slice(0, 10),
-    ageDays: breederAgeDays(latestPlacement.placement_date, latestFeedRecord.daterec),
+    ageDays: breederAgeDays(latestPlacement, latestFeedRecord.daterec),
     gramsPerBird: latestFeedPopulation > 0
       ? (numeric(latestFeedRecord.feed_consumption_male) + numeric(latestFeedRecord.feed_consumption_female)) * 1000 / latestFeedPopulation
       : null,
@@ -620,7 +624,7 @@ export async function getBreederDashboard(
       latestUniformity[sex] = {
         value: Number(sample[`${sex}_uniformity`]),
         date: sample.sample_date,
-        ageDays: breederAgeDays(latestPlacement.placement_date, sample.sample_date),
+        ageDays: breederAgeDays(latestPlacement, sample.sample_date),
         sampleCount: sample[`${sex}_weights`].length,
         meanGrams: Number(sample[`${sex}_mean`]),
       };
@@ -630,7 +634,7 @@ export async function getBreederDashboard(
     .filter(cycle => cycle.status.toLowerCase() === "active").map(cycle => Number(cycle.id)));
   const activePlacements = placements.filter(row => row.cycle_id != null && activeCycleIds.has(Number(row.cycle_id)))
     .sort((a, b) => b.placement_date.localeCompare(a.placement_date) || b.id - a.id)
-    .map(row => ({ id: row.id, placementDate: row.placement_date,
+    .map(row => ({ id: row.id, placementDate: row.placement_date, ageAnchorDate: row.age_anchor_date,
       farmName: row.farm_name || "Unspecified farm", buildingName: row.building_no || "Unspecified building",
       penName: row.pen_no || "Unspecified pen" }));
   const activePlacementIds = new Set(activePlacements.map(placement => Number(placement.id)));

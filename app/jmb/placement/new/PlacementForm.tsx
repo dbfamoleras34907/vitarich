@@ -16,8 +16,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ChevronDown,
   ChevronUp,
+  CircleMinus,
   Loader2,
   Paperclip,
   Save,
@@ -28,6 +37,7 @@ import RequiredLabel from "@/components/RequiredLabel";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
+import { db } from "@/lib/Supabase/supabaseClient";
 import {
   createPlacement,
   createPlacementBatch,
@@ -58,11 +68,13 @@ type PlacementRow = {
   m_shortcount: string;
   f_avg_bodyw: string;
   m_avg_bodyw: string;
+  m_endingbalance: number | null;
+  f_endingbalance: number | null;
 };
 
 type PlacementNumericField = Exclude<
   keyof PlacementRow,
-  "placement_id" | "pen_id" | "pen_no"
+  "placement_id" | "pen_id" | "pen_no" | "m_endingbalance" | "f_endingbalance"
 >;
 type PlacementPasteColumn =
   | { kind: "numeric"; field: PlacementNumericField }
@@ -97,6 +109,19 @@ type FormState = {
   remarks: string;
 };
 
+type InventoryCorrectionHistory = {
+  id: number;
+  correction_no: string;
+  created_at: string;
+  male_previous_qty: number | null;
+  male_corrected_qty: number | null;
+  female_previous_qty: number;
+  female_corrected_qty: number;
+  reason: string;
+  remarks: string | null;
+  status: string;
+};
+
 function getToday() {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -118,6 +143,8 @@ function createEmptyRow(index: number): PlacementRow {
     m_shortcount: "0",
     f_avg_bodyw: "0",
     m_avg_bodyw: "0",
+    m_endingbalance: null,
+    f_endingbalance: null,
   };
 }
 
@@ -149,7 +176,9 @@ function getEndingBalance(
   doa: string,
   reject: string,
   shortCount: string,
+  savedEndingBalance?: number | null,
 ) {
+  if (savedEndingBalance != null) return Number(savedEndingBalance);
   return (
     asNumber(beg) - (asNumber(doa) + asNumber(reject) + asNumber(shortCount))
   );
@@ -179,12 +208,13 @@ function parseClipboardGrid(text: string) {
 }
 
 const TableWidths = {
-  tableMin: "min-w-[1320px]",
+  tableMin: "min-w-[1490px]",
   pen: "w-[72px] min-w-[72px]",
   count: "w-[112px] min-w-[112px]",
   shortCount: "w-[128px] min-w-[128px]",
   ending: "w-[104px] min-w-[104px]",
   bodyWeight: "w-[120px] min-w-[120px]",
+  action: "w-[170px] min-w-[170px]",
 } as const;
 
 const SheetClasses = {
@@ -232,6 +262,20 @@ export default function PlacementForm() {
   const [rows, setRows] = useState<PlacementRow[]>([]);
   const [history, setHistory] = useState<Placement[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [placementLocked, setPlacementLocked] = useState(false);
+  const [inventoryCorrection, setInventoryCorrection] = useState<{
+    placementId: number;
+    penNo: string;
+    currentMaleQty: number;
+    currentFemaleQty: number;
+  } | null>(null);
+  const [correctedMaleQty, setCorrectedMaleQty] = useState("");
+  const [correctedFemaleQty, setCorrectedFemaleQty] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionRemarks, setCorrectionRemarks] = useState("");
+  const [postingCorrection, setPostingCorrection] = useState(false);
+  const [correctionHistory, setCorrectionHistory] = useState<InventoryCorrectionHistory[]>([]);
+  const [loadingCorrectionHistory, setLoadingCorrectionHistory] = useState(false);
 
   useEffect(() => {
     refreshSessionx(router);
@@ -353,10 +397,13 @@ export default function PlacementForm() {
       setLoadingRecord(true);
       try {
         const record = await getPlacementById(id);
-        const buildingRecords = await listPlacementHistory({
-          farmId: record.farm_id,
-          buildingId: record.building_id,
-        });
+        const [buildingRecords, configuredLocations] = await Promise.all([
+          listPlacementHistory({
+            farmId: record.farm_id,
+            buildingId: record.building_id,
+          }),
+          listFarmLocationLookup(),
+        ]);
         const placementRecords = buildingRecords
           .filter(
             (candidate) => candidate.placement_date === record.placement_date,
@@ -368,6 +415,47 @@ export default function PlacementForm() {
               }) || left.id - right.id,
           );
         const records = placementRecords.length ? placementRecords : [record];
+        const recordByPenId = new Map(records.map((candidate) => [candidate.pen_id, candidate]));
+        const configuredPens = Array.from(
+          new Map(
+            configuredLocations
+              .filter(
+                (location) =>
+                  location.farm_id === record.farm_id &&
+                  location.building_id === record.building_id,
+              )
+              .map((location) => [location.pen_id, location]),
+          ).values(),
+        ).sort(
+          (left, right) =>
+            compareNaturalText(left.pen_no, right.pen_no) || left.pen_id - right.pen_id,
+        );
+        const placementRows = configuredPens.map((pen, index) => {
+          const candidate = recordByPenId.get(pen.pen_id);
+          return candidate
+            ? {
+                placement_id: candidate.id,
+                pen_id: String(candidate.pen_id),
+                pen_no: candidate.pen_no ?? "",
+                f_beg: String(candidate.f_beg ?? 0),
+                f_doa: String(candidate.f_doa ?? 0),
+                f_reject: String(candidate.f_reject ?? 0),
+                f_shortcount: String(candidate.f_shortcount ?? 0),
+                m_beg: String(candidate.m_beg ?? 0),
+                m_doa: String(candidate.m_doa ?? 0),
+                m_reject: String(candidate.m_reject ?? 0),
+                m_shortcount: String(candidate.m_shortcount ?? 0),
+                f_avg_bodyw: String(candidate.f_avg_bodyw ?? 0),
+                m_avg_bodyw: String(candidate.m_avg_bodyw ?? 0),
+                m_endingbalance: candidate.m_endingbalance ?? null,
+                f_endingbalance: candidate.f_endingbalance ?? null,
+              }
+            : {
+                ...createEmptyRow(index),
+                pen_id: String(pen.pen_id),
+                pen_no: pen.pen_no,
+              };
+        });
         const lockedIds = await listPlacementIdsWithPostedActivity(records);
         if (!mounted) return;
         if (lockedIds == null && !isView) {
@@ -375,13 +463,7 @@ export default function PlacementForm() {
             "Unable to verify whether this placement has posted downstream transactions.",
           );
         }
-        if (!isView && (lockedIds?.size ?? 0) > 0) {
-          alert(
-            "This placement is locked because it has posted downstream transactions. Open Population Records or Transfer History to review it.",
-          );
-          router.push("/jmb/placement");
-          return;
-        }
+        setPlacementLocked(!isView && (lockedIds?.size ?? 0) > 0);
         setForm({
           placement_date: record.placement_date ?? getToday(),
           cycle_no: record.cycle_no == null ? "1" : String(record.cycle_no),
@@ -390,28 +472,11 @@ export default function PlacementForm() {
           farm_name: record.farm_name ?? "",
           building_id: String(record.building_id),
           building_no: record.building_no ?? "",
-          pen_count: String(records.length),
+          pen_count: String(placementRows.length),
           source: record.f_source ?? record.m_source ?? "",
           remarks: record.remarks ?? "",
         });
-
-        setRows(
-          records.map((candidate) => ({
-            placement_id: candidate.id,
-            pen_id: String(candidate.pen_id),
-            pen_no: candidate.pen_no ?? "",
-            f_beg: String(candidate.f_beg ?? 0),
-            f_doa: String(candidate.f_doa ?? 0),
-            f_reject: String(candidate.f_reject ?? 0),
-            f_shortcount: String(candidate.f_shortcount ?? 0),
-            m_beg: String(candidate.m_beg ?? 0),
-            m_doa: String(candidate.m_doa ?? 0),
-            m_reject: String(candidate.m_reject ?? 0),
-            m_shortcount: String(candidate.m_shortcount ?? 0),
-            f_avg_bodyw: String(candidate.f_avg_bodyw ?? 0),
-            m_avg_bodyw: String(candidate.m_avg_bodyw ?? 0),
-          })),
-        );
+        setRows(placementRows);
       } catch (error: unknown) {
         alert(getErrorMessage(error, "Failed to load placement record."));
         router.push("/jmb/placement");
@@ -426,7 +491,7 @@ export default function PlacementForm() {
   }, [idParam, isExistingPlacement, isView, router]);
 
   const totalPens = useMemo(() => rows.length, [rows]);
-  const disabledAll = isView || saving || loadingRecord;
+  const disabledAll = isView || placementLocked || saving || loadingRecord;
   const disablePlacementDate = disabledAll;
 
   useEffect(() => {
@@ -531,22 +596,33 @@ export default function PlacementForm() {
     value: string,
   ) {
     setRows((prev) =>
-      prev.map((row, rowIndex) =>
-        rowIndex === index
-          ? {
-              ...row,
-              [field]:
-                field.includes("_beg") ||
-                field.includes("_doa") ||
-                field.includes("_reject") ||
-                field.includes("shortcount")
-                  ? clampInteger(value)
-                  : field === "f_avg_bodyw" || field === "m_avg_bodyw"
-                    ? clampInteger(value)
-                    : value,
-            }
-          : row,
-      ),
+      prev.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        const changesOpeningBalance =
+          field === "f_beg" ||
+          field === "f_doa" ||
+          field === "f_reject" ||
+          field === "f_shortcount";
+        const changesMaleOpeningBalance =
+          field === "m_beg" ||
+          field === "m_doa" ||
+          field === "m_reject" ||
+          field === "m_shortcount";
+        return {
+          ...row,
+          [field]:
+            field.includes("_beg") ||
+            field.includes("_doa") ||
+            field.includes("_reject") ||
+            field.includes("shortcount")
+              ? clampInteger(value)
+              : field === "f_avg_bodyw" || field === "m_avg_bodyw"
+                ? clampInteger(value)
+                : value,
+          ...(changesOpeningBalance ? { f_endingbalance: null } : {}),
+          ...(changesMaleOpeningBalance ? { m_endingbalance: null } : {}),
+        };
+      }),
     );
   }
 
@@ -649,6 +725,12 @@ export default function PlacementForm() {
         const normalizedValue = rawValue.replace(/,/g, "").trim();
         if (normalizedValue === "") {
           targetRow[column.field] = "";
+          if (["f_beg", "f_doa", "f_reject", "f_shortcount"].includes(column.field)) {
+            targetRow.f_endingbalance = null;
+          }
+          if (["m_beg", "m_doa", "m_reject", "m_shortcount"].includes(column.field)) {
+            targetRow.m_endingbalance = null;
+          }
           changedCellCount += 1;
           return;
         }
@@ -658,6 +740,12 @@ export default function PlacementForm() {
           return;
         }
         targetRow[column.field] = String(parsedValue);
+        if (["f_beg", "f_doa", "f_reject", "f_shortcount"].includes(column.field)) {
+          targetRow.f_endingbalance = null;
+        }
+        if (["m_beg", "m_doa", "m_reject", "m_shortcount"].includes(column.field)) {
+          targetRow.m_endingbalance = null;
+        }
         changedCellCount += 1;
       });
     });
@@ -756,13 +844,21 @@ export default function PlacementForm() {
 
     setSaving(true);
     try {
+      const rowsToSave = isEdit
+        ? rows.filter(
+            (row) =>
+              row.placement_id != null ||
+              asNumber(row.f_beg) > 0 ||
+              asNumber(row.m_beg) > 0,
+          )
+        : rows;
       const cycleIdByPenId = await ensureBreederCycles({
         farmId: asNumber(form.farm_id),
         buildingId: asNumber(form.building_id),
-        penIds: rows.map((row) => asNumber(row.pen_id)),
+        penIds: rowsToSave.map((row) => asNumber(row.pen_id)),
         cycleNumber,
       });
-      const payloads: PlacementInsert[] = rows.map((row) => ({
+      const payloads: PlacementInsert[] = rowsToSave.map((row) => ({
         placement_date: form.placement_date,
         dr_no: "",
         file_attached: form.file_attached.trim() || null,
@@ -789,18 +885,21 @@ export default function PlacementForm() {
       }));
 
       if (isEdit) {
-        if (rows.some((row) => row.placement_id == null)) {
-          throw new Error(
-            "One or more placement rows are missing their record id.",
-          );
-        }
         await Promise.all(
-          rows.map((row, index) => {
+          rowsToSave
+            .map((row, index) => ({ row, payload: payloads[index] }))
+            .filter(({ row }) => row.placement_id != null)
+            .map(({ row, payload }) => {
             const placementId = row.placement_id as number;
-            const payload = payloads[index];
             return updatePlacement(placementId, payload);
-          }),
+            }),
         );
+        const newPayloads = rowsToSave
+          .map((row, index) => ({ row, payload: payloads[index] }))
+          .filter(({ row }) => row.placement_id == null)
+          .map(({ payload }) => payload);
+        if (newPayloads.length === 1) await createPlacement(newPayloads[0]);
+        else if (newPayloads.length > 1) await createPlacementBatch(newPayloads);
       } else if (payloads.length === 1) {
         await createPlacement(payloads[0]);
       } else {
@@ -813,6 +912,85 @@ export default function PlacementForm() {
       alert(getErrorMessage(error, "Failed to save placement."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function postInventoryCorrection() {
+    if (!inventoryCorrection || postingCorrection) return;
+    const maleQty = Number(correctedMaleQty);
+    const femaleQty = Number(correctedFemaleQty);
+    if (!Number.isInteger(maleQty) || maleQty < 0 || !Number.isInteger(femaleQty) || femaleQty < 0) {
+      toast.error("Male and female corrected quantities must be non-negative whole numbers.");
+      return;
+    }
+    if (maleQty === inventoryCorrection.currentMaleQty && femaleQty === inventoryCorrection.currentFemaleQty) {
+      toast.error("Enter a quantity different from the current opening balance.");
+      return;
+    }
+    if (!correctionReason.trim()) {
+      toast.error("A correction reason is required.");
+      return;
+    }
+
+    setPostingCorrection(true);
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      if (!data.session?.access_token) throw new Error("Your session expired. Please log in again.");
+      const response = await fetch("/api/jmb/breeder-inventory-correction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          placementId: inventoryCorrection.placementId,
+          maleCorrectedQty: maleQty,
+          femaleCorrectedQty: femaleQty,
+          reason: correctionReason.trim(),
+          remarks: correctionRemarks.trim(),
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to post inventory correction.");
+      setRows((current) => current.map((row) =>
+        row.placement_id === inventoryCorrection.placementId
+          ? { ...row, m_endingbalance: maleQty, f_endingbalance: femaleQty }
+          : row,
+      ));
+      setInventoryCorrection(null);
+      setCorrectionReason("");
+      setCorrectionRemarks("");
+      toast.success("Inventory correction posted.");
+      router.refresh();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to post inventory correction."));
+    } finally {
+      setPostingCorrection(false);
+    }
+  }
+
+  async function loadInventoryCorrectionHistory(placementId: number) {
+    setLoadingCorrectionHistory(true);
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      if (!data.session?.access_token) throw new Error("Your session expired. Please log in again.");
+      const response = await fetch(
+        `/api/jmb/breeder-inventory-correction?placementId=${placementId}`,
+        { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: "no-store" },
+      );
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: InventoryCorrectionHistory[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || "Unable to load correction history.");
+      setCorrectionHistory(result.data ?? []);
+    } catch (error) {
+      setCorrectionHistory([]);
+      toast.error(getErrorMessage(error, "Unable to load correction history."));
+    } finally {
+      setLoadingCorrectionHistory(false);
     }
   }
 
@@ -1110,6 +1288,14 @@ export default function PlacementForm() {
                       >
                         Male
                       </th>
+                      {isEdit ? (
+                        <th
+                          rowSpan={2}
+                          className={`${SheetClasses.header} ${TableWidths.action}`}
+                        >
+                          Action
+                        </th>
+                      ) : null}
                     </tr>
                     <tr>
                       <th
@@ -1182,12 +1368,14 @@ export default function PlacementForm() {
                           row.f_doa,
                           row.f_reject,
                           row.f_shortcount,
+                          row.f_endingbalance,
                         );
                         const maleEnding = getEndingBalance(
                           row.m_beg,
                           row.m_doa,
                           row.m_reject,
                           row.m_shortcount,
+                          row.m_endingbalance,
                         );
 
                         return (
@@ -1431,13 +1619,42 @@ export default function PlacementForm() {
                                 className={SheetClasses.input}
                               />
                             </td>
+                            {isEdit ? (
+                              <td
+                                className={`${SheetClasses.cell} ${TableWidths.action} bg-slate-50 px-2 text-center`}
+                              >
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={saving || loadingRecord || row.placement_id == null}
+                                  onClick={() => {
+                                    if (row.placement_id == null) return;
+                                    setInventoryCorrection({
+                                      placementId: row.placement_id,
+                                      penNo: row.pen_no,
+                                      currentMaleQty: maleEnding,
+                                      currentFemaleQty: femaleEnding,
+                                    });
+                                    setCorrectedMaleQty(String(maleEnding));
+                                    setCorrectedFemaleQty(String(femaleEnding));
+                                    setCorrectionReason("");
+                                    setCorrectionRemarks("");
+                                    void loadInventoryCorrectionHistory(row.placement_id);
+                                  }}
+                                >
+                                  <CircleMinus className="size-4" />
+                                  Inventory Correction
+                                </Button>
+                              </td>
+                            ) : null}
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
                         <td
-                          colSpan={13}
+                          colSpan={isEdit ? 14 : 13}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
                           Select a farm and building above to generate placement
@@ -1449,6 +1666,119 @@ export default function PlacementForm() {
                 </table>
               </div>
             </div>
+            <Dialog
+              open={inventoryCorrection != null}
+              onOpenChange={(open) => {
+                if (!open && !postingCorrection) setInventoryCorrection(null);
+              }}
+            >
+              <DialogContent className="flex max-h-[calc(100dvh-1.5rem)] flex-col sm:h-[680px] sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Inventory Correction</DialogTitle>
+                  <DialogDescription>
+                    This posts an audited opening-balance correction for Pen {inventoryCorrection?.penNo ?? ""}. The original placement quantity and Population Records are preserved.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Current male opening balance</Label>
+                    <Input value={inventoryCorrection?.currentMaleQty.toLocaleString("en-US") ?? ""} readOnly disabled />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Current female opening balance</Label>
+                    <Input value={inventoryCorrection?.currentFemaleQty.toLocaleString("en-US") ?? ""} readOnly disabled />
+                  </div>
+                  <div className="space-y-1.5">
+                    <RequiredLabel>Corrected male quantity</RequiredLabel>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={correctedMaleQty}
+                      onChange={(event) => setCorrectedMaleQty(event.target.value)}
+                      disabled={postingCorrection}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <RequiredLabel>Corrected female quantity</RequiredLabel>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={correctedFemaleQty}
+                      onChange={(event) => setCorrectedFemaleQty(event.target.value)}
+                      disabled={postingCorrection}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <RequiredLabel>Reason</RequiredLabel>
+                    <Textarea
+                      value={correctionReason}
+                      onChange={(event) => setCorrectionReason(event.target.value)}
+                      placeholder="Explain why the opening balance is being corrected."
+                      disabled={postingCorrection}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label>Remarks</Label>
+                    <Textarea
+                      value={correctionRemarks}
+                      onChange={(event) => setCorrectionRemarks(event.target.value)}
+                      disabled={postingCorrection}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setInventoryCorrection(null)} disabled={postingCorrection}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => void postInventoryCorrection()} disabled={postingCorrection}>
+                    {postingCorrection ? <Loader2 className="size-4 animate-spin" /> : <CircleMinus className="size-4" />}
+                    Post correction
+                  </Button>
+                </DialogFooter>
+                <div className="flex min-h-0 flex-1 flex-col gap-2 border-t pt-3">
+                  <div>
+                    <h4 className="text-sm font-medium">Correction History</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Posted opening-balance corrections for this placement.
+                    </p>
+                  </div>
+                  <div className="max-h-[30dvh] min-h-0 flex-1 overflow-auto rounded-md border sm:max-h-none">
+                    <table className="w-full min-w-[680px] text-xs">
+                      <thead className="sticky top-0 bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="px-2 py-2 text-left font-medium">Date</th>
+                          <th className="px-2 py-2 text-left font-medium">Reference</th>
+                          <th className="px-2 py-2 text-right font-medium">Male</th>
+                          <th className="px-2 py-2 text-right font-medium">Female</th>
+                          <th className="px-2 py-2 text-left font-medium">Reason</th>
+                          <th className="px-2 py-2 text-left font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loadingCorrectionHistory ? (
+                          <tr><td colSpan={6} className="px-2 py-4 text-center text-muted-foreground">Loading correction history…</td></tr>
+                        ) : correctionHistory.length ? (
+                          correctionHistory.map((entry) => (
+                            <tr key={entry.id} className="border-t align-top">
+                              <td className="whitespace-nowrap px-2 py-2">{formatHistoryDate(entry.created_at)}</td>
+                              <td className="whitespace-nowrap px-2 py-2 font-mono">{entry.correction_no}</td>
+                              <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{entry.male_previous_qty == null ? "—" : `${formatHistoryNumber(entry.male_previous_qty)} → ${formatHistoryNumber(entry.male_corrected_qty)}`}</td>
+                              <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatHistoryNumber(entry.female_previous_qty)} → {formatHistoryNumber(entry.female_corrected_qty)}</td>
+                              <td className="min-w-48 px-2 py-2">{entry.reason}</td>
+                              <td className="px-2 py-2">{entry.status}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan={6} className="px-2 py-4 text-center text-muted-foreground">No inventory corrections recorded.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Separator className="mt-6" />
 
             <div className="space-y-3 p-5">

@@ -3,7 +3,9 @@ import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
 
 export type FarmAssignedUser = { id: number; name: string; userType?: 1 | 2 | 3 }
 
-export type FarmAssignableUser = Required<FarmAssignedUser> & { userTypeLabel: 'Admin' | 'User' }
+export type FarmAssignableUser = Required<FarmAssignedUser> & {
+  userTypeLabel: 'Super Admin' | 'Admin' | 'User'
+}
 
 type FarmAssignableUserRow = {
   id: number
@@ -24,7 +26,13 @@ const userName = (user: { id: unknown; firstname?: unknown; middlename?: unknown
     .join(' ') || `User ${id}`
 }
 
-/** Active Admin and User accounts that may be assigned to a farm. */
+const userTypeLabel = (userType: 1 | 2 | 3): FarmAssignableUser['userTypeLabel'] => {
+  if (userType === 1) return 'Super Admin'
+  if (userType === 2) return 'Admin'
+  return 'User'
+}
+
+/** Active accounts of every user type that may be assigned to a farm. */
 export async function listFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
   const users: FarmAssignableUserRow[] = []
   const pageSize = 500
@@ -33,7 +41,7 @@ export async function listFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
     const result = await db
       .from('users')
       .select('id, firstname, middlename, lastname, user_type, isactive')
-      .in('user_type', [2, 3])
+      .in('user_type', [1, 2, 3])
       .order('id', { ascending: true })
       .range(offset, offset + pageSize - 1)
 
@@ -47,12 +55,12 @@ export async function listFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
     .filter(user => activeUserValue(user.isactive))
     .map(user => {
       const id = Number(user.id)
-      const userType = Number(user.user_type) as 2 | 3
+      const userType = Number(user.user_type) as 1 | 2 | 3
       return {
         id,
         name: userName(user),
         userType,
-        userTypeLabel: userType === 2 ? 'Admin' as const : 'User' as const,
+        userTypeLabel: userTypeLabel(userType),
       }
     })
     .filter(user => Number.isSafeInteger(user.id) && user.id > 0)

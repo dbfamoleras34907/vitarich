@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { Label } from '@/components/ui/label'
@@ -76,20 +77,29 @@ export default function BroilerCycleSelect({
   return (
     <div className="space-y-2">
       {label && <Label required={required}>{label}</Label>}
-      <SearchableCombobox
-        items={items}
-        value={value}
-        onValueChange={cycleId => onValueChange(
-          cycleId,
-          cycles.find(cycle => String(cycle.id) === cycleId) ?? null,
+      <div className="relative">
+        <SearchableCombobox
+          items={items}
+          value={value}
+          onValueChange={cycleId => onValueChange(
+            cycleId,
+            cycles.find(cycle => String(cycle.id) === cycleId) ?? null,
+          )}
+          showCode={false}
+          allowSelectAll={false}
+          disabled={disabled || loading || !farmId}
+          placeholder={!farmId ? 'Select farm first' : loading ? 'Loading cycles...' : 'Select cycle...'}
+          className={className}
+          contentPositionerZIndex={contentPositionerZIndex}
+        />
+        {loading && (
+          <Loader2
+            aria-hidden="true"
+            className="pointer-events-none absolute right-9 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+          />
         )}
-        showCode={false}
-        allowSelectAll={false}
-        disabled={disabled || loading || !farmId}
-        placeholder={!farmId ? 'Select farm first' : loading ? 'Loading cycles...' : 'Select cycle...'}
-        className={className}
-        contentPositionerZIndex={contentPositionerZIndex}
-      />
+      </div>
+      {loading && <span role="status" className="sr-only">Loading cycle list.</span>}
       {loadError?.farmId === numericFarmId && <p role="alert" className="text-xs text-destructive">{loadError.message}</p>}
     </div>
   )

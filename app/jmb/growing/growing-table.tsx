@@ -22,6 +22,7 @@ import { ClassificationTableSection } from "@/components/classification/Classifi
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { listGrowingPlacements, type GrowingPlacement } from "./new/api";
+import { breederAgeDays } from "@/app/jmb/lib/breederAge";
 
 type PopulationRecord = {
   id: number;
@@ -46,18 +47,9 @@ function formatNumber(value?: number | null) {
   return Number(value).toLocaleString("en-US");
 }
 
-function getAgeInDays(placementDate?: string | null, endDate = new Date()) {
-  if (!placementDate) return 0;
-  const start = new Date(`${placementDate}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return 0;
-
-  const elapsedDays = Math.floor(
-    (Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()) -
-      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
-      86_400_000,
-  );
-
-  return elapsedDays < 0 ? 0 : elapsedDays + 1;
+function getToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function formatAgeWeeks(days: number) {
@@ -79,7 +71,7 @@ function groupPlacementsByFarmBuilding(rows: GrowingPlacement[]) {
     const farmName = row.farm_name ?? "";
     const buildingNo = row.building_no ?? "";
     const key = [row.farm_id ?? farmName, buildingNo].join("|");
-    const rowAgeDays = getAgeInDays(row.placement_date);
+    const rowAgeDays = breederAgeDays(row, getToday()) ?? 0;
     const existing = groups.get(key);
 
     if (!existing) {

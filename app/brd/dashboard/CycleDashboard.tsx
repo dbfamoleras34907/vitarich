@@ -16,6 +16,7 @@ import { useSyncDefaultFarm } from '@/lib/farms/useDefaultFarmSelection'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
 import { getBroilerCycleDashboard, type CycleDashboardCatalog, type CycleDashboardData, type DashboardCycleBuilding } from '@/lib/data/repositories/broilerCycleDashboard'
 import { ageRange, dashboardMetrics, latestCycleActivityCreatedAt, selectDashboardBuilding } from '@/lib/broiler/cycleDashboard'
+import { db } from '@/lib/Supabase/supabaseClient'
 import { cn } from '@/lib/utils'
 import { BuildingComparison, PerformanceCharts } from './PerformanceCharts'
 import CycleDashboardSkeleton from './CycleDashboardSkeleton'
@@ -23,6 +24,8 @@ import TransactionDetails, { detailTabs, formatDate, formatNumber, type DetailTa
 
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error
   ? String(error.message) : 'Unable to load Cycle Dashboard.'
+
+const DASHBOARD_REFRESH_INTERVAL_MS = 60_000
 
 const cycleViewTabClassName = 'h-8 flex-none rounded-md px-4 text-xs font-semibold text-foreground hover:bg-card data-[state=active]:border-[#006241] data-[state=active]:bg-[#006241] data-[state=active]:text-white dark:text-foreground dark:data-[state=active]:border-[#006241] dark:data-[state=active]:bg-[#006241] dark:data-[state=active]:text-white after:hidden'
 const buildingTabClassName = 'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
@@ -179,10 +182,11 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
     return () => { cancelled = true }
   }, [blocked, farmId, profileKey, reload, requestedCycleKey])
 
-  const loaded = result?.farmId === farmId && result?.revision === reload && result?.owner === profileKey && result?.cycleKey === requestedCycleKey
+  const resultMatchesSelection = result?.farmId === farmId && result?.owner === profileKey && result?.cycleKey === requestedCycleKey
+  const loaded = resultMatchesSelection && result?.revision === reload
   const visibleCatalog = catalog?.data.farmId === farmId && catalog.owner === profileKey ? catalog.data : null
   const cycleOptions = visibleCatalog?.cycleOptions ?? []
-  const data = loaded ? result?.data : null
+  const data = resultMatchesSelection ? result?.data : null
   const buildings = data?.buildings
   const activeBuilding = selectDashboardBuilding(buildings ?? [], selectedBuilding)
   const building = buildings?.find(building => building.key === activeBuilding)
@@ -195,6 +199,48 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
   const displayedStatus = activeBuilding === 'all' ? data?.selectedCycle?.status
     : cycles.some(cycle => cycle.status === 'Saved') ? 'Saved' : cycles[0]?.status ?? data?.selectedCycle?.status
   const statusLabel = displayedStatus === 'Saved' ? 'Active' : displayedStatus || ''
+
+  const growingIds = useMemo(() => [...new Set(buildings?.flatMap(item => item.cycles)
+    .map(cycle => cycle.growingId).filter((id): id is number => id !== null) ?? [])].sort((a, b) => a - b), [buildings])
+  const growingIdsKey = growingIds.join(',')
+
+  useEffect(() => {
+    if (blocked || !farmId) return
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefresh = () => {
+      if (document.visibilityState !== 'visible' || refreshTimer) return
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null
+        setReload(value => value + 1)
+      }, 250)
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh()
+    }
+    const interval = window.setInterval(refreshWhenVisible, DASHBOARD_REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+
+    let channel = db.channel(`cycle-dashboard:${farmId}:${requestedCycleKey || 'latest'}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'brd_fc', filter: `farm_id=eq.${farmId}`,
+      }, scheduleRefresh)
+    for (const growingId of growingIdsKey.split(',').filter(Boolean).map(Number)) {
+      channel = channel.on('postgres_changes', {
+        event: '*', schema: 'public', table: 'brd_fc_line', filter: `fc_id=eq.${growingId}`,
+      }, scheduleRefresh)
+    }
+    channel.subscribe()
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      void db.removeChannel(channel)
+    }
+  }, [blocked, farmId, growingIdsKey, requestedCycleKey])
 
   function selectBuilding(key: string) { setSelectedBuilding(key); setTab('overview') }
   function drillDown(next: DetailTab) { setTab(next); document.getElementById(`detail-tab-${next}`)?.focus() }
@@ -229,7 +275,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
       <TabsContent value="dashboard" className="min-w-0">
     {data?.warnings.map(warning => <div key={warning} role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{warning}</div>)}
     {error ? <div role="alert" className="rounded-lg border border-destructive/30 bg-card p-5 text-sm text-destructive">{error}</div>
-      : loading ? <CycleDashboardSkeleton />
+      : loading && !data ? <CycleDashboardSkeleton />
         : !farm ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No assigned Broiler farms.</div>
           : !data?.selectedCycle ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">This farm does not have a Cycle yet.</div>
           : !buildings?.length ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No buildings found for this cycle.</div>

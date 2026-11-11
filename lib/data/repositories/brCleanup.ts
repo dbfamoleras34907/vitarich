@@ -64,7 +64,7 @@ export async function saveBroilerCleanup(issue: GoodsIssue) {
     p_document: { ...issue, lines: issue.lines },
   })
   if (error) throw cleanupDatabaseError(error)
-  return data as { header: unknown; lines: unknown[] } | null
+  return data as { header: unknown; lines: unknown[]; allocations?: unknown[] } | null
 }
 
 export async function reverseBroilerCleanup(documentId: number, reason: string): Promise<void> {

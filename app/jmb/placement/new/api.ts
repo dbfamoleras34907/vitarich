@@ -1,9 +1,12 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { DefaultFarm } from "@/lib/types";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
+import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
 
 const TABLE = "tbl_placement";
-const GROWING_TABLE = "tbl_growing";
+// Population Records are the authoritative downstream dependency for breeder
+// placement opening balances. Keep this aligned with the database edit lock.
+const GROWING_TABLE = "tbl_breeder_daily_performance";
 const EGG_LAYING_TABLE = "tbl_egglaying";
 const BREEDER_SOURCE_TABLE = "tbl_breeder_source";
 const BREEDER_FARM_VIEW = "view_breeder_farm";
@@ -174,7 +177,7 @@ export async function listPlacements() {
     .select("*")
     .order("id", { ascending: false });
   if (error) throw error;
-  return withCycleNumbers((data ?? []) as Placement[]);
+  return withCycleNumbers(await applyPostedFemaleInventoryCorrections((data ?? []) as Placement[]));
 }
 
 export async function listBreederCycles() {
@@ -349,7 +352,7 @@ export async function listPlacementHistory(params: {
     .order("id", { ascending: false });
 
   if (error) throw error;
-  return withCycleNumbers((data ?? []) as Placement[]);
+  return withCycleNumbers(await applyPostedFemaleInventoryCorrections((data ?? []) as Placement[]));
 }
 
 export async function ensureBreederCycles(input: {
@@ -538,7 +541,9 @@ export async function getPlacementById(id: number) {
     .single();
 
   if (error) throw error;
-  const [placement] = await withCycleNumbers([data as Placement]);
+  const [placement] = await withCycleNumbers(
+    await applyPostedFemaleInventoryCorrections([data as Placement]),
+  );
   return placement;
 }
 

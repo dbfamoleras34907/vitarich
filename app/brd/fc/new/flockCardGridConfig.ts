@@ -25,6 +25,8 @@ export const standardAdgColumnIndex = 25;
 export const feedTypeColumnIndex = 26;
 export const remarksColumnIndex = 27;
 export const mortalityRemarksColumnIndex = 29;
+const temperatureAmColumnIndex = 16;
+const temperaturePmColumnIndex = 17;
 export const feedIntakeColumnIndexes = new Set([
   feedDailyKgColumnIndex,
   feedDailyPerBirdColumnIndex,
@@ -34,14 +36,20 @@ export const feedIntakeColumnIndexes = new Set([
 ]);
 
 export const columnIndexes = Array.from({ length: dataColumnCount }, (_, i) => i);
-const hiddenColumnIndexes = new Set([1, 2, 3, 4, 5, 9, 16, 17, 18, 19, 20, 21, 22, 23]);
+const hiddenColumnIndexes = new Set([1, 2, 3, 4, 5, 9, 18, 19, 20, 21, 22, 23]);
 export const visibleColumnIndexes = columnIndexes
   .filter((colIndex) => !hiddenColumnIndexes.has(colIndex) && colIndex !== waterGuidelineColumnIndex)
-  .filter((colIndex) => colIndex !== feedTypeColumnIndex && colIndex !== mortalityRemarksColumnIndex)
+  .filter((colIndex) =>
+    colIndex !== feedTypeColumnIndex &&
+    colIndex !== mortalityRemarksColumnIndex &&
+    colIndex !== temperatureAmColumnIndex &&
+    colIndex !== temperaturePmColumnIndex
+  )
   .flatMap((colIndex) => {
     if (colIndex === cumulativeTotalColumnIndex) return [colIndex, mortalityRemarksColumnIndex];
     if (colIndex === feedDailyKgColumnIndex) return [colIndex, feedTypeColumnIndex];
     if (colIndex === 14) return [waterGuidelineColumnIndex, colIndex];
+    if (colIndex === remarksColumnIndex) return [temperatureAmColumnIndex, temperaturePmColumnIndex, colIndex];
     return [colIndex];
   });
 
@@ -75,13 +83,13 @@ export const editableColumnIndexes = new Set([
 
 export const editableColumns = [...editableColumnIndexes]
   .filter((colIndex) => !hiddenColumnIndexes.has(colIndex))
-  .sort((a, b) => a - b);
+  .sort((a, b) => visibleColumnIndexes.indexOf(a) - visibleColumnIndexes.indexOf(b));
 
 export const columnDisabledFlags = columnIndexes.map(
   (colIndex) => !editableColumnIndexes.has(colIndex)
 );
 
-const groupEndColumnIndexes = new Set([2, 4, 7, mortalityRemarksColumnIndex, 11, waterGuidelineColumnIndex, 15, 20, 23, 25, remarksColumnIndex]);
+const groupEndColumnIndexes = new Set([0, 2, 4, 7, mortalityRemarksColumnIndex, 11, waterGuidelineColumnIndex, 15, temperaturePmColumnIndex, 20, 23, 25, remarksColumnIndex]);
 const emphasizedColumnIndexes = new Set([2, 5, cumulativeTotalColumnIndex]);
 
 const stickyHeaderClass = "fc-grid-header sticky z-30";
@@ -159,13 +167,14 @@ export const topHeaderCells: HeaderCellConfig[] = [
   { label: "Water Intake", colSpan: 3, groupEnd: true, className: groupHeaderClass },
   { label: "Average Live Weight (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Average Daily Gain (grams)", colSpan: 2, groupEnd: true, className: groupHeaderClass },
+  { label: "Temperature", colSpan: 2, groupEnd: true, className: groupHeaderClass },
   { label: "Remarks", rowSpan: 3, groupEnd: true, className: groupHeaderClass },
 ];
 
 export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "DOC Batch", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Cumulative", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: `${subHeaderClass} font-semibold` },
-  { label: "Actual FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "Actual FC (Bags)", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Feed Type", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Standard FC", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Feeds Batch", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
@@ -176,6 +185,8 @@ export const middleHeaderCells: HeaderCellConfig[] = [
   { label: "Standard ALW", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
   { label: "Actual ADG", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
   { label: "Standard ADG", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
+  { label: "AM °C", rowSpan: 2, top: middleHeaderTop, className: subHeaderClass },
+  { label: "PM °C", rowSpan: 2, groupEnd: true, top: middleHeaderTop, className: subHeaderClass },
 ];
 
 export const bottomHeaderCells: HeaderCellConfig[] = [];

@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { compareNaturalText } from "@/lib/utils/naturalSort";
+import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
 import type { Placement } from "../new/api";
 
 const TABLE = "tbl_breeder_daily_performance";
@@ -43,6 +44,10 @@ export type BreederDailyPerformance = {
   f_body_weight: number | null;
   m_uniformity: number | null;
   f_uniformity: number | null;
+  water_am: number | null;
+  water_pm: number | null;
+  temp_am: number | null;
+  temp_pm: number | null;
   remarks: string | null;
 };
 
@@ -74,7 +79,7 @@ export async function getPlacement(placementId: number) {
     .single();
   if (error) throw new Error(errorMessage(error));
 
-  const placement = data as Placement;
+  const [placement] = await applyPostedFemaleInventoryCorrections([data as Placement]);
   if (!placement.cycle_id) return placement;
 
   const { data: cycle, error: cycleError } = await db
@@ -101,7 +106,7 @@ export async function listPlacementPens(placement: Placement) {
 
   const { data, error } = await query;
   if (error) throw new Error(errorMessage(error));
-  return ((data ?? []) as Placement[]).sort(
+  return (await applyPostedFemaleInventoryCorrections((data ?? []) as Placement[])).sort(
     (left, right) =>
       compareNaturalText(left.pen_no, right.pen_no) || left.id - right.id,
   );

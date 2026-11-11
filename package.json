@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "dev:clean": "powershell -NoProfile -Command \"Remove-Item .next -Recurse -Force -ErrorAction SilentlyContinue; npm run dev\"",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -5,7 +5,7 @@ import type { EggLaying } from "./data/repositories/breederEggLaying";
 export type EggCollectionPlacement = {
   id: number; farm_id: number; farm_name: string | null;
   building_id: number; building_no: string | null;
-  placement_date: string; f_endingbalance: number | null;
+  placement_date: string; age_anchor_date?: string | null; f_endingbalance: number | null;
 };
 export type EggCollectionPopulation = {
   id: number; placement_id: number; daterec: string;
@@ -98,7 +98,7 @@ export function calculateEggRangeProduction(input: {
     seen.add(egg.id);
     const p = byId.get(Number(egg.placement_id));
     if (!p || Number(egg.farm_id) !== Number(p.farm_id) || Number(egg.building_id) !== Number(p.building_id)
-      || breederAgeDays(p.placement_date, date) == null) { result.excludedRecords++; continue; }
+      || breederAgeDays(p, date) == null) { result.excludedRecords++; continue; }
     const rows = eggsByBuilding.get(buildingKey(p)) ?? [];
     rows.push(egg);
     eggsByBuilding.set(buildingKey(p), rows);
@@ -130,7 +130,7 @@ export function calculateEggRangeProduction(input: {
         if (females == null) { populationAvailable = false; continue; }
         femaleDays += females;
         if (!females) continue;
-        const standard = cobbEggProductionTarget(breederAgeDays(p.placement_date, date));
+        const standard = cobbEggProductionTarget(breederAgeDays(p, date));
         if (!standard) standardAvailable = false;
         else standardEggs += females * standard.totalEggPercent / 100;
       }

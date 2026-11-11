@@ -79,14 +79,30 @@ export async function GET(req: Request) {
 
     const activePlacements = (activeResult.data ?? []) as Array<Record<string, unknown>>;
     const activePlacementIds = activePlacements.map((placement) => Number(placement.id));
-    const { data: dailyRows, error: dailyError } = activePlacementIds.length
-      ? await admin_db.from("tbl_breeder_daily_performance")
-          .select("placement_id, daterec, mc_male, mc_female, cull_male, cull_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female, kitchen_male, kitchen_female, condem_male, condem_female")
-          .in("placement_id", activePlacementIds).eq("isactive", true).lte("daterec", businessDate())
-      : { data: [], error: null };
+    const [dailyResult, correctionResult] = await Promise.all([
+      activePlacementIds.length
+        ? admin_db.from("tbl_breeder_daily_performance")
+            .select("placement_id, daterec, mc_male, mc_female, cull_male, cull_female, trans_in_male, trans_in_female, trans_out_male, trans_out_female, kitchen_male, kitchen_female, condem_male, condem_female")
+            .in("placement_id", activePlacementIds).eq("isactive", true).lte("daterec", businessDate())
+        : Promise.resolve({ data: [], error: null }),
+      activePlacementIds.length
+        ? admin_db.from("tbl_breeder_inventory_correction")
+            .select("placement_id, male_delta, female_delta")
+            .in("placement_id", activePlacementIds).eq("status", "Posted")
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const { data: dailyRows, error: dailyError } = dailyResult;
     if (dailyError) throw dailyError;
+    if (correctionResult.error) throw correctionResult.error;
 
     const effects = new Map<number, { male: number; female: number }>();
+    (correctionResult.data ?? []).forEach((row) => {
+      const placementId = Number(row.placement_id);
+      const current = effects.get(placementId) ?? { male: 0, female: 0 };
+      current.male += Number(row.male_delta ?? 0);
+      current.female += Number(row.female_delta ?? 0);
+      effects.set(placementId, current);
+    });
     (dailyRows ?? []).forEach((row) => {
       const placementId = Number(row.placement_id);
       const current = effects.get(placementId) ?? { male: 0, female: 0 };

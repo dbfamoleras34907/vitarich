@@ -21,7 +21,7 @@ export type ManagedUserProfile = {
   issuper: string | null
 }
 
-export async function requireAdminActor(request: Request) {
+async function requireAuthenticatedActor(request: Request) {
   const authorization = request.headers.get("authorization") ?? ""
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : ""
 
@@ -50,9 +50,34 @@ export async function requireAdminActor(request: Request) {
     user_type: Number(data.user_type ?? USER_TYPE.USER),
   } as ManagedUserProfile
 
+  return actor
+}
+
+export async function requireAdminActor(request: Request) {
+  const actor = await requireAuthenticatedActor(request)
+
   if (![USER_TYPE.SUPER_ADMIN, USER_TYPE.ADMIN].includes(actor.user_type as 1 | 2)) {
     throw new Error("FORBIDDEN")
   }
+
+  return actor
+}
+
+export async function requireModuleActor(request: Request, permissionLink: string) {
+  const actor = await requireAuthenticatedActor(request)
+  if (actor.user_type === USER_TYPE.SUPER_ADMIN) return actor
+
+  const { data, error } = await admin_db
+    .from("user_permissions")
+    .select("is_visible")
+    .eq("user_id", actor.auth_id)
+    .eq("ilink", permissionLink)
+    .eq("is_visible", true)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data?.is_visible) throw new Error("FORBIDDEN")
 
   return actor
 }

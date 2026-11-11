@@ -52,8 +52,15 @@ export async function POST(req: Request) {
   try {
     const userId = await getRequestUserId(req);
     await requireHatcheryDocDispatchAccess(userId, "insert");
-    const payload = (await req.json()) as DispatchDocUpsertPayload;
-    const id = await createHatcheryDocDispatchDraft(payload, userId);
+    const body = (await req.json()) as unknown;
+    const envelope = typeof body === "object" && body !== null && "payload" in body
+      ? body as { payload?: DispatchDocUpsertPayload; post?: boolean }
+      : null;
+    const payload = envelope?.payload ?? body as DispatchDocUpsertPayload;
+    const post = envelope?.post === true;
+    if (!payload) throw new Error("DOC Dispatch payload is required.");
+    if (post) await requireHatcheryDocDispatchAccess(userId, "edit");
+    const id = await createHatcheryDocDispatchDraft(payload, userId, post);
     return NextResponse.json({ id });
   } catch (error) {
     return jsonError(error);
@@ -67,8 +74,10 @@ export async function PUT(req: Request) {
     const body = (await req.json()) as {
       id: unknown;
       payload: DispatchDocUpsertPayload;
+      post?: boolean;
     };
-    await updateHatcheryDocDispatchDraft(requiredId(body.id), body.payload, userId);
+    if (body.post === true) await requireHatcheryDocDispatchAccess(userId, "edit");
+    await updateHatcheryDocDispatchDraft(requiredId(body.id), body.payload, userId, body.post === true);
 
     return NextResponse.json({ success: true });
   } catch (error) {

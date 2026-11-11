@@ -65,10 +65,12 @@ export default function FarmDateRangeParameters({
   dateTo,
   setDateTo,
   farmType,
+  showDateRange = true,
   children,
   className,
 }: FarmDateRangeParameterState & {
   farmType?: "BR" | "BE" | "HA";
+  showDateRange?: boolean;
   children?: ReactNode;
   className?: string;
 }) {
@@ -90,27 +92,31 @@ export default function FarmDateRangeParameters({
         />
       </div>
 
-      <div className="space-y-2 lg:w-44 lg:shrink-0">
-        <Label htmlFor={`${fieldId}-from`}>From Date</Label>
-        <Input
-          id={`${fieldId}-from`}
-          type="date"
-          value={dateFrom}
-          max={dateTo || undefined}
-          onChange={(event) => setDateFrom(event.target.value)}
-        />
-      </div>
+      {showDateRange ? (
+        <>
+          <div className="space-y-2 lg:w-44 lg:shrink-0">
+            <Label htmlFor={`${fieldId}-from`}>From Date</Label>
+            <Input
+              id={`${fieldId}-from`}
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </div>
 
-      <div className="space-y-2 lg:w-44 lg:shrink-0">
-        <Label htmlFor={`${fieldId}-to`}>To Date</Label>
-        <Input
-          id={`${fieldId}-to`}
-          type="date"
-          value={dateTo}
-          min={dateFrom || undefined}
-          onChange={(event) => setDateTo(event.target.value)}
-        />
-      </div>
+          <div className="space-y-2 lg:w-44 lg:shrink-0">
+            <Label htmlFor={`${fieldId}-to`}>To Date</Label>
+            <Input
+              id={`${fieldId}-to`}
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </div>
+        </>
+      ) : null}
 
       {children}
     </div>

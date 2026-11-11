@@ -7,6 +7,13 @@ import {
   mortalityRemarksColumnIndex,
   remarksColumnIndex,
 } from "./flockCardGridConfig";
+import {
+  FEED_USAGE_BASE_QTY_PER_BAG,
+  FEED_USAGE_UOM,
+  feedBagsToBaseQty,
+  feedBaseQtyToBags,
+  usesFeedBagQuantity,
+} from "./feedQuantity";
 
 export type FeedBatchOnHand = {
   id: string;
@@ -259,6 +266,12 @@ function getLineExtra(line: FlockCardLinePayload) {
   const feedTypeId = Number(line.values[feedTypeColumnIndex]);
 
   return {
+    ...(!line.feedIntakeLocked && line.allocations.length > 0
+      ? {
+          feedUsageUom: FEED_USAGE_UOM,
+          feedUsageBaseQtyPerUnit: FEED_USAGE_BASE_QTY_PER_BAG,
+        }
+      : {}),
     ...(mortalityAllocations.length > 0
       ? {
       mortalityBatchAllocations: mortalityAllocations.map(allocation => ({
@@ -502,7 +515,7 @@ function hasLineData(line: FlockCardLinePayload) {
 
 function feedIntakePayload(line: FlockCardLinePayload) {
   return {
-    p_feed_kg: parseNumberOrNull(line.values[8]),
+    p_feed_kg: feedBagsToBaseQty(parseNumberOrNull(line.values[8])),
     p_feed_bird: parseNumberOrNull(line.values[9]),
     p_feed_guideline: parseNumberOrNull(line.values[10]),
     p_feed_batch_text: line.values[11]?.trim() || null,
@@ -515,8 +528,8 @@ function feedIntakePayload(line: FlockCardLinePayload) {
       warehouseId: allocation.warehouseId ?? null,
       warehouseCode: allocation.warehouseCode,
       warehouseName: allocation.warehouseName ?? null,
-      allocatedQty: allocation.allocatedQty,
-      onHandSnapshot: allocation.onHandSnapshot,
+      allocatedQty: feedBagsToBaseQty(allocation.allocatedQty),
+      onHandSnapshot: feedBagsToBaseQty(allocation.onHandSnapshot),
       manufacturingDate: allocation.manufacturingDate || null,
       expiryDate: allocation.expiryDate || null,
       source: allocation.source ?? "MANUAL",
@@ -701,6 +714,7 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
       const lineId = Number(line.id);
 
       const rawExtra = line.extra && typeof line.extra === "object" ? line.extra as Record<string, unknown> : {};
+      const displayFeedInBags = usesFeedBagQuantity(rawExtra);
       const rawMortalityAllocations = Array.isArray(rawExtra.mortalityBatchAllocations)
         ? rawExtra.mortalityBatchAllocations
         : [];
@@ -717,7 +731,9 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
           line.row_total,
           null,
           line.cum_total,
-          line.feed_kg,
+          displayFeedInBags && line.feed_kg != null
+            ? feedBaseQtyToBags(Number(line.feed_kg))
+            : line.feed_kg,
           line.feed_bird,
           line.feed_guideline,
           line.feed_batch_text,
@@ -744,7 +760,13 @@ export async function getFlockCardSheet(params: { id?: number | null; cardNo?: s
             ? String(value ?? "")
             : formatDbValue(value)
         ),
-        allocations: allocationsByLineId.get(lineId) ?? [],
+        allocations: (allocationsByLineId.get(lineId) ?? []).map(allocation => displayFeedInBags
+          ? {
+              ...allocation,
+              availableQty: feedBaseQtyToBags(allocation.availableQty),
+              selectedQty: feedBaseQtyToBags(allocation.selectedQty),
+            }
+          : allocation),
         mortalityAllocations: rawMortalityAllocations.flatMap((allocation) => {
           if (!allocation || typeof allocation !== "object") return [];
 
@@ -1010,6 +1032,7 @@ export async function getFeedBatchOnHandByWarehouse(
 
       return [{
         ...row,
+        onHandQty: feedBaseQtyToBags(row.onHandQty),
         manufacturingDate: batch?.manufacturing_date ?? "",
         expiryDate: batch?.expiry_date ?? "",
       }];

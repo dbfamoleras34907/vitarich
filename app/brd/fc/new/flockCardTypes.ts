@@ -33,6 +33,12 @@ export type FeedFarm = {
 
 export type FeedBatchDialogMode = "onHand" | "cell";
 
+export type MultiFeedBreakdownDraft = {
+  feedTypeIds: string[];
+  quantities: Record<string, string>;
+  applied: boolean;
+};
+
 export type FeedBatchAllocation = {
   batchId: string;
   batchNumber: string;
