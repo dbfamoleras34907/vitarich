@@ -14,6 +14,9 @@ declare
   v_document_id bigint;
   v_existing_status text;
   v_target_status text := coalesce(nullif(trim(p_document->>'status'), ''), 'Draft');
+  v_year_suffix text;
+  v_next_number bigint;
+  v_document_no text;
   v_farm_id bigint := nullif(p_document->>'farmId', '')::bigint;
   v_farm_cycle_id bigint := nullif(p_document->>'farmCycleId', '')::bigint;
   v_farm_code text;
@@ -94,7 +97,6 @@ begin
 
     update public.br_delivery
     set
-      gi_no = trim(p_document->>'giNo'),
       issue_date = (now() at time zone 'Asia/Manila')::date,
       farm_id = v_farm_id,
       farm_cycle_id = v_farm_cycle_id,
@@ -109,6 +111,16 @@ begin
       updated_by = v_actor
     where id = v_document_id;
   else
+    v_year_suffix := to_char(now() at time zone 'Asia/Manila', 'YY');
+    perform pg_advisory_xact_lock(hashtextextended('BR_DELIVERY_NUMBER:' || v_year_suffix, 0));
+
+    select coalesce(max(substring(delivery.gi_no from '([0-9]+)$')::bigint), 0) + 1
+    into v_next_number
+    from public.br_delivery delivery
+    where delivery.gi_no ~ ('^BR-DR-' || v_year_suffix || '-[0-9]+$');
+
+    v_document_no := format('BR-DR-%s-%s', v_year_suffix, lpad(v_next_number::text, 6, '0'));
+
     insert into public.br_delivery (
       gi_no,
       issue_date,
@@ -124,7 +136,7 @@ begin
       status,
       created_by
     ) values (
-      trim(p_document->>'giNo'),
+      v_document_no,
       (now() at time zone 'Asia/Manila')::date,
       v_farm_id,
       v_farm_cycle_id,

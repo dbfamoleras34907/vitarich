@@ -638,7 +638,6 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
   const { data, error } = await db.rpc('save_br_delivery_transaction', {
     p_document: {
       id: issue.id,
-      giNo: issue.giNo,
       issueDate: issue.issueDate,
       farmId: issue.farmId,
       farmCycleId: issue.farmCycleId,
