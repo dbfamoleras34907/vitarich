@@ -272,7 +272,7 @@ export default function Layout() {
       try {
         const rows = await getFarmBuildingsForFlockCard(farmId, {
           farmCycleId: Number(selectedCycleId),
-          includePlacementInventory: false,
+          includePlacementInventory: true,
         });
         if (!cancelled) setBuildings(rows);
       } catch (error) {

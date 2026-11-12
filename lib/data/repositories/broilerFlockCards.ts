@@ -271,6 +271,74 @@ type DocReceivingSettingsRow = {
   good_doc: number | null;
 };
 
+const INVENTORY_POSTING_PAGE_SIZE = 1000;
+
+async function getPlacementInventoryAnimalQtyByWarehouse(
+  warehouseCodes: string[],
+): Promise<Map<string, number>> {
+  const normalizedWarehouseCodes = Array.from(new Set(
+    warehouseCodes.map(code => code.trim()).filter(Boolean),
+  ));
+  if (normalizedWarehouseCodes.length === 0) return new Map();
+
+  const settingsResult = await db
+    .from("doc_rec_settings")
+    .select("good_doc")
+    .eq("void", "1")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (settingsResult.error) throwDbError(settingsResult.error, "Unable to load DOC receiving settings");
+
+  const goodDocItemId = Number((settingsResult.data as DocReceivingSettingsRow | null)?.good_doc ?? 0);
+  if (!Number.isFinite(goodDocItemId) || goodDocItemId <= 0) return new Map();
+
+  const itemResult = await db
+    .from("items")
+    .select("item_code")
+    .eq("id", goodDocItemId)
+    .maybeSingle();
+
+  if (itemResult.error) throwDbError(itemResult.error, "Unable to load the good DOC item");
+
+  const itemCode = String(itemResult.data?.item_code ?? "").trim();
+  if (!itemCode) return new Map();
+
+  const quantityByWarehouse = new Map<string, number>();
+  for (let from = 0; ; from += INVENTORY_POSTING_PAGE_SIZE) {
+    const postingResult = await db
+      .from("inventory_postings")
+      .select("id, item_code, warehouse_code, qty, transfer_type, ref, ref2, batch_number, source_doc_type, source_docentry")
+      .eq("item_code", itemCode)
+      .in("warehouse_code", normalizedWarehouseCodes)
+      .order("id", { ascending: true })
+      .range(from, from + INVENTORY_POSTING_PAGE_SIZE - 1);
+
+    if (postingResult.error) throwDbError(postingResult.error, "Unable to load building bird inventory");
+
+    const page = (postingResult.data ?? []) as InventoryPostingBatchRow[];
+    for (const posting of page) {
+      const warehouseCode = String(posting.warehouse_code ?? "").trim().toUpperCase();
+      if (!warehouseCode) continue;
+
+      quantityByWarehouse.set(
+        warehouseCode,
+        (quantityByWarehouse.get(warehouseCode) ?? 0) + signedPostingQty(posting),
+      );
+    }
+
+    if (page.length < INVENTORY_POSTING_PAGE_SIZE) break;
+  }
+
+  return new Map(
+    Array.from(quantityByWarehouse.entries()).map(([warehouseCode, quantity]) => [
+      warehouseCode,
+      Math.max(quantity, 0),
+    ]),
+  );
+}
+
 type GoodsReceiptOriginRow = {
   id: number;
   gr_no: string | null;
@@ -539,19 +607,16 @@ export async function getFarmBuildingsForFlockCard(
     }
   }
 
-  const getPlacementInventoryAnimalQty = async (warehouseCode: string | null | undefined) => {
-    if (options.includePlacementInventory === false) return 0;
-    const code = String(warehouseCode ?? "").trim();
-    if (!code) return 0;
-
-    const placementRows = await getFarmOriginBatchesForFlockCard(farmId, code);
-    return placementRows.reduce(
-      (sum, row) => sum + Number(row.batchOnHandQty || row.onHandQty || 0),
-      0,
+  const placementInventoryByWarehouse = options.includePlacementInventory === false
+    ? new Map<string, number>()
+    : await getPlacementInventoryAnimalQtyByWarehouse(
+      Array.from(warehouseById.values()).map(warehouse => String(warehouse.whse_code ?? "")),
     );
-  };
 
-  const warehouseRows = await Promise.all(Array.from(warehouseById.values()).map(async warehouse => {
+  const getPlacementInventoryAnimalQty = (warehouseCode: string | null | undefined) =>
+    placementInventoryByWarehouse.get(String(warehouseCode ?? "").trim().toUpperCase()) ?? 0;
+
+  const warehouseRows = Array.from(warehouseById.values()).map(warehouse => {
     const id = Number(warehouse.id);
     const code = String(warehouse.whse_code ?? "").trim();
     const baseKey = `warehouse:${id}`;
@@ -560,7 +625,7 @@ export async function getFarmBuildingsForFlockCard(
       flockCardByBuildingKey.get(baseKey) ??
       flockCardByBuildingCode.get(code.toUpperCase()) ??
       null;
-    const placementAnimalQty = await getPlacementInventoryAnimalQty(code);
+    const placementAnimalQty = getPlacementInventoryAnimalQty(code);
     const displayedFlockCard = flockCard && placementAnimalQty > 0
       ? { ...flockCard, animalQty: placementAnimalQty }
       : flockCard;
@@ -581,9 +646,9 @@ export async function getFarmBuildingsForFlockCard(
       warehouseCode: code,
       flockCard: displayedFlockCard,
     };
-  }));
+  });
 
-  const flockCardOnlyRows = await Promise.all(cards.flatMap(async card => {
+  const flockCardOnlyRows = cards.flatMap(card => {
     if (cardIdsAttachedToWarehouseRows.has(Number(card.id))) return [];
 
     const info = cardToListInfo(card);
@@ -596,7 +661,7 @@ export async function getFarmBuildingsForFlockCard(
       : activeWarehouseCodes.has(code.toUpperCase());
 
     if ((!code && !buildingWarehouseId) || !matchesActiveWarehouse) return [];
-    const placementAnimalQty = await getPlacementInventoryAnimalQty(code || null);
+    const placementAnimalQty = getPlacementInventoryAnimalQty(code || null);
     const displayedInfo = placementAnimalQty > 0
       ? { ...info, animalQty: placementAnimalQty }
       : info;
@@ -613,9 +678,9 @@ export async function getFarmBuildingsForFlockCard(
       warehouseCode: code || null,
       flockCard: displayedInfo,
     }];
-  }));
+  });
 
-  const rows = [...warehouseRows, ...flockCardOnlyRows.flat()];
+  const rows = [...warehouseRows, ...flockCardOnlyRows];
   if (options.includeAllOpenCycles) {
     return rows.sort((left, right) =>
       left.code.localeCompare(right.code) ||
