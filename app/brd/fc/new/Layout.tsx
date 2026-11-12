@@ -538,6 +538,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [flockCardNo, setFlockCardNo] = useState("");
   const [flockCardCardNo, setFlockCardCardNo] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveProgressLabel, setSaveProgressLabel] = useState("");
   const [selectedFarmId, setSelectedFarmId] = useState("");
   useSyncDefaultFarm(selectedFarmId);
   const [selectedBuildingId, setSelectedBuildingId] = useState("");
@@ -926,7 +927,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     : `${positiveAvailableMortalityBatchRows.length} ${positiveAvailableMortalityBatchRows.length === 1 ? "batch" : "batches"}`;
   const isDatabaseLoading = loadingAssignedFarms || loadingFlockCardSheet;
   const saveStatusLabel = saving
-    ? "Saving..."
+    ? saveProgressLabel || "Saving..."
     : flockCardNo
       ? `Saved ${flockCardNo}`
       : "Not saved yet";
@@ -3067,9 +3068,107 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     }
 
     setSaving(true);
+    setSaveProgressLabel("");
 
     try {
       const lines = buildFlockCardLines();
+      const applySavedBatch = (savedCard: Awaited<ReturnType<typeof saveFlockCard>>, batchLines: FlockCardLinePayload[]) => {
+        setFlockCardId(savedCard.id);
+        setFlockCardNo(savedCard.fcNo);
+        setFlockCardCardNo(linkedCardNo);
+        setValue("brdFcNewContext", {
+          ...(flockCardNavigationContext ?? {}),
+          farmId: selectedFarm.id,
+          buildingKey: selectedBuilding.key,
+          buildingId: selectedBuilding.id,
+          animalQty: numberOfAnimals,
+          breed: selectedBreed,
+          cardNo: linkedCardNo,
+          flockCode: displayFlockCode === "-" ? "" : displayFlockCode,
+          brdFcId: savedCard.id,
+          dailyFlockCardId: savedCard.id,
+        });
+        setSavedLineByRowIndex(current => {
+          const next = { ...current };
+
+          for (const savedLine of savedCard.savedLines) {
+            const rowIndex = rows.findIndex(row => row.age === savedLine.age);
+            if (rowIndex >= 0 && rowHasFeedIntakeData(rowIndex)) next[rowIndex] = savedLine;
+          }
+
+          return next;
+        });
+        setFeedBatchAllocationsByRow(current => {
+          const next = { ...current };
+
+          batchLines.forEach(line => {
+            const rowIndex = rows.findIndex(row => row.age === line.age);
+            if (rowIndex >= 0 && line.allocations.length > 0) {
+              next[rowIndex] = line.allocations.map(payloadAllocationToFeedBatchAllocation);
+            }
+          });
+
+          return next;
+        });
+        setSavedMortalityLineByRowIndex(current => {
+          const next = { ...current };
+
+          batchLines.forEach(line => {
+            const rowIndex = rows.findIndex(row => row.age === line.age);
+            if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) {
+              const savedLine = savedCard.savedLines.find(candidate => candidate.age === line.age);
+              if (savedLine) next[rowIndex] = savedLine;
+            }
+          });
+
+          return next;
+        });
+        setMortalityBatchAllocationsByRow(current => {
+          const next = { ...current };
+
+          batchLines.forEach(line => {
+            const rowIndex = rows.findIndex(row => row.age === line.age);
+            if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) {
+              next[rowIndex] = (line.mortalityAllocations ?? []).map(allocation => ({
+                batchId: [
+                  allocation.itemCode.trim().toUpperCase(),
+                  allocation.batchNumber.trim().toUpperCase(),
+                  allocation.warehouseCode.trim().toUpperCase(),
+                ].join("|"),
+                batchNumber: allocation.batchNumber,
+                itemCode: allocation.itemCode,
+                itemName: allocation.itemName ?? allocation.itemCode,
+                warehouseCode: allocation.warehouseCode,
+                availableQty: allocation.onHandSnapshot,
+                selectedQty: allocation.allocatedQty,
+                source: allocation.source ?? "MANUAL",
+              }));
+            }
+          });
+
+          return next;
+        });
+        setHydratedSavedFeedBatchRows(current => {
+          const next = { ...current };
+
+          batchLines.forEach(line => {
+            const rowIndex = rows.findIndex(row => row.age === line.age);
+            if (rowIndex >= 0 && line.allocations.length > 0) next[rowIndex] = true;
+          });
+
+          return next;
+        });
+        setHydratedSavedMortalityBatchRows(current => {
+          const next = { ...current };
+
+          batchLines.forEach(line => {
+            const rowIndex = rows.findIndex(row => row.age === line.age);
+            if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) next[rowIndex] = true;
+          });
+
+          return next;
+        });
+      };
       const savedCard = await saveFlockCard({
         id: flockCardId,
         fcNo: flockCardNo,
@@ -3089,109 +3188,16 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         feedWarehouseName: selectedWarehouse?.whse_name ?? null,
         animalQty: numberOfAnimals,
         lines,
+      }, {
+        onProgress: progress => {
+          const retryLabel = progress.attempt > 1
+            ? ` · retry ${progress.attempt} of ${progress.maxAttempts}`
+            : "";
+          setSaveProgressLabel(`Saving batch ${progress.batchNumber} of ${progress.totalBatches}${retryLabel}...`);
+        },
+        onBatchSaved: applySavedBatch,
       });
 
-      setFlockCardId(savedCard.id);
-      setFlockCardNo(savedCard.fcNo);
-      setFlockCardCardNo(linkedCardNo);
-      setValue("brdFcNewContext", {
-        ...(flockCardNavigationContext ?? {}),
-        farmId: selectedFarm.id,
-        buildingKey: selectedBuilding.key,
-        buildingId: selectedBuilding.id,
-        animalQty: numberOfAnimals,
-        breed: selectedBreed,
-        cardNo: linkedCardNo,
-        flockCode: displayFlockCode === "-" ? "" : displayFlockCode,
-        brdFcId: savedCard.id,
-        dailyFlockCardId: savedCard.id,
-      });
-      setSavedLineByRowIndex(current => {
-        const next = { ...current };
-
-        for (const savedLine of savedCard.savedLines) {
-          const rowIndex = rows.findIndex(row => row.age === savedLine.age);
-          if (rowIndex >= 0 && rowHasFeedIntakeData(rowIndex)) {
-            next[rowIndex] = savedLine;
-          }
-        }
-
-        return next;
-      });
-      setFeedBatchAllocationsByRow(current => {
-        const next = { ...current };
-
-        lines.forEach(line => {
-          const rowIndex = rows.findIndex(row => row.age === line.age);
-          if (rowIndex >= 0 && line.allocations.length > 0) {
-            next[rowIndex] = line.allocations.map(payloadAllocationToFeedBatchAllocation);
-          }
-        });
-
-        return next;
-      });
-      setSavedMortalityLineByRowIndex(current => {
-        const next = { ...current };
-
-        lines.forEach(line => {
-          const rowIndex = rows.findIndex(row => row.age === line.age);
-          if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) {
-            const savedLine = savedCard.savedLines.find(candidate => candidate.age === line.age);
-            if (savedLine) next[rowIndex] = savedLine;
-          }
-        });
-
-        return next;
-      });
-      setMortalityBatchAllocationsByRow(current => {
-        const next = { ...current };
-
-        lines.forEach(line => {
-          const rowIndex = rows.findIndex(row => row.age === line.age);
-          if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) {
-            next[rowIndex] = (line.mortalityAllocations ?? []).map(allocation => ({
-              batchId: [
-                allocation.itemCode.trim().toUpperCase(),
-                allocation.batchNumber.trim().toUpperCase(),
-                allocation.warehouseCode.trim().toUpperCase(),
-              ].join("|"),
-              batchNumber: allocation.batchNumber,
-              itemCode: allocation.itemCode,
-              itemName: allocation.itemName ?? allocation.itemCode,
-              warehouseCode: allocation.warehouseCode,
-              availableQty: allocation.onHandSnapshot,
-              selectedQty: allocation.allocatedQty,
-              source: allocation.source ?? "MANUAL",
-            }));
-          }
-        });
-
-        return next;
-      });
-      setHydratedSavedFeedBatchRows(current => {
-        const next = { ...current };
-
-        lines.forEach(line => {
-          const rowIndex = rows.findIndex(row => row.age === line.age);
-          if (rowIndex >= 0 && line.allocations.length > 0) {
-            next[rowIndex] = true;
-          }
-        });
-
-        return next;
-      });
-      setHydratedSavedMortalityBatchRows(current => {
-        const next = { ...current };
-
-        lines.forEach(line => {
-          const rowIndex = rows.findIndex(row => row.age === line.age);
-          if (rowIndex >= 0 && (line.mortalityAllocations?.length ?? 0) > 0) {
-            next[rowIndex] = true;
-          }
-        });
-
-        return next;
-      });
       setMultiFeedDraftByRow({});
       refreshFeedInventory();
       toast(`Flock card saved: ${savedCard.fcNo}`);
@@ -3200,6 +3206,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       toast(`Unable to save flock card: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setSaving(false);
+      setSaveProgressLabel("");
     }
   }
 

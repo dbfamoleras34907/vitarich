@@ -14,7 +14,7 @@ Apply these files to the same Supabase project used by the application:
 
 1. `app/sql/updated/broiler_cycle_management.sql`
 2. `app/sql/updated/open_broiler_past_cycle.sql`
-3. `app/brd/fc/new/save_brd_fc_transaction.sql`
+3. `app/sql/updated/save_brd_fc_transaction.sql`
 4. `app/brd/dr/br_delivery_tables.sql`
 5. `app/sql/new/alter_growing_harvest_age.sql`
 6. `app/sql/updated/save_br_delivery_transaction.sql`

@@ -384,6 +384,9 @@ $$;
 
 create table if not exists public.brd_fc_save_requests (
   request_id uuid primary key,
+  action_request_id uuid not null,
+  batch_number integer not null,
+  total_batches integer not null,
   actor_auth_id uuid not null references auth.users(id),
   payload_hash text not null,
   fc_id bigint not null references public.brd_fc(id),
@@ -391,6 +394,20 @@ create table if not exists public.brd_fc_save_requests (
   result jsonb not null,
   created_at timestamptz not null default now()
 );
+alter table public.brd_fc_save_requests add column if not exists action_request_id uuid;
+alter table public.brd_fc_save_requests add column if not exists batch_number integer;
+alter table public.brd_fc_save_requests add column if not exists total_batches integer;
+update public.brd_fc_save_requests
+set action_request_id = coalesce(action_request_id, request_id),
+    batch_number = coalesce(batch_number, 1),
+    total_batches = coalesce(total_batches, 1)
+where action_request_id is null or batch_number is null or total_batches is null;
+alter table public.brd_fc_save_requests alter column action_request_id set not null;
+alter table public.brd_fc_save_requests alter column batch_number set not null;
+alter table public.brd_fc_save_requests alter column total_batches set not null;
+alter table public.brd_fc_save_requests drop constraint if exists brd_fc_save_requests_batch_check;
+alter table public.brd_fc_save_requests add constraint brd_fc_save_requests_batch_check
+  check (batch_number between 1 and total_batches);
 alter table public.brd_fc_save_requests enable row level security;
 drop policy if exists brd_fc_save_requests_own on public.brd_fc_save_requests;
 create policy brd_fc_save_requests_own on public.brd_fc_save_requests
@@ -415,6 +432,9 @@ declare
   v_result jsonb;
   v_lines jsonb := '[]'::jsonb;
   v_id bigint := nullif(p_payload->>'id', '')::bigint;
+  v_action_request_id uuid := coalesce(nullif(p_payload->>'actionRequestId', '')::uuid, p_request_id);
+  v_batch_number integer := coalesce(nullif(p_payload->>'batchNumber', '')::integer, 1);
+  v_total_batches integer := coalesce(nullif(p_payload->>'totalBatches', '')::integer, 1);
 begin
   if v_user is null or p_request_id is null then
     raise exception 'A signed-in user and save request ID are required.';
@@ -429,6 +449,9 @@ begin
   end if;
   if jsonb_typeof(p_payload->'lines') is distinct from 'array' then
     raise exception 'Growing lines must be an array.';
+  end if;
+  if v_batch_number < 1 or v_total_batches < 1 or v_batch_number > v_total_batches then
+    raise exception 'Growing save batch position is invalid.';
   end if;
   if exists (
     select 1 from jsonb_array_elements(p_payload->'lines') x
@@ -558,8 +581,13 @@ begin
     end;
   end loop;
   v_result := jsonb_build_object('id', v_header.id, 'fcNo', v_header.fc_no, 'savedLines', v_lines);
-  insert into public.brd_fc_save_requests(request_id, actor_auth_id, payload_hash, fc_id, is_new, result)
-  values (p_request_id, v_user, v_hash, v_header.id, v_id is null, v_result);
+  insert into public.brd_fc_save_requests(
+    request_id, action_request_id, batch_number, total_batches,
+    actor_auth_id, payload_hash, fc_id, is_new, result
+  ) values (
+    p_request_id, v_action_request_id, v_batch_number, v_total_batches,
+    v_user, v_hash, v_header.id, v_id is null, v_result
+  );
   return v_result;
 end;
 $$;
@@ -605,8 +633,14 @@ returns trigger language plpgsql security definer set search_path = public
 as $$
 declare
   v_card public.brd_fc%rowtype;
-  v_event text := case when new.is_new then 'BRD_FC_POSTED' else 'BRD_FC_EDITED' end;
+  v_action_is_new boolean;
+  v_event text;
 begin
+  select coalesce(bool_or(request.is_new), false) into v_action_is_new
+  from public.brd_fc_save_requests request
+  where request.action_request_id = new.action_request_id
+    and request.actor_auth_id = new.actor_auth_id;
+  v_event := case when v_action_is_new then 'BRD_FC_POSTED' else 'BRD_FC_EDITED' end;
   select card.* into v_card from public.brd_fc card
   join public.farms farm on farm.id = card.farm_id
   where card.id = new.fc_id and card.void = '1'
@@ -622,14 +656,16 @@ begin
     'Broiler', v_card.farm_id, v_card.farm_id, new.actor_auth_id,
     '/brd/fc', 'Menus', 'Growing & Farm Condition/view', 'Growing saved',
     'Growing {document_no} was saved by {initiator_name}.', 'normal',
-    '{}'::jsonb, v_event || ':' || new.request_id::text, new.created_at
+    jsonb_build_object('batchCount', new.total_batches),
+    v_event || ':' || new.action_request_id::text, new.created_at
   ) on conflict (dedupe_key) do nothing;
   return new;
 end;
 $$;
 drop trigger if exists brd_fc_save_event on public.brd_fc_save_requests;
 create trigger brd_fc_save_event after insert on public.brd_fc_save_requests
-for each row execute function public.enqueue_brd_fc_save_event();
+for each row when (new.batch_number = new.total_batches)
+execute function public.enqueue_brd_fc_save_event();
 -- Reversal is an edit of an existing Growing record, not a document void.
 create or replace function public.enqueue_brd_fc_reversal_event()
 returns trigger language plpgsql security definer set search_path = public

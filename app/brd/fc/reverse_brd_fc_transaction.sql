@@ -1,4 +1,4 @@
--- Apply after new/flock_card_tables.sql, new/save_brd_fc_transaction.sql,
+-- Apply after new/flock_card_tables.sql, ../../sql/updated/save_brd_fc_transaction.sql,
 -- and admin/notifications/notification_system.sql. No existing documents are reversed by deployment.
 begin;
 

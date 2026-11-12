@@ -13,7 +13,7 @@ Deployment
 1. Apply the current `app/admin/notifications/notification_system.sql` so the
    dispatcher validates BRD_FC events against persisted `brd_fc.farm_id`.
 2. Apply `../settings/brd_fc_settings.sql` to make Feed Group optional.
-3. Apply `save_brd_fc_transaction.sql`. This also replaces the seven-argument
+3. Apply `../../../sql/updated/save_brd_fc_transaction.sql`. This also replaces the seven-argument
    feed-intake function, using the selected `items.id` and the persisted farm feed warehouse, and reloads the PostgREST schema cache. Existing Growing and item
    hierarchy schema must already be installed.
 4. Deploy the application changes. Verify with an authorized user that a valid

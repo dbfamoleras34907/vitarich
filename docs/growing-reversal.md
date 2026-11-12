@@ -8,7 +8,7 @@ The migration also fixes mortality reversal deduplication to include the origina
 
 ## Deployment
 
-Apply `app/brd/fc/reverse_brd_fc_transaction.sql` after the existing Growing schema, `app/brd/fc/new/save_brd_fc_transaction.sql`, and `app/admin/notifications/notification_system.sql`. The migration includes the updated shared mortality functions and notification dispatcher. Deployment itself does not reverse any business records. This migration has been applied only to disposable local test databases, not the target Supabase database. The workspace has no direct target PostgreSQL connection configured.
+Apply `app/brd/fc/reverse_brd_fc_transaction.sql` after the existing Growing schema, `app/sql/updated/save_brd_fc_transaction.sql`, and `app/admin/notifications/notification_system.sql`. The migration includes the updated shared mortality functions and notification dispatcher. Deployment itself does not reverse any business records. This migration has been applied only to disposable local test databases, not the target Supabase database. The workspace has no direct target PostgreSQL connection configured.
 
 The administrative reversal takes transaction-scoped write locks on Growing, placement, Harvest and Clean Up tables, including their lines, so legacy writers cannot race eligibility checks. Reads continue; other writes may briefly wait. The existing farm advisory lock serializes it with Growing saves. Test target concurrency and deployed RLS before enabling notification rule activation.
 

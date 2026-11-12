@@ -1,10 +1,18 @@
 import { db } from '@/lib/Supabase/supabaseClient'
-import { isInternetError } from '@/lib/networkError'
+import { isServiceUnavailableError } from '@/lib/networkError'
+import { sleep } from '@/lib/utils'
 import { createUuid } from '@/lib/utils/createUuid'
+
+const GROWING_SAVE_BATCH_SIZE = 5
+const GROWING_SAVE_MAX_ATTEMPTS = 3
+const GROWING_SAVE_RETRY_DELAY_MS = 500
 
 export type GrowingSavePayload = {
   id: number | null
   header: Record<string, unknown>
+  actionRequestId?: string
+  batchNumber?: number
+  totalBatches?: number
   lines: Array<{
     age: number
     insert: Record<string, unknown>
@@ -17,6 +25,19 @@ export type GrowingSaveResult = {
   id: number
   fcNo: string
   savedLines: Array<{ id: number; age: number }>
+}
+
+export type GrowingSaveBatchProgress = {
+  batchNumber: number
+  totalBatches: number
+  attempt: number
+  maxAttempts: number
+  rowCount: number
+}
+
+export type GrowingSaveBatchOptions = {
+  onProgress?: (progress: GrowingSaveBatchProgress) => void
+  onBatchSaved?: (result: GrowingSaveResult, progress: GrowingSaveBatchProgress) => void
 }
 
 type PendingGrowingSave = { signature: string; requestId: string }
@@ -96,7 +117,7 @@ export async function saveBroilerGrowingTransaction(payload: GrowingSavePayload)
       p_payload: payload,
     })
     if (error) {
-      if (!isInternetError(error)) clearPendingSave(request)
+      if (!isServiceUnavailableError(error)) clearPendingSave(request)
       throw error
     }
     if (!data) {
@@ -106,7 +127,75 @@ export async function saveBroilerGrowingTransaction(payload: GrowingSavePayload)
     clearPendingSave(request)
     return data as GrowingSaveResult
   } catch (error) {
-    if (!isInternetError(error)) clearPendingSave(request)
+    if (!isServiceUnavailableError(error)) clearPendingSave(request)
     throw error
   }
+}
+
+export async function saveBroilerGrowingTransactionInBatches(
+  payload: GrowingSavePayload,
+  options: GrowingSaveBatchOptions = {},
+): Promise<GrowingSaveResult> {
+  if (payload.lines.length === 0) return saveBroilerGrowingTransaction(payload)
+
+  const actionRequestId = createUuid()
+  const totalBatches = Math.ceil(payload.lines.length / GROWING_SAVE_BATCH_SIZE)
+  const savedLines: GrowingSaveResult['savedLines'] = []
+  let growingId = payload.id
+  let growingNumber = String(payload.header.fc_no ?? '').trim()
+
+  for (let offset = 0; offset < payload.lines.length; offset += GROWING_SAVE_BATCH_SIZE) {
+    const batchLines = payload.lines.slice(offset, offset + GROWING_SAVE_BATCH_SIZE)
+    const batchNumber = Math.floor(offset / GROWING_SAVE_BATCH_SIZE) + 1
+    let batchResult: GrowingSaveResult | null = null
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= GROWING_SAVE_MAX_ATTEMPTS; attempt += 1) {
+      const progress: GrowingSaveBatchProgress = {
+        batchNumber,
+        totalBatches,
+        attempt,
+        maxAttempts: GROWING_SAVE_MAX_ATTEMPTS,
+        rowCount: batchLines.length,
+      }
+      options.onProgress?.(progress)
+
+      try {
+        batchResult = await saveBroilerGrowingTransaction({
+          ...payload,
+          id: growingId,
+          header: {
+            ...payload.header,
+            fc_no: growingId ? growingNumber : payload.header.fc_no,
+          },
+          actionRequestId,
+          batchNumber,
+          totalBatches,
+          lines: batchLines,
+        })
+        options.onBatchSaved?.(batchResult, progress)
+        break
+      } catch (error) {
+        lastError = error
+        if (attempt < GROWING_SAVE_MAX_ATTEMPTS) {
+          await sleep(GROWING_SAVE_RETRY_DELAY_MS * attempt)
+        }
+      }
+    }
+
+    if (!batchResult) {
+      const message = lastError instanceof Error ? lastError.message : String(lastError ?? 'Unknown error')
+      throw new Error(`Batch ${batchNumber} of ${totalBatches} failed after ${GROWING_SAVE_MAX_ATTEMPTS} attempts: ${message}`)
+    }
+
+    growingId = batchResult.id
+    growingNumber = batchResult.fcNo
+    savedLines.push(...batchResult.savedLines)
+  }
+
+  if (!growingId || !growingNumber) {
+    throw new Error('Growing batch save completed without a document result.')
+  }
+
+  return { id: growingId, fcNo: growingNumber, savedLines }
 }

@@ -6,7 +6,7 @@ of the production mortality calculations or production RLS policies.
 Run with `psql -v ON_ERROR_STOP=1`, in this order:
 
 1. `fixture.sql`
-2. `app/brd/fc/new/save_brd_fc_transaction.sql` (from the repository root)
+2. `app/sql/updated/save_brd_fc_transaction.sql` (from the repository root)
 3. `assertions.sql`
 
 Coverage: item mismatch rollback (even within the same subgroup) (including the header and mortality probe),

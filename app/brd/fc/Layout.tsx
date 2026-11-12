@@ -270,7 +270,10 @@ export default function Layout() {
       setBuildingError("");
 
       try {
-        const rows = await getFarmBuildingsForFlockCard(farmId, { farmCycleId: Number(selectedCycleId) });
+        const rows = await getFarmBuildingsForFlockCard(farmId, {
+          farmCycleId: Number(selectedCycleId),
+          includePlacementInventory: false,
+        });
         if (!cancelled) setBuildings(rows);
       } catch (error) {
         console.error(error);

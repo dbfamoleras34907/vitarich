@@ -1,4 +1,7 @@
-import { saveBroilerGrowingTransaction } from "@/lib/data/repositories/broilerGrowingSave";
+import {
+  saveBroilerGrowingTransactionInBatches,
+  type GrowingSaveBatchProgress,
+} from "@/lib/data/repositories/broilerGrowingSave";
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import {
@@ -122,6 +125,15 @@ export type SavedFlockCard = {
     id: number;
     age: number;
   }>;
+};
+
+export type SaveFlockCardOptions = {
+  onProgress?: (progress: GrowingSaveBatchProgress) => void;
+  onBatchSaved?: (
+    result: SavedFlockCard,
+    lines: FlockCardLinePayload[],
+    progress: GrowingSaveBatchProgress,
+  ) => void;
 };
 
 export type FlockCardSheetLine = {
@@ -539,6 +551,7 @@ function feedIntakePayload(line: FlockCardLinePayload) {
 
 export async function saveFlockCard(
   payload: FlockCardPayload,
+  options: SaveFlockCardOptions = {},
 ): Promise<SavedFlockCard> {
   const userId = await getSessionUserId();
   const fcNo = payload.fcNo?.trim() || nextFlockCardNo();
@@ -566,16 +579,29 @@ export async function saveFlockCard(
     void: "1",
   };
 
+  const lines = payload.lines.filter(hasLineData);
+  const transactionLines = lines.map(line => ({
+    age: line.age,
+    insert: linePayloadToBaseInsertRow(line, 0, userId),
+    update: linePayloadToBaseUpdateRow(line, userId),
+    feed: lineNeedsFeedIntakeRpc(line) ? feedIntakePayload(line) : null,
+  }));
+
   try {
-    return await saveBroilerGrowingTransaction({
+    return await saveBroilerGrowingTransactionInBatches({
       id: payload.id ?? null,
       header: headerPayload,
-      lines: payload.lines.filter(hasLineData).map(line => ({
-        age: line.age,
-        insert: linePayloadToBaseInsertRow(line, 0, userId),
-        update: linePayloadToBaseUpdateRow(line, userId),
-        feed: lineNeedsFeedIntakeRpc(line) ? feedIntakePayload(line) : null,
-      })),
+      lines: transactionLines,
+    }, {
+      onProgress: options.onProgress,
+      onBatchSaved: (result, progress) => {
+        const savedAges = new Set(result.savedLines.map(line => line.age));
+        options.onBatchSaved?.(
+          result,
+          lines.filter(line => savedAges.has(line.age)),
+          progress,
+        );
+      },
     });
   } catch (error) {
     throwDbError(error, "Unable to save flock card");

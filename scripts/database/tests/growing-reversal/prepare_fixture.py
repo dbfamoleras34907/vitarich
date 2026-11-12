@@ -42,7 +42,7 @@ create trigger reverse_order before update on brd_fc_line for each row execute f
 create trigger sync_age after insert or delete or update on brd_fc_line for each row execute function sync_brd_fc_actual_age();
 create trigger mortality_update after update on brd_fc_line for each row execute function post_brd_fc_mortality_thinning_inventory();
 """
-save = Path('app/brd/fc/new/save_brd_fc_transaction.sql').read_text()
+save = Path('app/sql/updated/save_brd_fc_transaction.sql').read_text()
 fixture += function(save, 'enqueue_brd_fc_reversal_event')
 fixture += 'create trigger brd_fc_reversal_event after update on brd_fc_line for each row execute function enqueue_brd_fc_reversal_event();\n'
 Path('tmp/full-reversal-fixture.sql').write_text(fixture)
