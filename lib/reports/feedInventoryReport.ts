@@ -51,7 +51,7 @@ export function getFeedInventoryMovementCategory(row: WarehouseReportRow): FeedI
     return 'Consumption'
   }
   if (sourceType === 'GOODS_RECEIPT') return 'Receipt'
-  if (sourceType === 'INVENTORY_TRANSFER') return row.outQty > 0 ? 'Transfer Out' : 'Transfer In'
+  if (sourceType === 'INVENTORY_TRANSFER' || sourceType === 'FEED_FARM_TRANSFER') return row.outQty > 0 ? 'Transfer Out' : 'Transfer In'
   if (sourceType.includes('ADJUST')) return row.outQty > 0 ? 'Adjustment Out' : 'Adjustment In'
   return row.outQty > 0 ? 'Other Issue' : 'Adjustment In'
 }

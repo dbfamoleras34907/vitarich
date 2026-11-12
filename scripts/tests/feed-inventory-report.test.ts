@@ -74,3 +74,11 @@ test('classifies feed reversal as consumption and converts kilograms to bags', (
   assert.equal(convertFeedInventoryQuantity(125, 'BAGS'), 2.5)
   assert.equal(convertFeedInventoryQuantity(125, 'KG'), 125)
 })
+
+test('classifies Feed Farm Transfer postings as transfer movements', () => {
+  const transferIn = movement(1, '2026-11-01T08:00:00+08:00', 'FEED_FARM_TRANSFER', 'IN', 50)
+  const transferOut = movement(2, '2026-11-01T08:00:00+08:00', 'FEED_FARM_TRANSFER', 'OUT', 50)
+
+  assert.equal(getFeedInventoryMovementCategory(transferIn), 'Transfer In')
+  assert.equal(getFeedInventoryMovementCategory(transferOut), 'Transfer Out')
+})

@@ -1189,6 +1189,18 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 89,
+            type: "Module",
+            title: "Feed Farm Transfer",
+            url: "/brd/feed-farm-transfer",
+            view: true,
+            insert: true,
+            edit: true,
+            void: false,
+            approval: true,
+          },
+
+          {
             id: 84,
             type: "Module",
             title: "Upload Data",

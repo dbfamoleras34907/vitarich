@@ -387,6 +387,26 @@ export const notificationCatalog: NotificationCatalog = [
     ],
   },
   {
+    key: NOTIFICATION_MODULE_KEYS.FEED_FARM_TRANSFER,
+    ruleActivationReady: false,
+    label: "Feed Farm Transfer",
+    description: "Approved feed transfers between Broiler farm default storages.",
+    fmsTypes: ["Broiler"],
+    defaultRecipientFmsTypes: ["Broiler"],
+    permissionGroup: "Menus",
+    permissionTitle: "Feed Farm Transfer/view",
+    baseUrl: "/brd/feed-farm-transfer",
+    events: [
+      {
+        key: NOTIFICATION_EVENT_KEYS.FEED_FARM_TRANSFER.POSTED,
+        label: "Feed Farm Transfer Approved",
+        description: "Stock Out and Stock In completed atomically after approval.",
+        action: "posted",
+        farmRouting: "origin_and_destination",
+      },
+    ],
+  },
+  {
     key: NOTIFICATION_MODULE_KEYS.WORKSPACE_PROJECT,
     label: "Workspace Project",
     description: "Cross-FMS workspace projects and their lifecycle.",

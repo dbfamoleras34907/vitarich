@@ -30,7 +30,7 @@ type FeedItemRow = {
   void?: string | number | null
 }
 
-async function getConfiguredFeedItemCodes(farmId: number) {
+export async function getConfiguredFeedItemCodes(farmId: number) {
   const settings = await getFlockCardSettings(farmId)
   if (!settings?.feed_group_id) return null
 
