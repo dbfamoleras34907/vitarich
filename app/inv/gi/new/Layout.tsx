@@ -487,6 +487,7 @@ export default function NewGoodsIssue({
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
+  const usesDatabaseAssignedDocumentNumber = triggeredBy === 'BR-DR'
   const usesBroilerLineLayout = usesLineWarehouse && isBroilerCycleIssue
   const getAllocationGroupKey = useCallback((line: GoodsIssueLine) => triggeredBy === 'BR-CU'
     ? `${line.fromWarehouseCode.trim().toUpperCase()}::${line.itemCode.trim().toUpperCase()}`
@@ -530,7 +531,7 @@ export default function NewGoodsIssue({
         const [references, savedIssue, giNo] = await Promise.all([
           referencesPromise,
           sourceIssueId ? getGoodsIssueById(Number(sourceIssueId), triggeredBy) : Promise.resolve(null),
-          issueId || !isBroilerCycleIssue
+          issueId || !isBroilerCycleIssue || usesDatabaseAssignedDocumentNumber
             ? Promise.resolve('')
             : createGoodsIssueNumber(documentPrefix),
         ])
@@ -625,7 +626,7 @@ export default function NewGoodsIssue({
     return () => {
       cancelled = true
     }
-  }, [basePath, documentPrefix, duplicateId, getValue, isBroilerCycleIssue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesLineWarehouse, warehouseTypeFilter])
+  }, [basePath, documentPrefix, duplicateId, getValue, isBroilerCycleIssue, isPostMode, issueId, listLabel, router, triggeredBy, useDefaultFarm, usesDatabaseAssignedDocumentNumber, usesLineWarehouse, warehouseTypeFilter])
 
   const selectedFarm = useMemo(
     () => farms.find(farm => farm.id === issue?.farmId),
@@ -2721,7 +2722,7 @@ export default function NewGoodsIssue({
           <div className='flex items-center gap-1'>
             <Input
               value={issue.giNo}
-              placeholder={isBroilerCycleIssue ? undefined : 'Auto-generated on save'}
+              placeholder={usesDatabaseAssignedDocumentNumber || !isBroilerCycleIssue ? 'Auto-generated on save' : undefined}
               readOnly
               className="bg-stone-50"
             />
@@ -3769,7 +3770,7 @@ export default function NewGoodsIssue({
           <DialogHeader>
             <DialogTitle>Post this {listLabel.toLowerCase()}?</DialogTitle>
             <DialogDescription>
-              Posting {issue.giNo} will deduct inventory for the selected {listLabel.toLowerCase()} lines and cannot be edited afterward.
+              Posting {issue.giNo || `this ${listLabel.toLowerCase()}`} will deduct inventory for the selected {listLabel.toLowerCase()} lines and cannot be edited afterward.
             </DialogDescription>
           </DialogHeader>
 
