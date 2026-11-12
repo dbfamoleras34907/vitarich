@@ -26,6 +26,11 @@ test('Committed batches update page state before the queue continues', () => {
   assert.match(layout, /Saving batch \$\{progress\.batchNumber\} of \$\{progress\.totalBatches\}/)
 })
 
+test('The sheet reload waits until the queued save stops', () => {
+  assert.match(layout, /useEffect\(\(\) => \{\s+if \(saving\) \{\s+setLoadingFlockCardSheet\(false\);\s+return;/)
+  assert.match(layout, /\[requestedCardNo, requestedFlockCardId, currentFlockAge, saving\]/)
+})
+
 test('Only the final batch publishes the Growing save notification', () => {
   assert.match(sql, /action_request_id uuid not null/)
   assert.match(sql, /when \(new\.batch_number = new\.total_batches\)/)

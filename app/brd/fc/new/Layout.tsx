@@ -1135,6 +1135,11 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }, [flockCardNavigationContext?.animalQty]);
 
   useEffect(() => {
+    if (saving) {
+      setLoadingFlockCardSheet(false);
+      return;
+    }
+
     const cardId = Number(requestedFlockCardId);
     if ((!Number.isFinite(cardId) || cardId <= 0) && !requestedCardNo) {
       setLoadingFlockCardSheet(false);
@@ -1207,7 +1212,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [requestedCardNo, requestedFlockCardId, currentFlockAge]);
+  }, [requestedCardNo, requestedFlockCardId, currentFlockAge, saving]);
 
   useEffect(() => {
     if (selectedFarmId || farms.length === 0) return;

@@ -1,18 +1,17 @@
 'use client'
 import { Button } from '@/components/ui/button'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getReceivingListByUser } from './api'
 import { useRouter } from 'next/navigation'
 import { useGlobalContext } from '@/lib/context/GlobalContext'
 import { toast } from 'sonner'
-import ScannerModal from '@/components/ScannerModal'
 import Breadcrumb from '@/lib/Breadcrumb'
 import DynamicTable from '@/components/ui/DataTableV2'
-import { ClipboardCopy, Copy, HandCoins, Map, Plus, View } from 'lucide-react'
+import { ClipboardCopy, Copy, Map, Plus, View } from 'lucide-react'
 import { refreshSessionx } from '@/app/admin/user/RefreshSession'
 import { listAssignedUserFarmOptions, type AssignedFarmOption } from '@/lib/data/repositories/farmOptions.client'
-import { getReceivingList, getPendingReceivingDispatches } from '@/lib/data/repositories/receivingLists'
+import { getReceivingList } from '@/lib/data/repositories/receivingLists'
 import { usePermission } from '@/hooks/usePermission'
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from '@/components/hatchery/HatcheryListParameters'
 import {
@@ -41,45 +40,7 @@ export default function Layout() {
 
 
     const { setValue, getValue } = useGlobalContext()
-    const [isScanning, setIsScanning] = useState(false);
-    const [, setScannedData] = useState<string | null>(null);
-    const handleScanSuccess = (text: string) => {
-        setScannedData(text);
-        setIsScanning(false);
-
-        const matchedRow = initialRows.find((row) => String(row.dr_num) === text);
-
-        if (!matchedRow) {
-            toast.error(`No record found with DR #: ${text}`);
-            return;
-        }
-
-        if (matchedRow.status === "Approved") {
-            toast.warning("Only pending documents are allowed to be edited on this module");
-            return;
-        }
-
-        // // console.loglog("Found match via scan:", matchedRow);
-
-        setValue("forApproval", { row: matchedRow });
-        route.push("/a_dean/receiving/approval");
-
-    };
     const route = useRouter()
-
-    const [initialRows, setinitialRows] = useState<RowDataKey[]>([])
-    const [loading, setLoading] = useState(true)
-    const tableColumnsx: ColumnConfig[] = useMemo(
-        () => [
-            { key: 'action', label: 'Action', type: 'button', disabled: false },
-            // { key: 'id', label: 'Approval ID', type: 'text', disabled: true },
-            { key: 'dr', label: 'Dr #', type: 'text', disabled: true },
-            { key: 'ts', label: 'ts #', type: 'text', disabled: true },
-            { key: 'remarks', label: 'Remarks', type: 'text', disabled: true },
-            { key: 'created_at', label: 'Created At', type: 'text', disabled: true },
-        ],
-        []
-    )
     const receivedColumns: ColumnConfig[] = [
         { key: 'actions', label: 'Actions', type: 'button', disabled: true },
 
@@ -154,7 +115,6 @@ export default function Layout() {
     const defaultFarmId = String(getValue('DefaultFarmId') ?? '')
     const selectedFarm = farms.find(farm => String(farm.id) === selectedFarmId)
     const currentFarmId = selectedFarm?.id ?? null
-    const currentFarmRef = selectedFarm?.ref ?? null
     const rowsAreCurrent = currentFarmId !== null && loadedFarmId === currentFarmId
 
     useEffect(() => {
@@ -187,44 +147,36 @@ export default function Layout() {
     useEffect(() => {
         let cancelled = false
         const loadRows = async () => {
-            setinitialRows([])
             setReceivedRows([])
             setLoadedFarmId(null)
-            setLoading(currentFarmId !== null)
             setLoadingReceived(currentFarmId !== null)
             if (currentFarmId === null) return
 
-            await Promise.allSettled([
-                getPendingReceivingDispatches(currentFarmRef),
-                getReceivingList(currentFarmId),
-            ]).then(([pending, received]) => {
-                if (cancelled) return
-                if (pending.status === 'fulfilled') setinitialRows(pending.value.filter(row => isWithinHatcheryDateRange(String(row.doc_date ?? row.created_at ?? ''), parameters.dateFrom, parameters.dateTo)))
-                else toast.error('Unable to load items for receiving.')
-                if (received.status === 'fulfilled') setReceivedRows(received.value.filter(row => isWithinHatcheryDateRange(row.recieving_items?.[0]?.created_at, parameters.dateFrom, parameters.dateTo)))
-                else toast.error('Unable to load received items.')
-                setLoadedFarmId(currentFarmId)
-                setLoading(false)
-                setLoadingReceived(false)
-            })
+            await getReceivingList(currentFarmId)
+                .then(received => {
+                    if (cancelled) return
+                    setReceivedRows(received.filter(row => isWithinHatcheryDateRange(row.recieving_items?.[0]?.created_at, parameters.dateFrom, parameters.dateTo)))
+                })
+                .catch(() => {
+                    if (!cancelled) toast.error('Unable to load received items.')
+                })
+                .finally(() => {
+                    if (cancelled) return
+                    setLoadedFarmId(currentFarmId)
+                    setLoadingReceived(false)
+                })
         }
         void loadRows()
         return () => { cancelled = true }
-    }, [currentFarmId, currentFarmRef, parameters.dateFrom, parameters.dateTo])
+    }, [currentFarmId, parameters.dateFrom, parameters.dateTo])
 
     useEffect(() => {
-        setValue("loading_g", loading)
-    }, [loading, setValue])
+        setValue("loading_g", loadingReceived)
+    }, [loadingReceived, setValue])
 
 
     return (
         <div>
-            {isScanning && (
-                <ScannerModal
-                    onResult={handleScanSuccess}
-                    onClose={() => setIsScanning(false)}
-                />
-            )}
             <div className='mx-4 flex justify-between items-center mb-4 mt-8'>
 
                 <Breadcrumb
@@ -259,52 +211,7 @@ export default function Layout() {
                 )}
             </div>
 
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold mx-4">For Receiving Items</h2>
-            </div>
-            {
-                <DynamicTable
-                    loading={loading}
-
-                    columns={tableColumnsx.map((col) => ({
-                        key: col.key,
-                        label: col.label,
-                        align: col.key === 'action' ? 'right' : 'left',
-
-                        render: (row: RowDataKey) => {
-                            if (col.key === 'action') {
-                                return (
-                                    <div className="flex  gap-2">
-                                        <Button
-                                            size={"sm"}
-                                            className='my-1 bg-background border hover:bg-foreground/10 border-green-400 text-green-400 p-1 rounded-xs   '
-                                            onClick={() => {
-                                                setValue("forApproval", row)
-                                                setValue("scanning", "on")
-                                                route.push("/a_dean/receiving/manual")
-                                            }}
-                                        >
-                                            <HandCoins />
-                                            Receive
-                                        </Button>
-                                    </div>
-                                )
-                            }
-
-                            const value = row[col.key]
-
-                            if (!value) return "-"
-
-                            return String(value)
-                        },
-                    }))}
-
-                    data={rowsAreCurrent ? initialRows : []}
-
-                />
-            }
-
-            <div className="mt-10">
+            <div className="mt-4">
 
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold mx-4">Received Items</h2>
