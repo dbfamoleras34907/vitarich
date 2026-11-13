@@ -3,6 +3,7 @@ export const runtime = "nodejs"
 import { NextResponse } from "next/server"
 import { NavFolders } from "@/lib/Defaults/DefaultValues"
 import { USER_TYPE, adminAccessError, requireAdminActor } from "@/lib/auth/adminAccess"
+import { parsePermissionTitle } from "@/lib/auth/permissionActions"
 import {
   applyPermissionTemplate,
   listPermissionTemplatesWithAssignments,
@@ -12,17 +13,12 @@ import {
   type StoredPermissionTemplateItem,
 } from "@/lib/data/repositories/permissionTemplates.server"
 
-const ACTIONS = new Set(["list", "view", "insert", "edit", "void", "approval"])
-
 function requireSuperAdmin(userType: number) {
   if (userType !== USER_TYPE.SUPER_ADMIN) throw new Error("FORBIDDEN")
 }
 
 function validatePermission(groupName: string, title: string): StoredPermissionTemplateItem | null {
-  const slashIndex = title.lastIndexOf("/")
-  const action = slashIndex >= 0 ? title.slice(slashIndex + 1) : "list"
-  const moduleTitle = slashIndex >= 0 ? title.slice(0, slashIndex) : title
-  if (!ACTIONS.has(action)) return null
+  const { moduleTitle, action } = parsePermissionTitle(title)
 
   for (const folder of NavFolders) {
     for (const group of folder.items ?? []) {

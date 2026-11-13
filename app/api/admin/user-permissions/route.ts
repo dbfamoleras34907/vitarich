@@ -9,15 +9,12 @@ import {
   requireModuleActor,
   type ManagedUserProfile,
 } from "@/lib/auth/adminAccess"
+import { parsePermissionTitle } from "@/lib/auth/permissionActions"
 
-const ACTIONS = new Set(["list", "view", "insert", "edit", "void", "approval"])
 const USER_PERMISSIONS_ACCESS_LINK = "/admin/user-permissions/view"
 
 function permissionDefinition(groupName: string, title: string) {
-  const slashIndex = title.lastIndexOf("/")
-  const action = slashIndex >= 0 ? title.slice(slashIndex + 1) : "list"
-  const moduleTitle = slashIndex >= 0 ? title.slice(0, slashIndex) : title
-  if (!ACTIONS.has(action)) return null
+  const { moduleTitle, action } = parsePermissionTitle(title)
 
   for (const folder of NavFolders) {
     for (const group of folder.items ?? []) {
