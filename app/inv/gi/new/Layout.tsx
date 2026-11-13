@@ -27,7 +27,7 @@ import { PageActionBar, PageHeader, PageHeaderActions, PageSection, PageShell } 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Breadcrumb from '@/lib/Breadcrumb'
 import SearchableDropdown from '@/lib/SearchableDropdown'
-import DeliveryIssueLinesTable from './DeliveryIssueLinesTable'
+import DeliveryIssueLinesTable, { type CleanupTypeAllocationRequest } from './DeliveryIssueLinesTable'
 import { calculateBirdAgeFromPlacementDate } from '@/app/brd/fc/age'
 import { deliveryDateValue, prepareDeliveryPaste, type DeliveryPasteRow } from './deliverySpreadsheet'
 import GoodsIssueHeaderSection, { type GoodsIssueHeaderField } from './GoodsIssueHeaderSection'
@@ -85,7 +85,11 @@ import {
   planBatchQuantityReallocation,
   type BatchReallocationAllocation,
 } from '@/lib/functions/reallocateBatchQuantities'
-import { cleanupAllocationScopeKey, cleanupLineGroupQuantity } from '@/lib/functions/cleanupTypeAllocations'
+import {
+  cleanupAllocationMatchesLine,
+  cleanupAllocationScopeKey,
+  cleanupLineGroupQuantity,
+} from '@/lib/functions/cleanupTypeAllocations'
 
 const INITIAL_LINE_COUNT = 5
 const MIN_LINES_TO_ADD = 1
@@ -125,6 +129,11 @@ type PostBatchSummary = {
   hasStockError: boolean
   hasAllocationError: boolean
   hasError: boolean
+}
+
+type CleanupTypeAllocationValidationError = {
+  group: GoodsIssueLine[]
+  message: string
 }
 
 type PostBatchBalance = {
@@ -479,6 +488,9 @@ export default function NewGoodsIssue({
   const [cleanupSummaries, setCleanupSummaries] = useState<CleanupCycleSummary[]>([])
   const [loadingCleanupSummaries, setLoadingCleanupSummaries] = useState(false)
   const [cleanupSummaryError, setCleanupSummaryError] = useState('')
+  const [activeIssueTab, setActiveIssueTab] = useState('lines')
+  const cleanupTypeAllocationRequestIdRef = useRef(0)
+  const [cleanupTypeAllocationRequest, setCleanupTypeAllocationRequest] = useState<CleanupTypeAllocationRequest | null>(null)
   const usesLineWarehouse = warehouseScope === 'line'
   const isBroilerCycleIssue = triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'
   const usesDatabaseAssignedDocumentNumber = triggeredBy === 'BR-DR'
@@ -1220,14 +1232,11 @@ export default function NewGoodsIssue({
   const lineHasEnteredItem = (line: GoodsIssueLine) =>
     Boolean(line.itemCode.trim() || line.description.trim() || line.itemId)
 
-  const canCleanupAtZero = (line: GoodsIssueLine) => isCleanup &&
-    Boolean(linePlacementBatches[String(line.id)]?.some(batch => batch.cleanupZeroBalance &&
-      batch.itemCode === line.itemCode && batch.batchNumber === line.batchNumber))
-
   const lineHasInvalidQuantity = (line: GoodsIssueLine) =>
     !line.baseUom || !line.altUom || !Number.isFinite(line.altQty) || !Number.isFinite(line.baseQty) ||
-    (!(canCleanupAtZero(line) && line.altQty === 0 && line.baseQty === 0) &&
-      (line.altQty <= 0 || line.baseQty <= 0))
+    (isCleanup
+      ? line.altQty < 0 || line.baseQty < 0
+      : line.altQty <= 0 || line.baseQty <= 0)
 
   const getGroupUoms = useCallback((groupCode: string) => {
     const seen = new Set<string>()
@@ -1930,8 +1939,27 @@ export default function NewGoodsIssue({
   }
 
   const handleTransferQuantityChange = (line: GoodsIssueLine, requestedAltQty: number) => {
-    if (!deliveryBatchAutoSelection || issue?.status !== 'Draft') return
-    if (requestedAltQty === 0 && canCleanupAtZero(line)) return
+    if (issue?.status !== 'Draft') return
+    if (isCleanup && requestedAltQty === 0) {
+      const groupKey = getAllocationGroupKey(line)
+      setIssue(current => {
+        if (!current) return current
+        let keptZeroLine = false
+        return {
+          ...current,
+          lines: current.lines.flatMap(candidate => {
+            if (getAllocationGroupKey(candidate) !== groupKey) return [candidate]
+            if (keptZeroLine) return []
+            keptZeroLine = true
+            return [{ ...candidate, requestedAltQty: 0, altQty: 0, baseQty: 0 }]
+          }),
+          cleanupTypeAllocations: (current.cleanupTypeAllocations ?? [])
+            .filter(allocation => !cleanupAllocationMatchesLine(allocation, line)),
+        }
+      })
+      return
+    }
+    if (!deliveryBatchAutoSelection) return
     autoSelectDeliveryBatches({ ...line, requestedAltQty })
   }
 
@@ -2099,6 +2127,89 @@ export default function NewGoodsIssue({
   const completedLines = issue?.lines
     .filter(lineHasEnteredItem)
     .map(getLineWithRecalculatedQuantity) ?? []
+
+  const validateCleanupTypeAllocations = (
+    lines: GoodsIssueLine[],
+    sourceAllocations: CleanupTypeAllocation[],
+  ) => {
+    const cleanupGroups = new Map<string, GoodsIssueLine[]>()
+    lines.forEach(line => {
+      const key = cleanupAllocationScopeKey(line)
+      cleanupGroups.set(key, [...(cleanupGroups.get(key) ?? []), line])
+    })
+    const allocations = sourceAllocations.filter(allocation =>
+      cleanupGroups.has(cleanupAllocationScopeKey(allocation)),
+    )
+
+    const invalid = Array.from(cleanupGroups.entries())
+      .map(([key, group]): CleanupTypeAllocationValidationError | null => {
+        const lineQuantity = cleanupLineGroupQuantity(group)
+        if (Math.abs(lineQuantity) <= QUANTITY_TOLERANCE) return null
+
+        const groupAllocations = allocations.filter(allocation =>
+          cleanupAllocationScopeKey(allocation) === key,
+        )
+        if (groupAllocations.length === 0) return {
+          group,
+          message: 'Cleanup Type allocation is required when Clean up Quantity is greater than zero.',
+        }
+        if (groupAllocations.some(allocation => !allocation.remarks.trim())) {
+          return { group, message: 'Remarks are required for every Cleanup Type.' }
+        }
+        if (groupAllocations.some(allocation => !Number.isFinite(allocation.quantity) || allocation.quantity < 0)) {
+          return { group, message: 'Cleanup Type Quantity must be zero or greater.' }
+        }
+        const typeIds = groupAllocations.map(allocation => allocation.cleanupTypeId)
+        if (new Set(typeIds).size !== typeIds.length) {
+          return { group, message: 'Each Cleanup Type can appear only once.' }
+        }
+        const allocatedTotal = groupAllocations.reduce((total, allocation) => total + allocation.quantity, 0)
+        if (Math.abs(allocatedTotal - lineQuantity) > QUANTITY_TOLERANCE) {
+          return {
+            group,
+            message: `Cleanup Type Quantity must total ${formatQuantity(lineQuantity)} ${group[0]?.altUom ?? ''}.`.trim(),
+          }
+        }
+        return null
+      })
+      .find((result): result is CleanupTypeAllocationValidationError => result !== null) ?? null
+
+    return { allocations, invalid }
+  }
+
+  const showCleanupTypeAllocationError = (
+    invalid: CleanupTypeAllocationValidationError,
+    lines: GoodsIssueLine[],
+  ) => {
+    const lineGroups = Array.from(new Set(lines.map(getAllocationGroupKey)))
+    const groupKey = getAllocationGroupKey(invalid.group[0])
+    const lineNumber = Math.max(lineGroups.indexOf(groupKey) + 1, 1)
+
+    cleanupTypeAllocationRequestIdRef.current += 1
+    setPostConfirmOpen(false)
+    setActiveIssueTab('lines')
+    setCleanupTypeAllocationRequest({
+      id: cleanupTypeAllocationRequestIdRef.current,
+      groupKey,
+      message: invalid.message,
+    })
+    toast.error(`Line ${lineNumber}: ${invalid.message}`)
+  }
+
+  const handleSaveDocumentClick = () => {
+    if (isCleanup && issue) {
+      const validation = validateCleanupTypeAllocations(
+        completedLines,
+        issue.cleanupTypeAllocations ?? [],
+      )
+      if (validation.invalid) {
+        showCleanupTypeAllocationError(validation.invalid, completedLines)
+        return
+      }
+    }
+    setPostConfirmOpen(true)
+  }
+
   const postBatchBalanceRequests = Array.from(completedLines.reduce((requests, line) => {
     const itemCode = line.itemCode.trim()
     const warehouseCode = line.fromWarehouseCode.trim()
@@ -2340,48 +2451,13 @@ export default function NewGoodsIssue({
 
     let cleanupTypeAllocationsToSave: CleanupTypeAllocation[] = issue.cleanupTypeAllocations ?? []
     if (isCleanup) {
-      const cleanupGroups = new Map<string, GoodsIssueLine[]>()
-      linesToSave.forEach(line => {
-        const key = cleanupAllocationScopeKey(line)
-        cleanupGroups.set(key, [...(cleanupGroups.get(key) ?? []), line])
-      })
-      cleanupTypeAllocationsToSave = cleanupTypeAllocationsToSave.filter(allocation =>
-        cleanupGroups.has(cleanupAllocationScopeKey(allocation)),
+      const validation = validateCleanupTypeAllocations(
+        linesToSave,
+        cleanupTypeAllocationsToSave,
       )
-
-      const invalidAllocation = Array.from(cleanupGroups.entries())
-        .map(([key, group]) => {
-          const lineQuantity = cleanupLineGroupQuantity(group)
-          // A zero-balance closeout has no cleanup quantity to classify.
-          if (Math.abs(lineQuantity) <= QUANTITY_TOLERANCE) return null
-
-          const allocations = cleanupTypeAllocationsToSave.filter(allocation =>
-            cleanupAllocationScopeKey(allocation) === key,
-          )
-          if (allocations.length === 0) return { group, message: 'Cleanup Type allocation is required.' }
-          if (allocations.some(allocation => !allocation.remarks.trim())) {
-            return { group, message: 'Remarks are required for every Cleanup Type.' }
-          }
-          if (allocations.some(allocation => !Number.isFinite(allocation.quantity) || allocation.quantity < 0)) {
-            return { group, message: 'Cleanup Type Quantity must be zero or greater.' }
-          }
-          const typeIds = allocations.map(allocation => allocation.cleanupTypeId)
-          if (new Set(typeIds).size !== typeIds.length) {
-            return { group, message: 'Each Cleanup Type can appear only once.' }
-          }
-          const allocatedTotal = allocations.reduce((total, allocation) => total + allocation.quantity, 0)
-          if (Math.abs(allocatedTotal - lineQuantity) > QUANTITY_TOLERANCE) {
-            return {
-              group,
-              message: `Cleanup Type Quantity must total ${formatQuantity(lineQuantity)} ${group[0]?.altUom ?? ''}.`.trim(),
-            }
-          }
-          return null
-        })
-        .find((result): result is { group: GoodsIssueLine[]; message: string } => result !== null)
-
-      if (invalidAllocation) {
-        toast(`Line ${getDocumentLineNumber(invalidAllocation.group[0])}: ${invalidAllocation.message}`)
+      cleanupTypeAllocationsToSave = validation.allocations
+      if (validation.invalid) {
+        showCleanupTypeAllocationError(validation.invalid, linesToSave)
         return
       }
     }
@@ -2837,7 +2913,7 @@ export default function NewGoodsIssue({
         <GoodsIssueHeaderSection fields={headerComponentList} />
 
         <div className="border-t p-3">
-          <Tabs defaultValue="lines" className="space-y-2">
+          <Tabs value={activeIssueTab} onValueChange={setActiveIssueTab} className="space-y-2">
             {isCleanup && (
               <TabsList>
                 <TabsTrigger value="lines">Clean up Lines</TabsTrigger>
@@ -2896,6 +2972,8 @@ export default function NewGoodsIssue({
                  allowDuplicateBuildings={triggeredBy === 'BR-DR'}
                  enableMobileLineModal={triggeredBy === 'BR-DR' || triggeredBy === 'BR-CU'}
                  enableCleanupTypeAllocations={isCleanup}
+                 cleanupTypeAllocationRequest={cleanupTypeAllocationRequest}
+                 onCleanupTypeAllocationRequestHandled={() => setCleanupTypeAllocationRequest(null)}
                  canEdit={canSave}
                 showTransportFields={triggeredBy === 'BR-DR'}
                 reallocatingQuantities={reallocatingQuantities}
@@ -3720,7 +3798,7 @@ export default function NewGoodsIssue({
                     {saving ? 'Saving...' : 'Save as Draft'}
                   </Button>
                   {canPostDocument && (
-                    <Button type="button" onClick={() => setPostConfirmOpen(true)} disabled={!canSave}>
+                    <Button type="button" onClick={handleSaveDocumentClick} disabled={!canSave}>
                       <Save className="size-4" />
                       {saving ? 'Posting...' : 'Save Document'}
                     </Button>

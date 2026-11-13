@@ -7,6 +7,7 @@ import type {
   KeyboardEvent,
 } from "react";
 import {
+  Table,
   TableBody,
   TableCell,
   TableFooter,
@@ -554,6 +555,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const [feedInventoryRevision, setFeedInventoryRevision] = useState(0);
   const [loadingFeedBatches, setLoadingFeedBatches] = useState(false);
   const [feedBatchError, setFeedBatchError] = useState("");
+  const [feedOnHandDrawerOpen, setFeedOnHandDrawerOpen] = useState(false);
   const [feedBatchDialogOpen, setFeedBatchDialogOpen] = useState(false);
   const [feedBatchDialogMode, setFeedBatchDialogMode] = useState<FeedBatchDialogMode>("onHand");
   const [feedBatchSelectionRowIndex, setFeedBatchSelectionRowIndex] = useState<number | null>(null);
@@ -856,6 +858,21 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     () => positiveAvailableFeedBatchRows.reduce((total, row) => total + row.availableOnHandQty, 0),
     [positiveAvailableFeedBatchRows]
   );
+
+  const feedOnHandRows = useMemo(() => {
+    return feedBatchRows
+      .filter(row => row.itemCode.trim() && Number(row.onHandQty || 0) > 0)
+      .map(row => ({
+        id: row.id,
+        itemCode: row.itemCode.trim(),
+        itemName: row.itemName || feedItemNameByCode.get(row.itemCode.trim().toUpperCase()) || row.itemCode,
+        batchNumber: row.batchNumber,
+        quantity: Number(row.onHandQty || 0),
+      }))
+      .sort((left, right) =>
+        left.itemCode.localeCompare(right.itemCode) || left.batchNumber.localeCompare(right.batchNumber)
+      );
+  }, [feedBatchRows, feedItemNameByCode]);
 
   const mortalityBatchAllocatedQtyByBatchId = useMemo(() => {
     const allocatedQtyByBatchId = new Map<string, number>();
@@ -1345,6 +1362,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
   function refreshFeedInventory() {
     feedInventoryCache.current.clear();
+    setFeedBatchError("");
+    setLoadingFeedBatches(Boolean(selectedWarehouseCode && feedItemCodes.length > 0));
     setFeedInventoryRevision(revision => revision + 1);
   }
 
@@ -2888,13 +2907,15 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   function openFeedBatchReview(rowIndex: number) {
-    if (isRowAgeLocked(rowIndex)) return;
-
     const rowLocked = isFeedIntakeLocked(rowIndex);
-    if (rowLocked && !rowHasFeedBatchData(rowIndex)) return;
+    const hasBatchData = rowHasFeedBatchData(rowIndex);
+    if ((rowLocked || isRowAgeLocked(rowIndex)) && !hasBatchData) return;
 
     if ((feedBatchAllocationsByRow[rowIndex] ?? []).length > 0) {
-      openFeedBatchSelection(rowIndex);
+      setFeedBatchDialogMode("cell");
+      setFeedBatchSelectionRowIndex(rowIndex);
+      setReviewFeedBatch(null);
+      setFeedBatchDialogOpen(true);
       return;
     }
 
@@ -3300,10 +3321,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   }
 
   function openFeedOnHandSummary() {
-    setFeedBatchDialogMode("onHand");
-    setFeedBatchSelectionRowIndex(null);
-    setReviewFeedBatch(null);
-    setFeedBatchDialogOpen(true);
+    refreshFeedInventory();
+    setFeedOnHandDrawerOpen(true);
   }
 
   function focusCell(rowIndex: number, colIndex: number) {
@@ -3578,6 +3597,16 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   <Button
                     type="button"
                     size="default"
+                    variant="outline"
+                    onClick={openFeedOnHandSummary}
+                    disabled={!selectedWarehouseCode}
+                  >
+                    <PackageCheck className="size-4" />
+                    Feed On Hand
+                  </Button>
+                  <Button
+                    type="button"
+                    size="default"
                     variant={"secondary"}
                     onClick={handleSave}
                     disabled={saving}
@@ -3730,9 +3759,18 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                 rows={exportRows}
               />
 
-
               <Button
-              variant={"secondary"}
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openFeedOnHandSummary}
+                disabled={!selectedWarehouseCode}
+              >
+                <PackageCheck className="size-4" />
+                Feed On Hand
+              </Button>
+              <Button
+                variant={"secondary"}
                 type="button"
                 size="sm"
                 onClick={handleSave}
@@ -3791,6 +3829,82 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
           onClose={closeMultiFeedDrawer}
           onApply={applyMultiFeedBreakdown}
         />
+
+        <Sheet open={feedOnHandDrawerOpen} onOpenChange={setFeedOnHandDrawerOpen}>
+          <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl">
+            <SheetHeader className="border-b px-4 py-3 pr-12 text-left">
+              <SheetTitle>Feed On Hand</SheetTitle>
+              <SheetDescription>
+                Current feed inventory in {selectedWarehouseLabel || "the default feed warehouse"}. Quantities are shown per bag.
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+              <div className="min-w-0 text-xs text-muted-foreground">
+                <div className="font-medium text-foreground">{selectedWarehouseLabel || "No default feed warehouse"}</div>
+                <div>Updated whenever this drawer is opened or refreshed.</div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={refreshFeedInventory}
+                disabled={loadingFeedBatches || !selectedWarehouseCode}
+              >
+                {loadingFeedBatches ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="size-4" />
+                )}
+                Refresh
+              </Button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {loadingFeedBatches ? (
+                <div className="flex min-h-36 items-center justify-center gap-2 rounded-md border border-dashed bg-muted/30 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading feed on hand...
+                </div>
+              ) : feedBatchError ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                  {feedBatchError}
+                </div>
+              ) : feedOnHandRows.length === 0 ? (
+                <div className="rounded-md border border-dashed bg-muted/30 px-3 py-10 text-center text-sm text-muted-foreground">
+                  No feed on hand was found in this warehouse.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-md border">
+                  <Table className="min-w-[680px]">
+                    <TableHeader>
+                      <TableRow className="bg-muted/60 hover:bg-muted/60">
+                        <TableHead className="h-9 px-3">Item Code</TableHead>
+                        <TableHead className="h-9 px-3">Item Name</TableHead>
+                        <TableHead className="h-9 px-3">Batch #</TableHead>
+                        <TableHead className="h-9 px-3 text-right">Quantity</TableHead>
+                        <TableHead className="h-9 px-3">UoM</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {feedOnHandRows.map(row => (
+                        <TableRow key={row.id}>
+                          <TableCell className="px-3 py-2 font-medium">{row.itemCode}</TableCell>
+                          <TableCell className="px-3 py-2">{row.itemName}</TableCell>
+                          <TableCell className="px-3 py-2 font-medium">{row.batchNumber}</TableCell>
+                          <TableCell className="px-3 py-2 text-right font-semibold tabular-nums">
+                            {formatQuantity(row.quantity)}
+                          </TableCell>
+                          <TableCell className="px-3 py-2">Bag</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
 
         <Dialog
           open={mortalityBatchDialogOpen}
@@ -4010,7 +4124,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                   ? "Feed On-hand Quantity"
                   : reviewFeedBatch
                     ? "Feed Batch Details"
-                    : feedBatchSelectionRowIndex == null ? "Feed Batch Information" : "Select Feed Batch"}
+                    : feedBatchSelectionRowIndex == null
+                      ? "Feed Batch Information"
+                      : activeFeedBatchRowLocked ? "Feed Batches Used" : "Select Feed Batch"}
               </DialogTitle>
               <DialogDescription>
                 {feedBatchDialogMode === "onHand"
@@ -4019,7 +4135,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                     ? `${reviewFeedBatch.batchNumber} information and movement history.`
                     : feedBatchSelectionRowIndex == null
                       ? `On-hand feed batches in ${selectedWarehouseLabel || "the default feed warehouse"}.`
-                      : `Choose the ${activeFeedTypeLabel} feed used on age ${feedBatchSelectionAge ?? ""}. Auto select follows FIFO.`}
+                      : activeFeedBatchRowLocked
+                        ? `Feed batches used on age ${feedBatchSelectionAge ?? ""}. This saved allocation is read-only.`
+                        : `Choose the ${activeFeedTypeLabel} feed used on age ${feedBatchSelectionAge ?? ""}. Auto select follows FIFO.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -4436,8 +4554,17 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                               type="button"
                               className="min-w-0 text-left"
                               onClick={() => {
-                                const batch = availableFeedBatchRows.find(row => row.id === allocation.batchId);
-                                if (batch) setReviewFeedBatch(batch);
+                                const batch = availableFeedBatchRows.find(row => row.id === allocation.batchId) ?? {
+                                  id: allocation.batchId,
+                                  itemCode: allocation.itemCode,
+                                  itemName: allocation.itemName,
+                                  batchNumber: allocation.batchNumber,
+                                  manufacturingDate: allocation.manufacturingDate,
+                                  expiryDate: allocation.expiryDate,
+                                  warehouseCode: allocation.warehouseCode,
+                                  onHandQty: allocation.availableQty,
+                                };
+                                setReviewFeedBatch(batch);
                               }}
                             >
                               <div className="truncate font-semibold text-foreground">{allocation.batchNumber}</div>
@@ -4736,9 +4863,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                         ? rowAgeLocked || mortalityThinningCellLocked || columnDisabledFlags[colIndex]
                         : disabled || (colIndex === feedDailyKgColumnIndex && hasMultipleFeedTypes);
                       const feedBatchCellCanOpen =
-                        !rowAgeLocked &&
+                        (!rowAgeLocked || rowHasFeedBatchData(rowIndex)) &&
                         (!feedIntakeCellLocked || rowHasFeedBatchData(rowIndex)) &&
-                        (feedIntakeLocked || (hasActualFc && getFeedTypeIdForRow(rowIndex) != null));
+                        (feedIntakeLocked || rowHasFeedBatchData(rowIndex) || (hasActualFc && getFeedTypeIdForRow(rowIndex) != null));
                       const mortalityBatchCellCanOpen =
                         !rowAgeLocked &&
                         (!mortalityThinningCellLocked || rowHasMortalityBatchData(rowIndex)) &&
@@ -4863,9 +4990,11 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
                                   inputRefs.current[rowIndex] ??= [];
                                   inputRefs.current[rowIndex][colIndex] = element;
                                 }}
-                                onClick={() => hasMultipleFeedTypes
-                                  ? setMultiFeedDrawerRowIndex(rowIndex)
-                                  : openFeedBatchReview(rowIndex)}
+                                onClick={() => (feedIntakeCellLocked || rowAgeLocked)
+                                  ? openFeedBatchReview(rowIndex)
+                                  : hasMultipleFeedTypes
+                                    ? setMultiFeedDrawerRowIndex(rowIndex)
+                                    : openFeedBatchReview(rowIndex)}
                                 onKeyDown={(event) => handleCellKeyDown(event, rowIndex, colIndex)}
                                 onPaste={(event) => handleGridPaste(event, rowIndex, colIndex)}
                                 disabled={!feedBatchCellCanOpen}

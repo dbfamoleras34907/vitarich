@@ -36,6 +36,7 @@ type AllocationScope = Pick<CleanupTypeAllocation,
 type Props = {
   open: boolean
   editable: boolean
+  validationMessage?: string
   lineLabel: string
   targetQuantity: number
   quantityUom: string
@@ -68,6 +69,7 @@ const isBlank = (row: DraftRow) => row.cleanupTypeId == null
 export default function CleanupTypeAllocationSheet({
   open,
   editable,
+  validationMessage,
   lineLabel,
   targetQuantity,
   quantityUom,
@@ -190,6 +192,11 @@ export default function CleanupTypeAllocationSheet({
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {validationMessage && (
+            <div role="alert" className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+              {validationMessage}
+            </div>
+          )}
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[680px] table-fixed border-collapse text-sm">
               <thead className="bg-muted/60 text-left text-xs text-muted-foreground">

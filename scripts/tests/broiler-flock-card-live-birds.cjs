@@ -9,8 +9,20 @@ const layout = fs.readFileSync('app/brd/fc/Layout.tsx', 'utf8')
 test('Growing list uses live building bird inventory', () => {
   assert.match(layout, /includePlacementInventory: true/)
   assert.match(repository, /getPlacementInventoryAnimalQtyByWarehouse/)
+  assert.match(repository, /getGoodDocItemId\(farmId\)/)
   assert.match(repository, /\.eq\("item_code", itemCode\)/)
   assert.match(repository, /signedPostingQty\(posting\)/)
+})
+
+test('Good DOC inventory is scoped to the selected farm', () => {
+  const goodDocLookup = repository.slice(
+    repository.indexOf('async function getGoodDocItemId'),
+    repository.indexOf('async function getPlacementInventoryAnimalQtyByWarehouse'),
+  )
+
+  assert.match(goodDocLookup, /\.from\("doc_rec_settings"\)/)
+  assert.match(goodDocLookup, /\.eq\("farm_id", farmId\)/)
+  assert.match(goodDocLookup, /\.eq\("void", "1"\)/)
 })
 
 test('building inventory is loaded once in paged batches', () => {

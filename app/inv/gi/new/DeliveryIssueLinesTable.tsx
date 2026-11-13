@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { ListPlus, Loader2, PackageCheck, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
@@ -40,6 +40,12 @@ type LineFlockCardState = {
   info: GoodsIssueFlockCardInfo | null
 }
 
+export type CleanupTypeAllocationRequest = {
+  id: number
+  groupKey: string
+  message: string
+}
+
 type DeliveryIssueLinesTableProps = {
   issue: GoodsIssue
   warehouseLabel: string
@@ -66,6 +72,8 @@ type DeliveryIssueLinesTableProps = {
   allowDuplicateBuildings?: boolean
   enableMobileLineModal?: boolean
   enableCleanupTypeAllocations?: boolean
+  cleanupTypeAllocationRequest?: CleanupTypeAllocationRequest | null
+  onCleanupTypeAllocationRequestHandled?: () => void
   canEdit?: boolean
   showTransportFields?: boolean
   reallocatingQuantities?: boolean
@@ -121,6 +129,8 @@ export default function DeliveryIssueLinesTable({
   allowDuplicateBuildings = false,
   enableMobileLineModal = false,
   enableCleanupTypeAllocations = false,
+  cleanupTypeAllocationRequest = null,
+  onCleanupTypeAllocationRequestHandled,
   canEdit = true,
   showTransportFields = false,
   reallocatingQuantities = false,
@@ -155,6 +165,7 @@ export default function DeliveryIssueLinesTable({
   const [mobileLineSnapshot, setMobileLineSnapshot] = useState<GoodsIssueLine[] | null>(null)
   const [mobileLineIsNew, setMobileLineIsNew] = useState(false)
   const [cleanupTypeGroupKey, setCleanupTypeGroupKey] = useState<string | null>(null)
+  const [cleanupTypeValidationMessage, setCleanupTypeValidationMessage] = useState('')
   const spreadsheetEnabled = excelAppearance && showTransportFields && Boolean(onPasteRows)
   const allocationGroups = useMemo(() => {
     const groups = new Map<string, GoodsIssueLine[]>()
@@ -174,6 +185,23 @@ export default function DeliveryIssueLinesTable({
   const cleanupTypeAllocations = cleanupTypeLine
     ? (issue.cleanupTypeAllocations ?? []).filter(allocation => cleanupAllocationMatchesLine(allocation, cleanupTypeLine))
     : []
+
+  useEffect(() => {
+    if (!cleanupTypeAllocationRequest) return
+    const matchingGroup = allocationGroups.find(group =>
+      getAllocationGroupKey(group[0]) === cleanupTypeAllocationRequest.groupKey,
+    )
+    if (!matchingGroup) return
+
+    setCleanupTypeValidationMessage(cleanupTypeAllocationRequest.message)
+    setCleanupTypeGroupKey(cleanupTypeAllocationRequest.groupKey)
+    onCleanupTypeAllocationRequestHandled?.()
+  }, [
+    allocationGroups,
+    cleanupTypeAllocationRequest,
+    getAllocationGroupKey,
+    onCleanupTypeAllocationRequestHandled,
+  ])
   const copyDisabled = !spreadsheetEnabled || !enableCopyDown || pasting
     || activeDocumentIsPosted || issue.status !== 'Draft'
   const canCopyCell = (key: DeliveryPasteKey, group: GoodsIssueLine[]) => {
@@ -894,7 +922,10 @@ export default function DeliveryIssueLinesTable({
                         title="Cleanup Types"
                         aria-label={`Cleanup Types for row ${index + 1}`}
                         disabled={!line.itemCode || !line.fromWarehouseCode}
-                        onClick={() => setCleanupTypeGroupKey(allocationGroupKey)}
+                        onClick={() => {
+                          setCleanupTypeValidationMessage('')
+                          setCleanupTypeGroupKey(allocationGroupKey)
+                        }}
                       >
                         <ListPlus className="size-4" /> Types
                       </Button>
@@ -1081,6 +1112,7 @@ export default function DeliveryIssueLinesTable({
       <CleanupTypeAllocationSheet
         open={cleanupTypeGroupKey != null}
         editable={canEdit && issue.status === 'Draft'}
+        validationMessage={cleanupTypeValidationMessage}
         lineLabel={`${cleanupTypeLine.fromWarehouseCode} · ${cleanupTypeLine.itemCode}`}
         targetQuantity={cleanupTypeTargetQuantity}
         quantityUom={cleanupTypeLine.altUom}
@@ -1091,7 +1123,12 @@ export default function DeliveryIssueLinesTable({
           itemCode: cleanupTypeLine.itemCode,
         }}
         allocations={cleanupTypeAllocations}
-        onOpenChange={open => { if (!open) setCleanupTypeGroupKey(null) }}
+        onOpenChange={open => {
+          if (!open) {
+            setCleanupTypeGroupKey(null)
+            setCleanupTypeValidationMessage('')
+          }
+        }}
         onConfirm={nextAllocations => setIssue(current => current ? {
           ...current,
           cleanupTypeAllocations: [

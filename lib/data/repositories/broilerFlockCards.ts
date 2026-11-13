@@ -273,17 +273,13 @@ type DocReceivingSettingsRow = {
 
 const INVENTORY_POSTING_PAGE_SIZE = 1000;
 
-async function getPlacementInventoryAnimalQtyByWarehouse(
-  warehouseCodes: string[],
-): Promise<Map<string, number>> {
-  const normalizedWarehouseCodes = Array.from(new Set(
-    warehouseCodes.map(code => code.trim()).filter(Boolean),
-  ));
-  if (normalizedWarehouseCodes.length === 0) return new Map();
+async function getGoodDocItemId(farmId: number): Promise<number | null> {
+  if (!Number.isFinite(farmId) || farmId <= 0) return null;
 
   const settingsResult = await db
     .from("doc_rec_settings")
     .select("good_doc")
+    .eq("farm_id", farmId)
     .eq("void", "1")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -292,7 +288,20 @@ async function getPlacementInventoryAnimalQtyByWarehouse(
   if (settingsResult.error) throwDbError(settingsResult.error, "Unable to load DOC receiving settings");
 
   const goodDocItemId = Number((settingsResult.data as DocReceivingSettingsRow | null)?.good_doc ?? 0);
-  if (!Number.isFinite(goodDocItemId) || goodDocItemId <= 0) return new Map();
+  return Number.isFinite(goodDocItemId) && goodDocItemId > 0 ? goodDocItemId : null;
+}
+
+async function getPlacementInventoryAnimalQtyByWarehouse(
+  farmId: number,
+  warehouseCodes: string[],
+): Promise<Map<string, number>> {
+  const normalizedWarehouseCodes = Array.from(new Set(
+    warehouseCodes.map(code => code.trim()).filter(Boolean),
+  ));
+  if (normalizedWarehouseCodes.length === 0) return new Map();
+
+  const goodDocItemId = await getGoodDocItemId(farmId);
+  if (goodDocItemId == null) return new Map();
 
   const itemResult = await db
     .from("items")
@@ -610,6 +619,7 @@ export async function getFarmBuildingsForFlockCard(
   const placementInventoryByWarehouse = options.includePlacementInventory === false
     ? new Map<string, number>()
     : await getPlacementInventoryAnimalQtyByWarehouse(
+      farmId,
       Array.from(warehouseById.values()).map(warehouse => String(warehouse.whse_code ?? "")),
     );
 
@@ -963,7 +973,7 @@ export async function getFarmOriginBatchesForFlockCard(
     ...Array.from(originalBatchesByConsolidatedBatch.values()).flat().map(value => value.batchNumber),
   ].filter(Boolean)));
 
-  const [batchResult, itemResult, docSettingsResult] = await Promise.all([
+  const [batchResult, itemResult, goodDocItemId] = await Promise.all([
     db
       .from("item_batches")
       .select("item_code, batch_number, manufacturing_date, expiry_date, source_gr_id")
@@ -974,18 +984,11 @@ export async function getFarmOriginBatchesForFlockCard(
       .from("items")
       .select("id, item_code, item_name, description, item_group, fms_group, group")
       .in("item_code", itemCodes),
-    db
-      .from("doc_rec_settings")
-      .select("good_doc")
-      .eq("void", "1")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    getGoodDocItemId(farmId),
   ]);
 
   if (batchResult.error) throwDbError(batchResult.error, "Unable to load batch details");
   if (itemResult.error) throwDbError(itemResult.error, "Unable to load batch item names");
-  if (docSettingsResult.error) throwDbError(docSettingsResult.error, "Unable to load DOC receiving settings");
 
   const batchRows = (batchResult.data ?? []) as ItemBatchOriginRow[];
   const batchByKey = new Map(
@@ -994,8 +997,7 @@ export async function getFarmOriginBatchesForFlockCard(
       row,
     ]),
   );
-  const goodDocItemId = Number((docSettingsResult.data as DocReceivingSettingsRow | null)?.good_doc ?? 0);
-  if (!Number.isFinite(goodDocItemId) || goodDocItemId <= 0) return [];
+  if (goodDocItemId == null) return [];
 
   const goodDocItems = ((itemResult.data ?? []) as ItemNameRow[])
     .filter(item => Number(item.id ?? 0) === goodDocItemId);
