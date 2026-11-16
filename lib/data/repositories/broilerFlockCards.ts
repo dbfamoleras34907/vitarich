@@ -272,6 +272,42 @@ type DocReceivingSettingsRow = {
 };
 
 const INVENTORY_POSTING_PAGE_SIZE = 1000;
+const INVENTORY_POSTING_SELECT = "id, source_doc_type, source_docentry, item_code, warehouse_code, qty, transfer_type, ref, ref2, batch_number";
+
+async function getPagedInventoryPostings(
+  warehouseCodes: string[],
+  options: {
+    itemCode?: string;
+  } = {},
+): Promise<InventoryPostingBatchRow[]> {
+  const normalizedWarehouseCodes = Array.from(new Set(
+    warehouseCodes.map(code => code.trim()).filter(Boolean),
+  ));
+  if (normalizedWarehouseCodes.length === 0) return [];
+
+  const rows: InventoryPostingBatchRow[] = [];
+  for (let from = 0; ; from += INVENTORY_POSTING_PAGE_SIZE) {
+    let query = db
+      .from("inventory_postings")
+      .select(INVENTORY_POSTING_SELECT)
+      .in("warehouse_code", normalizedWarehouseCodes);
+
+    const itemCode = String(options.itemCode ?? "").trim();
+    if (itemCode) query = query.eq("item_code", itemCode);
+
+    const postingResult = await query
+      .order("id", { ascending: true })
+      .range(from, from + INVENTORY_POSTING_PAGE_SIZE - 1);
+
+    if (postingResult.error) throwDbError(postingResult.error, "Unable to load building inventory postings");
+
+    const page = (postingResult.data ?? []) as InventoryPostingBatchRow[];
+    rows.push(...page);
+    if (page.length < INVENTORY_POSTING_PAGE_SIZE) break;
+  }
+
+  return rows;
+}
 
 async function getGoodDocItemId(farmId: number): Promise<number | null> {
   if (!Number.isFinite(farmId) || farmId <= 0) return null;
@@ -314,36 +350,27 @@ async function getPlacementInventoryAnimalQtyByWarehouse(
   const itemCode = String(itemResult.data?.item_code ?? "").trim();
   if (!itemCode) return new Map();
 
-  const quantityByWarehouse = new Map<string, number>();
-  for (let from = 0; ; from += INVENTORY_POSTING_PAGE_SIZE) {
-    const postingResult = await db
-      .from("inventory_postings")
-      .select("id, item_code, warehouse_code, qty, transfer_type, ref, ref2, batch_number, source_doc_type, source_docentry")
-      .eq("item_code", itemCode)
-      .in("warehouse_code", normalizedWarehouseCodes)
-      .order("id", { ascending: true })
-      .range(from, from + INVENTORY_POSTING_PAGE_SIZE - 1);
+  const postings = await getPagedInventoryPostings(normalizedWarehouseCodes, { itemCode });
+  const quantityByWarehouseBatch = new Map<string, Map<string, number>>();
+  for (const posting of postings) {
+    const warehouseCode = String(posting.warehouse_code ?? "").trim().toUpperCase();
+    const batchNumber = String(posting.batch_number || posting.ref || "").trim().toUpperCase();
+    if (!warehouseCode || !batchNumber) continue;
 
-    if (postingResult.error) throwDbError(postingResult.error, "Unable to load building bird inventory");
-
-    const page = (postingResult.data ?? []) as InventoryPostingBatchRow[];
-    for (const posting of page) {
-      const warehouseCode = String(posting.warehouse_code ?? "").trim().toUpperCase();
-      if (!warehouseCode) continue;
-
-      quantityByWarehouse.set(
-        warehouseCode,
-        (quantityByWarehouse.get(warehouseCode) ?? 0) + signedPostingQty(posting),
-      );
-    }
-
-    if (page.length < INVENTORY_POSTING_PAGE_SIZE) break;
+    const quantityByBatch = quantityByWarehouseBatch.get(warehouseCode) ?? new Map<string, number>();
+    quantityByBatch.set(
+      batchNumber,
+      (quantityByBatch.get(batchNumber) ?? 0) + signedPostingQty(posting),
+    );
+    quantityByWarehouseBatch.set(warehouseCode, quantityByBatch);
   }
 
   return new Map(
-    Array.from(quantityByWarehouse.entries()).map(([warehouseCode, quantity]) => [
+    Array.from(quantityByWarehouseBatch.entries()).map(([warehouseCode, quantityByBatch]) => [
       warehouseCode,
-      Math.max(quantity, 0),
+      Array.from(quantityByBatch.values())
+        .filter(quantity => quantity > 0)
+        .reduce((sum, quantity) => sum + quantity, 0),
     ]),
   );
 }
@@ -636,7 +663,8 @@ export async function getFarmBuildingsForFlockCard(
       flockCardByBuildingCode.get(code.toUpperCase()) ??
       null;
     const placementAnimalQty = getPlacementInventoryAnimalQty(code);
-    const displayedFlockCard = flockCard && placementAnimalQty > 0
+    const hasPlacementInventory = placementInventoryByWarehouse.has(code.toUpperCase());
+    const displayedFlockCard = flockCard && hasPlacementInventory
       ? { ...flockCard, animalQty: placementAnimalQty }
       : flockCard;
 
@@ -672,7 +700,8 @@ export async function getFarmBuildingsForFlockCard(
 
     if ((!code && !buildingWarehouseId) || !matchesActiveWarehouse) return [];
     const placementAnimalQty = getPlacementInventoryAnimalQty(code || null);
-    const displayedInfo = placementAnimalQty > 0
+    const hasPlacementInventory = placementInventoryByWarehouse.has(code.toUpperCase());
+    const displayedInfo = hasPlacementInventory
       ? { ...info, animalQty: placementAnimalQty }
       : info;
 
@@ -937,14 +966,24 @@ export async function getFarmOriginBatchesForFlockCard(
     ]),
   );
 
-  const postingSelect = "id, source_doc_type, source_docentry, item_code, warehouse_code, qty, transfer_type, ref, ref2, batch_number";
-  const refPostingsResult = await db
-    .from("inventory_postings")
-    .select(postingSelect)
-    .in("warehouse_code", originWarehouseCodes)
-    .not("ref", "is", null);
+  const goodDocItemId = await getGoodDocItemId(farmId);
+  if (goodDocItemId == null) return [];
 
-  if (refPostingsResult.error) throwDbError(refPostingsResult.error, "Unable to load farm batch quantities");
+  const goodDocItemResult = await db
+    .from("items")
+    .select("id, item_code, item_name, description, item_group, fms_group, group")
+    .eq("id", goodDocItemId)
+    .maybeSingle();
+
+  if (goodDocItemResult.error) throwDbError(goodDocItemResult.error, "Unable to load the good DOC item");
+
+  const goodDocItem = goodDocItemResult.data as ItemNameRow | null;
+  const goodDocItemCode = String(goodDocItem?.item_code ?? "").trim();
+  if (!goodDocItem || !goodDocItemCode) return [];
+
+  const inventoryPostings = await getPagedInventoryPostings(originWarehouseCodes, {
+    itemCode: goodDocItemCode,
+  });
 
   const quantityByItemBatch = new Map<string, FarmOriginBatchOption>();
   const receiptIdsByPostingBatch = new Map<string, number[]>();
@@ -953,7 +992,7 @@ export async function getFarmOriginBatchesForFlockCard(
     Array<{ batchNumber: string; receiptId: number }>
   >();
   addFarmPostingQuantities(
-    (refPostingsResult.data ?? []) as InventoryPostingBatchRow[],
+    inventoryPostings,
     new Set(originWarehouseCodes.map(code => code.toUpperCase())),
     quantityByItemBatch,
     receiptIdsByPostingBatch,
@@ -973,22 +1012,14 @@ export async function getFarmOriginBatchesForFlockCard(
     ...Array.from(originalBatchesByConsolidatedBatch.values()).flat().map(value => value.batchNumber),
   ].filter(Boolean)));
 
-  const [batchResult, itemResult, goodDocItemId] = await Promise.all([
-    db
-      .from("item_batches")
-      .select("item_code, batch_number, manufacturing_date, expiry_date, source_gr_id")
-      .in("item_code", itemCodes)
-      .in("batch_number", batchNumbers)
-      .eq("void", "1"),
-    db
-      .from("items")
-      .select("id, item_code, item_name, description, item_group, fms_group, group")
-      .in("item_code", itemCodes),
-    getGoodDocItemId(farmId),
-  ]);
+  const batchResult = await db
+    .from("item_batches")
+    .select("item_code, batch_number, manufacturing_date, expiry_date, source_gr_id")
+    .in("item_code", itemCodes)
+    .in("batch_number", batchNumbers)
+    .eq("void", "1");
 
   if (batchResult.error) throwDbError(batchResult.error, "Unable to load batch details");
-  if (itemResult.error) throwDbError(itemResult.error, "Unable to load batch item names");
 
   const batchRows = (batchResult.data ?? []) as ItemBatchOriginRow[];
   const batchByKey = new Map(
@@ -997,10 +1028,7 @@ export async function getFarmOriginBatchesForFlockCard(
       row,
     ]),
   );
-  if (goodDocItemId == null) return [];
-
-  const goodDocItems = ((itemResult.data ?? []) as ItemNameRow[])
-    .filter(item => Number(item.id ?? 0) === goodDocItemId);
+  const goodDocItems = [goodDocItem];
   const goodDocItemCodeSet = new Set(
     goodDocItems.map(item => String(item.item_code ?? "").trim().toUpperCase()).filter(Boolean),
   );

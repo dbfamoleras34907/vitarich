@@ -27,6 +27,7 @@ test('Good DOC inventory is scoped to the selected farm', () => {
 
 test('building inventory is loaded once in paged batches', () => {
   assert.match(repository, /INVENTORY_POSTING_PAGE_SIZE = 1000/)
+  assert.match(repository, /async function getPagedInventoryPostings/)
   assert.match(repository, /\.range\(from, from \+ INVENTORY_POSTING_PAGE_SIZE - 1\)/)
 
   const listLoader = repository.slice(
@@ -35,4 +36,31 @@ test('building inventory is loaded once in paged batches', () => {
   )
   assert.match(listLoader, /await getPlacementInventoryAnimalQtyByWarehouse/)
   assert.doesNotMatch(listLoader, /await getFarmOriginBatchesForFlockCard/)
+})
+
+test('Growing list preserves an authoritative zero bird balance', () => {
+  assert.match(repository, /placementInventoryByWarehouse\.has\(code\.toUpperCase\(\)\)/)
+  assert.doesNotMatch(repository, /placementAnimalQty > 0/)
+})
+
+test('Growing list totals positive balances by batch so closed legacy batches cannot offset the current flock', () => {
+  const inventoryLoader = repository.slice(
+    repository.indexOf('async function getPlacementInventoryAnimalQtyByWarehouse'),
+    repository.indexOf('type GoodsReceiptOriginRow'),
+  )
+
+  assert.match(inventoryLoader, /posting\.batch_number \|\| posting\.ref/)
+  assert.match(inventoryLoader, /quantityByWarehouseBatch/)
+  assert.match(inventoryLoader, /\.filter\(quantity => quantity > 0\)/)
+})
+
+test('Edit/View uses the same paged inventory ledger loader as the Growing list', () => {
+  const placementInventoryLoader = repository.slice(
+    repository.indexOf('export async function getFarmOriginBatchesForFlockCard'),
+    repository.indexOf('export async function getBuildingPlacementInventory'),
+  )
+
+  assert.match(placementInventoryLoader, /await getPagedInventoryPostings\(originWarehouseCodes/)
+  assert.match(placementInventoryLoader, /itemCode: goodDocItemCode/)
+  assert.doesNotMatch(placementInventoryLoader, /\.from\("inventory_postings"\)/)
 })
