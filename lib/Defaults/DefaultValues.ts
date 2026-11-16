@@ -1113,18 +1113,6 @@ export const NavFolders: NavFolder[] = [
         group: "Menus",
         children: [
           {
-            id: 60,
-            type: "Module",
-            title: "Cycle Dashboard",
-            url: "/brd/dashboard",
-            hideFromNavigation: true,
-            view: true,
-            insert: false,
-            edit: false,
-            approval: false,
-          },
-
-          {
             id: 57,
             type: "Module",
             title: "DOC Placement",
@@ -1226,6 +1214,16 @@ export const NavFolders: NavFolder[] = [
       {
         group: "Report",
         children: [
+          {
+            id: 60,
+            type: "Report",
+            title: "Cycle Dashboard",
+            url: "/brd/dashboard",
+            view: true,
+            insert: false,
+            edit: false,
+            approval: false,
+          },
           {
             id: 73,
             type: "Module",

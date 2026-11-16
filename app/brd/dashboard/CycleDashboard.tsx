@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Activity, Bird, CalendarDays, ChevronRight, Droplets, HeartPulse, RefreshCw, ShieldAlert, Truck, Weight, Wheat } from 'lucide-react'
+import { Activity, Bird, CalendarDays, ChevronRight, ClipboardList, Droplets, HeartPulse, LayoutDashboard, PackageCheck, RefreshCw, ShieldAlert, Sprout, Trash2, Truck, Weight, Wheat } from 'lucide-react'
 import { toast } from 'sonner'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
+import { PageShell } from '@/components/ui/page-layout'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import CycleReportLayout from '@/app/brd/cycle-master/[cycleId]/Layout'
 import Breadcrumb from '@/lib/Breadcrumb'
@@ -27,9 +27,27 @@ const errorMessage = (error: unknown) => error && typeof error === 'object' && '
 
 const DASHBOARD_REFRESH_INTERVAL_MS = 60_000
 
-const cycleViewTabClassName = 'h-8 flex-none rounded-md px-4 text-xs font-semibold text-foreground hover:bg-card data-[state=active]:border-[#006241] data-[state=active]:bg-[#006241] data-[state=active]:text-white dark:text-foreground dark:data-[state=active]:border-[#006241] dark:data-[state=active]:bg-[#006241] dark:data-[state=active]:text-white after:hidden'
+const cycleViewTabClassName = 'h-8 flex-none rounded-md px-4 text-xs font-semibold text-foreground hover:bg-card data-[state=active]:bg-primary data-[state=active]:text-primary-foreground dark:text-foreground after:hidden'
 const buildingTabClassName = 'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
-const processTabClassName = 'inline-flex h-9 shrink-0 items-center justify-center rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+const processTabClassName = 'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&_svg]:size-3.5'
+
+const processIcons: Record<DetailTab, typeof Bird> = {
+  overview: LayoutDashboard,
+  placement: PackageCheck,
+  growing: Sprout,
+  feed: Wheat,
+  delivery: Truck,
+  cleanup: Trash2,
+}
+
+const metricToneClass = {
+  neutral: 'border-border bg-card [&_[data-icon]]:bg-muted [&_[data-icon]]:text-foreground',
+  green: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20 [&_[data-icon]]:bg-emerald-100 [&_[data-icon]]:text-emerald-700 dark:[&_[data-icon]]:bg-emerald-950 dark:[&_[data-icon]]:text-emerald-300',
+  teal: 'border-teal-200 bg-teal-50/60 dark:border-teal-900 dark:bg-teal-950/20 [&_[data-icon]]:bg-teal-100 [&_[data-icon]]:text-teal-700 dark:[&_[data-icon]]:bg-teal-950 dark:[&_[data-icon]]:text-teal-300',
+  blue: 'border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20 [&_[data-icon]]:bg-sky-100 [&_[data-icon]]:text-sky-700 dark:[&_[data-icon]]:bg-sky-950 dark:[&_[data-icon]]:text-sky-300',
+  amber: 'border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20 [&_[data-icon]]:bg-amber-100 [&_[data-icon]]:text-amber-700 dark:[&_[data-icon]]:bg-amber-950 dark:[&_[data-icon]]:text-amber-300',
+  rose: 'border-rose-200 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20 [&_[data-icon]]:bg-rose-100 [&_[data-icon]]:text-rose-700 dark:[&_[data-icon]]:bg-rose-950 dark:[&_[data-icon]]:text-rose-300',
+} as const
 
 function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -43,25 +61,28 @@ function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
   buttons[next]?.click()
 }
 
-function MetricCard({ title, icon: Icon, onClick, children, note }: {
+function MetricCard({ title, icon: Icon, onClick, children, note, tone = 'neutral' }: {
   title: string; icon: typeof Bird; onClick: () => void; children: ReactNode; note?: string
+  tone?: keyof typeof metricToneClass
 }) {
-  return <button type="button" onClick={onClick} title={note} className="group flex min-h-20 min-w-0 flex-col rounded-md border bg-card p-2.5 text-left shadow-[var(--starbucks-card-shadow)] transition-[border-color,background-color] hover:border-primary/40 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-primary">
-    <span className="flex w-full min-w-0 items-center gap-2 text-xs font-semibold">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-primary">
-        <Icon className="size-3.5" />
-      </span>
-      <span className="min-w-0 flex-1 leading-4">{title}</span>
-      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+  return <button type="button" onClick={onClick} title={note} className={cn('group relative flex min-h-[86px] min-w-0 items-start gap-2.5 rounded-md border p-2.5 text-left shadow-[var(--starbucks-card-shadow)] transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary', metricToneClass[tone])}>
+    <span data-icon className="flex size-9 shrink-0 items-center justify-center rounded-md">
+      <Icon className="size-4" />
     </span>
-    <span className="mt-2 flex w-full min-w-0 flex-wrap gap-x-4 gap-y-1 border-t pt-2">{children}</span>
+    <span className="min-w-0 flex-1 pr-3">
+      <span className="block truncate text-[11px] font-semibold leading-4">
+        {title}
+      </span>
+      <span className="mt-1.5 flex w-full min-w-0 flex-wrap gap-x-3 gap-y-1">{children}</span>
+    </span>
+    <ChevronRight className="absolute right-2 top-2.5 size-3.5 text-muted-foreground/60 group-hover:text-primary" />
     {note && <span className="sr-only">{note}</span>}
   </button>
 }
 
 function Metric({ label, value, unit }: { label: string; value: ReactNode; unit?: string }) {
-  return <span className="min-w-0 flex-1 basis-[7rem]"><span className="block truncate text-[10px] leading-3 text-muted-foreground">{label}</span>
-    <span className="mt-0.5 block break-words text-xs font-semibold leading-4 tabular-nums">{value}{unit && <span className="ml-1 font-normal text-muted-foreground">{unit}</span>}</span></span>
+  return <span className="min-w-0 flex-1 basis-[5rem]"><span className="block truncate text-[10px] leading-3 text-muted-foreground">{label}</span>
+    <span className="mt-0.5 block break-words text-sm font-semibold leading-4 tabular-nums">{value}{unit && <span className="ml-1 text-[10px] font-normal text-muted-foreground">{unit}</span>}</span></span>
 }
 
 const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join(', ') || '—'
@@ -81,9 +102,12 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
     ['Placement date', distinct(cycles.map(cycle => formatDate(cycle.startDate)))],
     [cycles.every(cycle => cycle.status === 'Closed') ? 'Calendar age at close' : 'Calendar age', `${ageRange(metrics.calendarAges)} days`],
     ['Posted Growing age', `${ageRange(metrics.postedAges)} days`],
+    ['Target age', '45 days'],
     ['Starting population', formatNumber(metrics.startingPopulation, 0)],
     ['Remaining birds', formatNumber(metrics.remaining, 0)],
     ['Mortality', formatNumber(metrics.mortality, 0)],
+    ['FCR (estimated)', formatNumber(metrics.fcr, 3)],
+    ['Body weight (avg.)', `${formatNumber(metrics.weight, 0)} g`],
     ['DOC source', distinct(placements.map(row => row.vendor))],
     ['Hatchery reference', distinct(placements.map(row => row.hatcheryReference))],
     ['DOC batch', <Dialog key="doc-batches">
@@ -106,13 +130,15 @@ function CycleDetails({ cycles, farmName, buildingName }: { cycles: DashboardCyc
     ['Status', distinct(cycles.map(cycle => cycle.status === 'Saved' ? 'Active' : cycle.status))],
     ['Remarks', distinct(cycles.map(cycle => cycle.remarks))],
   ]
-  return <aside className="min-w-0 self-start rounded-lg border border-stone-200 bg-card p-3 dark:border-border lg:sticky lg:top-3">
-    <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold"><Activity className="size-4 text-primary" />Cycle Details</h2>
+  return <aside className="min-w-80 self-start overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] lg:sticky lg:top-3">
+    <h2 className="flex items-center gap-2 border-b bg-emerald-50/60 px-3 py-2.5 text-xs font-semibold dark:bg-emerald-950/20"><ClipboardList className="size-4 text-primary" />Cycle Details</h2>
+    <div className="p-3">
     <dl className="space-y-1 text-[11px]">{details.map(([label, value]) => <div key={label} className="flex items-baseline gap-1.5">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <span className="min-w-2 flex-1 border-b border-dotted border-border" aria-hidden="true" />
       <dd className="max-w-[60%] break-words text-right font-medium tabular-nums">{value}</dd>
     </div>)}</dl>
+    </div>
   </aside>
 }
 
@@ -247,28 +273,36 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
 
   if (blocked) return <div className="m-4 flex items-center gap-2 rounded-md border p-4 text-sm"><ShieldAlert className="size-4" />You do not have permission to view Cycle Dashboard.</div>
 
-  return <PageShell className="print:p-0">
-    <PageHeader className="print:hidden">
-      <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Dashboard" />
-      <PageHeaderActions>
-      <Button type="button" variant="outline" size="sm" onClick={() => setReload(value => value + 1)} disabled={loading} aria-label="Refresh Cycle Dashboard">
-        <RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Loading...' : 'Refresh'}
-      </Button>
-      </PageHeaderActions>
-    </PageHeader>
-    <div className="min-w-0 space-y-2 pb-4">
-      <div className="grid gap-2 rounded-md border bg-muted/30 p-2 print:hidden sm:grid-cols-2 lg:grid-cols-[minmax(0,420px)_minmax(0,360px)]">
-        <SearchableCombobox className="w-full min-w-0 [&_label]:text-[11px]" inputClassName="h-9 text-xs" label="Farm" value={farmId ? String(farmId) : ''}
-          items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
-          onValueChange={value => { setSelectedFarm(value); setCycleSelection(null); setSelectedBuilding(''); setTab('overview') }} disabled={!farmsReady} />
-        <SearchableCombobox className="w-full min-w-0 [&_label]:text-[11px]" inputClassName="h-9 text-xs" label="Cycle" value={requestedCycleKey || visibleCatalog?.selectedCycle?.key || ''}
-          items={cycleOptions.map(cycle => ({ code: cycle.key, name: `${cycle.label} - ${cycle.status === 'Saved' ? 'Active' : cycle.status}` }))}
-          placeholder={loading && !cycleOptions.length ? 'Loading cycles...' : 'Select a cycle'}
-          disabled={!cycleOptions.length}
-          onValueChange={key => { setCycleSelection({ farmId, key }); setSelectedBuilding(''); setTab('overview') }} />
+  return <PageShell className="bg-background print:p-0">
+    <div className="w-full space-y-2">
+    <section className="overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] print:hidden">
+      <div className="p-3">
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <Breadcrumb FirstPreviewsPageName="Cycle Master" FirstPreviewsPageLink="/brd/cycle-master" CurrentPageName="Cycle Dashboard" />
+            <p className="mt-1 text-xs text-muted-foreground">Real-time overview of the selected Broiler cycle, performance, and consumption.</p>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:shrink-0 md:justify-end">
+            <Button type="button" variant="outline" size="sm" className="bg-card/90" onClick={() => setReload(value => value + 1)} disabled={loading} aria-label="Refresh Cycle Dashboard">
+              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />{loading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 grid max-w-[560px] gap-2 sm:grid-cols-2">
+          <SearchableCombobox className="w-full min-w-0 [&_label]:text-[11px]" inputClassName="text-xs" label="Farm" value={farmId ? String(farmId) : ''}
+            items={farms.map(farm => ({ code: String(farm.id), name: `${farm.code} - ${farm.name}` }))}
+            onValueChange={value => { setSelectedFarm(value); setCycleSelection(null); setSelectedBuilding(''); setTab('overview') }} disabled={!farmsReady} />
+          <SearchableCombobox className="w-full min-w-0 [&_label]:text-[11px]" inputClassName="text-xs" label="Cycle" value={requestedCycleKey || visibleCatalog?.selectedCycle?.key || ''}
+            items={cycleOptions.map(cycle => ({ code: cycle.key, name: `${cycle.label} - ${cycle.status === 'Saved' ? 'Active' : cycle.status}` }))}
+            placeholder={loading && !cycleOptions.length ? 'Loading cycles...' : 'Select a cycle'}
+            disabled={!cycleOptions.length}
+            onValueChange={key => { setCycleSelection({ farmId, key }); setSelectedBuilding(''); setTab('overview') }} />
+        </div>
       </div>
+    </section>
+    <div className="min-w-0 space-y-2 pb-4">
     <Tabs key={`${farmId}:${requestedCycleKey}`} defaultValue="dashboard" className="min-w-0">
-      <TabsList className="max-w-full justify-start gap-1 rounded-lg border bg-muted/60 p-1 group-data-[orientation=horizontal]/tabs:h-10 print:hidden" aria-label="Cycle view">
+      <TabsList className="max-w-full justify-start gap-1 rounded-md border bg-card p-1 shadow-[var(--starbucks-card-shadow)] group-data-[orientation=horizontal]/tabs:h-10 print:hidden" aria-label="Cycle view">
         <TabsTrigger value="dashboard" className={cycleViewTabClassName}>Farm View</TabsTrigger>
         <TabsTrigger value="data" className={cycleViewTabClassName}>Records</TabsTrigger>
       </TabsList>
@@ -280,9 +314,9 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
           : !data?.selectedCycle ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">This farm does not have a Cycle yet.</div>
           : !buildings?.length ? <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No buildings found for this cycle.</div>
             : <>
-              <div className="min-w-0 space-y-2 rounded-md border bg-card p-2 print:hidden">
+              <div className="min-w-0 overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)] print:hidden">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                  <div className="flex min-w-0 max-w-full items-center gap-2">
+                  <div className="flex min-w-0 max-w-full items-center gap-2 px-2 pt-2">
                     <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Building</span>
                     <div className="flex min-w-0 gap-1 overflow-x-auto rounded-lg bg-muted/60 p-1" role="tablist" aria-label="Buildings" onKeyDown={navigateTabs}>
                       {buildings.map(item => <button key={item.key} type="button" role="tab" aria-selected={activeBuilding === item.key}
@@ -296,7 +330,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
                         className={cn(buildingTabClassName, activeBuilding === 'all' ? 'bg-[#006241] text-white shadow-sm hover:bg-[#004d33]' : 'text-foreground hover:bg-card')}>All Buildings</button>
                     </div>
                   </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-2 pt-2 text-xs">
                     <span className="font-medium">{title}</span>
                     <span aria-hidden="true" className="text-muted-foreground">&middot;</span>
                     <span className="text-muted-foreground">{data.selectedCycle.label}</span>
@@ -308,31 +342,32 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
                     </span>
                   </div>
                 </div>
-                {cycles.length > 0 && <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border/60 pt-2">
+                {cycles.length > 0 && <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t bg-muted/20 px-2 py-1.5">
                   <div className="flex max-w-full gap-1 overflow-x-auto p-0.5" role="tablist" aria-label="Cycle processes" onKeyDown={navigateTabs}>
-                    {detailTabs.map(item => <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}
+                    {detailTabs.map(item => { const Icon = processIcons[item.key]; return <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}
                       id={`detail-tab-${item.key}`} aria-controls="cycle-details-panel" tabIndex={tab === item.key ? 0 : -1}
-                      className={cn(processTabClassName, tab === item.key ? 'border-[#83b8a4] bg-[#d4e9e2] font-semibold text-[#004d33]' : 'border-transparent text-foreground hover:bg-muted')}>{item.label}</button>)}
+                      className={cn(processTabClassName, tab === item.key ? 'border-primary bg-primary font-semibold text-primary-foreground shadow-sm' : 'border-transparent text-foreground hover:border-border hover:bg-card')}><Icon />{item.label}</button> })}
                   </div>
                   <span className="text-[10px] leading-4 text-muted-foreground" title="A dash means not recorded or incomplete">Updated {result?.loadedAt}</span>
                 </div>}
               </div>
 
-              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="min-w-0 space-y-2 pt-2">
+              <section id="building-panel" role="tabpanel" aria-labelledby={`building-tab-${activeBuilding}`} className="min-w-0 space-y-2 pt-1">
               {!cycles.length ? <div className="rounded-lg border bg-card p-12 text-center"><h2 className="text-sm font-medium">No records in this cycle</h2><p className="mt-2 text-xs text-muted-foreground">{title} has no non-void placement in {data.selectedCycle.label}.</p></div> : <>
-                <div id="cycle-details-panel" role="tabpanel" aria-labelledby={`detail-tab-${tab}`} className="grid items-start gap-2 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div id="cycle-details-panel" role="tabpanel" aria-labelledby={`detail-tab-${tab}`} className="grid items-start gap-2 lg:grid-cols-[320px_minmax(0,1fr)]">
                   <CycleDetails cycles={cycles} farmName={farm.name} buildingName={title} />
                   <div className="min-w-0 space-y-2">
                     {tab !== 'overview' ? <TransactionDetails tab={tab} cycles={cycles} /> : <>
-                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                        <MetricCard title="Placement" icon={Bird} onClick={() => drillDown('placement')}><Metric label="Total good birds" value={formatNumber(metrics.placed, 0)} unit="birds" /></MetricCard>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 min-[1200px]:grid-cols-5">
+                        <MetricCard title="Placement" icon={Bird} tone="green" onClick={() => drillDown('placement')}><Metric label="Total good birds" value={formatNumber(metrics.placed, 0)} unit="birds" /></MetricCard>
                         <MetricCard title="Population" icon={Activity} onClick={() => drillDown('growing')} note={`Growing population (${formatNumber(metrics.population, 0)}) - mortality (${formatNumber(metrics.mortality, 0)}) - thinning (${formatNumber(metrics.thinning, 0)}) - harvest (${formatNumber(metrics.deliveredHeads, 0)}) - clean-up (${formatNumber(metrics.cleanupHeads, 0)}).`}><Metric label="Remaining birds" value={formatNumber(metrics.remaining, 0)} /></MetricCard>
-                        <MetricCard title="Age" note="Maximum displayed age: 45 days." icon={CalendarDays} onClick={() => drillDown('growing')}><Metric label="Calendar" value={ageRange(metrics.calendarAges)} unit="days" /><Metric label="Posted Growing" value={ageRange(metrics.postedAges)} unit="days" /></MetricCard>
-                        <MetricCard title="Mortality" icon={HeartPulse} onClick={() => drillDown('growing')} note="Cumulative mortality / total good birds placed × 100."><Metric label="Cumulative" value={formatNumber(metrics.mortality, 0)} unit="birds" /><Metric label="Mortality" value={formatNumber(metrics.mortalityPercent)} unit="%" /></MetricCard>
-                        <MetricCard title="Feed Consumption" icon={Wheat} onClick={() => drillDown('feed')}><Metric label="Cumulative feed" value={formatNumber(metrics.feed)} unit="kg" /></MetricCard>
-                        <MetricCard title="Body Weight" icon={Weight} onClick={() => drillDown('growing')} note={`Latest weight measurement age: ${ageRange(metrics.weightAges)} days.`}><Metric label="Actual" value={formatNumber(metrics.weight)} unit="g" /><Metric label="Standard" value={formatNumber(metrics.standardWeight)} unit="g" /></MetricCard>
-                        <MetricCard title="Water Consumption" icon={Droplets} onClick={() => drillDown('growing')}><Metric label="Cumulative water" value={formatNumber(metrics.water)} unit="L" /></MetricCard>
-                        <MetricCard title="Delivery" icon={Truck} onClick={() => drillDown('delivery')}><Metric label="Delivered" value={formatNumber(metrics.deliveredHeads, 0)} unit="heads" /><Metric label="Recorded weight" value={metrics.deliveredKg === null ? 'Not recorded' : formatNumber(metrics.deliveredKg)} unit={metrics.deliveredKg === null ? undefined : 'kg'} /></MetricCard>
+                        <MetricCard title="Age" tone="green" note="Maximum displayed age: 45 days." icon={CalendarDays} onClick={() => drillDown('growing')}><Metric label="Calendar" value={ageRange(metrics.calendarAges)} unit="days" /><Metric label="Posted Growing" value={ageRange(metrics.postedAges)} unit="days" /></MetricCard>
+                        <MetricCard title="Mortality" tone="rose" icon={HeartPulse} onClick={() => drillDown('growing')} note="Cumulative mortality / total good birds placed × 100."><Metric label="Cumulative" value={formatNumber(metrics.mortality, 0)} unit="birds" /><Metric label="Mortality" value={formatNumber(metrics.mortalityPercent)} unit="%" /></MetricCard>
+                        <MetricCard title="Feed Consumption" tone="amber" icon={Wheat} onClick={() => drillDown('feed')}><Metric label="Cumulative feed" value={formatNumber(metrics.feed)} unit="kg" /></MetricCard>
+                        <MetricCard title="Body Weight" tone="teal" icon={Weight} onClick={() => drillDown('growing')} note={`Latest weight measurement age: ${ageRange(metrics.weightAges)} days.`}><Metric label="Actual" value={formatNumber(metrics.weight)} unit="g" /><Metric label="Standard" value={formatNumber(metrics.standardWeight)} unit="g" /></MetricCard>
+                        <MetricCard title="Water Consumption" tone="blue" icon={Droplets} onClick={() => drillDown('growing')}><Metric label="Cumulative water" value={formatNumber(metrics.water)} unit="L" /></MetricCard>
+                        <MetricCard title="Delivery" tone="blue" icon={Truck} onClick={() => drillDown('delivery')}><Metric label="Delivered" value={formatNumber(metrics.deliveredHeads, 0)} unit="heads" /><Metric label="Recorded weight" value={metrics.deliveredKg === null ? 'Not recorded' : formatNumber(metrics.deliveredKg)} unit={metrics.deliveredKg === null ? undefined : 'kg'} /></MetricCard>
+                        <MetricCard title="Cleanup" tone="amber" icon={Trash2} onClick={() => drillDown('cleanup')}><Metric label="Total cleanup" value={formatNumber(metrics.cleanupHeads, 0)} unit="birds" /><Metric label="Total variance" value={formatNumber(metrics.varianceCount, 0)} unit="birds" /></MetricCard>
                       </div>
                       <PerformanceCharts cycles={cycles} />
                       {activeBuilding === 'all' && <BuildingComparison buildings={buildings} onSelect={selectBuilding} />}
@@ -350,6 +385,7 @@ export default function CycleDashboard({ initialFarmId, initialCycleId, initialC
               : <div className="rounded-lg border p-6 text-sm text-muted-foreground">This farm does not have a Cycle yet.</div>}
       </TabsContent>
     </Tabs>
+    </div>
     </div>
   </PageShell>
 }

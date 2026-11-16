@@ -127,6 +127,7 @@ import type {
   MortalityBatchAllocation,
 } from "./flockCardTypes";
 import { feedBaseQtyToBags } from "./feedQuantity";
+import { distributeWholeQuantityByCapacity } from "@/lib/functions/distributeWholeQuantityByCapacity";
 
 const asArray = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? value as T[] : [];
@@ -2059,8 +2060,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     }
 
     const batchCount = availableBatches.length;
-    const baseQty = Math.floor(requiredQty / batchCount);
-    let remainderQty = requiredQty - (baseQty * batchCount);
     const rowAge = rows[rowIndex]?.age ?? rowIndex;
     const remainderOrder = Array.from({ length: batchCount }, (_, index) => index);
 
@@ -2068,17 +2067,15 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
       remainderOrder.reverse();
     }
 
-    const extraQtyByIndex = new Map<number, number>();
-    for (const batchIndex of remainderOrder) {
-      if (remainderQty <= 0) break;
-
-      extraQtyByIndex.set(batchIndex, 1);
-      remainderQty -= 1;
-    }
+    const selectedQtyByIndex = distributeWholeQuantityByCapacity(
+      requiredQty,
+      availableBatches.map(row => row.availableQty),
+      remainderOrder,
+    );
 
     const allocations = availableBatches
       .map(({ batch, availableQty }, index) => {
-        const selectedQty = baseQty + (extraQtyByIndex.get(index) ?? 0);
+        const selectedQty = selectedQtyByIndex[index] ?? 0;
 
         return {
           allocation: toMortalityBatchAllocation(batch, selectedQty, "MANUAL"),
@@ -2086,14 +2083,6 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         };
       })
       .filter(row => row.allocation.selectedQty > 0);
-
-    const overAllocatedBatch = allocations.find(row => row.allocation.selectedQty > row.availableQty);
-    if (overAllocatedBatch) {
-      return {
-        allocations: [],
-        error: `Auto mortality split needs ${formatQuantity(overAllocatedBatch.allocation.selectedQty)} from batch ${overAllocatedBatch.allocation.batchNumber}, but only ${formatQuantity(overAllocatedBatch.availableQty)} is available.`,
-      };
-    }
 
     return {
       allocations: allocations.map(row => row.allocation),

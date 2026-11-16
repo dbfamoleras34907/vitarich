@@ -104,8 +104,8 @@ function TemplateEditorDialog({
     }
   }
 
-  return <Dialog open={open} onOpenChange={value => !saving && onOpenChange(value)}>
-    <DialogContent className="max-w-5xl" showCloseButton={!saving}>
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-5xl">
       <DialogHeader>
         <DialogTitle>{template?.id ? "Edit Permission Template" : "New Permission Template"}</DialogTitle>
         <DialogDescription>Template permissions are copied to users when the template is applied.</DialogDescription>
@@ -144,7 +144,7 @@ function TemplateEditorDialog({
         </section>)}
       </div>
       <DialogFooter>
-        <Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button disabled={saving} onClick={save}>{saving ? "Saving..." : "Save Template"}</Button>
       </DialogFooter>
     </DialogContent>
@@ -208,7 +208,7 @@ function ApplyTemplateDialog({
   }
 
   async function apply() {
-    if (!template || !preview) return
+    if (!template || !selected.size) return
     setWorking(true)
     try {
       const response = await applyPermissionTemplate(template.id, [...selected])
@@ -223,8 +223,8 @@ function ApplyTemplateDialog({
     }
   }
 
-  return <Dialog open={open} onOpenChange={value => !working && onOpenChange(value)}>
-    <DialogContent className="max-w-3xl" showCloseButton={!working}>
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-3xl">
       <DialogHeader>
         <DialogTitle>Apply {template?.template_name ?? "Permission Template"}</DialogTitle>
         <DialogDescription>Applying replaces every selected user&apos;s current permissions. Their permissions can be customized afterward.</DialogDescription>
@@ -273,10 +273,9 @@ function ApplyTemplateDialog({
         </div>}
       </div>
       <DialogFooter>
-        <Button variant="outline" disabled={working} onClick={() => onOpenChange(false)}>Cancel</Button>
-        {!preview
-          ? <Button disabled={working || !selected.size} onClick={loadPreview}>{working ? "Loading..." : "Preview Changes"}</Button>
-          : <Button disabled={working} onClick={apply}>{working ? "Applying..." : `Apply to ${selected.size} User${selected.size === 1 ? "" : "s"}`}</Button>}
+        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button variant="outline" disabled={working || !selected.size} onClick={loadPreview}>{working ? "Loading..." : "Preview Changes"}</Button>
+        <Button disabled={working || !selected.size} onClick={apply}>{working ? "Applying..." : `Apply to ${selected.size} User${selected.size === 1 ? "" : "s"}`}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
