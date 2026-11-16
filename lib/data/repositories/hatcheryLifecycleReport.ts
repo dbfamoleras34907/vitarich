@@ -33,6 +33,21 @@ export type HatcheryLifecycleTa = {
   farmId: number
 }
 
+export function uniqueHatcheryLifecycleTas(
+  tas: HatcheryLifecycleTa[],
+  allowedFarmIds?: ReadonlySet<number>,
+) {
+  const seenTaIds = new Set<number>()
+
+  return tas.filter((ta) => {
+    if (allowedFarmIds && !allowedFarmIds.has(ta.farmId)) return false
+    if (seenTaIds.has(ta.id)) return false
+
+    seenTaIds.add(ta.id)
+    return true
+  }).sort((left, right) => left.name.localeCompare(right.name))
+}
+
 export type HatcheryLifecycleStageMetric = {
   documentCount: number
   quantity: number

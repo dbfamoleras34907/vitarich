@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
+import { getErrorMessage } from "@/lib/errorMessage";
 import { NextResponse } from "next/server";
 import type { DispatchDocUpsertPayload } from "@/app/jmb/docdispatchv2/newv2/api";
 import {
@@ -37,7 +38,7 @@ async function getRequestUserId(req: Request) {
 }
 
 function jsonError(error: unknown, status = 400) {
-  const message = error instanceof Error ? error.message : "Request failed.";
+  const message = getErrorMessage(error, "Request failed.");
 
   return NextResponse.json({ error: message === "FORBIDDEN" ? "Forbidden." : message }, { status: message === "FORBIDDEN" ? 403 : status });
 }

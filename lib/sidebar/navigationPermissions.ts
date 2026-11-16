@@ -1,5 +1,6 @@
-export function getNavigationPermissionTitle(child: { title: string; view?: boolean }) {
-  return child.view === true ? `${child.title}/view` : child.title
+export function getNavigationPermissionTitle(child: { title: string; permissionTitle?: string; view?: boolean }) {
+  const title = child.permissionTitle ?? child.title
+  return child.view === true ? `${title}/view` : title
 }
 
 export function canInsertDocument(

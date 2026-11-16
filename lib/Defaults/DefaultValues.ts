@@ -748,6 +748,17 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 201,
+            type: "Report",
+            title: "Hatchery Encoding Efficiency Report",
+            permissionTitle: "Hatchery Lifecycle Report",
+            url: "/jmb/hatcheryencoderreport",
+            view: true,
+            insert: false,
+            edit: false,
+          },
+
+          {
             id: 24,
             type: "Report",
             title: "Machine Monitoring",

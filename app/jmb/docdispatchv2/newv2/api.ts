@@ -117,14 +117,25 @@ export type DispatchDocListRow = Partial<DispatchDoc> & {
   hatchery_farm_ids: number[];
 };
 
-export async function listDispatchDocs(): Promise<DispatchDocListRow[]> {
-  const { data, error } = await db
+export type DispatchDocListOptions = {
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export async function listDispatchDocs({ dateFrom, dateTo }: DispatchDocListOptions = {}): Promise<DispatchDocListRow[]> {
+  let query = db
     .from("dispatch_doc")
     .select(
       "id, doc_date, dr_no, farm_name, destination_farm_id, destination_farm_code, hauler_name, hauler_plate_no, truck_seal_no, chick_van_temp_c, number_of_fans, remarks, is_active, status, posted_at, posting_version, created_at, created_by",
     )
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
+    .eq("is_active", true);
+
+  if (dateFrom) query = query.gte("doc_date", dateFrom);
+  if (dateTo) query = query.lte("doc_date", dateTo);
+
+  const { data, error } = await query
+    .order("doc_date", { ascending: false })
+    .order("id", { ascending: false });
 
   if (error) throw error;
   const headers = (data ?? []) as Partial<DispatchDoc>[];

@@ -13,6 +13,7 @@ import { usePermission } from '@/hooks/usePermission'
 import {
   getHatcheryLifecycleReport,
   HATCHERY_LIFECYCLE_STAGES,
+  uniqueHatcheryLifecycleTas,
   type HatcheryLifecycle,
   type HatcheryLifecycleDateBasis,
   type HatcheryLifecycleReport as ReportData,
@@ -170,7 +171,7 @@ export default function HatcheryLifecycleReport() {
   }, [filters.farms, visibleFarmsByRegion])
   const taItems = useMemo(() => {
     const allowed = new Set(selectedFarmIds)
-    return [...new Map(tas.filter(ta => allowed.has(ta.farmId)).map(ta => [ta.id, { code: String(ta.id), name: ta.name }])).values()].sort((a, b) => a.name.localeCompare(b.name))
+    return uniqueHatcheryLifecycleTas(tas, allowed).map(ta => ({ code: String(ta.id), name: ta.name }))
   }, [selectedFarmIds, tas])
 
   const buildParams = useCallback((page = 1, row?: HatcheryLifecycleSummaryRow | null) => ({

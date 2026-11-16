@@ -26,7 +26,7 @@ export async function checkAuth() {
         .eq('auth_id', user.id)
         .maybeSingle();
 
-    let activeModule: { group: string; title: string; view?: boolean } | null = null;
+    let activeModule: { group: string; title: string; permissionTitle?: string; view?: boolean } | null = null;
     for (const folder of NavFolders) {
         for (const item of folder.items || []) {
             const match = item.children.find((child) => child.url === pathname);
@@ -34,6 +34,7 @@ export async function checkAuth() {
                 activeModule = {
                     group: item.group,
                     title: match.title,
+                    permissionTitle: match.permissionTitle,
                     view: match.view,
                 };
                 break;

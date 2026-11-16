@@ -599,6 +599,8 @@ export interface NavChild extends NavPermission {
   type: NavItemType;
   title: string;
   url: string;
+  /** Reuse a stable permission title when a route has a new user-facing label. */
+  permissionTitle?: string;
   newDocumentUrl?: string;
   hideFromNavigation?: boolean;
 

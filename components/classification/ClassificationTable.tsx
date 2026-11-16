@@ -178,6 +178,7 @@ export function ClassificationTableSection<TData>({
   onContentOpenChange,
   minWidthClassName = "min-w-230",
   paginationMode = "page-records",
+  pagination,
 }: {
   table: TanStackTable<TData>;
   title: string;
@@ -190,6 +191,7 @@ export function ClassificationTableSection<TData>({
   onContentOpenChange?: (open: boolean) => void;
   minWidthClassName?: string;
   paginationMode?: PaginationMode;
+  pagination?: ReactNode;
 }) {
   const canToggleSectionContent =
     contentOpen !== undefined && onContentOpenChange !== undefined;
@@ -248,7 +250,7 @@ export function ClassificationTableSection<TData>({
           </TableBody>
         </Table>
       </div>
-      <ClassificationPagination table={table} mode={paginationMode} />
+      {pagination ?? <ClassificationPagination table={table} mode={paginationMode} />}
     </>
   );
 

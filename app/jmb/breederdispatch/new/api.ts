@@ -1,4 +1,4 @@
-import { saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
+import { discardBreederDispatchDraft, saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
@@ -410,6 +410,5 @@ export async function cancelBreederDispatch(id: number, reason: string) {
 }
 
 export async function deleteBreederDispatchDraft(id: number) {
-  const { error } = await db.from(HEADER_TABLE).delete().eq("id", id).eq("status", "Draft");
-  if (error) throw error;
+  await discardBreederDispatchDraft(id);
 }

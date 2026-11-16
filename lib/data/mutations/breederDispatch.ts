@@ -8,3 +8,10 @@ export async function saveBreederDispatchTransaction(id: number | null, input: B
   if (error) throw error
   return Number(data)
 }
+
+export async function discardBreederDispatchDraft(id: number) {
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid breeder dispatch draft.');
+
+  const { error } = await db.rpc('discard_breeder_dispatch_draft', { p_id: id });
+  if (error) throw error;
+}

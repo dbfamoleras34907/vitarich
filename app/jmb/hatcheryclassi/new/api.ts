@@ -80,11 +80,49 @@ export type HatchForClassificationRow = Pick<
 export type HatchClassificationListOptions = {
   farmIds: readonly number[];
   limit?: number;
+  page?: number;
   dateFrom?: string;
   dateTo?: string;
+  breederRef?: string;
+  searchAllDates?: boolean;
+  sort?: HatchClassificationSort;
 };
 
-const PENDING_CLASSIFICATION_LIMIT = 50;
+export const HATCH_CLASSIFICATION_PAGE_SIZE = 50;
+const PENDING_CLASSIFICATION_LIMIT = HATCH_CLASSIFICATION_PAGE_SIZE;
+export const HATCH_CLASSIFICATION_SORT_COLUMNS = [
+  "id",
+  "date_classify",
+  "br_no",
+  "good_egg",
+  "trans_crack",
+  "hatc_crack",
+  "trans_condemn",
+  "hatc_condemn",
+  "thin_shell",
+  "pee_wee",
+  "small",
+  "jumbo",
+  "d_yolk",
+  "misshapen",
+  "leakers",
+  "dirties",
+  "hairline",
+  "ttl_count",
+] as const;
+export type HatchClassificationSortColumn =
+  (typeof HATCH_CLASSIFICATION_SORT_COLUMNS)[number];
+export type HatchClassificationSort = {
+  column: HatchClassificationSortColumn;
+  ascending: boolean;
+};
+
+export type HatchClassificationPage = {
+  rows: HatchClassificationListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
 const CLASSIFICATION_LIST_COLUMNS =
   "id,date_classify,br_no,farm_id,farm_code,created_by,good_egg,trans_crack,hatc_crack,trans_condemn,hatc_condemn,thin_shell,pee_wee,small,jumbo,d_yolk,misshapen,leakers,dirties,hairline,ttl_count";
 const PENDING_CLASSIFICATION_COLUMNS =
@@ -94,6 +132,10 @@ function normalizedFarmIds(farmIds: readonly number[]) {
   return Array.from(
     new Set(farmIds.filter((farmId) => Number.isInteger(farmId) && farmId > 0)),
   );
+}
+
+function escapeIlikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 // build
@@ -154,24 +196,43 @@ export type HatchClassificationUpdate = Partial<
 export async function listHatchClassification({
   farmIds,
   limit = PENDING_CLASSIFICATION_LIMIT,
+  page = 1,
   dateFrom,
   dateTo,
+  breederRef,
+  searchAllDates = false,
+  sort = { column: "id", ascending: false },
 }: HatchClassificationListOptions) {
   const authorizedFarmIds = normalizedFarmIds(farmIds);
-  if (!authorizedFarmIds.length) return [];
+  const safeLimit = Math.min(Math.max(1, limit), HATCH_CLASSIFICATION_PAGE_SIZE);
+  const safePage = Math.max(1, Math.floor(page));
+  if (!authorizedFarmIds.length) {
+    return { rows: [], total: 0, page: safePage, pageSize: safeLimit };
+  }
 
-  const safeLimit = Math.min(Math.max(1, limit), PENDING_CLASSIFICATION_LIMIT);
+  const normalizedBreederRef = breederRef?.trim() ?? "";
   let query = db
     .from("hatch_classification")
-    .select(CLASSIFICATION_LIST_COLUMNS)
+    .select(CLASSIFICATION_LIST_COLUMNS, { count: "exact" })
     .in("farm_id", authorizedFarmIds);
-  if (dateFrom) query = query.gte("date_classify", dateFrom);
-  if (dateTo) query = query.lte("date_classify", dateTo);
-  const { data, error } = await query
+  if (normalizedBreederRef) {
+    query = query.ilike("br_no", `%${escapeIlikePattern(normalizedBreederRef)}%`);
+  }
+  if (!searchAllDates || !normalizedBreederRef) {
+    if (dateFrom) query = query.gte("date_classify", dateFrom);
+    if (dateTo) query = query.lte("date_classify", dateTo);
+  }
+  const { data, error, count } = await query
+    .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
     .order("id", { ascending: false })
-    .limit(safeLimit);
+    .range((safePage - 1) * safeLimit, safePage * safeLimit - 1);
   if (error) throw new Error(error.message);
-  return (data ?? []) as HatchClassificationListRow[];
+  return {
+    rows: (data ?? []) as HatchClassificationListRow[],
+    total: count ?? 0,
+    page: safePage,
+    pageSize: safeLimit,
+  };
 }
 
 export async function getReceivingList({
@@ -186,7 +247,8 @@ export async function getReceivingList({
   const safeLimit = Math.min(Math.max(1, limit), PENDING_CLASSIFICATION_LIMIT);
   let query = db
     .from("view_for_classification")
-    .select(PENDING_CLASSIFICATION_COLUMNS);
+    .select(PENDING_CLASSIFICATION_COLUMNS)
+    .in("farm_id", authorizedFarmIds);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00`);
   if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999`);
   const { data, error } = await query

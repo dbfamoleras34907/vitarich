@@ -49,33 +49,11 @@ import {
 
 import { usePermission } from "@/hooks/usePermission";
 import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { buildDefaultFarmInitialFilters, FARM_FILTER_KEY } from "@/lib/farmFilter";
 import HatcheryListParameters, { isWithinHatcheryDateRange, useHatcheryListParameters } from "@/components/hatchery/HatcheryListParameters";
-
-type Row = {
-  id: number;
-
-  doc_date: string;
-
-  dr_no: string;
-
-  farm_name: string;
-
-  hauler_name: string | null;
-
-  hauler_plate_no: string | null;
-
-  truck_seal_no: string | null;
-
-  chick_van_temp_c: number | null;
-
-  number_of_fans: number | null;
-
-  remarks: string | null;
-  status: "Draft" | "Posted";
-};
 
 export default function DocdispatchTable() {
   const router = useRouter();
@@ -86,6 +64,7 @@ export default function DocdispatchTable() {
 
   const [loading, setLoading] =
     useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const { setValue } = useGlobalContext();
   const parameters = useHatcheryListParameters();
@@ -108,9 +87,13 @@ export default function DocdispatchTable() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
 
     try {
-      const rows = await listDispatchDocs();
+      const rows = await listDispatchDocs({
+        dateFrom: parameters.dateFrom,
+        dateTo: parameters.dateTo,
+      });
 
       const mapped =
         Array.isArray(rows)
@@ -154,10 +137,17 @@ export default function DocdispatchTable() {
             }),
           )
           : [];
-      setItems(await attachProcessListAttributions(mapped));
+      try {
+        setItems(await attachProcessListAttributions(mapped));
+      } catch (attributionError) {
+        // Attribution is supplementary. Do not hide dispatch documents when
+        // a user's RLS policy does not permit one of its lookup tables.
+        console.warn("DOC Dispatch attribution is unavailable.", getErrorMessage(attributionError, "Unknown attribution error."));
+        setItems(mapped);
+      }
     } catch (e) {
-      console.error(e);
-
+      console.warn("DOC Dispatch list could not be loaded.", getErrorMessage(e, "Unknown list error."));
+      setLoadError(getErrorMessage(e, "Unable to load DOC Dispatch records. Refresh and try again."));
       setItems([]);
     } finally {
       setLoading(false);
@@ -389,6 +379,8 @@ export default function DocdispatchTable() {
       </div>
 
       <div className="mx-4"><HatcheryListParameters {...parameters} /></div>
+
+      {loadError && <div role="alert" className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{loadError}</div>}
 
       <div className="mt-4">
         <DynamicTable

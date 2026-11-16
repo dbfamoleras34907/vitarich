@@ -1,5 +1,6 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import type { DispatchDocUpsertPayload } from "@/app/jmb/docdispatchv2/newv2/api"
+import { getErrorMessage } from "@/lib/errorMessage"
 
 type DispatchAction = "insert" | "edit"
 
@@ -28,15 +29,47 @@ export async function requireHatcheryDocDispatchAccess(authId: string, action: D
   if (!permission?.is_visible) throw new Error("FORBIDDEN")
 }
 
+async function saveHatcheryDocDispatch(
+  id: number | null,
+  payload: DispatchDocUpsertPayload,
+  userId: string,
+  post: boolean,
+) {
+  const atomicResult = await admin_db.rpc("save_hatchery_dispatch_transaction_atomic", {
+    p_id: id,
+    p_payload: payload,
+    p_actor: userId,
+    p_post: post,
+  })
+  if (!atomicResult.error) return Number(atomicResult.data)
+
+  const errorMessage = getErrorMessage(atomicResult.error, "")
+  const atomicFunctionIsMissing = errorMessage.includes("save_hatchery_dispatch_transaction_atomic")
+    && errorMessage.includes("p_post")
+    && errorMessage.includes("schema cache")
+
+  if (post && atomicFunctionIsMissing) {
+    throw new Error("Posting DOC Dispatch requires the hatchery_doc_dispatch_atomic_posting.sql migration to be applied in Supabase.")
+  }
+  if (!atomicFunctionIsMissing) throw atomicResult.error
+
+  // Older deployments have the draft-only three-argument RPC. Use it only
+  // for draft saves; posting must stay on the atomic transaction above.
+  const draftResult = await admin_db.rpc("save_hatchery_dispatch_transaction", {
+    p_id: id,
+    p_payload: payload,
+    p_actor: userId,
+  })
+  if (draftResult.error) throw draftResult.error
+  return Number(draftResult.data)
+}
+
 export async function createHatcheryDocDispatchDraft(payload: DispatchDocUpsertPayload, userId: string, post = false) {
-  const { data, error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: null, p_payload: payload, p_actor: userId, p_post: post })
-  if (error) throw error
-  return Number(data)
+  return saveHatcheryDocDispatch(null, payload, userId, post)
 }
 
 export async function updateHatcheryDocDispatchDraft(id: number, payload: DispatchDocUpsertPayload, userId: string, post = false) {
-  const { error } = await admin_db.rpc("save_hatchery_dispatch_transaction", { p_id: id, p_payload: payload, p_actor: userId, p_post: post })
-  if (error) throw error
+  await saveHatcheryDocDispatch(id, payload, userId, post)
 }
 
 export async function postHatcheryDocDispatch(id: number, userId: string) {

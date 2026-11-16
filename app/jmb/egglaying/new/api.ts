@@ -1,5 +1,5 @@
 import { db } from "@/lib/Supabase/supabaseClient";
-import { listBreederEggLayings, type EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
+import { listBreederEggLayings, type BreederEggLayingStatus, type EggLaying } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 import {
   saveBreederEggLayings,
   voidBreederEggLaying,
@@ -12,7 +12,7 @@ const BREEDER_CYCLE_TABLE = "tbl_breeder_cycle";
 
 export type EggLayingInsert = Omit<
   EggLaying,
-  "id" | "created_at" | "created_by" | "updated_at" | "updated_by"
+  "id" | "created_at" | "created_by" | "updated_at" | "updated_by" | "void_reason" | "voided_at" | "voided_by"
 >;
 
 export type EggLayingUpdate = Partial<EggLayingInsert>;
@@ -53,10 +53,12 @@ export async function listEggLayings() {
 export async function listEggLayingHistoryByFarm(params: {
   farmId?: number | null;
   farmName?: string | null;
+  status?: BreederEggLayingStatus;
 }) {
   const rows = await listBreederEggLayings({
     farmId: params.farmId ?? undefined,
     farmName: params.farmName ?? undefined,
+    status: params.status,
   });
   const placementIds = Array.from(new Set(rows
     .map((row) => Number(row.placement_id ?? 0))

@@ -25,7 +25,12 @@ export type EggLaying = {
   condemn: number | null;
   is_active: boolean;
   building_id: number | null;
+  void_reason: string | null;
+  voided_at: string | null;
+  voided_by: string | null;
 };
+
+export type BreederEggLayingStatus = "active" | "voided" | "all";
 
 export type BreederEggLayingFilter = {
   placementIds?: number[];
@@ -35,6 +40,7 @@ export type BreederEggLayingFilter = {
   from?: string;
   to?: string;
   ascending?: boolean;
+  status?: BreederEggLayingStatus;
 };
 
 /** Shared, RLS-preserving, paginated read for Egg Laying and breeder reporting. */
@@ -46,9 +52,10 @@ export async function listBreederEggLayings(filter: BreederEggLayingFilter = {})
   const ascending = filter.ascending ?? false;
   for (const chunk of chunks) {
     for (let page = 0; ; page++) {
-      let query = db.from("tbl_egglaying").select("*").eq("is_active", true)
+      let query = db.from("tbl_egglaying").select("*")
         .order("date_laying", { ascending }).order("id", { ascending })
         .range(page * 1000, page * 1000 + 999);
+      if (filter.status !== "all") query = query.eq("is_active", filter.status !== "voided");
       if (chunk) query = query.in("placement_id", chunk);
       if (filter.farmId) query = query.eq("farm_id", filter.farmId);
       else if (filter.farmName) query = query.eq("farm_name", filter.farmName);

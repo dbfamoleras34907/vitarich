@@ -31,6 +31,7 @@ import {
   type EggLayingInsert,
   type LayingPlacement,
 } from "./api";
+import type { BreederEggLayingStatus } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 
 type ProductionRow = {
   date_laying: string;
@@ -245,6 +246,7 @@ export default function EggLayingForm() {
   const [historyDateFrom, setHistoryDateFrom] = useState("");
   const [historyDateTo, setHistoryDateTo] = useState("");
   const [historyBuildingFilter, setHistoryBuildingFilter] = useState("");
+  const [historyStatus, setHistoryStatus] = useState<BreederEggLayingStatus>("active");
   const [historyPage, setHistoryPage] = useState(1);
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() => [createProductionRow()]);
   const [importError, setImportError] = useState("");
@@ -307,7 +309,7 @@ export default function EggLayingForm() {
     }));
   }
 
-  async function refreshHistory(nextForm = form) {
+  async function refreshHistory(nextForm = form, status = historyStatus) {
     if (!nextForm.farm_id && !nextForm.farm_name) {
       setHistory([]);
       return;
@@ -316,6 +318,7 @@ export default function EggLayingForm() {
     const rows = await listEggLayingHistoryByFarm({
       farmId: nextForm.farm_id ? asNumber(nextForm.farm_id) : null,
       farmName: nextForm.farm_name || null,
+      status,
     });
     setHistory(rows);
     setHistoryPage(1);
@@ -417,7 +420,7 @@ export default function EggLayingForm() {
   useEffect(() => {
     refreshHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.farm_id, form.farm_name]);
+  }, [form.farm_id, form.farm_name, historyStatus]);
 
   function updateProductionRow(index: number, field: keyof ProductionRow, value: string) {
     setProductionRows((current) => current.map((row, rowIndex) =>
@@ -625,6 +628,7 @@ export default function EggLayingForm() {
       const dates = new Set<string>();
       const existingDates = new Set(
         history
+          .filter((record) => record.is_active)
           .filter((record) => record.building === form.building)
           .map((record) => record.date_laying),
       );
@@ -688,6 +692,7 @@ export default function EggLayingForm() {
     const dates = new Set<string>();
     const existingDates = new Set(
       history
+        .filter((record) => record.is_active)
         .filter((record) => record.building === form.building)
         .filter((record) => !isEdit || record.id !== Number(idParam))
         .map((record) => record.date_laying),
@@ -775,7 +780,7 @@ export default function EggLayingForm() {
     setVoiding(true);
     try {
       await voidEggLaying(voidingRecord.id, voidReason);
-      setHistory((records) => records.filter((record) => record.id !== voidingRecord.id));
+      await refreshHistory();
       setVoidingRecord(null);
       setVoidReason("");
       toast.success("Egg Laying record voided.");
@@ -977,7 +982,7 @@ export default function EggLayingForm() {
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="history-date-from" className="text-xs">Date Laying From</Label>
                   <Input
@@ -1020,6 +1025,22 @@ export default function EggLayingForm() {
                     className="h-9"
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-status-filter" className="text-xs">Status</Label>
+                  <select
+                    id="history-status-filter"
+                    value={historyStatus}
+                    onChange={(event) => {
+                      setHistoryStatus(event.target.value as BreederEggLayingStatus);
+                      setHistoryPage(1);
+                    }}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="active">Active</option>
+                    <option value="voided">Voided</option>
+                    <option value="all">All transactions</option>
+                  </select>
+                </div>
               </div>
 
               <div className="max-h-[420px] w-full overflow-auto bg-white dark:bg-card">
@@ -1060,7 +1081,7 @@ export default function EggLayingForm() {
                       paginatedHistory.map((row, rowIndex) => {
                         const rowDivider = rowIndex % 5 === 4 ? "fc-grid-row-divider-strong" : "fc-grid-row-divider";
                         return (
-                        <tr key={row.id} className="fc-grid-row border-0">
+                        <tr key={row.id} className={`fc-grid-row border-0 ${row.is_active ? "" : "opacity-60"}`}>
                           <td className={`fc-grid-age sticky left-0 z-20 p-0 text-center font-semibold ${rowDivider}`}>
                             <div className="flex h-8 items-center justify-center px-0.5 text-[10px]">
                               {(historyPage - 1) * HISTORY_PAGE_SIZE + rowIndex + 1}
@@ -1088,31 +1109,37 @@ export default function EggLayingForm() {
                           </td>
                           <td className={`fc-grid-cell fc-grid-cell-readonly fc-grid-border-r p-0 ${rowDivider}`}>
                             <div className="flex h-8 items-center justify-center px-1">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button type="button" variant="outline" size="xs" disabled={disabledAll}>
-                                    Actions <ChevronDown className="size-3" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    disabled={editDenied}
-                                    onSelect={() => router.push(`/jmb/egglaying/new?id=${row.id}`)}
-                                  >
-                                    <Pencil className="size-4" /> Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    disabled={voidDenied}
-                                    onSelect={() => {
-                                      setVoidingRecord(row);
-                                      setVoidReason("");
-                                    }}
-                                  >
-                                    <Ban className="size-4" /> Void
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              {row.is_active ? (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button type="button" variant="outline" size="xs" disabled={disabledAll}>
+                                      Actions <ChevronDown className="size-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      disabled={editDenied}
+                                      onSelect={() => router.push(`/jmb/egglaying/new?id=${row.id}`)}
+                                    >
+                                      <Pencil className="size-4" /> Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      disabled={voidDenied}
+                                      onSelect={() => {
+                                        setVoidingRecord(row);
+                                        setVoidReason("");
+                                      }}
+                                    >
+                                      <Ban className="size-4" /> Void
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              ) : (
+                                <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground" title={row.void_reason ?? "Voided"}>
+                                  Voided
+                                </span>
+                              )}
                             </div>
                           </td>
                         </tr>

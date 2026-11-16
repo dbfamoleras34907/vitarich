@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ColumnDef,
@@ -25,11 +25,15 @@ import {
   ClassificationTableSection,
 } from "@/components/classification/ClassificationTable";
 import {
+  HATCH_CLASSIFICATION_PAGE_SIZE,
+  HATCH_CLASSIFICATION_SORT_COLUMNS,
   getReceivingList,
   listHatchClassification,
   type HatchForClassificationRow,
   type HatchClassificationListRow,
 } from "./new/api";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { useDebouncedValue } from "@/app/jmb/hooks/useDebouncedValue";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import { formatNumber } from "@/lib/utils/numberFormat";
@@ -82,6 +86,10 @@ function loadErrorMessage(error: unknown, label: string) {
   return message ? `Unable to load ${label}: ${message}` : `Unable to load ${label}.`;
 }
 
+const hatchClassificationSortColumns = new Set<string>(
+  HATCH_CLASSIFICATION_SORT_COLUMNS,
+);
+
 export default function HatchTable() {
   const router = useRouter();
   const { getValue, setValue } = useGlobalContext();
@@ -90,6 +98,9 @@ export default function HatchTable() {
   const defaultFarmId = parameters.farmId;
   const [items, setItems] = useState<HatchClassificationListRow[]>([]);
   const [classifiedSorting, setClassifiedSorting] = useState<SortingState>([]);
+  const [classifiedPage, setClassifiedPage] = useState(1);
+  const [classifiedTotal, setClassifiedTotal] = useState(0);
+  const [classifiedBreederRef, setClassifiedBreederRef] = useState("");
   const [assignedFarms, setAssignedFarms] = useState<AssignedFarmOption[]>([]);
   const [assignedFarmsLoading, setAssignedFarmsLoading] = useState(true);
   const [classifiedColumnFilters, setClassifiedColumnFilters] =
@@ -118,6 +129,11 @@ export default function HatchTable() {
   const [itemsForClass, setItemsForClass] = useState<
     HatchForClassificationRow[]
   >([]);
+  const classifiedLoadRequest = useRef(0);
+  const debouncedClassifiedBreederRef = useDebouncedValue(
+    classifiedBreederRef,
+    350,
+  );
 
   const assignedFarmIds = useMemo(
     () => assignedFarms.map((farm) => farm.id),
@@ -168,9 +184,27 @@ export default function HatchTable() {
     return assignedFarmIds;
   }, [assignedFarmIds, effectiveClassifiedColumnFilters]);
 
+  const classifiedSort = useMemo(() => {
+    const activeSort = classifiedSorting[0];
+    const column = activeSort?.id;
+    if (column && hatchClassificationSortColumns.has(column)) {
+      return {
+        column: column as (typeof HATCH_CLASSIFICATION_SORT_COLUMNS)[number],
+        ascending: !activeSort.desc,
+      };
+    }
+    return { column: "id" as const, ascending: false };
+  }, [classifiedSorting]);
+
+  useEffect(() => {
+    setClassifiedPage(1);
+  }, [classifiedFarmIdsForQuery, parameters.dateFrom, parameters.dateTo]);
+
   const load = useCallback(async () => {
+    const request = ++classifiedLoadRequest.current;
     if (assignedFarmsLoading || !classifiedFarmIdsForQuery.length) {
       setItems([]);
+      setClassifiedTotal(0);
       setClassifiedLoadError(null);
       setIsLoading(assignedFarmsLoading);
       return;
@@ -179,21 +213,33 @@ export default function HatchTable() {
     setIsLoading(true);
     setClassifiedLoadError(null);
     try {
-      const data = await listHatchClassification({
+      const result = await listHatchClassification({
         farmIds: classifiedFarmIdsForQuery,
-        limit: 50,
+        limit: HATCH_CLASSIFICATION_PAGE_SIZE,
+        page: classifiedPage,
         dateFrom: parameters.dateFrom,
         dateTo: parameters.dateTo,
+        breederRef: debouncedClassifiedBreederRef,
+        // An explicit reference is a targeted historical lookup. Browsing
+        // without one remains constrained to the selected date range.
+        searchAllDates: Boolean(debouncedClassifiedBreederRef.trim()),
+        sort: classifiedSort,
       });
-      setItems(Array.isArray(data) ? await attachProcessListAttributions(data) : []);
+      if (request !== classifiedLoadRequest.current) return;
+      const rows = await attachProcessListAttributions(result.rows);
+      if (request !== classifiedLoadRequest.current) return;
+      setItems(rows);
+      setClassifiedTotal(result.total);
     } catch (e) {
+      if (request !== classifiedLoadRequest.current) return;
       console.error(e);
       setItems([]);
+      setClassifiedTotal(0);
       setClassifiedLoadError(loadErrorMessage(e, "classified eggs"));
     } finally {
-      setIsLoading(false);
+      if (request === classifiedLoadRequest.current) setIsLoading(false);
     }
-  }, [assignedFarmsLoading, classifiedFarmIdsForQuery, parameters.dateFrom, parameters.dateTo]);
+  }, [assignedFarmsLoading, classifiedFarmIdsForQuery, classifiedPage, classifiedSort, debouncedClassifiedBreederRef, parameters.dateFrom, parameters.dateTo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -476,8 +522,8 @@ export default function HatchTable() {
         header: "Total Count",
         cell: ({ getValue }) => formatNumber(getValue<number>()),
       },
-      { accessorKey: "createdByName", header: "Created by" },
-      { accessorKey: "assignedTaLabel", header: "Assigned TA", cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
+      { accessorKey: "createdByName", header: "Created by", enableSorting: false },
+      { accessorKey: "assignedTaLabel", header: "Assigned TA", enableSorting: false, cell: ({ row }) => <span className="block max-w-40 truncate" title={row.original.assignedTaLabel}>{row.original.assignedTaLabel}</span> },
     ],
     [],
   );
@@ -489,12 +535,22 @@ export default function HatchTable() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setClassifiedSorting,
+    manualPagination: true,
+    manualSorting: true,
+    pageCount: Math.max(1, Math.ceil(classifiedTotal / HATCH_CLASSIFICATION_PAGE_SIZE)),
+    onSortingChange: (updater) => {
+      setClassifiedSorting(updater);
+      setClassifiedPage(1);
+    },
     onColumnFiltersChange: setClassifiedColumnFilters,
     onColumnVisibilityChange: setClassifiedColumnVisibility,
     onRowSelectionChange: setClassifiedRowSelection,
     state: {
       sorting: classifiedSorting,
+      pagination: {
+        pageIndex: classifiedPage - 1,
+        pageSize: HATCH_CLASSIFICATION_PAGE_SIZE,
+      },
       columnFilters: effectiveClassifiedColumnFilters,
       columnVisibility: classifiedColumnVisibility,
       rowSelection: classifiedRowSelection,
@@ -569,18 +625,27 @@ export default function HatchTable() {
         isLoading={isLoading}
         error={classifiedLoadError}
         colSpan={columns.length}
-        paginationMode="showing-rows"
+        pagination={
+          <TablePagination
+            page={classifiedPage}
+            pageSize={HATCH_CLASSIFICATION_PAGE_SIZE}
+            totalItems={classifiedTotal}
+            itemLabel="classified eggs"
+            onPageChange={setClassifiedPage}
+          />
+        }
         contentOpen={classifiedSectionOpen}
         onContentOpenChange={setClassifiedSectionOpen}
         headerActions={
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <Input
-              placeholder="Filter Breeder Ref. No."
+              placeholder="Search all dates by Breeder Ref. No."
               className="h-9 w-full rounded-md border-stone-300 bg-white sm:w-72"
-              value={(table.getColumn("br_no")?.getFilterValue() as string) ?? ""}
-              onChange={(e) =>
-                table.getColumn("br_no")?.setFilterValue(e.target.value)
-              }
+              value={classifiedBreederRef}
+              onChange={(e) => {
+                setClassifiedBreederRef(e.target.value);
+                setClassifiedPage(1);
+              }}
             />
 
           </div>

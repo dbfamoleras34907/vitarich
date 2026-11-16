@@ -15,6 +15,7 @@ import {
   Printer,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import BreederListParameters, {
@@ -46,6 +47,7 @@ import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
 import {
   cancelBreederDispatch,
+  deleteBreederDispatchDraft,
   listBreederDispatches,
   type BreederDispatchRecord,
 } from "./new/api";
@@ -75,6 +77,7 @@ export default function BreederDispatchTable() {
   const [page, setPage] = useState(1);
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [discardRecord, setDiscardRecord] = useState<BreederDispatchRecord | null>(null);
 
   useEffect(() => { void refreshSessionx(router); }, [router]);
   const load = useCallback(async () => {
@@ -124,6 +127,17 @@ export default function BreederDispatchTable() {
       setCancelRecord(null); setCancelReason(""); await load();
     } catch (cancelError) {
       setError(cancelError instanceof Error ? cancelError.message : "Unable to cancel dispatch.");
+    } finally { setWorking(false); }
+  }
+
+  async function confirmDiscard() {
+    if (!discardRecord) return;
+    setWorking(true); setError("");
+    try {
+      await deleteBreederDispatchDraft(discardRecord.id);
+      setDiscardRecord(null); await load();
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "Unable to discard draft dispatch.");
     } finally { setWorking(false); }
   }
 
@@ -183,7 +197,8 @@ export default function BreederDispatchTable() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => window.open(`/jmb/breederdispatch/${record.id}/print`, "_blank")}><Printer className="size-4" />Print</DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => router.push(`/jmb/breederdispatch/multiple?id=${record.id}`)}><Eye className="size-4" />{record.status === "Draft" ? "Continue / Post" : "View"}</DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive" disabled={record.status !== "Posted"} onSelect={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</DropdownMenuItem>
+                      {record.status === "Draft" ? <DropdownMenuItem variant="destructive" disabled={working} onSelect={() => setDiscardRecord(record)}><Trash2 className="size-4" />Discard draft</DropdownMenuItem> : null}
+                      {record.status === "Posted" ? <DropdownMenuItem variant="destructive" disabled={working} onSelect={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</DropdownMenuItem> : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -198,6 +213,11 @@ export default function BreederDispatchTable() {
         <DialogContent><DialogHeader><DialogTitle>Cancel breeder dispatch?</DialogTitle><DialogDescription>The reserved Population Record and Egg Laying quantities will become available for dispatch again.</DialogDescription></DialogHeader>
           <div className="space-y-2"><Label required>Cancellation reason</Label><Textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></div>
           <DialogFooter><Button variant="outline" onClick={() => setCancelRecord(null)} disabled={working}>Keep dispatch</Button><Button variant="destructive" onClick={() => void confirmCancel()} disabled={working || !cancelReason.trim()}>{working ? <Loader2 className="size-4 animate-spin" /> : <Ban className="size-4" />}Cancel dispatch</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(discardRecord)} onOpenChange={(open) => { if (!open && !working) setDiscardRecord(null); }}>
+        <DialogContent><DialogHeader><DialogTitle>Discard draft breeder dispatch?</DialogTitle><DialogDescription>This draft has not reserved Population Record or Egg Laying quantities. It will be permanently removed.</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="outline" onClick={() => setDiscardRecord(null)} disabled={working}>Keep draft</Button><Button variant="destructive" onClick={() => void confirmDiscard()} disabled={working}>{working ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}Discard draft</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </main>

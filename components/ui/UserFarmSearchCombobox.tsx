@@ -35,12 +35,28 @@ function normalizeFarmCode(value: unknown) {
   return String(value ?? "").trim();
 }
 
+export function uniqueUserFarms(farms: UserFarm[]) {
+  const seenFarmIds = new Set<number>();
+
+  return farms.filter((farm) => {
+    const farmId = Number(farm.id);
+    if (!Number.isInteger(farmId) || farmId <= 0 || seenFarmIds.has(farmId)) {
+      return false;
+    }
+
+    seenFarmIds.add(farmId);
+    return true;
+  });
+}
+
 export function getAllowedUserFarms(farmDB: UserFarm[], userFarms: unknown[]) {
   const allowedCodes = new Set(userFarms.map(normalizeFarmCode));
 
   if (!farmDB.length || !allowedCodes.size) return [];
 
-  return farmDB.filter((farm) => allowedCodes.has(normalizeFarmCode(farm.code)));
+  return uniqueUserFarms(
+    farmDB.filter((farm) => allowedCodes.has(normalizeFarmCode(farm.code))),
+  );
 }
 
 const FARM_TYPE_LABELS = {
@@ -112,7 +128,7 @@ export default function UserFarmSearchCombobox({
   );
 
   const filteredFarms = useMemo(
-    () => allowedFarms.filter((farm) => matchesFarmType(farm, farmType)),
+    () => uniqueUserFarms(allowedFarms.filter((farm) => matchesFarmType(farm, farmType))),
     [allowedFarms, farmType]
   );
 
