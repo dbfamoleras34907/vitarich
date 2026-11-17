@@ -34,6 +34,10 @@ type ReceivingHeaderReferenceRow = {
   doc_date: string | null;
 };
 
+// Keep PostgREST `in` filters safely below URL-length limits. Classification
+// references can be long and the eligible-setter view contains thousands.
+const CLASSIFICATION_REFERENCE_BATCH_SIZE = 50;
+
 /**
  * Lists the Egg Setter-eligible references with the receipt identifiers used
  * by Hatchery users to distinguish similarly named classifications.
@@ -60,14 +64,20 @@ export async function listEggSetterReferenceOptions(
 
   if (!refs.length) return [];
 
-  const { data: hatchRows, error: hatchError } = await db
-    .from("hatch_classification")
-    .select("classi_ref_no, good_egg, br_no")
-    .in("classi_ref_no", refs);
+  const hatchRows: HatchClassificationReferenceRow[] = [];
+  for (let index = 0; index < refs.length; index += CLASSIFICATION_REFERENCE_BATCH_SIZE) {
+    const { data, error } = await db
+      .from("hatch_classification")
+      .select("classi_ref_no, good_egg, br_no")
+      .in(
+        "classi_ref_no",
+        refs.slice(index, index + CLASSIFICATION_REFERENCE_BATCH_SIZE),
+      );
+    if (error) throw error;
+    hatchRows.push(...((data ?? []) as HatchClassificationReferenceRow[]));
+  }
 
-  if (hatchError) throw hatchError;
-
-  const classifications = (hatchRows ?? []) as HatchClassificationReferenceRow[];
+  const classifications = hatchRows;
   const classificationByRef = new Map(
     classifications
       .filter((row) => row.classi_ref_no)
