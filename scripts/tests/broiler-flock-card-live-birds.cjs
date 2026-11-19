@@ -6,12 +6,13 @@ const fs = require('node:fs')
 const repository = fs.readFileSync('lib/data/repositories/broilerFlockCards.ts', 'utf8')
 const layout = fs.readFileSync('app/brd/fc/Layout.tsx', 'utf8')
 
-test('Growing list uses live building bird inventory', () => {
-  assert.match(layout, /includePlacementInventory: true/)
-  assert.match(repository, /getPlacementInventoryAnimalQtyByWarehouse/)
-  assert.match(repository, /getGoodDocItemId\(farmId\)/)
-  assert.match(repository, /\.eq\("item_code", itemCode\)/)
-  assert.match(repository, /signedPostingQty\(posting\)/)
+test('Growing list uses inventory from the selected farm cycle', () => {
+  assert.match(layout, /farmCycleId: Number\(selectedCycleId\)/)
+  assert.match(layout, /includePlacementInventory: false/)
+  assert.match(repository, /getBroilerCycleInventoryBatches\(farmId, options\.farmCycleId\)/)
+  assert.match(repository, /cycleInventoryByCardId/)
+  assert.match(repository, /batch\.flock_card_id/)
+  assert.match(repository, /batch\.on_hand_qty/)
 })
 
 test('Good DOC inventory is scoped to the selected farm', () => {
@@ -38,9 +39,9 @@ test('building inventory is loaded once in paged batches', () => {
   assert.doesNotMatch(listLoader, /await getFarmOriginBatchesForFlockCard/)
 })
 
-test('Growing list preserves an authoritative zero bird balance', () => {
-  assert.match(repository, /placementInventoryByWarehouse\.has\(code\.toUpperCase\(\)\)/)
-  assert.doesNotMatch(repository, /placementAnimalQty > 0/)
+test('Growing list preserves an authoritative zero cycle balance', () => {
+  assert.match(repository, /const cycleInventoryAnimalQty = cycleInventoryByCardId\.get\(cardId\)/)
+  assert.match(repository, /animalQty: cycleInventoryAnimalQty \?\? \(buildingFlockKey/)
 })
 
 test('Growing list totals positive balances by batch so closed legacy batches cannot offset the current flock', () => {
@@ -52,6 +53,10 @@ test('Growing list totals positive balances by batch so closed legacy batches ca
   assert.match(inventoryLoader, /posting\.batch_number \|\| posting\.ref/)
   assert.match(inventoryLoader, /quantityByWarehouseBatch/)
   assert.match(inventoryLoader, /\.filter\(quantity => quantity > 0\)/)
+})
+
+test('selected-cycle rows never use unscoped warehouse inventory', () => {
+  assert.match(repository, /options\.includePlacementInventory === false \|\| options\.farmCycleId != null/)
 })
 
 test('Edit/View uses the same paged inventory ledger loader as the Growing list', () => {

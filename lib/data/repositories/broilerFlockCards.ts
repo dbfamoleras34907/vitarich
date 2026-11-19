@@ -2,6 +2,7 @@ import { getBroilerCycleDisplay } from '@/lib/broiler/cycleMask';
 import { db } from "@/lib/Supabase/supabaseClient";
 import { activeApprovedFarmsQuery } from "@/lib/data/repositories/farms";
 import { getBroilerGrowingHeader, getLatestBroilerGrowingHeaders } from "@/lib/data/repositories/broilerGrowing";
+import { getBroilerCycleInventoryBatches } from "@/lib/data/repositories/brCleanup";
 import { calculateFlockAgeFromStartDate } from "@/app/brd/fc/age";
 
 export type FarmBuildingListRow = {
@@ -547,7 +548,7 @@ export async function getFarmBuildingsForFlockCard(
   ));
   const originCountByCardId = new Map<number, number>();
 
-  const [originCountResult, growingHeaders] = await Promise.all([
+  const [originCountResult, growingHeaders, cycleInventoryBatches] = await Promise.all([
     cardIds.length > 0
       ? db
         .from("flock_card_origin")
@@ -556,6 +557,9 @@ export async function getFarmBuildingsForFlockCard(
         .eq("void", "1")
       : Promise.resolve({ data: [], error: null }),
     getLatestBroilerGrowingHeaders(cardNumbers),
+    options.farmCycleId != null
+      ? getBroilerCycleInventoryBatches(farmId, options.farmCycleId)
+      : Promise.resolve([]),
   ]);
 
   if (originCountResult.error) throwDbError(originCountResult.error, "Unable to load flock origin counts");
@@ -567,6 +571,17 @@ export async function getFarmBuildingsForFlockCard(
     originCountByCardId.set(
       fcId,
       (originCountByCardId.get(fcId) ?? 0) + Number(origin.animal_qty ?? 0),
+    );
+  }
+
+  const cycleInventoryByCardId = new Map<number, number>();
+  for (const batch of cycleInventoryBatches) {
+    const cardId = Number(batch.flock_card_id ?? 0);
+    if (!Number.isFinite(cardId) || cardId <= 0) continue;
+
+    cycleInventoryByCardId.set(
+      cardId,
+      (cycleInventoryByCardId.get(cardId) ?? 0) + Math.max(Number(batch.on_hand_qty ?? 0), 0),
     );
   }
 
@@ -607,6 +622,7 @@ export async function getFarmBuildingsForFlockCard(
     const cardId = Number(card.id);
     const buildingFlockKey = getBuildingFlockKey(card);
     const startDate = String(card.start_date ?? "").trim();
+    const cycleInventoryAnimalQty = cycleInventoryByCardId.get(cardId);
 
     return {
       id: cardId,
@@ -619,9 +635,9 @@ export async function getFarmBuildingsForFlockCard(
       startDate,
       flockCode: String(card.flock_code ?? "").trim(),
       breed: String(card.breed ?? "").trim(),
-      animalQty: buildingFlockKey
+      animalQty: cycleInventoryAnimalQty ?? (buildingFlockKey
         ? originCountByBuildingFlock.get(buildingFlockKey) ?? Number(card.animal_qty ?? 0)
-        : originCountByCardId.get(cardId) ?? Number(card.animal_qty ?? 0),
+        : originCountByCardId.get(cardId) ?? Number(card.animal_qty ?? 0)),
       status: String(card.status ?? "").trim(),
     };
   };
@@ -643,7 +659,7 @@ export async function getFarmBuildingsForFlockCard(
     }
   }
 
-  const placementInventoryByWarehouse = options.includePlacementInventory === false
+  const placementInventoryByWarehouse = options.includePlacementInventory === false || options.farmCycleId != null
     ? new Map<string, number>()
     : await getPlacementInventoryAnimalQtyByWarehouse(
       farmId,

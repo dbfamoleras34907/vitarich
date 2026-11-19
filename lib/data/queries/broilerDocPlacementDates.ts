@@ -24,3 +24,26 @@ export async function getFirstDocPlacementDates(flockCardIds: number[]) {
     return dates
   }, {})
 }
+
+export async function getPostedDocPlacementAnimalQuantities(flockCardIds: number[]) {
+  const ids = Array.from(new Set(flockCardIds.filter(id => Number.isFinite(id) && id > 0)))
+  if (ids.length === 0) return {} as Record<number, number>
+
+  const result = await db
+    .from('goods_receipt_doc')
+    .select('flock_card_id, actual_received, goods_receipt!inner(status)')
+    .in('flock_card_id', ids)
+    .eq('goods_receipt.status', 'Posted')
+    .eq('void', '1')
+
+  if (result.error) throw new Error(`Unable to load posted DOC placement quantities: ${result.error.message}`)
+
+  return (result.data ?? []).reduce<Record<number, number>>((quantities, row) => {
+    const flockCardId = Number(row.flock_card_id ?? 0)
+    const quantity = Number(row.actual_received ?? 0)
+    if (flockCardId > 0 && Number.isFinite(quantity)) {
+      quantities[flockCardId] = (quantities[flockCardId] ?? 0) + quantity
+    }
+    return quantities
+  }, {})
+}

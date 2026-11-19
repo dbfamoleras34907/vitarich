@@ -13,6 +13,7 @@ export type FlockCardNavigationContext = {
   brdFcId?: number | string | null;
   dailyFlockCardId?: number | string | null;
   flockCardId?: number | string | null;
+  farmCycleId?: number | string | null;
   cardNo?: string | null;
   flockCode?: string | null;
   flockAge?: number | string | null;

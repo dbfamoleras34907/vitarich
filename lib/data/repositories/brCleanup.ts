@@ -3,12 +3,12 @@ import type { GoodsIssue } from '@/app/inv/gi/api'
 
 function cleanupDatabaseError(error: { code?: string; message?: string; details?: string; hint?: string }): Error {
   if (error.code === 'PGRST202') {
-    return new Error('Clean Up needs a database update before it can load or save. Ask your administrator to install the Clean Up update, then retry.')
+    return new Error('Cycle inventory needs a database update before it can load. Ask your administrator to install the cycle-scoped inventory update, then retry.')
   }
   if (error.code === '57014') {
-    return new Error('Clean Up inventory lookup timed out. Apply the cycle-scoped Clean Up database update, then retry.')
+    return new Error('Cycle inventory lookup timed out. Apply the cycle-scoped inventory update, then retry.')
   }
-  return new Error([error.message, error.details, error.hint].filter(Boolean).join(' ') || 'Unable to access Clean Up data.')
+  return new Error([error.message, error.details, error.hint].filter(Boolean).join(' ') || 'Unable to access cycle inventory data.')
 }
 
 export type BrCleanupDraftIdentity = {
@@ -51,6 +51,10 @@ export async function getBrCleanupIdentityByDocumentNo(
 }
 
 export async function getCleanupCycleInventoryBatches(farmId: number, farmCycleId: number) {
+  return getBroilerCycleInventoryBatches(farmId, farmCycleId)
+}
+
+export async function getBroilerCycleInventoryBatches(farmId: number, farmCycleId: number) {
   const { data, error } = await db.rpc('get_cleanup_cycle_inventory_batches', {
     p_farm_id: farmId,
     p_farm_cycle_id: farmCycleId,

@@ -272,7 +272,7 @@ export default function Layout() {
       try {
         const rows = await getFarmBuildingsForFlockCard(farmId, {
           farmCycleId: Number(selectedCycleId),
-          includePlacementInventory: true,
+          includePlacementInventory: false,
         });
         if (!cancelled) setBuildings(rows);
       } catch (error) {
@@ -366,6 +366,7 @@ export default function Layout() {
       buildingCode: building.code,
       buildingName: building.name,
       flockCardId: building.flockCard?.id ?? null,
+      farmCycleId: building.flockCard?.farmCycleId ?? null,
       cardNo: building.flockCard?.cardNo ?? "",
       flockAge: building.flockCard?.age ?? null,
       flockStartDate: building.flockCard?.startDate ?? "",

@@ -66,6 +66,8 @@ import {
   type FlockCardLinePayload,
 } from "./api";
 import { getBuildingPlacementInventory } from "../api";
+import { getBroilerCycleInventoryBatches } from "@/lib/data/repositories/brCleanup";
+import { getPostedDocPlacementAnimalQuantities } from "@/lib/data/queries/broilerDocPlacementDates";
 import {
   computeColumnTotals,
   computeGridValues,
@@ -580,6 +582,8 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
   const requestedFarmId = String(flockCardNavigationContext?.farmId ?? searchParams.get("farmId") ?? "");
   const requestedBuildingKey = String(flockCardNavigationContext?.buildingKey ?? searchParams.get("buildingKey") ?? "");
   const requestedBuildingId = String(flockCardNavigationContext?.buildingId ?? searchParams.get("buildingId") ?? "");
+  const requestedPlacementId = Number(flockCardNavigationContext?.flockCardId ?? searchParams.get("flockCardId") ?? 0);
+  const requestedFarmCycleId = Number(flockCardNavigationContext?.farmCycleId ?? searchParams.get("farmCycleId") ?? 0);
   const requestedFlockCardId = String(
     flockCardNavigationContext?.brdFcId ??
     flockCardNavigationContext?.dailyFlockCardId ??
@@ -1147,10 +1151,30 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
 
   useEffect(() => {
     const animalQty = Number(flockCardNavigationContext?.animalQty ?? 0);
-    if (Number.isFinite(animalQty) && animalQty > 0) {
+    if ((!Number.isFinite(requestedPlacementId) || requestedPlacementId <= 0) && Number.isFinite(animalQty) && animalQty > 0) {
       setNumberOfAnimals(animalQty);
     }
-  }, [flockCardNavigationContext?.animalQty]);
+  }, [flockCardNavigationContext?.animalQty, requestedPlacementId]);
+
+  useEffect(() => {
+    if (!Number.isFinite(requestedPlacementId) || requestedPlacementId <= 0) return;
+
+    let cancelled = false;
+    getPostedDocPlacementAnimalQuantities([requestedPlacementId])
+      .then(quantities => {
+        if (!cancelled && Object.hasOwn(quantities, requestedPlacementId)) {
+          setNumberOfAnimals(quantities[requestedPlacementId]);
+        }
+      })
+      .catch(error => {
+        console.error(error);
+        if (!cancelled) toast(`Unable to load posted DOC bird quantity: ${error instanceof Error ? error.message : "Unknown error"}`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedPlacementId]);
 
   useEffect(() => {
     if (saving) {
@@ -1176,7 +1200,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         setFlockCardId(card.id);
         setFlockCardNo(card.fcNo);
         setFlockCardCardNo(card.cardNo ?? "");
-        if (card.animalQty > 0) setNumberOfAnimals(card.animalQty);
+        if ((!Number.isFinite(requestedPlacementId) || requestedPlacementId <= 0) && card.animalQty > 0) {
+          setNumberOfAnimals(card.animalQty);
+        }
         if (card.farmId != null) setSelectedFarmId(String(card.farmId));
 
         const nextGridValues = initialGridValues.map(row => [...row]);
@@ -1230,7 +1256,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [requestedCardNo, requestedFlockCardId, currentFlockAge, saving]);
+  }, [requestedCardNo, requestedFlockCardId, currentFlockAge, requestedPlacementId, saving]);
 
   useEffect(() => {
     if (selectedFarmId || farms.length === 0) return;
@@ -1381,13 +1407,32 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     setLoadingMortalityBatches(true);
     setMortalityBatchError("");
 
-    getBuildingPlacementInventory({
-      farmId,
-      buildingCode: selectedBuilding.code,
-      buildingName: selectedBuilding.name,
-      buildingKey: selectedBuilding.key,
-      buildingWarehouseCode: selectedBuilding.warehouseCode || selectedBuilding.code,
-    })
+    const hasCycleContext = Number.isFinite(requestedFarmCycleId) && requestedFarmCycleId > 0 &&
+      Number.isFinite(requestedPlacementId) && requestedPlacementId > 0;
+    const inventoryRequest = hasCycleContext
+      ? getBroilerCycleInventoryBatches(farmId, requestedFarmCycleId).then(batches => batches
+        .filter(batch => Number(batch.flock_card_id) === requestedPlacementId)
+        .map(batch => ({
+          id: [batch.item_code, batch.batch_number, batch.warehouse_code]
+            .map(value => String(value ?? "").trim().toUpperCase())
+            .join("|"),
+          itemCode: batch.item_code,
+          itemName: batch.item_name,
+          batchNumber: batch.batch_number,
+          manufacturingDate: "",
+          expiryDate: "",
+          warehouseCode: batch.warehouse_code,
+          onHandQty: Math.max(Number(batch.on_hand_qty ?? 0), 0),
+        })))
+      : getBuildingPlacementInventory({
+        farmId,
+        buildingCode: selectedBuilding.code,
+        buildingName: selectedBuilding.name,
+        buildingKey: selectedBuilding.key,
+        buildingWarehouseCode: selectedBuilding.warehouseCode || selectedBuilding.code,
+      });
+
+    inventoryRequest
       .then(rows => {
         if (!cancelled) setMortalityBatchRows(rows);
       })
@@ -1405,7 +1450,7 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedBuilding, selectedFarmId]);
+  }, [requestedFarmCycleId, requestedPlacementId, selectedBuilding, selectedFarmId]);
 
   useEffect(() => {
     if (!reviewFeedBatch) {
@@ -3094,7 +3139,9 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
         setValue("brdFcNewContext", {
           ...(flockCardNavigationContext ?? {}),
           farmId: selectedFarm.id,
+          farmCycleId: requestedFarmCycleId || (flockCardNavigationContext?.farmCycleId ?? null),
           buildingKey: selectedBuilding.key,
+          flockCardId: requestedPlacementId || (flockCardNavigationContext?.flockCardId ?? null),
           buildingId: selectedBuilding.id,
           animalQty: numberOfAnimals,
           breed: selectedBreed,
