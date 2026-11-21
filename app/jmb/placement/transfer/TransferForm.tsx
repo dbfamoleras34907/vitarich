@@ -32,6 +32,14 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-PH");
 }
 
+function formatPostingDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
 function placementLabel(placement: TransferPlacement) {
   return `${placement.farm_name} / ${placement.building_no} / ${placement.pen_no}`;
 }
@@ -70,6 +78,7 @@ export default function TransferForm() {
   const [historyBuildingId, setHistoryBuildingId] = useState("");
   const [historyPenId, setHistoryPenId] = useState("");
   const [historyStatus, setHistoryStatus] = useState<"" | BreederTransfer["status"]>("");
+  const [historyFarmId, setHistoryFarmId] = useState<number | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [editing, setEditing] = useState<BreederTransfer | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -83,9 +92,16 @@ export default function TransferForm() {
       const result = await loadBreederTransfers();
       setPlacements(result.placements.sort((a, b) => placementLabel(a).localeCompare(placementLabel(b), undefined, { numeric: true })));
       setTransfers(result.transfers);
-      setSourcePlacementId((current) => result.placements.some((row) => String(row.id) === current)
-        ? current
-        : result.placements[0] ? String(result.placements[0].id) : "");
+      setSourcePlacementId((current) => {
+        const requestedPlacement = result.placements.find((row) => String(row.id) === current) ?? null;
+        const selectedPlacement = requestedPlacement ?? result.placements[0] ?? null;
+        const nextSourcePlacementId = selectedPlacement ? String(selectedPlacement.id) : "";
+        const firstHistoryFarmId = result.transfers.find((transfer) => transfer.source?.farm_id != null || transfer.destination?.farm_id != null)?.source?.farm_id
+          ?? result.transfers.find((transfer) => transfer.destination?.farm_id != null)?.destination?.farm_id
+          ?? null;
+        setHistoryFarmId((selectedFarmId) => selectedFarmId ?? requestedPlacement?.farm_id ?? firstHistoryFarmId);
+        return nextSourcePlacementId;
+      });
     } catch (loadError) {
       setError(`${loadError instanceof Error ? loadError.message : "Unable to load bird transfers."} Run breeder_transfer_tables.sql in Supabase if this feature has not been installed.`);
     } finally { setLoading(false); }
@@ -93,7 +109,6 @@ export default function TransferForm() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => setValue("loading_g", loading || working), [loading, setValue, working]);
 
-  const source = placements.find((row) => String(row.id) === sourcePlacementId) ?? null;
   const editSource = editing
     ? placements.find((placement) => placement.id === editing.source_placement_id) ?? null
     : null;
@@ -103,7 +118,12 @@ export default function TransferForm() {
   const editFemaleAvailable = editing && editSource
     ? editSource.female_available + editing.female_qty
     : null;
-  const historyFarmId = source?.farm_id ?? null;
+  const historyFarms = useMemo(() => [...new Map(
+    transfers.flatMap((transfer) => [transfer.source, transfer.destination])
+      .filter((location): location is NonNullable<BreederTransfer["source"]> => location != null)
+      .map((location) => [location.farm_id, location.farm_name]),
+  ).entries()].sort((left, right) => left[1].localeCompare(right[1], undefined, { numeric: true })), [transfers]);
+  const historyFarmName = historyFarms.find(([id]) => id === historyFarmId)?.[1] ?? "the selected farm";
   const farmTransfers = useMemo(() => transfers.filter((transfer) => historyFarmId != null && (transfer.source?.farm_id === historyFarmId || transfer.destination?.farm_id === historyFarmId)), [historyFarmId, transfers]);
   const historyLocations = useMemo(() => farmTransfers.flatMap((transfer) => [transfer.source, transfer.destination]).filter((location): location is NonNullable<BreederTransfer["source"]> => location != null && location.farm_id === historyFarmId), [farmTransfers, historyFarmId]);
   const historyBuildings = useMemo(() => [...new Map(historyLocations.map((location) => [location.building_id, location.building_no])).entries()].sort((left, right) => left[1].localeCompare(right[1], undefined, { numeric: true })), [historyLocations]);
@@ -177,17 +197,17 @@ export default function TransferForm() {
       <div className="mt-4 px-4"><Breadcrumb SecondPreviewPageName="Placement" CurrentPageName="Transfer History" /></div>
       <section className="m-3 mt-6 overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b bg-muted/30 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
-          <div><h1 className="flex items-center gap-2 text-xl font-semibold"><ArrowLeftRight className="size-5 text-primary" />Transfer History</h1><p className="text-sm text-muted-foreground">Review all transfer transactions for {source?.farm_name || "the selected farm"}.</p></div>
+          <div><h1 className="flex items-center gap-2 text-xl font-semibold"><ArrowLeftRight className="size-5 text-primary" />Transfer History</h1><p className="text-sm text-muted-foreground">Review all transfer transactions for {historyFarmName}.</p></div>
           <Button type="button" variant="outline" onClick={() => router.push(sourcePlacementId ? `/jmb/placement/card?placementId=${sourcePlacementId}` : "/jmb/placement")}><ArrowLeft className="size-4" />Return to Population Record</Button>
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
-        <div className="p-5"><h2 className="font-semibold">Transfer Transactions</h2><p className="mb-3 text-xs text-muted-foreground">Showing transactions where {source?.farm_name || "the selected farm"} is the source, destination, or both.</p>
-          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Field label="From date"><Input type="date" max={historyToDate || undefined} value={historyFromDate} onChange={(event) => { setHistoryFromDate(event.target.value); setHistoryPage(1); }} /></Field><Field label="To date"><Input type="date" min={historyFromDate || undefined} value={historyToDate} onChange={(event) => { setHistoryToDate(event.target.value); setHistoryPage(1); }} /></Field><Field label="Building"><select value={historyBuildingId} onChange={(event) => { setHistoryBuildingId(event.target.value); setHistoryPenId(""); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All buildings</option>{historyBuildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field><Field label="Pen"><select value={historyPenId} onChange={(event) => { setHistoryPenId(event.target.value); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All pens</option>{historyPens.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field><Field label="Status"><select value={historyStatus} onChange={(event) => { setHistoryStatus(event.target.value as "" | BreederTransfer["status"]); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All statuses</option><option value="Draft">Draft</option><option value="Posted">Posted</option><option value="Cancelled">Cancelled</option></select></Field></div>
-          <div className="overflow-x-auto rounded-md border"><Table className="min-w-[1200px]"><TableHeader><TableRow><TableHead>Date / Transfer #</TableHead><TableHead>Transfer</TableHead><TableHead>Source</TableHead><TableHead>Destination</TableHead><TableHead className="text-right">Male</TableHead><TableHead className="text-right">Female</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
+        <div className="p-5"><h2 className="font-semibold">Transfer Transactions</h2><p className="mb-3 text-xs text-muted-foreground">Showing transactions where {historyFarmName} is the source, destination, or both.</p>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6"><Field label="Farm"><select value={historyFarmId == null ? "" : String(historyFarmId)} onChange={(event) => { setHistoryFarmId(Number(event.target.value) || null); setHistoryBuildingId(""); setHistoryPenId(""); setHistoryPage(1); }} disabled={loading || !historyFarms.length} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="" disabled>Select a farm</option>{historyFarms.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field><Field label="From date"><Input type="date" max={historyToDate || undefined} value={historyFromDate} onChange={(event) => { setHistoryFromDate(event.target.value); setHistoryPage(1); }} /></Field><Field label="To date"><Input type="date" min={historyFromDate || undefined} value={historyToDate} onChange={(event) => { setHistoryToDate(event.target.value); setHistoryPage(1); }} /></Field><Field label="Building"><select value={historyBuildingId} onChange={(event) => { setHistoryBuildingId(event.target.value); setHistoryPenId(""); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All buildings</option>{historyBuildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field><Field label="Pen"><select value={historyPenId} onChange={(event) => { setHistoryPenId(event.target.value); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All pens</option>{historyPens.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field><Field label="Status"><select value={historyStatus} onChange={(event) => { setHistoryStatus(event.target.value as "" | BreederTransfer["status"]); setHistoryPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">All statuses</option><option value="Draft">Draft</option><option value="Posted">Posted</option><option value="Cancelled">Cancelled</option></select></Field></div>
+          <div className="overflow-x-auto rounded-md border"><Table className="min-w-[1320px]"><TableHeader><TableRow><TableHead>Date / Transfer #</TableHead><TableHead>Transfer</TableHead><TableHead>Source</TableHead><TableHead>Destination</TableHead><TableHead className="text-right">Male</TableHead><TableHead className="text-right">Female</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Posting Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
             {loading ? <TableRow><TableCell colSpan={9} className="h-28 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
-            {!loading && paginatedTransfers.map((transfer) => <TableRow key={transfer.id} className={transfer.status === "Cancelled" ? "opacity-60" : ""}><TableCell><div>{formatDate(transfer.transfer_date)}</div><div className="font-mono text-xs text-muted-foreground">{transfer.transfer_no}</div></TableCell><TableCell><TransferBadge direction={transferDirection(transfer)} /></TableCell><TableCell>{historyLabel(transfer.source)}</TableCell><TableCell>{historyLabel(transfer.destination)}</TableCell><TableCell className="text-right tabular-nums">{Number(transfer.male_qty).toLocaleString()}</TableCell><TableCell className="text-right tabular-nums">{Number(transfer.female_qty).toLocaleString()}</TableCell><TableCell><div>{transfer.reason}</div>{transfer.cancellation_reason ? <div className="text-xs text-red-600">Cancelled: {transfer.cancellation_reason}</div> : null}</TableCell><TableCell><Status value={transfer.status} /></TableCell><TableCell className="text-right">{transfer.status === "Posted" ? <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="outline" disabled={working}>Actions <ChevronDown className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={editDenied} onSelect={() => openEdit(transfer)}><Pencil className="size-4" />Edit</DropdownMenuItem><DropdownMenuItem variant="destructive" disabled={voidDenied} onSelect={() => { setVoiding(transfer); setVoidReason(""); }}><Ban className="size-4" />Void</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : <span className="text-xs text-muted-foreground">—</span>}</TableCell></TableRow>)}
-            {!loading && !filteredTransfers.length ? <TableRow><TableCell colSpan={9} className="h-28 text-center text-muted-foreground">No transfer transactions found for the selected farm and filters.</TableCell></TableRow> : null}
+            {!loading && paginatedTransfers.map((transfer) => <TableRow key={transfer.id} className={transfer.status === "Cancelled" ? "opacity-60" : ""}><TableCell><div>{formatDate(transfer.transfer_date)}</div><div className="font-mono text-xs text-muted-foreground">{transfer.transfer_no}</div></TableCell><TableCell><TransferBadge direction={transferDirection(transfer)} /></TableCell><TableCell>{historyLabel(transfer.source)}</TableCell><TableCell>{historyLabel(transfer.destination)}</TableCell><TableCell className="text-right tabular-nums">{Number(transfer.male_qty).toLocaleString()}</TableCell><TableCell className="text-right tabular-nums">{Number(transfer.female_qty).toLocaleString()}</TableCell><TableCell><div>{transfer.reason}</div>{transfer.cancellation_reason ? <div className="text-xs text-red-600">Cancelled: {transfer.cancellation_reason}</div> : null}</TableCell><TableCell><Status value={transfer.status} /></TableCell><TableCell className="whitespace-nowrap">{formatPostingDate(transfer.posted_at)}</TableCell><TableCell className="text-right">{transfer.status === "Posted" ? <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="outline" disabled={working}>Actions <ChevronDown className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={editDenied} onSelect={() => openEdit(transfer)}><Pencil className="size-4" />Edit</DropdownMenuItem><DropdownMenuItem variant="destructive" disabled={voidDenied} onSelect={() => { setVoiding(transfer); setVoidReason(""); }}><Ban className="size-4" />Void</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : <span className="text-xs text-muted-foreground">—</span>}</TableCell></TableRow>)}
+            {!loading && !filteredTransfers.length ? <TableRow><TableCell colSpan={10} className="h-28 text-center text-muted-foreground">No transfer transactions found for the selected farm and filters.</TableCell></TableRow> : null}
           </TableBody></Table></div>
           {!loading && filteredTransfers.length ? <div className="flex flex-col gap-3 border-x border-b px-3 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"><span>Showing {(currentHistoryPage - 1) * historyPageSize + 1}-{Math.min(currentHistoryPage * historyPageSize, filteredTransfers.length)} of {filteredTransfers.length} transactions</span><div className="flex flex-wrap gap-2"><Button type="button" size="icon" variant="outline" onClick={() => setHistoryPage(1)} disabled={currentHistoryPage === 1} aria-label="Latest page" title="Latest page"><ChevronsLeft className="size-4" /></Button><Button type="button" size="icon" variant="outline" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={currentHistoryPage === 1} aria-label="Previous page" title="Previous page"><ChevronLeft className="size-4" /></Button><span className="flex h-9 items-center px-2">Page {currentHistoryPage} of {historyPageCount}</span><Button type="button" size="icon" variant="outline" onClick={() => setHistoryPage((page) => Math.min(historyPageCount, page + 1))} disabled={currentHistoryPage === historyPageCount} aria-label="Next page" title="Next page"><ChevronRight className="size-4" /></Button><Button type="button" size="icon" variant="outline" onClick={() => setHistoryPage(historyPageCount)} disabled={currentHistoryPage === historyPageCount} aria-label="Last page" title="Last page"><ChevronsRight className="size-4" /></Button></div></div> : null}
         </div>

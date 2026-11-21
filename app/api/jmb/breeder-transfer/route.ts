@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     await authenticatedUser(req);
     const [{ data: cycles, error: cycleError }, { data: transfers, error: transferError }] = await Promise.all([
       admin_db.from("tbl_breeder_cycle").select("id").ilike("status", "active"),
-      admin_db.from("tbl_breeder_transfer").select("*").order("transfer_date", { ascending: false }).order("id", { ascending: false }).limit(100),
+      admin_db.from("tbl_breeder_transfer").select("*").order("posted_at", { ascending: false, nullsFirst: false }).order("transfer_date", { ascending: false }).order("id", { ascending: false }),
     ]);
     if (cycleError) throw cycleError;
     if (transferError) throw transferError;

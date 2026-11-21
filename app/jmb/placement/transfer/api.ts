@@ -11,6 +11,7 @@ export type BreederTransfer = {
   source_placement_id: number; destination_placement_id: number;
   male_qty: number; female_qty: number; reason: string; remarks: string | null;
   status: "Draft" | "Posted" | "Cancelled"; cancellation_reason: string | null;
+  posted_at: string | null;
   source: { farm_id: number; farm_name: string; building_id: number; building_no: string; pen_id: number; pen_no: string } | null;
   destination: { farm_id: number; farm_name: string; building_id: number; building_no: string; pen_id: number; pen_no: string } | null;
 };
