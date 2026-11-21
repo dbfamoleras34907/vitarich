@@ -1,4 +1,5 @@
 import { discardBreederDispatchDraft, saveBreederDispatchTransaction } from "@/lib/data/mutations/breederDispatch";
+import { getProfileByAuthId } from "@/app/admin/user/api";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { listBreederEggLayings } from "@/app/jmb/lib/data/repositories/breederEggLaying";
 import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
@@ -82,6 +83,13 @@ async function currentUserId() {
   if (error) throw error;
   if (!data.user) throw new Error("Your session has expired. Please sign in again.");
   return data.user.id;
+}
+
+export async function canCorrectPostedBreederDispatch() {
+  const userId = await currentUserId();
+  const profile = await getProfileByAuthId(userId);
+  const active = String(profile?.isactive ?? "").trim().toLowerCase();
+  return Number(profile?.user_type ?? 3) === 1 && ["1", "true", "t", "yes"].includes(active);
 }
 
 function documentNo() {
@@ -407,6 +415,20 @@ export async function cancelBreederDispatch(id: number, reason: string) {
   const userId = await currentUserId();
   const { data, error } = await db.from(HEADER_TABLE).update({ status: "Cancelled", cancellation_reason: reason.trim(), cancelled_by: userId, cancelled_at: new Date().toISOString(), updated_by: userId }).eq("id", id).eq("status", "Posted").select("id").single();
   if (error) throw error; return data;
+}
+
+export async function correctPostedBreederDispatchDate(id: number, dispatchDate: string, reason: string) {
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid breeder dispatch.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) throw new Error("Corrected dispatch date is required.");
+  if (!reason.trim()) throw new Error("Correction reason is required.");
+
+  const { data, error } = await db.rpc("correct_posted_breeder_dispatch_date", {
+    p_dispatch_id: id,
+    p_dispatch_date: dispatchDate,
+    p_reason: reason.trim(),
+  });
+  if (error) throw error;
+  return Number(data);
 }
 
 export async function deleteBreederDispatchDraft(id: number) {

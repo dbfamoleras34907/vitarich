@@ -41,6 +41,8 @@ import { db } from "@/lib/Supabase/supabaseClient";
 import {
   createPlacement,
   createPlacementBatch,
+  canCorrectTransferredBreederPlacementDate,
+  correctTransferredBreederPlacementDate,
   ensureBreederCycles,
   getPlacementById,
   getUserInfo,
@@ -48,10 +50,12 @@ import {
   listFarmLocationLookup,
   listPlacementHistory,
   listPlacementIdsWithPostedActivity,
+  listTransferPlacementDateCorrectionOptions,
   updatePlacement,
   type FarmLocationLookup,
   type PlacementInsert,
   type Placement,
+  type TransferPlacementDateCorrectionOption,
 } from "./api";
 
 type PlacementRow = {
@@ -276,10 +280,76 @@ export default function PlacementForm() {
   const [postingCorrection, setPostingCorrection] = useState(false);
   const [correctionHistory, setCorrectionHistory] = useState<InventoryCorrectionHistory[]>([]);
   const [loadingCorrectionHistory, setLoadingCorrectionHistory] = useState(false);
+  const [canCorrectTransferredPlacementDate, setCanCorrectTransferredPlacementDate] = useState(false);
+  const [placementDateCorrectionOpen, setPlacementDateCorrectionOpen] = useState(false);
+  const [placementDateCorrectionReason, setPlacementDateCorrectionReason] = useState("");
+  const [placementDateCorrectionOptions, setPlacementDateCorrectionOptions] = useState<
+    TransferPlacementDateCorrectionOption[]
+  >([]);
+  const [selectedPlacementDateCorrectionId, setSelectedPlacementDateCorrectionId] = useState("");
+  const [loadingPlacementDateCorrectionOptions, setLoadingPlacementDateCorrectionOptions] = useState(false);
+  const [correctingPlacementDate, setCorrectingPlacementDate] = useState(false);
 
   useEffect(() => {
     refreshSessionx(router);
   }, [router]);
+
+  useEffect(() => {
+    if (!isView || !isExistingPlacement) {
+      setCanCorrectTransferredPlacementDate(false);
+      return;
+    }
+    void canCorrectTransferredBreederPlacementDate()
+      .then(setCanCorrectTransferredPlacementDate)
+      .catch(() => setCanCorrectTransferredPlacementDate(false));
+  }, [isExistingPlacement, isView]);
+
+  useEffect(() => {
+    const farmId = Number(form.farm_id);
+    const buildingId = Number(form.building_id);
+    if (
+      !isView ||
+      !canCorrectTransferredPlacementDate ||
+      !Number.isInteger(farmId) ||
+      farmId <= 0 ||
+      !Number.isInteger(buildingId) ||
+      buildingId <= 0
+    ) {
+      setPlacementDateCorrectionOptions([]);
+      setSelectedPlacementDateCorrectionId("");
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingPlacementDateCorrectionOptions(true);
+    listTransferPlacementDateCorrectionOptions({ farmId, buildingId })
+      .then((options) => {
+        if (cancelled) return;
+        setPlacementDateCorrectionOptions(options);
+        const currentPlacementId = Number(idParam);
+        setSelectedPlacementDateCorrectionId((current) => {
+          if (options.some((option) => String(option.placementId) === current)) return current;
+          if (options.some((option) => option.placementId === currentPlacementId)) {
+            return String(currentPlacementId);
+          }
+          return String(options[0]?.placementId ?? "");
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Unable to load transfer-created placement date corrections.", error);
+          setPlacementDateCorrectionOptions([]);
+          setSelectedPlacementDateCorrectionId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlacementDateCorrectionOptions(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canCorrectTransferredPlacementDate, form.building_id, form.farm_id, idParam, isView]);
 
   useEffect(() => {
     let mounted = true;
@@ -491,6 +561,13 @@ export default function PlacementForm() {
   }, [idParam, isExistingPlacement, isView, router]);
 
   const totalPens = useMemo(() => rows.length, [rows]);
+  const selectedPlacementDateCorrection = useMemo(
+    () =>
+      placementDateCorrectionOptions.find(
+        (option) => String(option.placementId) === selectedPlacementDateCorrectionId,
+      ) ?? null,
+    [placementDateCorrectionOptions, selectedPlacementDateCorrectionId],
+  );
   const disabledAll = isView || placementLocked || saving || loadingRecord;
   const disablePlacementDate = disabledAll;
 
@@ -970,6 +1047,55 @@ export default function PlacementForm() {
     }
   }
 
+  function openPlacementDateCorrection() {
+    const currentPlacementId = Number(idParam);
+    if (
+      Number.isInteger(currentPlacementId) &&
+      placementDateCorrectionOptions.some((option) => option.placementId === currentPlacementId)
+    ) {
+      setSelectedPlacementDateCorrectionId(String(currentPlacementId));
+    }
+    setPlacementDateCorrectionReason("");
+    setPlacementDateCorrectionOpen(true);
+  }
+
+  async function correctTransferredPlacementDate() {
+    const placementId = Number(selectedPlacementDateCorrectionId);
+    if (!Number.isInteger(placementId) || placementId <= 0 || correctingPlacementDate) return;
+    if (!placementDateCorrectionReason.trim()) {
+      toast.error("Correction reason is required.");
+      return;
+    }
+    setCorrectingPlacementDate(true);
+    try {
+      const correctedDate = await correctTransferredBreederPlacementDate(
+        placementId,
+        placementDateCorrectionReason,
+      );
+      if (placementId === Number(idParam)) {
+        setForm((current) => ({ ...current, placement_date: correctedDate }));
+      }
+      setHistory((current) =>
+        current.map((record) =>
+          record.id === placementId
+            ? { ...record, placement_date: correctedDate }
+            : record,
+        ),
+      );
+      setPlacementDateCorrectionOptions((current) =>
+        current.filter((option) => option.placementId !== placementId),
+      );
+      setPlacementDateCorrectionOpen(false);
+      setPlacementDateCorrectionReason("");
+      toast.success(`Placement #${placementId} date corrected to ${correctedDate}.`);
+      router.refresh();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to correct the transfer-created placement date."));
+    } finally {
+      setCorrectingPlacementDate(false);
+    }
+  }
+
   async function loadInventoryCorrectionHistory(placementId: number) {
     setLoadingCorrectionHistory(true);
     try {
@@ -1035,6 +1161,16 @@ export default function PlacementForm() {
                     <X className="size-4" />
                     Cancel
                   </Button>
+                  {isView && canCorrectTransferredPlacementDate ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openPlacementDateCorrection}
+                      disabled={correctingPlacementDate || loadingPlacementDateCorrectionOptions}
+                    >
+                      Correct transfer placement date
+                    </Button>
+                  ) : null}
                   {!isView ? (
                     <Button
                       type="button"
@@ -1136,6 +1272,17 @@ export default function PlacementForm() {
                 <X className="size-4" />
                 Cancel
               </Button>
+              {isView && canCorrectTransferredPlacementDate ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openPlacementDateCorrection}
+                  disabled={correctingPlacementDate || loadingPlacementDateCorrectionOptions}
+                >
+                  Correct transfer date
+                </Button>
+              ) : null}
               {!isView ? (
                 <Button
                   type="button"
@@ -1779,6 +1926,99 @@ export default function PlacementForm() {
                 </div>
               </DialogContent>
             </Dialog>
+            <Dialog
+              open={placementDateCorrectionOpen}
+              onOpenChange={(open) => {
+                if (!open && !correctingPlacementDate) setPlacementDateCorrectionOpen(false);
+              }}
+            >
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Correct transfer-created placement date</DialogTitle>
+                  <DialogDescription>
+                    This restores the original flock placement date from the source placement. The posted transfer date and Population Record movements are not changed.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Placement to correct</Label>
+                    <Select
+                      value={selectedPlacementDateCorrectionId}
+                      onValueChange={setSelectedPlacementDateCorrectionId}
+                      disabled={correctingPlacementDate || loadingPlacementDateCorrectionOptions}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            loadingPlacementDateCorrectionOptions
+                              ? "Loading eligible placements…"
+                              : "Select a transfer-created placement"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {placementDateCorrectionOptions.map((option) => (
+                          <SelectItem key={option.placementId} value={String(option.placementId)}>
+                            Pen {option.penNo || "-"} · Placement #{option.placementId} · {option.currentPlacementDate}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!loadingPlacementDateCorrectionOptions && !placementDateCorrectionOptions.length ? (
+                      <p className="text-xs text-muted-foreground">
+                        No eligible transfer-created placements need a date correction in this building.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>Current placement date</Label>
+                      <Input value={selectedPlacementDateCorrection?.currentPlacementDate ?? ""} readOnly disabled />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Restored source date</Label>
+                      <Input value={selectedPlacementDateCorrection?.sourcePlacementDate ?? ""} readOnly disabled />
+                    </div>
+                  </div>
+                  {selectedPlacementDateCorrection ? (
+                    <p className="text-xs text-muted-foreground">
+                      Placement #{selectedPlacementDateCorrection.placementId} will inherit the original date from source placement #{selectedPlacementDateCorrection.sourcePlacementId}.
+                    </p>
+                  ) : null}
+                  <div className="space-y-1.5">
+                    <RequiredLabel>Correction reason</RequiredLabel>
+                    <Textarea
+                      value={placementDateCorrectionReason}
+                      onChange={(event) => setPlacementDateCorrectionReason(event.target.value)}
+                      placeholder="Explain why the original flock placement date is being restored."
+                      disabled={correctingPlacementDate}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setPlacementDateCorrectionOpen(false)}
+                    disabled={correctingPlacementDate}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void correctTransferredPlacementDate()}
+                    disabled={
+                      correctingPlacementDate ||
+                      !selectedPlacementDateCorrection ||
+                      !placementDateCorrectionReason.trim()
+                    }
+                  >
+                    {correctingPlacementDate ? <Loader2 className="size-4 animate-spin" /> : null}
+                    Correct placement date
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Separator className="mt-6" />
 
             <div className="space-y-3 p-5">
@@ -1792,9 +2032,13 @@ export default function PlacementForm() {
               </div>
 
               <div className="overflow-x-auto rounded-md border">
-                <table className="w-full min-w-262.5 text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead className="bg-emerald-50">
                     <tr className="border-b">
+                      <th className="px-3 py-2 text-left font-medium">#</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        Placement ID
+                      </th>
                       <th className="px-3 py-2 text-left font-medium">Date</th>
                       <th className="px-3 py-2 text-left font-medium">
                         Cycle #
@@ -1824,14 +2068,14 @@ export default function PlacementForm() {
                     {loadingHistory ? (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={11}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
                           Loading placement history...
                         </td>
                       </tr>
                     ) : history.length ? (
-                      history.map((record) => {
+                      history.map((record, index) => {
                         const femaleEnding =
                           record.f_endingbalance ??
                           record.f_beg -
@@ -1849,6 +2093,12 @@ export default function PlacementForm() {
                             key={record.id}
                             className="border-b last:border-0"
                           >
+                            <td className="px-3 py-2 tabular-nums">
+                              {index + 1}
+                            </td>
+                            <td className="px-3 py-2 font-medium tabular-nums">
+                              {record.id}
+                            </td>
                             <td className="px-3 py-2 tabular-nums">
                               {formatHistoryDate(record.placement_date)}
                             </td>
@@ -1880,7 +2130,7 @@ export default function PlacementForm() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={11}
                           className="px-3 py-6 text-center text-muted-foreground"
                         >
                           No placement history found.

@@ -1,5 +1,6 @@
 import { db } from "@/lib/Supabase/supabaseClient";
 import { DefaultFarm } from "@/lib/types";
+import { getProfileByAuthId } from "@/app/admin/user/api";
 import { listAssignedUserFarmOptions } from "@/lib/data/repositories/farmOptions.client";
 import { applyPostedFemaleInventoryCorrections } from "@/app/jmb/lib/data/repositories/breederInventoryCorrections";
 
@@ -123,6 +124,14 @@ export type PlacementInsert = Pick<
 >;
 
 export type PlacementUpdate = Partial<PlacementInsert>;
+
+export type TransferPlacementDateCorrectionOption = {
+  placementId: number;
+  penNo: string;
+  currentPlacementDate: string;
+  sourcePlacementId: number;
+  sourcePlacementDate: string;
+};
 
 export type BuildingHistoryRow = {
   key: string;
@@ -353,6 +362,102 @@ export async function listPlacementHistory(params: {
 
   if (error) throw error;
   return withCycleNumbers(await applyPostedFemaleInventoryCorrections((data ?? []) as Placement[]));
+}
+
+export async function listTransferPlacementDateCorrectionOptions(params: {
+  farmId: number;
+  buildingId: number;
+}) {
+  const { data: destinations, error: destinationsError } = await db
+    .from(TABLE)
+    .select("id, pen_no, placement_date, remarks, f_beg, m_beg")
+    .eq("farm_id", params.farmId)
+    .eq("building_id", params.buildingId);
+  if (destinationsError) throw destinationsError;
+
+  const destinationRows = (destinations ?? []) as Array<{
+    id: number;
+    pen_no: string | null;
+    placement_date: string | null;
+    remarks: string | null;
+    f_beg: number | null;
+    m_beg: number | null;
+  }>;
+  const destinationIds = destinationRows.map((placement) => Number(placement.id));
+  if (!destinationIds.length) return [] as TransferPlacementDateCorrectionOption[];
+
+  const { data: transfers, error: transfersError } = await db
+    .from("tbl_breeder_transfer")
+    .select("id, source_placement_id, destination_placement_id, transfer_date")
+    .eq("status", "Posted")
+    .in("destination_placement_id", destinationIds)
+    .order("transfer_date", { ascending: true })
+    .order("id", { ascending: true });
+  if (transfersError) throw transfersError;
+
+  const firstTransferByDestination = new Map<number, {
+    source_placement_id: number;
+    destination_placement_id: number;
+  }>();
+  (transfers ?? []).forEach((transfer) => {
+    const destinationId = Number(transfer.destination_placement_id);
+    if (!firstTransferByDestination.has(destinationId)) {
+      firstTransferByDestination.set(destinationId, {
+        source_placement_id: Number(transfer.source_placement_id),
+        destination_placement_id: destinationId,
+      });
+    }
+  });
+
+  const sourceIds = Array.from(
+    new Set(Array.from(firstTransferByDestination.values()).map((transfer) => transfer.source_placement_id)),
+  ).filter((placementId) => Number.isInteger(placementId) && placementId > 0);
+  if (!sourceIds.length) return [] as TransferPlacementDateCorrectionOption[];
+
+  const { data: sources, error: sourcesError } = await db
+    .from(TABLE)
+    .select("id, placement_date")
+    .in("id", sourceIds);
+  if (sourcesError) throw sourcesError;
+
+  const sourceDateById = new Map(
+    (sources ?? []).map((source) => [Number(source.id), String(source.placement_date ?? "").slice(0, 10)]),
+  );
+
+  return destinationRows
+    .flatMap((destination) => {
+      const transfer = firstTransferByDestination.get(Number(destination.id));
+      const sourcePlacementDate = transfer
+        ? sourceDateById.get(transfer.source_placement_id) ?? ""
+        : "";
+      const currentPlacementDate = String(destination.placement_date ?? "").slice(0, 10);
+      const expectedRemarks = transfer
+        ? `Created by transfer from placement #${transfer.source_placement_id}`
+        : "";
+      if (
+        !transfer ||
+        !sourcePlacementDate ||
+        !currentPlacementDate ||
+        currentPlacementDate === sourcePlacementDate ||
+        destination.remarks !== expectedRemarks ||
+        Number(destination.f_beg ?? 0) !== 0 ||
+        Number(destination.m_beg ?? 0) !== 0
+      ) {
+        return [];
+      }
+      return [{
+        placementId: Number(destination.id),
+        penNo: String(destination.pen_no ?? ""),
+        currentPlacementDate,
+        sourcePlacementId: transfer.source_placement_id,
+        sourcePlacementDate,
+      }];
+    })
+    .sort(
+      (left, right) =>
+        left.penNo.localeCompare(right.penNo, undefined, { numeric: true }) ||
+        left.placementId - right.placementId,
+    );
 }
 
 export async function ensureBreederCycles(input: {
@@ -715,4 +820,37 @@ export async function getUserInfo() {
 
   if (error) throw error;
   return data as DefaultFarm[];
+}
+
+async function currentUserAuthId() {
+  const {
+    data: { user },
+    error,
+  } = await db.auth.getUser();
+  if (error) throw error;
+  if (!user) throw new Error("Your session has expired. Please sign in again.");
+  return user.id;
+}
+
+export async function canCorrectTransferredBreederPlacementDate() {
+  const profile = await getProfileByAuthId(await currentUserAuthId());
+  const active = String(profile?.isactive ?? "").trim().toLowerCase();
+  return Number(profile?.user_type ?? 3) === 1 && ["1", "true", "t", "yes"].includes(active);
+}
+
+export async function correctTransferredBreederPlacementDate(
+  placementId: number,
+  reason: string,
+) {
+  if (!Number.isInteger(placementId) || placementId <= 0) {
+    throw new Error("Invalid destination placement.");
+  }
+  if (!reason.trim()) throw new Error("Correction reason is required.");
+
+  const { data, error } = await db.rpc(
+    "correct_transferred_breeder_placement_date",
+    { p_placement_id: placementId, p_reason: reason.trim() },
+  );
+  if (error) throw error;
+  return String(data).slice(0, 10);
 }

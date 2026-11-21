@@ -12,6 +12,7 @@ import {
   Loader2,
   ListPlus,
   MapPin,
+  Pencil,
   Printer,
   RefreshCw,
   Search,
@@ -45,8 +46,11 @@ import { Textarea } from "@/components/ui/textarea";
 import Breadcrumb from "@/lib/Breadcrumb";
 import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { attachProcessListAttributions } from "@/lib/data/repositories/processListAttribution";
+import { getErrorMessage } from "@/lib/errorMessage";
 import {
   cancelBreederDispatch,
+  canCorrectPostedBreederDispatch,
+  correctPostedBreederDispatchDate,
   deleteBreederDispatchDraft,
   listBreederDispatches,
   type BreederDispatchRecord,
@@ -78,6 +82,10 @@ export default function BreederDispatchTable() {
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [discardRecord, setDiscardRecord] = useState<BreederDispatchRecord | null>(null);
+  const [correctionRecord, setCorrectionRecord] = useState<BreederDispatchRecord | null>(null);
+  const [correctedDispatchDate, setCorrectedDispatchDate] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [canCorrectPosted, setCanCorrectPosted] = useState(false);
 
   useEffect(() => { void refreshSessionx(router); }, [router]);
   const load = useCallback(async () => {
@@ -94,6 +102,7 @@ export default function BreederDispatchTable() {
   }, []);
   useEffect(() => {
     void load();
+    void canCorrectPostedBreederDispatch().then(setCanCorrectPosted).catch(() => setCanCorrectPosted(false));
     router.prefetch("/jmb/breederdispatch/new");
     router.prefetch("/jmb/breederdispatch/multiple");
   }, [load, router]);
@@ -138,6 +147,17 @@ export default function BreederDispatchTable() {
       setDiscardRecord(null); await load();
     } catch (discardError) {
       setError(discardError instanceof Error ? discardError.message : "Unable to discard draft dispatch.");
+    } finally { setWorking(false); }
+  }
+
+  async function confirmDateCorrection() {
+    if (!correctionRecord || !correctedDispatchDate || !correctionReason.trim()) return;
+    setWorking(true); setError("");
+    try {
+      await correctPostedBreederDispatchDate(correctionRecord.id, correctedDispatchDate, correctionReason);
+      setCorrectionRecord(null); setCorrectedDispatchDate(""); setCorrectionReason(""); await load();
+    } catch (correctionError) {
+      setError(getErrorMessage(correctionError, "Unable to correct dispatch date."));
     } finally { setWorking(false); }
   }
 
@@ -198,6 +218,7 @@ export default function BreederDispatchTable() {
                       <DropdownMenuItem onSelect={() => window.open(`/jmb/breederdispatch/${record.id}/print`, "_blank")}><Printer className="size-4" />Print</DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => router.push(`/jmb/breederdispatch/multiple?id=${record.id}`)}><Eye className="size-4" />{record.status === "Draft" ? "Continue / Post" : "View"}</DropdownMenuItem>
                       {record.status === "Draft" ? <DropdownMenuItem variant="destructive" disabled={working} onSelect={() => setDiscardRecord(record)}><Trash2 className="size-4" />Discard draft</DropdownMenuItem> : null}
+                      {record.status === "Posted" && canCorrectPosted ? <DropdownMenuItem disabled={working} onSelect={() => { setCorrectionRecord(record); setCorrectedDispatchDate(record.dispatch_date.slice(0, 10)); setCorrectionReason(""); }}><Pencil className="size-4" />Correct dispatch date</DropdownMenuItem> : null}
                       {record.status === "Posted" ? <DropdownMenuItem variant="destructive" disabled={working} onSelect={() => { setCancelRecord(record); setCancelReason(""); }}><Ban className="size-4" />Cancel</DropdownMenuItem> : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -218,6 +239,12 @@ export default function BreederDispatchTable() {
       <Dialog open={Boolean(discardRecord)} onOpenChange={(open) => { if (!open && !working) setDiscardRecord(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Discard draft breeder dispatch?</DialogTitle><DialogDescription>This draft has not reserved Population Record or Egg Laying quantities. It will be permanently removed.</DialogDescription></DialogHeader>
           <DialogFooter><Button variant="outline" onClick={() => setDiscardRecord(null)} disabled={working}>Keep draft</Button><Button variant="destructive" onClick={() => void confirmDiscard()} disabled={working}>{working ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}Discard draft</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(correctionRecord)} onOpenChange={(open) => { if (!open && !working) setCorrectionRecord(null); }}>
+        <DialogContent><DialogHeader><DialogTitle>Correct posted dispatch date</DialogTitle><DialogDescription>This Super Admin correction keeps the document posted, preserves its quantities, and records the old and new date.</DialogDescription></DialogHeader>
+          <div className="space-y-3"><div className="space-y-2"><Label>Current dispatch date</Label><Input value={formatDate(correctionRecord?.dispatch_date)} readOnly className="bg-muted/40" /></div><div className="space-y-2"><Label required>Corrected dispatch date</Label><Input type="date" value={correctedDispatchDate} onChange={(event) => setCorrectedDispatchDate(event.target.value)} disabled={working} /></div><div className="space-y-2"><Label required>Correction reason</Label><Textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} disabled={working} placeholder="Explain why the posted date is being corrected." /></div></div>
+          <DialogFooter><Button variant="outline" onClick={() => setCorrectionRecord(null)} disabled={working}>Keep posted date</Button><Button onClick={() => void confirmDateCorrection()} disabled={working || !correctedDispatchDate || !correctionReason.trim()}>{working ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}Save correction</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </main>

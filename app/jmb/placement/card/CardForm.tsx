@@ -2590,7 +2590,7 @@ export default function CardForm() {
                 <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm sm:col-span-2">
                   <div className="font-medium">New destination placement</div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Posting creates the next available cycle for {selectedNewDestination.building_no} / {selectedNewDestination.pen_no}. The receiving placement begins on the transfer date while keeping the source flock age.
+                    Posting creates the next available cycle for {selectedNewDestination.building_no} / {selectedNewDestination.pen_no}. The receiving Population Record keeps the source flock placement date and age; the Transfer In is posted on the transfer date.
                   </p>
                 </div>
               ) : null}
