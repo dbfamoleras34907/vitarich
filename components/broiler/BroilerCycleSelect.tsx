@@ -16,6 +16,7 @@ type BroilerCycleSelectProps = {
   onValueChange: (cycleId: string, cycle: SelectableBroilerFarmCycle | null) => void
   disabled?: boolean
   required?: boolean
+  showRequiredIndicator?: boolean
   label?: string
   className?: string
   contentPositionerZIndex?: number
@@ -27,6 +28,7 @@ export default function BroilerCycleSelect({
   onValueChange,
   disabled = false,
   required = true,
+  showRequiredIndicator = true,
   label = 'Cycle',
   className = 'w-full',
   contentPositionerZIndex,
@@ -76,7 +78,7 @@ export default function BroilerCycleSelect({
 
   return (
     <div className="space-y-2">
-      {label && <Label required={required}>{label}</Label>}
+      {label && <Label required={required && showRequiredIndicator}>{label}</Label>}
       <div className="relative">
         <SearchableCombobox
           items={items}

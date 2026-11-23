@@ -42,6 +42,8 @@ import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { getUserFarms } from "@/app/admin/user/new/api";
 import { encryptData } from "@/app/utils/supabase/url-encryption";
+import { listFarmAssignedUsers } from "@/lib/data/repositories/farmAssignedUsers";
+import { USER_TYPES } from "@/lib/notifications/types";
 import {
   getFarmBuildingsForFlockCard,
   type FarmBuildingListRow,
@@ -144,6 +146,7 @@ export default function Layout() {
   const [selectedFarmId, setSelectedFarmId] = useState("");
   const [selectedCycleId, setSelectedCycleId] = useState("");
   const [fallbackAssignedFarms, setFallbackAssignedFarms] = useState<FeedFarm[]>([]);
+  const [assignedTaLabel, setAssignedTaLabel] = useState("-");
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState("");
@@ -207,6 +210,35 @@ export default function Layout() {
   );
 
   useEffect(() => { setSelectedCycleId(""); }, [effectiveSelectedFarmId]);
+
+  useEffect(() => {
+    if (!selectedFarm) {
+      setAssignedTaLabel("-");
+      return;
+    }
+
+    let cancelled = false;
+    setAssignedTaLabel("...");
+
+    listFarmAssignedUsers(
+      [{ id: selectedFarm.id, code: selectedFarm.code }],
+      [USER_TYPES.ADMIN, USER_TYPES.USER],
+      { activeUsersOnly: true },
+    )
+      .then(assignments => {
+        if (cancelled) return;
+        const names = (assignments.get(selectedFarm.id) ?? []).map(user => user.name);
+        setAssignedTaLabel(names.length ? names.join(", ") : "Unassigned");
+      })
+      .catch(error => {
+        console.error(error);
+        if (!cancelled) setAssignedTaLabel("Unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFarm]);
 
   const farmOptions = useMemo(
     () => farms.map(farm => ({
@@ -422,17 +454,18 @@ export default function Layout() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4 xl:grid-cols-[0.85fr_0.8fr_0.75fr_1.1fr_3fr]">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 xl:grid-cols-[0.75fr_0.75fr_0.7fr_1.4fr_1fr_2.4fr]">
           {[
             ["Farm code", selectedFarm?.code || "-"],
             ["Company", "Vitarich"],
             ["Complex", selectedFarm?.farm_type || "-"],
+            ["Assigned TA", assignedTaLabel],
             ["Contact", selectedFarm?.contact_person || "-"],
             ["Location", selectedFarm?.address || "-"],
           ].map(([label, value]) => (
             <div
               key={label}
-              className={label === "Location" ? "col-span-2 min-w-0 bg-card px-3 py-2 sm:col-span-4 xl:col-span-1" : "min-w-0 bg-card px-3 py-2"}
+              className="min-w-0 bg-card px-3 py-2"
             >
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
               <div className="mt-0.5 break-words text-xs font-medium leading-4" title={value}>{value}</div>

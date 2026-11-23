@@ -2378,18 +2378,18 @@ export default function NewGoodsReceive({ mode = 'draft' }: NewGoodsReceiveProps
       </PageHeader>
 
       <PageSection className="flex min-h-[calc(100vh-8rem)] flex-col">
-        <div className="flex flex-col items-start gap-1 p-5">
-          <div className="w-full max-w-md space-y-2">
+        <div className="grid w-full max-w-4xl grid-cols-2 items-start gap-3 p-5">
+          <div className="min-w-0 space-y-2">
             <label className="text-sm font-semibold">DOC Placement No.</label>
             <div className="flex items-center gap-1">
-              <Input value={receipt.grNo} readOnly className="bg-stone-50" />
+              <Input value={receipt.grNo} readOnly className="min-w-0 flex-1 bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
                 {receipt.status}
               </span>
             </div>
           </div>
 
-          <div className="w-full max-w-md space-y-2">
+          <div className="min-w-0 space-y-2">
             <label className="text-sm font-semibold">Farm</label>
             <SearchableCombobox
               items={farmOptions}

@@ -2824,6 +2824,8 @@ export default function NewGoodsIssue({
               <BroilerCycleSelect
                 farmId={issue.farmId}
                 value={issue.farmCycleId == null ? '' : String(issue.farmCycleId)}
+                label="Cycle #"
+                showRequiredIndicator={false}
                 onValueChange={(cycleId, cycle) => setIssue(current => current ? {
                   ...current,
                   farmCycleId: cycleId ? Number(cycleId) : null,
@@ -2833,7 +2835,7 @@ export default function NewGoodsIssue({
               />
             ) : (
               <div className="space-y-2">
-                <Label>Cycle</Label>
+                <Label>Cycle #</Label>
                 <Input value={issue.farmCycleMask || issue.lines[0]?.cycleMask || '-'} readOnly className="bg-muted/40" />
               </div>
             )

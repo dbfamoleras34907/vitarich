@@ -1007,7 +1007,7 @@ export default function DeliveryIssueLinesTable({
               <Input readOnly value={mobileLine.flockCardNo || mobileFlockState?.info?.cardNo || ''} />
             </div>
             <div className="space-y-1.5">
-              <Label>Cycle</Label>
+              <Label>Cycle #</Label>
               <Input readOnly value={formatBroilerCycleNumbers(mobileLine.cycleMask ? mobileLine : mobileFlockState?.info ?? {})} />
             </div>
             <div className="space-y-1.5">
