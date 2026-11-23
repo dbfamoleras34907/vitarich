@@ -7,4 +7,5 @@ begin;
 \ir ../../sql/updated/farm_void_rls.sql
 \ir ../../sql/updated/insert_farm_setup_wizard.sql
 \ir ../../sql/updated/update_farm_setup_wizard.sql
+\ir ../../sql/updated/get_farm_full.sql
 commit;

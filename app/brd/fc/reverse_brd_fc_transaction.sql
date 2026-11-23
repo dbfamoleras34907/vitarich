@@ -113,6 +113,8 @@ declare
   v_user uuid;
   v_docentry_start bigint;
   v_docentry_end bigint;
+  v_updated_count integer;
+  v_outstanding_count integer;
 begin
   v_user := auth.uid();
 
@@ -212,6 +214,32 @@ begin
   where line.id = p_line_id
     and line.void = '1'
   returning line.id, line.age;
+
+  get diagnostics v_updated_count = row_count;
+  if v_updated_count <> 1 then
+    raise exception 'Unable to confirm mortality/thinning reversal for flock card line %.', p_line_id;
+  end if;
+
+  select count(*)
+  into v_outstanding_count
+  from public.inventory_postings posting
+  where posting.source_doc_type in (
+      'BRD_FC_MORT_THIN_USAGE',
+      'BRD_FC_MORT_THIN_TRANSFER_OUT',
+      'BRD_FC_MORT_THIN_TRANSFER_IN'
+    )
+    and (
+      posting.source_docentry = p_line_id
+      or posting.source_docentry between v_docentry_start and v_docentry_end
+    )
+    and not public.brd_fc_mort_thin_posting_is_reversed(posting.id, p_line_id);
+
+  if v_outstanding_count <> 0 then
+    raise exception
+      'Unable to confirm mortality/thinning reversal for flock card line %: % inventory posting(s) remain outstanding.',
+      p_line_id,
+      v_outstanding_count;
+  end if;
 end;
 $$;
 create or replace function public.post_brd_fc_mortality_thinning_inventory()

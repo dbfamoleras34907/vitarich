@@ -52,7 +52,13 @@ export function LoginForm({
       });
 
       if (error) {
-        toast.error(error.code === "user_banned" ? "Your account is awaiting activation or has been rejected. Please check your email." : error.message)
+        toast.error(
+          error.code === "user_banned"
+            ? "Your account is awaiting activation or has been rejected. Please check your email."
+            : error.code === "invalid_credentials"
+              ? "Wrong Email or Password"
+              : error.message
+        )
         setloading(false)
       } else {
         // Resume registration if the user left before saving personal information.

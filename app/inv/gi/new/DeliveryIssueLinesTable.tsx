@@ -1,5 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { PackageCheck, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ListPlus, Loader2, PackageCheck, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatBroilerCycleNumbers } from '@/lib/data/repositories/broilerIssueCycles'
 
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Items, WarehouseData } from '@/lib/types'
 import { GoodsIssue, GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
@@ -18,6 +19,9 @@ import { DELIVERY_COLUMNS, calculateHarvestAlw, parseDeliveryPaste, type Deliver
 import { useTableCopyDown } from '@/hooks/useTableCopyDown'
 import type { DeliveryPasteKey } from './deliverySpreadsheet'
 import { TableCopyDownCell } from '@/components/ui/TableCopyDownCell'
+import { calculateBirdAgeFromPlacementDate } from '@/app/brd/fc/age'
+import CleanupTypeAllocationSheet from './CleanupTypeAllocationSheet'
+import { cleanupAllocationMatchesLine, cleanupLineGroupQuantity } from '@/lib/functions/cleanupTypeAllocations'
 
 const COPY_COLUMNS = DELIVERY_COLUMNS.flatMap(([, key]) => key ? [key] : [])
 
@@ -25,6 +29,11 @@ const getGrowingBodyWeightForAge = (
   info: GoodsIssueFlockCardInfo | null | undefined,
   age: number | null | undefined,
 ) => age == null ? null : info?.bodyWeightsByAge[String(age)] ?? null
+
+const getAutomaticHarvestAge = (
+  info: GoodsIssueFlockCardInfo | null | undefined,
+  deliveredDate: string | null | undefined,
+) => calculateBirdAgeFromPlacementDate(info?.placementDate ?? '', deliveredDate ?? '')
 
 type LineFlockCardState = {
   loading: boolean
@@ -35,12 +44,12 @@ type DeliveryIssueLinesTableProps = {
   issue: GoodsIssue
   warehouseLabel: string
   farmWarehouses: WarehouseData[]
+  loadingBuildings?: boolean
   loadingBatchOptions: Record<string, boolean>
   batchOptions: Record<string, GoodsIssueOnHandBatch[]>
   lineFlockCardInfo: Record<string, LineFlockCardState>
   loadingLinePlacementBatches: Record<string, boolean>
   activeDocumentIsPosted: boolean
-  canCleanupAtZero?: (line: GoodsIssueLine) => boolean
   allowBuildingSelection?: boolean
   lockCycleCloseout?: boolean
   allowLockedRowDelete?: boolean
@@ -56,8 +65,11 @@ type DeliveryIssueLinesTableProps = {
   lockedQuantityEditable?: boolean
   allowDuplicateBuildings?: boolean
   enableMobileLineModal?: boolean
+  enableCleanupTypeAllocations?: boolean
   canEdit?: boolean
   showTransportFields?: boolean
+  reallocatingQuantities?: boolean
+  onReallocateQuantities?: () => Promise<void>
   onPasteRows?: (rows: DeliveryPasteRow[], startRow: number) => Promise<void>
   enableCopyDown?: boolean
   getAllocationGroupKey: (line: GoodsIssueLine) => string
@@ -87,6 +99,7 @@ export default function DeliveryIssueLinesTable({
   issue,
   warehouseLabel,
   farmWarehouses,
+  loadingBuildings = false,
   loadingBatchOptions,
   batchOptions,
   lineFlockCardInfo,
@@ -94,7 +107,6 @@ export default function DeliveryIssueLinesTable({
   activeDocumentIsPosted,
   lockCycleCloseout = false,
   allowBuildingSelection = false,
-  canCleanupAtZero = () => false,
   allowLockedRowDelete = false,
   showLineRemarks = false,
   quantityLabel = 'To Transfer',
@@ -108,8 +120,11 @@ export default function DeliveryIssueLinesTable({
   lockedQuantityEditable = false,
   allowDuplicateBuildings = false,
   enableMobileLineModal = false,
+  enableCleanupTypeAllocations = false,
   canEdit = true,
   showTransportFields = false,
+  reallocatingQuantities = false,
+  onReallocateQuantities,
   onPasteRows,
   enableCopyDown = false,
   getAllocationGroupKey,
@@ -139,6 +154,7 @@ export default function DeliveryIssueLinesTable({
   const [mobileLineGroupKey, setMobileLineGroupKey] = useState<string | null>(null)
   const [mobileLineSnapshot, setMobileLineSnapshot] = useState<GoodsIssueLine[] | null>(null)
   const [mobileLineIsNew, setMobileLineIsNew] = useState(false)
+  const [cleanupTypeGroupKey, setCleanupTypeGroupKey] = useState<string | null>(null)
   const spreadsheetEnabled = excelAppearance && showTransportFields && Boolean(onPasteRows)
   const allocationGroups = useMemo(() => {
     const groups = new Map<string, GoodsIssueLine[]>()
@@ -150,6 +166,14 @@ export default function DeliveryIssueLinesTable({
     })
     return Array.from(groups.values())
   }, [issue.lines, getAllocationGroupKey])
+  const cleanupTypeGroup = cleanupTypeGroupKey == null
+    ? null
+    : allocationGroups.find(group => getAllocationGroupKey(group[0]) === cleanupTypeGroupKey) ?? null
+  const cleanupTypeLine = cleanupTypeGroup?.[0] ?? null
+  const cleanupTypeTargetQuantity = cleanupTypeGroup ? cleanupLineGroupQuantity(cleanupTypeGroup) : 0
+  const cleanupTypeAllocations = cleanupTypeLine
+    ? (issue.cleanupTypeAllocations ?? []).filter(allocation => cleanupAllocationMatchesLine(allocation, cleanupTypeLine))
+    : []
   const copyDisabled = !spreadsheetEnabled || !enableCopyDown || pasting
     || activeDocumentIsPosted || issue.status !== 'Draft'
   const canCopyCell = (key: DeliveryPasteKey, group: GoodsIssueLine[]) => {
@@ -206,7 +230,7 @@ export default function DeliveryIssueLinesTable({
     ...(showOnHandQuantity ? [120] : []),
     ...(showTransportFields ? [180, 130, 150, 190, 100] : []),
     ...(showLineRemarks ? [180] : []),
-    38,
+    ...(enableCleanupTypeAllocations ? [126] : [38]),
   ]
 
   const updateAllocationGroup = (allocationGroupKey: string, changes: Partial<GoodsIssueLine>) => {
@@ -253,7 +277,7 @@ export default function DeliveryIssueLinesTable({
       toast.error('Select an item.')
       return
     }
-    if (mobileQuantity < 1 && !(showVariance && mobileQuantity === 0 && canCleanupAtZero(mobileLine))) {
+    if (!showVariance && mobileQuantity < 1) {
       toast.error(`${quantityLabel} must be at least 1.`)
       return
     }
@@ -293,14 +317,29 @@ export default function DeliveryIssueLinesTable({
     <>
     {enableMobileLineModal && issue.status === 'Draft' && (
       <div className="flex justify-end border-b bg-muted/20 p-2 md:hidden">
-        <Button type="button" size="sm" onClick={addMobileLine} disabled={!canEdit}>
+        <Button type="button" size="sm" onClick={addMobileLine}>
           <Plus className="size-4" /> Add Line
         </Button>
       </div>
     )}
     {spreadsheetEnabled && <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
       <p className="text-xs text-muted-foreground">Right-click an editable cell and choose Copy down, or press Ctrl+Down, to fill the rows below. Paste Excel cells to add extra rows automatically. Dates: YYYY-MM-DD or M/D/YYYY.</p>
-      <Button type="button" size="sm" variant="outline" onClick={async () => {
+      <div className="flex flex-wrap items-center gap-2">
+        {onReallocateQuantities && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canEdit || issue.status !== 'Draft' || pasting || reallocatingQuantities}
+            onClick={() => void onReallocateQuantities()}
+          >
+            {reallocatingQuantities
+              ? <Loader2 className="size-4 animate-spin" />
+              : <RefreshCw className="size-4" />}
+            Re-Allocate Quantity
+          </Button>
+        )}
+        <Button type="button" size="sm" variant="outline" disabled={reallocatingQuantities} onClick={async () => {
         try {
           const { default: writeXlsxFile } = await import('write-excel-file/browser')
           const groups = new Map<string, GoodsIssueLine[]>()
@@ -308,7 +347,9 @@ export default function DeliveryIssueLinesTable({
           const rows = Array.from(groups.values()).map((lines, index) => {
             const line = lines[0]
             const info = lineFlockCardInfo[String(line.id)]?.info
-            const harvestAge = line.harvestAge === undefined ? info?.age : line.harvestAge
+            const harvestAge = issue.status === 'Draft'
+              ? getAutomaticHarvestAge(info, line.deliveredDate)
+              : line.harvestAge
             return [index + 1, line.deliveredDate ?? '', line.fromWarehouseCode, line.flockCardNo ?? info?.cardNo ?? '', formatBroilerCycleNumbers(line.cycleMask ? line : info ?? {}), harvestAge ?? '', line.averageLiveWeight ?? getGrowingBodyWeightForAge(info, harvestAge) ?? '', line.itemCode,
               line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0),
               line.netLiveWeight ?? '', calculateHarvestAlw(line.netLiveWeight, line.requestedAltQty ?? lines.reduce((sum, entry) => sum + entry.altQty, 0))?.toFixed(3) ?? '',
@@ -336,7 +377,8 @@ export default function DeliveryIssueLinesTable({
         } catch (error) {
           toast.error(error instanceof Error ? error.message : 'Unable to export delivery lines.')
         }
-      }}>Export Table</Button>
+        }}>Export Table</Button>
+      </div>
     </div>}
     <fieldset disabled={pasting} className="min-w-0 border-0 p-0">
     <div className={excelAppearance ? styles.sheet : 'overflow-x-auto'} aria-busy={pasting}>
@@ -411,7 +453,7 @@ export default function DeliveryIssueLinesTable({
               <th className="w-[140px] border-r px-3 py-2">Truck Seal {requiredMark}</th>
             </>}
             {showLineRemarks && <th className="w-[16%] border-r px-3 py-2">Remarks</th>}
-            <th className="w-[54px] px-2 py-2" />
+            <th className={`${enableCleanupTypeAllocations ? 'w-[126px]' : 'w-[54px]'} px-2 py-2`} />
           </tr>
         </thead>
         <tbody>
@@ -434,7 +476,9 @@ export default function DeliveryIssueLinesTable({
             const hasSearchedBatches = Object.prototype.hasOwnProperty.call(batchOptions, batchKey)
             const canSearchBatches = canOpenBatchSelector(line)
             const flockState = lineFlockCardInfo[String(line.id)]
-            const harvestAge = line.harvestAge === undefined ? flockState?.info?.age : line.harvestAge
+            const harvestAge = issue.status === 'Draft'
+              ? getAutomaticHarvestAge(flockState?.info, line.deliveredDate)
+              : line.harvestAge
             const automaticAverageLiveWeight = getGrowingBodyWeightForAge(flockState?.info, harvestAge)
             const averageLiveWeight = line.averageLiveWeight === undefined
               ? automaticAverageLiveWeight
@@ -453,7 +497,6 @@ export default function DeliveryIssueLinesTable({
               : getTotalBatchOnHandForLine(line)
             const remainingOnHandQty = getRemainingOnHandForLine(line)
             const baseQtyPerAltQty = calculateBaseQty(1, line.altUom, line.baseUom)
-            const maxTransferQty = baseQtyPerAltQty > 0 ? totalAvailableQty / baseQtyPerAltQty : totalAvailableQty
             const cleanUpBaseQty = totalTransferQty * baseQtyPerAltQty
             const varianceQty = activeDocumentIsPosted
               ? Number(line.varianceQty ?? Math.max(totalAvailableQty - cleanUpBaseQty, 0))
@@ -489,22 +532,38 @@ export default function DeliveryIssueLinesTable({
                 {spreadsheetEnabled && <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'deliveredDate')}>
                   <Input type="date" value={line.deliveredDate ?? ''} required readOnly={activeDocumentIsPosted}
                     aria-label={`Delivered Date row ${index + 1}`}
-                    onChange={event => updateAllocationGroup(allocationGroupKey, { deliveredDate: event.target.value })}
+                    onChange={event => {
+                      const deliveredDate = event.target.value
+                      const harvestAge = getAutomaticHarvestAge(flockState?.info, deliveredDate)
+                      updateAllocationGroup(allocationGroupKey, {
+                        deliveredDate,
+                        harvestAge,
+                        averageLiveWeight: getGrowingBodyWeightForAge(flockState?.info, harvestAge),
+                      })
+                    }}
                     className="h-8 rounded-sm shadow-none focus-visible:ring-1" />
                 </TableCopyDownCell>}
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'fromWarehouseCode')}>
-                  <SearchableDropdown
-                    list={availableBuildings}
-                    codeLabel="whse_code"
-                    nameLabel="whse_name"
-                    value={line.fromWarehouseCode}
-                    placeholder={issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
-                    width={300}
-                    onChange={(value) => {
-                      selectLineWarehouse(line, value).catch(console.error)
-                    }}
-                    disabled={issue.status !== 'Draft' || (lockCycleCloseout && !allowBuildingSelection)}
-                  />
+                  <div className="relative">
+                    <SearchableDropdown
+                      list={availableBuildings}
+                      codeLabel="whse_code"
+                      nameLabel="whse_name"
+                      value={line.fromWarehouseCode}
+                      placeholder={loadingBuildings ? `Loading ${warehouseLabel.toLowerCase()}s...` : issue.farmId ? `Select ${warehouseLabel.toLowerCase()}...` : 'Select farm first'}
+                      width={300}
+                      onChange={(value) => {
+                        selectLineWarehouse(line, value).catch(console.error)
+                      }}
+                      disabled={issue.status !== 'Draft' || (lockCycleCloseout && !allowBuildingSelection)}
+                    />
+                    {loadingBuildings && (
+                      <Loader2
+                        aria-hidden="true"
+                        className="pointer-events-none absolute right-8 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+                      />
+                    )}
+                  </div>
                 </TableCopyDownCell>
                 <td className="border-r p-1 align-middle">
                   <Input
@@ -529,28 +588,19 @@ export default function DeliveryIssueLinesTable({
                     className="h-8 rounded-sm border-0 bg-transparent shadow-none focus-visible:ring-1"
                   />
                 </td>
-                <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'harvestAge')}>
+                <td className="border-r p-1 align-middle">
                   <Input
                     type={showHarvestWeight ? 'number' : 'text'}
                     min={showHarvestWeight ? 0 : undefined}
                     step={showHarvestWeight ? 1 : undefined}
                     value={showHarvestWeight
-                      ? line.harvestAge === undefined
-                        ? flockState?.info?.age ?? ''
-                        : line.harvestAge ?? ''
+                      ? harvestAge ?? ''
                       : flockState?.info?.age != null ? String(flockState.info.age) : ''}
-                    readOnly={!showHarvestWeight || activeDocumentIsPosted}
+                    readOnly
                     aria-label={`Age row ${index + 1}`}
-                    onChange={showHarvestWeight ? event => {
-                      const harvestAge = event.target.value === '' ? null : numberValue(event.target.value)
-                      updateAllocationGroup(allocationGroupKey, {
-                        harvestAge,
-                        averageLiveWeight: getGrowingBodyWeightForAge(flockState?.info, harvestAge),
-                      })
-                    } : undefined}
-                    className="h-8 rounded-sm border-0 bg-transparent text-right shadow-none focus-visible:ring-1"
+                    className="h-8 rounded-sm border-0 bg-muted/40 text-right shadow-none focus-visible:ring-1"
                   />
-                </TableCopyDownCell>
+                </td>
                 <TableCopyDownCell className="border-r p-1 align-middle" {...copyCellProps(index, 'averageLiveWeight')}>
                   <Input
                     type="number"
@@ -589,21 +639,27 @@ export default function DeliveryIssueLinesTable({
                   <Input
                     type={showVariance ? 'text' : 'number'}
                     inputMode={showVariance ? 'decimal' : undefined}
-                    min={showVariance && !canCleanupAtZero(line) ? 1 : 0}
-                    max={showVariance ? maxTransferQty : undefined}
+                    min={0}
                     step="any"
                     value={quantityInputValue}
                     readOnly={activeDocumentIsPosted || (lockCycleCloseout && !lockedQuantityEditable)}
                     onChange={event => {
                       if (showVariance) {
-                        setQuantityDrafts(current => ({ ...current, [quantityDraftKey]: event.target.value }))
+                        const rawValue = event.target.value
+                        setQuantityDrafts(current => ({ ...current, [quantityDraftKey]: rawValue }))
+                        const requestedTotal = Number(rawValue.trim())
+                        if (rawValue.trim() && Number.isFinite(requestedTotal) && requestedTotal >= 0) {
+                          updateLine(line.id, {
+                            requestedAltQty: requestedTotal,
+                            ...(!line.batchNumber ? {
+                              altQty: requestedTotal,
+                              baseQty: calculateBaseQty(requestedTotal, line.altUom, line.baseUom),
+                            } : {}),
+                          })
+                        }
                         return
                       }
-                      const minimumQty = showVariance ? 1 : 0
-                      const requestedTotal = Math.min(
-                        Math.max(numberValue(event.target.value), minimumQty),
-                        showVariance ? maxTransferQty : Number.POSITIVE_INFINITY,
-                      )
+                      const requestedTotal = Math.max(numberValue(event.target.value), 0)
                       updateLine(line.id, {
                         requestedAltQty: requestedTotal,
                         ...(!line.batchNumber ? {
@@ -631,17 +687,6 @@ export default function DeliveryIssueLinesTable({
                         clearDraft()
                         return
                       }
-                      if (requestedTotal < 1 && !(requestedTotal === 0 && canCleanupAtZero(line))) {
-                        toast('Clean up Quantity must be at least 1.')
-                        clearDraft()
-                        return
-                      }
-                      if (requestedTotal > maxTransferQty) {
-                        toast(`Clean up Quantity cannot exceed batch quantity (${formatQuantity(maxTransferQty)}).`)
-                        clearDraft()
-                        return
-                      }
-
                       updateLine(line.id, {
                         requestedAltQty: requestedTotal,
                         ...(!line.batchNumber ? {
@@ -694,7 +739,7 @@ export default function DeliveryIssueLinesTable({
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={lockCycleCloseout || !canSearchBatches}
+                        disabled={!canSearchBatches}
                         onClick={() => openBatchSelector(line)}
                         className={`h-8 w-full justify-between rounded-sm px-2 font-normal ${batchSummary ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'bg-white text-stone-800'}`}
                       >
@@ -839,22 +884,44 @@ export default function DeliveryIssueLinesTable({
                   </td>
                 )}
                 <td className="p-1 text-center align-middle">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => setIssue(current => {
-                      if (!current) return current
-                      const ids = new Set(allocationLines.map(allocation => allocation.id))
-                      const nextLines = current.lines.filter(candidate => !ids.has(candidate.id))
-                      return { ...current, lines: nextLines.length > 0 ? nextLines : [newLine()] }
-                    })}
-                    aria-label={`Delete row ${index + 1}`}
-                    disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-0.5">
+                    {enableCleanupTypeAllocations && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2 text-xs text-primary"
+                        title="Cleanup Types"
+                        aria-label={`Cleanup Types for row ${index + 1}`}
+                        disabled={!line.itemCode || !line.fromWarehouseCode}
+                        onClick={() => setCleanupTypeGroupKey(allocationGroupKey)}
+                      >
+                        <ListPlus className="size-4" /> Types
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => setIssue(current => {
+                        if (!current) return current
+                        const ids = new Set(allocationLines.map(allocation => allocation.id))
+                        const nextLines = current.lines.filter(candidate => !ids.has(candidate.id))
+                        const remainingAllocations = (current.cleanupTypeAllocations ?? [])
+                          .filter(allocation => !cleanupAllocationMatchesLine(allocation, line))
+                        return {
+                          ...current,
+                          lines: nextLines.length > 0 ? nextLines : [newLine()],
+                          cleanupTypeAllocations: remainingAllocations,
+                        }
+                      })}
+                      aria-label={`Delete row ${index + 1}`}
+                      disabled={lockCycleCloseout && (!allowLockedRowDelete || activeDocumentIsPosted)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             )
@@ -875,7 +942,15 @@ export default function DeliveryIssueLinesTable({
             {showTransportFields && (
               <div className="space-y-1.5">
                 <Label required>Delivered Date</Label>
-                <Input type="date" value={mobileLine.deliveredDate ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { deliveredDate: event.target.value })} />
+                <Input type="date" value={mobileLine.deliveredDate ?? ''} onChange={event => {
+                  const deliveredDate = event.target.value
+                  const harvestAge = getAutomaticHarvestAge(mobileFlockState?.info, deliveredDate)
+                  updateAllocationGroup(mobileLineGroupKey!, {
+                    deliveredDate,
+                    harvestAge,
+                    averageLiveWeight: getGrowingBodyWeightForAge(mobileFlockState?.info, harvestAge),
+                  })
+                }} />
               </div>
             )}
             <div className="space-y-1.5">
@@ -886,9 +961,15 @@ export default function DeliveryIssueLinesTable({
                 onChange={event => void selectLineWarehouse(mobileLine, event.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm md:h-8"
               >
-                <option value="">Select {warehouseLabel.toLowerCase()}...</option>
+                <option value="">{loadingBuildings ? `Loading ${warehouseLabel.toLowerCase()}s...` : `Select ${warehouseLabel.toLowerCase()}...`}</option>
                 {farmWarehouses.map(warehouse => <option key={warehouse.id} value={warehouse.whse_code ?? ''}>{warehouse.whse_code} - {warehouse.whse_name}</option>)}
               </select>
+              {loadingBuildings && (
+                <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                  Loading {warehouseLabel.toLowerCase()} list...
+                </span>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Flock Card</Label>
@@ -914,7 +995,7 @@ export default function DeliveryIssueLinesTable({
               <Label required>{quantityLabel}</Label>
               <Input
                 type="number"
-                min={showVariance && !canCleanupAtZero(mobileLine) ? 1 : 0}
+                min={0}
                 step="any"
                 value={mobileQuantity}
                 readOnly={lockCycleCloseout && !lockedQuantityEditable}
@@ -933,7 +1014,7 @@ export default function DeliveryIssueLinesTable({
             </div>
             <div className="space-y-1.5">
               <Label required>Batch</Label>
-              <Button type="button" variant="outline" className="w-full justify-start" disabled={lockCycleCloseout || !canOpenBatchSelector(mobileLine)} onClick={() => openBatchSelector(mobileLine)}>
+              <Button type="button" variant="outline" className="w-full justify-start" disabled={!canOpenBatchSelector(mobileLine)} onClick={() => openBatchSelector(mobileLine)}>
                 <PackageCheck className="size-4" />
                 <span className="truncate">{mobileBatchSummary || 'Select batches'}</span>
               </Button>
@@ -954,7 +1035,7 @@ export default function DeliveryIssueLinesTable({
               </select>
             </div>
             {showHarvestWeight && <>
-              <div className="space-y-1.5"><Label>Age</Label><Input type="number" min="0" value={mobileLine.harvestAge ?? mobileFlockState?.info?.age ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { harvestAge: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
+              <div className="space-y-1.5"><Label>Age</Label><Input type="number" min="1" value={issue.status === 'Draft' ? getAutomaticHarvestAge(mobileFlockState?.info, mobileLine.deliveredDate) ?? '' : mobileLine.harvestAge ?? ''} readOnly className="bg-muted/40" /></div>
               <div className="space-y-1.5"><Label>{bodyWeightLabel}</Label><Input type="number" min="0" step="any" value={mobileLine.averageLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { averageLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
               <div className="space-y-1.5"><Label>Net Live Weight</Label><Input type="number" min="0" step="any" value={mobileLine.netLiveWeight ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { netLiveWeight: event.target.value === '' ? null : numberValue(event.target.value) })} /></div>
               {showTsDrNumber && <div className="space-y-1.5"><Label>TS/DR #</Label><Input value={mobileLine.tsDrNo ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { tsDrNo: event.target.value })} /></div>}
@@ -962,7 +1043,27 @@ export default function DeliveryIssueLinesTable({
             {showTransportFields && <>
               <div className="space-y-1.5"><Label required>Hauler Name</Label><Input value={mobileLine.haulerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { haulerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Plate Number</Label><Input value={mobileLine.plateNumber ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { plateNumber: event.target.value })} /></div>
-              <div className="space-y-1.5"><Label required>Destination</Label><Select value={mobileLine.destination ?? ''} onValueChange={value => updateAllocationGroup(mobileLineGroupKey!, { destination: value, liveSalesCustomerName: '' })}><SelectTrigger className="w-full"><SelectValue placeholder="Select destination" /></SelectTrigger><SelectContent><SelectItem value="Dressing Plant">Dressing Plant</SelectItem><SelectItem value="Live Sales">Live Sales</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5">
+                <Label required>Destination</Label>
+                <RadioGroup
+                  value={mobileLine.destination ?? ''}
+                  onValueChange={destination => updateAllocationGroup(mobileLineGroupKey!, {
+                    destination,
+                    liveSalesCustomerName: '',
+                  })}
+                  className="grid grid-cols-2 gap-2"
+                >
+                  {['Dressing Plant', 'Live Sales'].map(destination => (
+                    <Label
+                      key={destination}
+                      className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 font-normal hover:bg-muted/50"
+                    >
+                      <RadioGroupItem value={destination} />
+                      <span>{destination}</span>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
               <div className="space-y-1.5"><Label required>Destination Details</Label><Input value={mobileLine.liveSalesCustomerName ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { liveSalesCustomerName: event.target.value })} /></div>
               <div className="space-y-1.5"><Label required>Truck Seal</Label><Input type="number" value={mobileLine.truckSeal ?? ''} onChange={event => updateAllocationGroup(mobileLineGroupKey!, { truckSeal: event.target.value === '' ? null : Number(event.target.value) })} /></div>
             </>}
@@ -975,6 +1076,31 @@ export default function DeliveryIssueLinesTable({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {cleanupTypeLine && (
+      <CleanupTypeAllocationSheet
+        open={cleanupTypeGroupKey != null}
+        editable={canEdit && issue.status === 'Draft'}
+        lineLabel={`${cleanupTypeLine.fromWarehouseCode} · ${cleanupTypeLine.itemCode}`}
+        targetQuantity={cleanupTypeTargetQuantity}
+        quantityUom={cleanupTypeLine.altUom}
+        scope={{
+          fromWarehouseId: cleanupTypeLine.fromWarehouseId,
+          fromWarehouseCode: cleanupTypeLine.fromWarehouseCode,
+          itemId: cleanupTypeLine.itemId,
+          itemCode: cleanupTypeLine.itemCode,
+        }}
+        allocations={cleanupTypeAllocations}
+        onOpenChange={open => { if (!open) setCleanupTypeGroupKey(null) }}
+        onConfirm={nextAllocations => setIssue(current => current ? {
+          ...current,
+          cleanupTypeAllocations: [
+            ...(current.cleanupTypeAllocations ?? []).filter(allocation => !cleanupAllocationMatchesLine(allocation, cleanupTypeLine)),
+            ...nextAllocations,
+          ],
+        } : current)}
+      />
+    )}
     </>
   )
 }

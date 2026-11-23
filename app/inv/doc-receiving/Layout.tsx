@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { addDays, format } from 'date-fns'
@@ -33,6 +33,7 @@ import {
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
+import BroilerCycleHistoryFilter from '@/components/broiler/BroilerCycleHistoryFilter'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -53,6 +54,7 @@ import {
   reverseGoodsReceipt,
 } from './api'
 import type { GoodsReceiptDateField } from './api'
+import type { CombinedTransactionHistoryProps } from '@/lib/types/combinedTransaction'
 
 type GoodsReceiptTableRow = Record<string, unknown> & {
   id: number | null
@@ -69,23 +71,40 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
   status: string
   createdBy: string
   assignedTa: string
+  cycleReference: string
   receipt: GoodsReceipt
 }
 
-export default function GoodsReceiveHistory() {
+export default function GoodsReceiveHistory({
+  embedded = false,
+  autoLoad = true,
+  dateFrom: controlledDateFrom,
+  dateTo: controlledDateTo,
+  onDateFromChange,
+  onDateToChange,
+  refreshToken,
+  historyHeader,
+}: CombinedTransactionHistoryProps = {}) {
   const router = useRouter()
   const { setCollapsed } = useSidebar()
   const canView = usePermission('/inv/doc-receiving/view')
   const canInsert = usePermission('/inv/doc-receiving/insert')
   const canVoid = !usePermission('/inv/doc-receiving/void')
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(autoLoad)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [farmId, setFarmId] = useState<string | number>('')
-  const [dateFrom, setDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
-  const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [dateField, setDateField] = useState<GoodsReceiptDateField>('createdDate')
+  const [internalDateFrom, setInternalDateFrom] = useState(() => format(addDays(new Date(), -30), 'yyyy-MM-dd'))
+  const [internalDateTo, setInternalDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const dateFrom = controlledDateFrom ?? internalDateFrom
+  const dateTo = controlledDateTo ?? internalDateTo
+  const setDateFrom = onDateFromChange ?? setInternalDateFrom
+  const setDateTo = onDateToChange ?? setInternalDateTo
+  const [dateField, setDateField] = useState<GoodsReceiptDateField>(embedded ? 'receiveDate' : 'createdDate')
+  const [cycleNumber, setCycleNumber] = useState('')
   const [reverseTarget, setReverseTarget] = useState<GoodsReceipt | null>(null)
   const [reversing, setReversing] = useState(false)
+  const handledRefreshToken = useRef(refreshToken)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -96,14 +115,16 @@ export default function GoodsReceiveHistory() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         dateField,
+        cycleNumber,
       }))
     } catch (error) {
       toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
         ? error.message : 'Unable to load DOC Placement records. Please try again.')
     } finally {
+      setHasLoaded(true)
       setLoading(false)
     }
-  }, [dateField, dateFrom, dateTo, farmId])
+  }, [cycleNumber, dateField, dateFrom, dateTo, farmId])
 
   const handleReverse = async () => {
     if (!reverseTarget?.id || reverseTarget.status !== 'Posted' || !canVoid) return
@@ -124,11 +145,18 @@ export default function GoodsReceiveHistory() {
 
   useEffect(() => {
     router.prefetch('/inv/doc-receiving/new')
+    if (!autoLoad) return
     const timer = window.setTimeout(() => {
       refresh()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [refresh, router])
+  }, [autoLoad, refresh, router])
+
+  useEffect(() => {
+    if (refreshToken === undefined || refreshToken === handledRefreshToken.current) return
+    handledRefreshToken.current = refreshToken
+    void refresh()
+  }, [refresh, refreshToken])
 
   const rows = useMemo<GoodsReceiptTableRow[]>(
     () =>
@@ -150,6 +178,7 @@ export default function GoodsReceiveHistory() {
           status: receipt.status,
           createdBy: receipt.createdByName || '—',
           assignedTa: receipt.assignedTaLabel || 'Farm unavailable',
+          cycleReference: receipt.cycleReferences?.join(', ') || '—',
           receipt,
         }
       }),
@@ -187,6 +216,7 @@ export default function GoodsReceiveHistory() {
       },
       { key: 'createdBy', label: 'Created by', width: 150, render: row => <span className="block max-w-36 truncate" title={row.createdBy}>{row.createdBy}</span> },
       { key: 'assignedTa', label: 'Assigned TA', width: 180, render: row => <span className="block max-w-44 truncate" title={row.assignedTa}>{row.assignedTa}</span> },
+      { key: 'cycleReference', label: 'Cycle #', render: row => <span className="text-xs">{row.cycleReference}</span> },
       {
         key: 'action',
         label: 'Action',
@@ -257,9 +287,11 @@ export default function GoodsReceiveHistory() {
     router.push('/inv/doc-receiving/new')
   }
 
+  const Shell = embedded ? 'div' : PageShell
+
   return (
-    <PageShell>
-      <PageHeader>
+    <Shell className={embedded ? 'min-w-0 space-y-3' : undefined}>
+      {!embedded && <PageHeader>
         <Breadcrumb
           FirstPreviewsPageName="Inventory"
           CurrentPageName="DOC Placement"
@@ -275,18 +307,24 @@ export default function GoodsReceiveHistory() {
             New DOC Placement
           </Button>
         </PageHeaderActions>
-      </PageHeader>
+      </PageHeader>}
 
-      <div className="space-y-3">
-        <div className="grid gap-2 rounded-md border bg-muted/30 p-3 md:grid-cols-[minmax(220px,320px)_180px_180px_180px]">
-          <DefaultFarmComboBox
-            label="Farm"
-            value={farmId}
-            valueKey="id"
-            setValue={setFarmId}
-          />
+      <div className="space-y-3 ">
+        <div className={embedded ? 'rounded-md border bg-white dark:bg-black' : undefined}>
+          {embedded && historyHeader}
+          <div className={`grid gap-2 p-3 ${embedded
+            ? 'grid-cols-2 border-t md:grid-cols-[repeat(5,minmax(0,320px))_auto]'
+            : 'rounded-md border bg-white md:grid-cols-[minmax(220px,320px)_180px_180px_180px_180px] dark:bg-black'}`}>
+          <div className={embedded ? 'col-start-1 row-start-1 w-full max-w-[320px] md:col-auto md:row-auto' : undefined}>
+            <DefaultFarmComboBox
+              label="Farm"
+              value={farmId}
+              valueKey="id"
+              setValue={setFarmId}
+            />
+          </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-1 row-start-2 w-full max-w-[320px] md:col-auto md:row-auto' : ''}`}>
             <Label htmlFor="doc-receiving-date-from">From Date</Label>
             <Input
               id="doc-receiving-date-from"
@@ -297,7 +335,7 @@ export default function GoodsReceiveHistory() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-2 row-start-2 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : ''}`}>
             <Label htmlFor="doc-receiving-date-to">To Date</Label>
             <Input
               id="doc-receiving-date-to"
@@ -308,7 +346,7 @@ export default function GoodsReceiveHistory() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-2 row-start-1 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : ''}`}>
             <Label htmlFor="doc-receiving-date-field">Search Date By</Label>
             <Select value={dateField} onValueChange={value => setDateField(value as GoodsReceiptDateField)}>
               <SelectTrigger id="doc-receiving-date-field" className="w-full">
@@ -319,6 +357,25 @@ export default function GoodsReceiveHistory() {
                 <SelectItem value="createdDate">Created Date</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className={embedded ? 'col-start-1 row-start-3 w-full max-w-[320px] md:col-auto md:row-auto' : undefined}>
+            <BroilerCycleHistoryFilter
+              id="doc-receiving-cycle-number"
+              farmIdentifier={farmId || null}
+              value={cycleNumber}
+              onValueChange={setCycleNumber}
+            />
+          </div>
+
+          {embedded && (
+            <div className="col-start-2 row-start-3 flex w-full max-w-[320px] items-end justify-end justify-self-end md:col-auto md:row-auto">
+              <Button className="w-full md:w-auto" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+                <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : 'Refresh'}
+              </Button>
+            </div>
+          )}
           </div>
         </div>
 
@@ -332,7 +389,7 @@ export default function GoodsReceiveHistory() {
           data={rows}
           rowKey={row => row.id ?? row.grNo}
           searchPlaceholder="Search DOC placement documents..."
-          emptyMessage="No DOC placement documents found"
+          emptyMessage={embedded && !hasLoaded ? 'Click Refresh to load historical data' : 'No DOC placement documents found'}
           noResultsMessage="No matching DOC placement documents found"
           onRowClick={row => {
             if (row.id !== null && !canView) router.push(`/inv/doc-receiving/post?id=${row.id}`)
@@ -345,7 +402,7 @@ export default function GoodsReceiveHistory() {
           <DialogHeader>
             <DialogTitle>Reverse this DOC Placement?</DialogTitle>
             <DialogDescription>
-              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked if its consolidated batch is already used in Growing inventory.
+              This will create reversal inventory postings and mark {reverseTarget?.grNo ?? 'this document'} as Reversed. The action is blocked only if removing this placement would make its consolidated inventory negative.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -359,6 +416,6 @@ export default function GoodsReceiveHistory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </Shell>
   )
 }

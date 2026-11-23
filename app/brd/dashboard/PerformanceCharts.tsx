@@ -23,11 +23,13 @@ function Trend({ title, unit, data, actual, standard, actualLabel = 'Actual', st
   standardLabel?: string
 }) {
   const hasData = data.some(point => point[actual] !== null)
-  return <section className="min-w-0 rounded-md border bg-card p-2" aria-label={title}>
-    <h3 className="text-xs font-medium">{title}</h3>
-    <p className="mb-3 mt-1 text-[10px] text-muted-foreground">{unit} · Posted age in days</p>
-    {!hasData ? <div className="flex h-36 items-center justify-center text-xs text-muted-foreground">No posted measurements</div> :
-      <div className="h-36 w-full" role="img" aria-label={`${title}. Exact values are available in the detail tabs.`}>
+  return <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-[var(--starbucks-card-shadow)]" aria-label={title}>
+    <header className="border-b bg-emerald-50/50 px-3 py-2 dark:bg-emerald-950/20">
+      <h3 className="text-xs font-semibold">{title}</h3>
+      <p className="mt-0.5 text-[10px] text-muted-foreground">{unit} · Posted age in days</p>
+    </header>
+    {!hasData ? <div className="flex h-40 flex-col items-center justify-center gap-1 px-3 text-center"><p className="text-xs font-medium">No posted measurements</p><p className="text-[10px] text-muted-foreground">Measurements will appear here once recorded.</p></div> :
+      <div className="h-40 w-full p-2" role="img" aria-label={`${title}. Exact values are available in the detail tabs.`}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} style={chartStyle} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -45,14 +47,11 @@ function Trend({ title, unit, data, actual, standard, actualLabel = 'Actual', st
 
 export function PerformanceCharts({ cycles }: { cycles: DashboardCycleBuilding[] }) {
   const data = dashboardPerformance(cycles)
-  return <section className="space-y-3">
-    <div>
-      <h2 className="text-sm font-semibold">Cycle Performance</h2>
-      {cycles.length > 1 && <p className="mt-1 text-[11px] text-muted-foreground">Aligned by age. Weight, feed, and water use bird-weighted measurements available at that age. Mortality totals require all selected flocks.</p>}
-    </div>
-    <div className="grid gap-2 xl:grid-cols-2">
-      <Trend title="Body Weight" unit="g / bird" data={data} actual="weight" standard="standardWeight" />
-      <Trend title="Mortality" unit="birds" data={data} actual="mortality" standard="cumulativeMortality" actualLabel="Daily" standardLabel="Cumulative" />
+  return <section className="space-y-2">
+    {cycles.length > 1 && <p className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">Aligned by age. Weight, feed, and water use bird-weighted measurements available at that age. Mortality totals require all selected flocks.</p>}
+    <div className="grid gap-2 min-[1200px]:grid-cols-2">
+      <Trend title="Cycle Performance" unit="Body weight (g / bird)" data={data} actual="weight" standard="standardWeight" />
+      <Trend title="Mortality" unit="birds by age" data={data} actual="mortality" standard="cumulativeMortality" actualLabel="Daily" standardLabel="Cumulative" />
       <Trend title="Feed Consumption" unit="g / bird / day" data={data} actual="feed" standard="standardFeed" />
       <Trend title="Water Consumption" unit="mL / bird / day" data={data} actual="water" standard="standardWater" standardLabel="Guideline" />
     </div>

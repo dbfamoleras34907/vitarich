@@ -105,8 +105,10 @@ type FlockCardListRow = {
   id: number;
   farm_cycle_id: number | null;
   card_no: string | null;
+  cycle_no: string | null;
   cycle_mask?: string | null;
   doc_farm_cycles?: { cycle_mask: string | null } | { cycle_mask: string | null }[] | null;
+  extra?: Record<string, unknown> | null;
   building_id: number | null;
   building_whse_id: number | null;
   building_key: string | null;
@@ -341,7 +343,11 @@ export async function getFarmInfoForFlockCard(
 
 export async function getFarmBuildingsForFlockCard(
   farmId: number,
-  options: { includePlacementInventory?: boolean; farmCycleId?: number | null } = {},
+  options: {
+    includePlacementInventory?: boolean;
+    farmCycleId?: number | null;
+    includeAllOpenCycles?: boolean;
+  } = {},
 ): Promise<FarmBuildingListRow[]> {
   if (!Number.isFinite(farmId)) return [];
 
@@ -363,7 +369,7 @@ export async function getFarmBuildingsForFlockCard(
 
   let flockCardQuery = db
     .from("flock_card")
-    .select("id, farm_cycle_id, card_no, cycle_mask, doc_farm_cycles(cycle_mask), building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
+    .select("id, farm_cycle_id, card_no, cycle_no, cycle_mask, doc_farm_cycles(cycle_mask), extra, building_id, building_whse_id, building_key, building_code, building_name, age, start_date, flock_code, breed, animal_qty, status")
     .eq("farm_id", farmId)
     .eq("void", "1")
     .eq("status", "Saved")
@@ -548,10 +554,10 @@ export async function getFarmBuildingsForFlockCard(
   const warehouseRows = await Promise.all(Array.from(warehouseById.values()).map(async warehouse => {
     const id = Number(warehouse.id);
     const code = String(warehouse.whse_code ?? "").trim();
-    const key = `warehouse:${id}`;
+    const baseKey = `warehouse:${id}`;
     const status = warehouse.is_active === false ? "Inactive" : "Active";
     const flockCard = flockCardByWarehouseId.get(id) ??
-      flockCardByBuildingKey.get(key) ??
+      flockCardByBuildingKey.get(baseKey) ??
       flockCardByBuildingCode.get(code.toUpperCase()) ??
       null;
     const placementAnimalQty = await getPlacementInventoryAnimalQty(code);
@@ -562,7 +568,9 @@ export async function getFarmBuildingsForFlockCard(
     if (displayedFlockCard) cardIdsAttachedToWarehouseRows.add(displayedFlockCard.id);
 
     return {
-      key,
+      key: options.includeAllOpenCycles && displayedFlockCard
+        ? `${baseKey}:flock-card:${displayedFlockCard.id}`
+        : baseKey,
       id,
       farmId,
       code,
@@ -581,7 +589,8 @@ export async function getFarmBuildingsForFlockCard(
     const info = cardToListInfo(card);
     const buildingWarehouseId = Number(card.building_whse_id ?? 0);
     const code = String(card.building_code ?? "").trim();
-    const key = card.building_key?.trim() || (buildingWarehouseId > 0 ? `warehouse:${buildingWarehouseId}` : `flock-card:${card.id}`);
+    const baseKey = card.building_key?.trim() || (buildingWarehouseId > 0 ? `warehouse:${buildingWarehouseId}` : `flock-card:${card.id}`);
+    const key = options.includeAllOpenCycles ? `${baseKey}:flock-card:${card.id}` : baseKey;
     const matchesActiveWarehouse = buildingWarehouseId > 0
       ? warehouseById.has(buildingWarehouseId)
       : activeWarehouseCodes.has(code.toUpperCase());
@@ -606,8 +615,18 @@ export async function getFarmBuildingsForFlockCard(
     }];
   }));
 
+  const rows = [...warehouseRows, ...flockCardOnlyRows.flat()];
+  if (options.includeAllOpenCycles) {
+    return rows.sort((left, right) =>
+      left.code.localeCompare(right.code) ||
+      left.name.localeCompare(right.name) ||
+      String(right.flockCard?.startDate ?? '').localeCompare(String(left.flockCard?.startDate ?? '')) ||
+      Number(right.flockCard?.id ?? 0) - Number(left.flockCard?.id ?? 0)
+    );
+  }
+
   const uniqueRowsByWarehouseId = new Map<number, FarmBuildingListRow>();
-  for (const row of [...warehouseRows, ...flockCardOnlyRows.flat()]) {
+  for (const row of rows) {
     const warehouseId = Number(row.id ?? 0);
     if (warehouseId > 0 && !uniqueRowsByWarehouseId.has(warehouseId)) {
       uniqueRowsByWarehouseId.set(warehouseId, row);

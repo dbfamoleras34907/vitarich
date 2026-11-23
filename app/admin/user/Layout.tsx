@@ -12,6 +12,7 @@ import { NewUser } from './NewUser'
 import { ColumnConfig, RowDataKey } from '@/lib/Defaults/DefaultTypes'
 import DynamicTable from '@/components/ui/DataTableV2'
 import Breadcrumb from '@/lib/Breadcrumb'
+import { normalizeUserFmsTypes } from '@/lib/auth/fmsAccess'
 
 export default function Layout() {
   const { setValue } = useGlobalContext()
@@ -28,7 +29,7 @@ export default function Layout() {
       { key: 'firstname', label: 'First name', type: 'text', disabled: true },
       { key: 'lastname', label: 'Last name', type: 'text', disabled: true },
       { key: 'user_type', label: 'User Type', type: 'text', disabled: true },
-      { key: 'fms_type', label: 'FMS Type', type: 'text', disabled: true },
+      { key: 'fms_types', label: 'FMS Types', type: 'text', disabled: true },
       { key: 'update', label: 'Update', type: 'button', disabled: false },
     ],
     [/*sourceList, itemListSource*/]
@@ -83,6 +84,9 @@ export default function Layout() {
             align: 'left',
 
             render: (row: RowDataKey) => {
+              if (col.key === 'fms_types') {
+                return normalizeUserFmsTypes(row.fms_types, row.fms_type).join(', ') || '-'
+              }
               if (col.key === 'update') {
                 return (
                   <Button

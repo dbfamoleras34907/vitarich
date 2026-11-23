@@ -1,11 +1,9 @@
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import { isServiceUnavailableError } from "@/lib/networkError"
-import { FMS_TYPES, USER_TYPES } from "@/lib/notifications/types"
+import { USER_TYPES } from "@/lib/notifications/types"
 import type {
-  FmsType,
   NotificationFarmRouting,
   NotificationInboxItem,
-  NotificationEmailDelivery,
   NotificationOutboxHealth,
   NotificationRule,
   NotificationRuleAffectedUsers,
@@ -13,6 +11,7 @@ import type {
   NotificationRuleInput,
   NotificationUserGroup,
 } from "@/lib/notifications/types"
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 export async function hasNotificationSetupPermission(authId: string, action: "view" | "edit") {
   const { data, error } = await admin_db
@@ -38,7 +37,7 @@ export async function getNotificationActorByToken(token: string) {
 
   const { data, error } = await admin_db
     .from("users")
-    .select("id, auth_id, fms_type, user_type, isactive")
+    .select("id, auth_id, fms_type, fms_types, user_type, isactive")
     .eq("auth_id", authData.user.id)
     .maybeSingle()
 
@@ -48,7 +47,7 @@ export async function getNotificationActorByToken(token: string) {
   return {
     id: Number(data.id),
     authId: String(data.auth_id),
-    fmsType: data.fms_type ? String(data.fms_type) : null,
+    fmsTypes: normalizeUserFmsTypes(data.fms_types, data.fms_type),
     userType: Number(data.user_type ?? 3),
   }
 }
@@ -60,8 +59,8 @@ export async function getNotificationRules(access: NotificationRuleAccess) {
     .eq("void", "1")
     .order("created_at", { ascending: false })
 
-  if (access.userType === 2 && access.fmsType) {
-    query = query.contains("source_fms_types", [access.fmsType])
+  if (access.userType === 2 && access.fmsTypes.length > 0) {
+    query = query.overlaps("source_fms_types", access.fmsTypes)
   }
 
   const { data, error } = await query
@@ -106,7 +105,7 @@ export async function getNotificationRuleAffectedUsers(
 ) {
   const { data: userRows, error: usersError } = await admin_db
     .from("users")
-    .select("id, auth_id, email, firstname, middlename, lastname, fms_type, user_type, users_group_id")
+    .select("id, auth_id, email, firstname, middlename, lastname, fms_type, fms_types, user_type, users_group_id")
     .not("auth_id", "is", null)
     .eq("isactive", "1")
     .order("firstname", { ascending: true })
@@ -119,7 +118,7 @@ export async function getNotificationRuleAffectedUsers(
     const isSuperAdmin = userType === USER_TYPES.SUPER_ADMIN
     const matchesFms = isSuperAdmin
       || rule.recipient_fms_types.length === 0
-      || rule.recipient_fms_types.includes(user.fms_type as FmsType)
+      || userFmsTypesOverlap(user.fms_types, rule.recipient_fms_types, user.fms_type)
     const matchesUserType = rule.user_types.length === 0 || rule.user_types.includes(userType)
     const groupId = user.users_group_id == null ? null : Number(user.users_group_id)
     const matchesGroup = rule.user_group_ids.length === 0
@@ -239,7 +238,7 @@ export async function getNotificationRuleAffectedUsers(
         id,
         name,
         email,
-        fmsType: FMS_TYPES.includes(user.fms_type as FmsType) ? user.fms_type as FmsType : null,
+        fmsTypes: normalizeUserFmsTypes(user.fms_types, user.fms_type),
         userType,
         userGroupName: groupId == null ? null : groupNames.get(groupId) ?? `Group #${groupId}`,
         farms: farmsByUserId.get(id) ?? [],
@@ -314,9 +313,9 @@ export async function saveNotificationRule(input: NotificationRuleInput, actorAu
     title_template: input.title_template,
     message_template: input.message_template,
     priority: input.priority,
-    email_enabled: input.email_enabled,
+    email_enabled: false,
     exclude_actor: input.exclude_actor,
-    require_view_permission: input.require_view_permission,
+    require_view_permission: true,
     is_active: input.is_active,
     updated_by: actorAuthId,
   }
@@ -389,65 +388,6 @@ export async function markUserNotificationsSeen(authId: string) {
     .update({ seen_at: new Date().toISOString() })
     .eq("recipient_auth_id", authId)
     .is("seen_at", null)
-
-  if (error) throw error
-}
-
-export async function processPendingNotificationEvents(limit = 50) {
-  const { data, error } = await admin_db.rpc("process_notification_outbox", {
-    p_limit: Math.max(1, Math.min(limit, 200)),
-  })
-
-  if (error) throw error
-  return Number(data ?? 0)
-}
-
-export async function makeFailedNotificationEmailsRetryable() {
-  const { data, error } = await admin_db
-    .from("notification_email_deliveries")
-    .update({ next_attempt_at: new Date().toISOString() })
-    .eq("status", "failed")
-    .select("id")
-
-  if (error) throw error
-  return data?.length ?? 0
-}
-
-export async function claimPendingNotificationEmails(limit = 20) {
-  const { data, error } = await admin_db.rpc("claim_notification_email_deliveries", {
-    p_limit: Math.max(1, Math.min(limit, 100)),
-  })
-
-  if (error) throw error
-  return (data ?? []) as NotificationEmailDelivery[]
-}
-
-export async function completeNotificationEmailDelivery(params: {
-  id: number
-  success: boolean
-  error?: string | null
-  providerMessageId?: string | null
-}) {
-  const { error } = await admin_db.rpc("complete_notification_email_delivery", {
-    p_id: params.id,
-    p_success: params.success,
-    p_error: params.error ?? null,
-    p_provider_message_id: params.providerMessageId ?? null,
-  })
-
-  if (error) throw error
-}
-
-export async function skipNotificationEmailDelivery(id: number, reason: string) {
-  const { error } = await admin_db
-    .from("notification_email_deliveries")
-    .update({
-      status: "skipped",
-      last_error: reason.slice(0, 2000),
-      processing_started_at: null,
-    })
-    .eq("id", id)
-    .eq("status", "processing")
 
   if (error) throw error
 }

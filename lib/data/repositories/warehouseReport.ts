@@ -53,6 +53,13 @@ export type WarehouseReportFilters = {
   separateByBatch: boolean
 }
 
+export type WarehouseInventoryBalance = {
+  itemCode: string
+  warehouseCode: string
+  batchNumber: string
+  onHand: number
+}
+
 type PostingRow = {
   id: number
   source_doc_type: string | null
@@ -77,6 +84,7 @@ const DOCUMENT_CONFIG: Record<string, DocumentConfig> = {
   GOODS_RECEIPT: { table: 'goods_receipt', numberColumn: 'gr_no', url: id => `/inv/gr/post?id=${id}` },
   GOODS_ISSUE: { table: 'goods_issue', numberColumn: 'gi_no', url: id => `/inv/gi/post?id=${id}` },
   INVENTORY_TRANSFER: { table: 'inventory_transfer', numberColumn: 'it_no', url: id => `/inv/it/post?id=${id}` },
+  FEED_FARM_TRANSFER: { table: 'feed_farm_transfers', numberColumn: 'transfer_no', url: () => '/brd/feed-farm-transfer' },
   BR_DELIVERY: { table: 'br_delivery', numberColumn: 'gi_no', url: id => `/brd/dr/post?id=${id}` },
   BR_DELIVERY_REVERSAL: { table: 'br_delivery', numberColumn: 'gi_no', url: id => `/brd/dr/post?id=${id}` },
   BR_CLEANUP: { table: 'br_cleanup', numberColumn: 'gi_no', url: id => `/brd/cu/post?id=${id}` },
@@ -134,6 +142,35 @@ async function getAllPostings(warehouseCodes: string[], to: string) {
   }
 
   return rows
+}
+
+export async function getWarehouseInventoryBalances(
+  warehouseCodes: string[],
+  itemCodes: string[] = [],
+): Promise<WarehouseInventoryBalance[]> {
+  const normalizedWarehouses = Array.from(new Set(warehouseCodes.map(code => code.trim()).filter(Boolean)))
+  if (normalizedWarehouses.length === 0) return []
+
+  const allowedItems = new Set(itemCodes.map(code => code.trim().toUpperCase()).filter(Boolean))
+  const balances = new Map<string, WarehouseInventoryBalance>()
+
+  for (const row of await getAllPostings(normalizedWarehouses, '')) {
+    const itemCode = String(row.item_code ?? '').trim()
+    const warehouseCode = String(row.warehouse_code ?? '').trim()
+    if (!itemCode || !warehouseCode || (allowedItems.size > 0 && !allowedItems.has(itemCode.toUpperCase()))) continue
+
+    const batchNumber = batchReference(row)
+    if (!batchNumber) continue
+
+    const key = [warehouseCode.toUpperCase(), itemCode.toUpperCase(), batchNumber.toUpperCase()].join('|')
+    const current = balances.get(key) ?? { itemCode, warehouseCode, batchNumber, onHand: 0 }
+    current.onHand += signedQty(row)
+    balances.set(key, current)
+  }
+
+  return Array.from(balances.values())
+    .filter(row => row.onHand > 0.000001)
+    .sort((left, right) => left.itemCode.localeCompare(right.itemCode) || left.batchNumber.localeCompare(right.batchNumber))
 }
 
 async function getDocumentLabels(postings: PostingRow[]) {

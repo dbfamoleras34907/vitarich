@@ -290,15 +290,30 @@ export async function previewDocFarmCycle(farmId: number): Promise<Omit<ActiveDo
   return { id, cycleNumber: id ? await getDocFarmCycleCount(id, row.cycle_no) : String(row.cycle_no), status: String(row.status) };
 }
 
-export async function isDocCycleBuildingExcluded(farmId: number, buildingWarehouseId: number) {
+export type DocCycleBuildingSetting = {
+  excluded: boolean;
+  doNotFormatCycleNumber: boolean;
+};
+
+export async function getDocCycleBuildingSetting(
+  farmId: number,
+  buildingWarehouseId: number,
+): Promise<DocCycleBuildingSetting> {
   const { data, error } = await db
     .from("doc_cycle_excluded_buildings")
-    .select("id")
+    .select("id, do_not_format_cycle_number")
     .eq("farm_id", farmId)
     .eq("building_whse_id", buildingWarehouseId)
     .maybeSingle();
   if (error) throwDbError(error, "Unable to check the building cycle setting");
-  return Boolean(data);
+  return {
+    excluded: Boolean(data),
+    doNotFormatCycleNumber: Boolean(data?.do_not_format_cycle_number),
+  };
+}
+
+export async function isDocCycleBuildingExcluded(farmId: number, buildingWarehouseId: number) {
+  return (await getDocCycleBuildingSetting(farmId, buildingWarehouseId)).excluded;
 }
 
 export async function getNextFlockCardCycleCount(payload: Pick<
@@ -607,8 +622,21 @@ export async function saveFlockCardPlacement(
       throw new Error("This existing flock card is missing its Cycle Master link. Repair its cycle ownership before editing.");
     }
   }
+  const buildingCycleSetting = !payload.id && payload.farmId && payload.buildingWarehouseId
+    ? await getDocCycleBuildingSetting(payload.farmId, payload.buildingWarehouseId)
+    : null;
+  if (!payload.id) {
+    const extra = { ...(payload.extra ?? {}) };
+    delete extra.cycleDisplaySource;
+    delete extra.doNotFormatCycleNumber;
+    if (buildingCycleSetting?.excluded) {
+      extra.cycleDisplaySource = "building";
+      extra.doNotFormatCycleNumber = buildingCycleSetting.doNotFormatCycleNumber;
+    }
+    payload = { ...payload, extra };
+  }
   if (!payload.id && !payload.farmCycleId && payload.farmId && payload.buildingWarehouseId) {
-    const excluded = await isDocCycleBuildingExcluded(payload.farmId, payload.buildingWarehouseId);
+    const excluded = buildingCycleSetting?.excluded === true;
     if (excluded) {
       const cycleNumber = String(payload.cycleNumber ?? "").trim();
       if (!cycleNumber) {

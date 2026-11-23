@@ -1,12 +1,13 @@
 'use client'
 
 import GoodsIssueForm from '@/app/inv/gi/new/Layout'
+import type { CombinedTransactionFormProps } from '@/lib/types/combinedTransaction'
 
-type LayoutProps = {
+type LayoutProps = CombinedTransactionFormProps & {
   mode?: 'draft' | 'post'
 }
 
-export default function Layout({ mode = 'draft' }: LayoutProps) {
+export default function Layout({ mode = 'draft', ...combinedProps }: LayoutProps) {
   return (
     <GoodsIssueForm
       mode={mode}
@@ -32,6 +33,7 @@ export default function Layout({ mode = 'draft' }: LayoutProps) {
       excelIssueLines
       showLineQuantityAllocationWarnings={false}
       showRemarksInActionRow
+      {...combinedProps}
     />
   )
 }

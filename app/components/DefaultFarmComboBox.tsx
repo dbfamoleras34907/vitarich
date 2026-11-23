@@ -40,10 +40,17 @@ export default function DefaultFarmComboBox({
     const [farmList, setFarmList] = useState<FarmOption[]>([])
 
     const getFarmId = useCallback((farm?: FarmOption) => farm?.id ?? farm?.farm_id, [])
-    const matchesFarmType = useCallback(
-        (farm: FarmOption) => !farmType || String(farm.farm_type ?? '').trim() === farmType,
-        [farmType],
-    )
+    const matchesFarmType = useCallback((farm: FarmOption) => {
+        if (!farmType || String(farm.farm_type ?? '').trim() === farmType) return true
+
+        const defaultReference = getValue('DefaultFarmId')
+            ?? getValue('UserInfoAuthSession')?.[0]?.default_farm
+        const normalizedDefault = String(defaultReference ?? '').trim()
+        return normalizedDefault !== '' && (
+            String(getFarmId(farm) ?? '') === normalizedDefault
+            || String(farm.code ?? farm.farm_code ?? '').trim() === normalizedDefault
+        )
+    }, [farmType, getFarmId, getValue])
 
     const normalizeFarm = useCallback((farm: FarmOption, masterList: FarmOption[] = []): FarmOption | null => {
         const code = farm.code ?? farm.farm_code ?? ''

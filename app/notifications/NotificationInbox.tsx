@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { BellRing, CheckCheck, RefreshCcw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -13,7 +13,6 @@ import {
   getNotificationInbox,
   markAllNotificationsReadRequest,
   markNotificationReadRequest,
-  processPendingNotificationsRequest,
 } from "@/lib/data/repositories/notificationApiClient"
 import type { NotificationInboxItem } from "@/lib/notifications/types"
 
@@ -23,22 +22,25 @@ export default function NotificationInbox() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [filter, setFilter] = useState<"all" | "unread">("all")
   const [loading, setLoading] = useState(true)
+  const refreshInFlight = useRef(false)
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
     setLoading(true)
     try {
-      await processPendingNotificationsRequest().catch(() => undefined)
       const result = await getNotificationInbox(100)
       setNotifications(result.notifications)
       setUnreadCount(result.unreadCount)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load notifications.")
     } finally {
+      refreshInFlight.current = false
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { void refresh() }, [])
+  useEffect(() => { void refresh() }, [refresh])
 
   const visibleNotifications = useMemo(
     () => filter === "unread" ? notifications.filter(item => !item.read_at) : notifications,
@@ -72,7 +74,7 @@ export default function NotificationInbox() {
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div><CardTitle className="flex items-center gap-2 text-xl"><BellRing className="size-5" />Notification Inbox</CardTitle><CardDescription className="mt-1">Review module events addressed to your account.</CardDescription></div>
-              <div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}><RefreshCcw className="size-4" />Refresh</Button><Button type="button" variant="outline" size="sm" disabled={unreadCount === 0} onClick={() => void markAllRead()}><CheckCheck className="size-4" />Mark all read</Button></div>
+              <div className="flex gap-2"><Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void refresh()}><RefreshCcw className={`size-4 ${loading ? "animate-spin" : ""}`} />{loading ? "Refreshing" : "Refresh"}</Button><Button type="button" variant="outline" size="sm" disabled={unreadCount === 0} onClick={() => void markAllRead()}><CheckCheck className="size-4" />Mark all read</Button></div>
             </div>
           </CardHeader>
           <CardContent>

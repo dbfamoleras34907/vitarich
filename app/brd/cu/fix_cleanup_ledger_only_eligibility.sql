@@ -1,4 +1,4 @@
--- Apply after deploy_harvest_emptied_cleanup.sql.
+-- Apply after app/sql/updated/deploy_harvest_emptied_cleanup.sql.
 -- Recognize consolidated DOC inventory even when flock_card_origin is empty.
 begin;
 

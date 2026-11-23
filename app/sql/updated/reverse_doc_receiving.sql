@@ -120,38 +120,59 @@ begin
     raise exception 'Only a Posted DOC Placement can be reversed.';
   end if;
 
-  -- Growing operates on the canonical consolidated DOC:F... batch. The
-  -- original receipt batch is only the source side of the consolidation and
-  -- must not be used as the Growing reversal blocker. Original Growing rows
-  -- remain in the ledger after reversal, so block only unmatched consumption.
+  -- Consolidated DOC:F... inventory is shared by placements for the same
+  -- farm/building/cycle. Historical Growing usage of that shared batch does
+  -- not prove that this receipt was consumed (a newly posted receipt can share
+  -- a batch with older placements). Reverse only when the exact ledger balance
+  -- can absorb this receipt's consolidated IN quantity without going negative.
   if exists (
-    with doc_batches as (
-      select distinct format('DOC:F%s:B%s:%s', v_receipt.farm_id, d.building_warehouse_id, btrim(fc.cycle_no)) as batch_number
-      from public.goods_receipt_doc d
-      join public.flock_card fc on fc.id = d.flock_card_id
-      where d.goods_reciept_id = p_receipt_id
-        and d.void = '1'
-        and d.building_warehouse_id is not null
-        and nullif(btrim(fc.cycle_no), '') is not null
+    with reversal_targets as (
+      select
+        posting.item_code,
+        posting.warehouse_code,
+        posting.batch_number,
+        sum(posting.qty)::numeric as reversal_qty
+      from public.inventory_postings posting
+      where posting.source_docentry = p_receipt_id
+        and posting.source_doc_type = 'DOC_RECEIVING_CONSOLIDATION'
+        and posting.transfer_type = 'IN'
+        and posting.batch_number like 'DOC:F%'
+      group by
+        posting.item_code,
+        posting.warehouse_code,
+        posting.batch_number
+    ), target_balances as (
+      select
+        target.item_code,
+        target.warehouse_code,
+        target.batch_number,
+        target.reversal_qty,
+        coalesce(sum(
+          case
+            when ledger.transfer_type = 'IN' then ledger.qty
+            when ledger.transfer_type = 'OUT' then -ledger.qty
+            else 0
+          end
+        ), 0)::numeric as on_hand_qty
+      from reversal_targets target
+      left join public.inventory_postings ledger
+        on ledger.item_code is not distinct from target.item_code
+       and ledger.warehouse_code is not distinct from target.warehouse_code
+       and coalesce(
+         nullif(btrim(ledger.batch_number), ''),
+         nullif(btrim(ledger.ref), '')
+       ) is not distinct from target.batch_number
+      group by
+        target.item_code,
+        target.warehouse_code,
+        target.batch_number,
+        target.reversal_qty
     )
     select 1
-    from public.inventory_postings ip
-    join doc_batches b on ip.batch_number = b.batch_number
-       or ip.ref = b.batch_number
-       or ip.ref2 = b.batch_number
-    where ip.source_doc_type in (
-        'BRD_FC_MORT_THIN_USAGE',
-        'BRD_FC_MORT_THIN_TRANSFER_OUT'
-      )
-      and ip.transfer_type = 'OUT'
-      and not exists (
-        select 1
-        from public.inventory_postings reversal
-        where reversal.source_doc_type = 'BRD_FC_MORT_THIN_REVERSAL'
-          and reversal.reverses_posting_id = ip.id
-      )
+    from target_balances balance
+    where balance.on_hand_qty < balance.reversal_qty
   ) then
-    raise exception 'DOC Placement cannot be reversed because its consolidated batch is already used in Growing inventory.';
+    raise exception 'DOC Placement cannot be reversed because its consolidated inventory is lower than this placement quantity.';
   end if;
 
   -- Reverse the consolidated DOC batch, plus the paired reject/disposal

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { FarmBuildingListRow } from '@/app/brd/fc/api'
 import { flockCardBreedComboOptions } from '@/app/brd/fc/[buildingId]/add-flock/api'
 import { Modal } from '@/lib/Moda'
-import { formatCycleMask } from '@/lib/broiler/cycleMask'
+import { resolveCycleDisplayNumber } from '@/lib/broiler/cycleMask'
 
 const expectedCycleEndDate = (startDate: string) => {
   const [year, month, day] = startDate.split('-').map(Number)
@@ -36,6 +36,7 @@ type CycleInformationModalProps = {
   age: number
   saving: boolean
   cycleNumberEditable: boolean
+  doNotFormatCycleNumber: boolean
   onOpenChange: (open: boolean) => void
   onFormChange: (changes: Partial<CycleInformationForm>) => void
   onCancel: () => void
@@ -49,17 +50,22 @@ export default function CycleInformationModal({
   age,
   saving,
   cycleNumberEditable,
+  doNotFormatCycleNumber,
   onOpenChange,
   onFormChange,
   onCancel,
   onCreate,
 }: CycleInformationModalProps) {
-  const cycleNumber = formatCycleMask(
-    form.cycleNumber,
-    form.farmCycleStartDate && form.farmCycleStartDate < form.startDate
+  const cycleFormatDate = cycleNumberEditable
+    ? form.startDate
+    : form.farmCycleStartDate && form.farmCycleStartDate < form.startDate
       ? form.farmCycleStartDate
-      : form.startDate,
-  ) || form.cycleNumber.trim()
+      : form.startDate
+  const cycleNumber = resolveCycleDisplayNumber(
+    form.cycleNumber,
+    cycleFormatDate,
+    doNotFormatCycleNumber,
+  )
 
   return (
     <Modal
@@ -111,6 +117,7 @@ export default function CycleInformationModal({
                   readOnly
                   className="bg-stone-50"
                 />
+                {cycleNumberEditable && !doNotFormatCycleNumber ? <p className="text-xs text-muted-foreground">Formatted using the selected Cycle Start date.</p> : null}
                 {!cycleNumber && <p role="alert" className="text-xs text-destructive">Cycle # is required.</p>}
               </div>
               <div className="space-y-2">

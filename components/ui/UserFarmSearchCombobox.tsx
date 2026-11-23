@@ -71,10 +71,32 @@ const FARM_TYPE_QUERY_VALUES = {
   HA: ["HA", "Hatchery"],
 } as const;
 
-function matchesFarmType(farm: UserFarm, farmType?: keyof typeof FARM_TYPE_LABELS) {
+function matchesFarmType(
+  farm: UserFarm,
+  farmType?: keyof typeof FARM_TYPE_LABELS,
+) {
   if (!farmType) return true;
-  const value = String(farm.farm_type ?? "").trim().toUpperCase();
+  const value = String(farm.farm_type ?? "")
+    .trim()
+    .toUpperCase();
   return value === farmType || value === FARM_TYPE_LABELS[farmType];
+}
+
+export function getFarmsForSelector(
+  farms: UserFarm[],
+  farmType: keyof typeof FARM_TYPE_LABELS | undefined,
+  defaultFarmReference: unknown,
+) {
+  if (!farmType) return farms;
+
+  const preferred = String(defaultFarmReference ?? "").trim();
+  return farms.filter(
+    (farm) =>
+      matchesFarmType(farm, farmType) ||
+      (preferred !== "" &&
+        (String(farm.id) === preferred ||
+          String(farm.code).trim() === preferred)),
+  );
 }
 
 export default function UserFarmSearchCombobox({
@@ -90,10 +112,14 @@ export default function UserFarmSearchCombobox({
   const { getValue } = useGlobalContext();
   const selectDefaultFarm = useDefaultFarmSelection();
   const session = getValue("UserInfoAuthSession");
+  const sessionUserId = session?.[0]?.id;
   const rawFarmDB = getValue("getFarmDB");
   const rawUserFarms = session?.[0]?.users_farms;
   const [typedFarms, setTypedFarms] = useState<UserFarm[] | null>(null);
   const [buttonSearch, setButtonSearch] = useState("");
+  const defaultFarmReference =
+    getValue("DefaultFarmId") ??
+    getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
     if (!farmType) {
@@ -108,7 +134,10 @@ export default function UserFarmSearchCombobox({
         }
       })
       .catch((error) => {
-        console.error(`Unable to load ${FARM_TYPE_LABELS[farmType]} farms:`, error);
+        console.error(
+          `Unable to load ${FARM_TYPE_LABELS[farmType]} farms:`,
+          error,
+        );
         if (!cancelled) setTypedFarms([]);
       });
 
@@ -118,18 +147,19 @@ export default function UserFarmSearchCombobox({
   }, [farmType]);
 
   const allowedFarms = useMemo(
-    () => farmType && typedFarms !== null
-      ? typedFarms
-      : getAllowedUserFarms(
-          (rawFarmDB || []) as UserFarm[],
-          (rawUserFarms || []) as unknown[]
-        ),
-    [farmType, rawFarmDB, rawUserFarms, typedFarms]
+    () =>
+      farmType && typedFarms !== null
+        ? typedFarms
+        : getAllowedUserFarms(
+            (rawFarmDB || []) as UserFarm[],
+            (rawUserFarms || []) as unknown[],
+          ),
+    [farmType, rawFarmDB, rawUserFarms, typedFarms],
   );
 
   const filteredFarms = useMemo(
-    () => uniqueUserFarms(allowedFarms.filter((farm) => matchesFarmType(farm, farmType))),
-    [allowedFarms, farmType]
+    () => getFarmsForSelector(allowedFarms, farmType, defaultFarmReference),
+    [allowedFarms, defaultFarmReference, farmType],
   );
 
   const items = useMemo(
@@ -138,16 +168,15 @@ export default function UserFarmSearchCombobox({
         code: String(farm.id),
         name: farm.code ? `${farm.code} - ${farm.name}` : farm.name,
       })),
-    [filteredFarms]
+    [filteredFarms],
   );
 
   // Persisted account defaults use farm codes; interactive selections use numeric IDs.
   const reference = value == null ? "" : String(value);
-  const selectedFarm = filteredFarms.find(farm => farm.code === reference)
-    ?? filteredFarms.find(farm => String(farm.id) === reference);
+  const selectedFarm =
+    filteredFarms.find((farm) => farm.code === reference) ??
+    filteredFarms.find((farm) => String(farm.id) === reference);
   const selectedValue = selectedFarm ? String(selectedFarm.id) : reference;
-  const defaultFarmReference = getValue("DefaultFarmId")
-    ?? getValue("UserInfoAuthSession")?.[0]?.default_farm;
 
   useEffect(() => {
     if (selectedFarm) onFarmResolved?.(selectedFarm);
@@ -159,19 +188,26 @@ export default function UserFarmSearchCombobox({
       return;
     }
     if (reference || defaultFarmReference == null) return;
-    const defaultFarm = filteredFarms.find((farm) =>
-      String(farm.id) === String(defaultFarmReference)
-      || farm.code === String(defaultFarmReference),
+    const defaultFarm = filteredFarms.find(
+      (farm) =>
+        String(farm.id) === String(defaultFarmReference) ||
+        farm.code === String(defaultFarmReference),
     );
     if (defaultFarm) onValueChange?.(String(defaultFarm.id), defaultFarm);
-  }, [defaultFarmReference, filteredFarms, onValueChange, reference, selectedFarm]);
+  }, [
+    defaultFarmReference,
+    filteredFarms,
+    onValueChange,
+    reference,
+    selectedFarm,
+  ]);
 
   const visibleButtonFarms = useMemo(() => {
     const query = buttonSearch.trim().toLocaleLowerCase();
     if (!query) return filteredFarms;
 
     return filteredFarms.filter((farm) =>
-      `${farm.code} ${farm.name}`.toLocaleLowerCase().includes(query)
+      `${farm.code} ${farm.name}`.toLocaleLowerCase().includes(query),
     );
   }, [buttonSearch, filteredFarms]);
 
@@ -179,7 +215,6 @@ export default function UserFarmSearchCombobox({
     return (
       <div className={className}>
         <div className="relative mb-2">
-          
           <Input
             type="search"
             value={buttonSearch}
@@ -189,7 +224,11 @@ export default function UserFarmSearchCombobox({
             className="h-9 pl-9"
           />
         </div>
-        <div className="flex w-full flex-wrap gap-2" role="group" aria-label={label}>
+        <div
+          className="flex w-full flex-wrap gap-2"
+          role="group"
+          aria-label={label}
+        >
           {visibleButtonFarms.map((farm) => {
             const isSelected = String(farm.id) === selectedValue;
 
@@ -206,7 +245,9 @@ export default function UserFarmSearchCombobox({
                 className="h-auto min-h-14 min-w-0 max-w-full flex-[1_1_10rem] justify-start whitespace-normal px-3 py-2 text-left"
               >
                 <span className="min-w-0 flex-1 break-words">
-                  <span className="block text-xs font-normal opacity-75">{farm.code}</span>
+                  <span className="block text-xs font-normal opacity-75">
+                    {farm.code}
+                  </span>
                   <span className="block">{farm.name}</span>
                 </span>
                 {isSelected && <Check className="size-4" aria-hidden="true" />}
@@ -216,7 +257,9 @@ export default function UserFarmSearchCombobox({
         </div>
         {!visibleButtonFarms.length && (
           <p className="text-sm text-muted-foreground">
-            {filteredFarms.length ? "No farms match your search" : "No farms available"}
+            {filteredFarms.length
+              ? "No farms match your search"
+              : "No farms available"}
           </p>
         )}
       </div>

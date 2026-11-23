@@ -3,6 +3,7 @@ export const runtime = "nodejs"
 import { NextResponse } from "next/server"
 import { admin_db } from "@/lib/Supabase/supabaseAdmin"
 import { USER_TYPE, adminAccessError, requireAdminActor } from "@/lib/auth/adminAccess"
+import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess"
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
     let query = admin_db.from("users").select("*").order("id", { ascending: false })
 
     if (actor.user_type === USER_TYPE.ADMIN) {
-      query = query.eq("user_type", USER_TYPE.USER).eq("fms_type", actor.fms_type)
+      query = query.eq("user_type", USER_TYPE.USER).containedBy("fms_types", normalizeUserFmsTypes(actor.fms_types, actor.fms_type))
     }
 
     const { data, error } = await query

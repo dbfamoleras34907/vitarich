@@ -2,9 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { admin_db } from "@/lib/Supabase/supabaseAdmin";
-import { farmFmsType, listApprovedFarmAccessOptions } from "@/lib/data/repositories/farms";
+import { listApprovedFarmAccessOptions } from "@/lib/data/repositories/farms";
 import { NavFolders } from "@/lib/Defaults/DefaultValues";
 import { USER_TYPE, adminAccessError, canManageUser, requireAdminActor } from "@/lib/auth/adminAccess";
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess";
 
 type UserProfilePayload = {
   auth_id?: string;
@@ -24,6 +25,7 @@ type UserProfilePayload = {
   archipelago?: string | null;
   region?: string | null;
   fms_type?: string | null;
+  fms_types?: unknown[] | null;
   users_group_id?: string | number | null;
   user_type?: number | null;
 };
@@ -54,8 +56,6 @@ const uniqueFarmCodes = (values: unknown[]) => Array.from(
   )
 );
 
-const FMS_TYPES = new Set(["Broiler", "Breeder", "Hatchery"]);
-
 export async function POST(req: Request) {
   try {
     const actor = await requireAdminActor(req);
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     const assignedFarmCodes = uniqueFarmCodes(body.defaultFarms ?? []);
     const { data: current, error: currentError } = await admin_db
       .from("users")
-      .select("id, auth_id, email, firstname, lastname, fms_type, user_type, issuper")
+      .select("id, auth_id, email, firstname, lastname, fms_type, fms_types, user_type, issuper")
       .eq("auth_id", userProfileData.auth_id)
       .single();
     if (currentError || !current) {
@@ -92,23 +92,17 @@ export async function POST(req: Request) {
     if (!defaultFarm) {
       return NextResponse.json({ error: "Select a default farm from Assigned Farms." }, { status: 400 });
     }
-    const fmsType = farmFmsType(defaultFarm.farm_type);
-    if (!fmsType) {
-      return NextResponse.json({ error: "The selected default farm has no supported FMS Type." }, { status: 400 });
-    }
-    if (!isSuperAdmin && fmsType !== actor.fms_type) {
-      return NextResponse.json({ error: "Select a default farm within your FMS Type." }, { status: 403 });
-    }
+    const requestedFmsTypes = normalizeUserFmsTypes(userProfileData.fms_types, userProfileData.fms_type);
+    const fmsTypes = isSuperAdmin
+      ? requestedFmsTypes
+      : normalizeUserFmsTypes(target.fms_types, target.fms_type);
 
     if (![1, 2, 3].includes(userType)) {
       return NextResponse.json({ error: "Invalid user type." }, { status: 400 });
     }
 
-    if (fmsType && !FMS_TYPES.has(fmsType)) {
-      return NextResponse.json({ error: "Invalid FMS type." }, { status: 400 });
-    }
-    if (userType !== USER_TYPE.SUPER_ADMIN && !fmsType) {
-      return NextResponse.json({ error: "FMS type is required for Admin and User accounts." }, { status: 400 });
+    if (userType !== USER_TYPE.SUPER_ADMIN && fmsTypes.length === 0) {
+      return NextResponse.json({ error: "Select at least one FMS Type for Admin and User accounts." }, { status: 400 });
     }
 
     const userPayload = {
@@ -126,7 +120,8 @@ export async function POST(req: Request) {
       issuper: userType === USER_TYPE.USER ? "0" : "1",
       archipelago: normalizeText(userProfileData.archipelago),
       region: normalizeText(userProfileData.region),
-      fms_type: fmsType,
+      fms_types: fmsTypes,
+      fms_type: fmsTypes[0] ?? null,
       users_group_id: normalizeNumber(userProfileData.users_group_id),
       user_type: userType,
       updated_at: new Date().toISOString(),
@@ -148,10 +143,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
     }
 
-    if (isSuperAdmin && target.fms_type !== fmsType && fmsType) {
+    const previousFmsTypes = normalizeUserFmsTypes(target.fms_types, target.fms_type);
+    const fmsTypesChanged = previousFmsTypes.length !== fmsTypes.length
+      || previousFmsTypes.some(type => !fmsTypes.includes(type));
+    if (isSuperAdmin && fmsTypesChanged) {
       const allowed = new Set<string>();
       NavFolders
-        .filter(folder => !folder.fmsTypes?.length || folder.fmsTypes.includes(fmsType as "Broiler" | "Breeder" | "Hatchery"))
+        .filter(folder => !folder.fmsTypes?.length || userFmsTypesOverlap(fmsTypes, folder.fmsTypes))
         .forEach(folder => folder.items?.forEach(group => group.children.forEach(child => {
           allowed.add(`${group.group}|${child.title}`);
           (["view", "insert", "edit", "void", "approval"] as const).forEach(action => {

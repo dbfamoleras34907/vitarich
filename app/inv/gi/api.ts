@@ -2,10 +2,26 @@
 
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
 import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
+import { getBroilerCycleReferenceIds } from '@/lib/data/repositories/broilerCycleReferences'
+import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
+import { quantityExceeds } from '@/lib/utils/quantityComparison'
 
 import { db } from '@/lib/Supabase/supabaseClient'
 
 export type GoodsIssueStatus = 'Draft' | 'Posted' | 'Cancelled'
+
+export type CleanupTypeAllocation = {
+  id: number | string
+  cleanupTypeId: number
+  cleanupTypeCode: string
+  cleanupTypeName: string
+  quantity: number
+  remarks: string
+  fromWarehouseId: number | null
+  fromWarehouseCode: string
+  itemId: number | null
+  itemCode: string
+}
 
 export type GoodsIssueLine = {
   flockCardId?: number | null
@@ -66,6 +82,7 @@ export type GoodsIssue = {
   liveSalesCustomerName: string
   status: GoodsIssueStatus
   lines: GoodsIssueLine[]
+  cleanupTypeAllocations?: CleanupTypeAllocation[]
   createdAt: string
   createdBy: string | null
 }
@@ -127,6 +144,20 @@ type GoodsIssueItemRow = {
   destination?: string | null
   live_sales_customer_name?: string | null
   truck_seal?: number | null
+}
+
+type CleanupTypeAllocationRow = {
+  id: number
+  br_cleanup_id: number
+  cleanup_type_id: number
+  cleanup_type_code: string
+  cleanup_type_name: string
+  quantity: number
+  remarks: string
+  from_warehouse_id: number | null
+  from_warehouse_code: string | null
+  item_id: number | null
+  item_code: string
 }
 
 type GoodsIssueListItemRow = {
@@ -239,7 +270,24 @@ const toIssueLine = (row: GoodsIssueItemRow, legacyHeader?: GoodsIssueRow): Good
   varianceQty: Number(row.variance_qty ?? 0),
 })
 
-const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => ({
+const toCleanupTypeAllocation = (row: CleanupTypeAllocationRow): CleanupTypeAllocation => ({
+  id: row.id,
+  cleanupTypeId: Number(row.cleanup_type_id),
+  cleanupTypeCode: row.cleanup_type_code,
+  cleanupTypeName: row.cleanup_type_name,
+  quantity: Number(row.quantity),
+  remarks: row.remarks,
+  fromWarehouseId: row.from_warehouse_id,
+  fromWarehouseCode: row.from_warehouse_code ?? '',
+  itemId: row.item_id,
+  itemCode: row.item_code,
+})
+
+const toIssue = (
+  row: GoodsIssueRow,
+  lines: GoodsIssueItemRow[],
+  cleanupTypeAllocations: CleanupTypeAllocationRow[] = [],
+): GoodsIssue => ({
   id: row.id,
   giNo: row.gi_no,
   triggeredBy: row.triggered_by ?? 'GI',
@@ -260,6 +308,7 @@ const toIssue = (row: GoodsIssueRow, lines: GoodsIssueItemRow[]): GoodsIssue => 
   liveSalesCustomerName: row.live_sales_customer_name ?? '',
   status: row.status,
   lines: lines.map(line => toIssueLine(line, row)),
+  cleanupTypeAllocations: cleanupTypeAllocations.map(toCleanupTypeAllocation),
   createdAt: row.created_at,
   createdBy: row.created_by,
 })
@@ -455,7 +504,7 @@ export async function getGoodsIssueOnHandShortages(
   )
 
   return checkedRequirements.filter(
-    requirement => requirement.requiredQty > requirement.onHandQty,
+    requirement => quantityExceeds(requirement.requiredQty, requirement.onHandQty),
   )
 }
 
@@ -465,6 +514,7 @@ type GetGoodsIssuesOptions = {
   farmIdentifier?: number | string | null
   dateFrom?: string
   dateTo?: string
+  cycleNumber?: string
 }
 
 export async function getGoodsIssues({
@@ -473,8 +523,15 @@ export async function getGoodsIssues({
   farmIdentifier,
   dateFrom,
   dateTo,
+  cycleNumber,
 }: GetGoodsIssuesOptions = {}): Promise<GoodsIssue[]> {
   const tables = getIssueTables(triggeredBy)
+  const cycleReferenceIds = usesDedicatedIssueTables(triggeredBy) && cycleNumber?.trim()
+    ? await getBroilerCycleReferenceIds(cycleNumber, { farmIdentifier })
+    : null
+
+  if (cycleReferenceIds && cycleReferenceIds.farmCycleIds.length === 0) return []
+
   let query = db
     .from(tables.header)
     .select('*')
@@ -496,6 +553,7 @@ export async function getGoodsIssues({
 
   if (dateFrom) query = query.gte('issue_date', dateFrom)
   if (dateTo) query = query.lte('issue_date', dateTo)
+  if (cycleReferenceIds) query = query.in('farm_cycle_id', cycleReferenceIds.farmCycleIds)
 
   const { data: issueRows, error: issueError } = await query
 
@@ -546,7 +604,22 @@ export async function getGoodsIssueById(id: number, triggeredBy = 'GI'): Promise
 
   if (itemError) throw itemError
 
-  const issue = toIssue(issueRow as GoodsIssueRow, (itemRows ?? []) as GoodsIssueItemRow[])
+  const allocationResult = triggeredBy.trim().toUpperCase() === 'BR-CU'
+    ? await db
+      .from('br_cleanup_type_allocations')
+      .select('id, br_cleanup_id, cleanup_type_id, cleanup_type_code, cleanup_type_name, quantity, remarks, from_warehouse_id, from_warehouse_code, item_id, item_code')
+      .eq('br_cleanup_id', id)
+      .eq('void', '1')
+      .order('allocation_no', { ascending: true })
+    : { data: [], error: null }
+
+  if (allocationResult.error) throw allocationResult.error
+
+  const issue = toIssue(
+    issueRow as GoodsIssueRow,
+    (itemRows ?? []) as GoodsIssueItemRow[],
+    (allocationResult.data ?? []) as CleanupTypeAllocationRow[],
+  )
   return usesDedicatedIssueTables(triggeredBy) ? (await loadBroilerIssueCycles([issue]))[0] : issue
 }
 
@@ -563,6 +636,7 @@ async function validateOnHand(lines: GoodsIssueLine[]) {
 type GoodsIssueTransactionResult = {
   header: GoodsIssueRow
   lines: GoodsIssueItemRow[]
+  allocations?: CleanupTypeAllocationRow[]
 }
 
 async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue> {
@@ -574,7 +648,6 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
   const { data, error } = await db.rpc('save_br_delivery_transaction', {
     p_document: {
       id: issue.id,
-      giNo: issue.giNo,
       issueDate: issue.issueDate,
       farmId: issue.farmId,
       farmCycleId: issue.farmCycleId,
@@ -588,12 +661,17 @@ async function saveBrDeliveryTransaction(issue: GoodsIssue): Promise<GoodsIssue>
   })
 
   if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error(
+        'Harvest & Delivery database save is not deployed. Apply app/sql/updated/save_br_delivery_transaction.sql to the same Supabase project used by this app, then retry.',
+      )
+    }
     if (error.code === '42501' && error.message.includes('save_br_delivery_transaction')) {
       throw new Error(
         'Harvest & Delivery database access is not enabled for authenticated users. Apply the RPC execute grant to the same Supabase project used by this app.',
       )
     }
-    throw error
+    throw new Error(getPostgresErrorMessage(error, 'Unable to save Harvest & Delivery.'))
   }
   const result = data as GoodsIssueTransactionResult | null
   if (!result?.header || !Array.isArray(result.lines)) {
@@ -607,7 +685,11 @@ export async function saveGoodsIssue(issue: GoodsIssue) {
   if (issue.triggeredBy.trim().toUpperCase() === 'BR-CU') {
     const result = await saveBroilerCleanup(issue)
     if (!result?.header || !Array.isArray(result.lines)) throw new Error('Clean Up transaction did not return the saved document.')
-    return toIssue(result.header as GoodsIssueRow, result.lines as GoodsIssueItemRow[])
+    return toIssue(
+      result.header as GoodsIssueRow,
+      result.lines as GoodsIssueItemRow[],
+      (result.allocations ?? []) as CleanupTypeAllocationRow[],
+    )
   }
   if (issue.triggeredBy.trim().toUpperCase() === 'BR-DR') {
     return saveBrDeliveryTransaction(issue)

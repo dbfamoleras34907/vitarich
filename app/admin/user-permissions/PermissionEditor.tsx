@@ -1,6 +1,6 @@
 "use client"
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import {
   type PermissionRow,
   type PermissionUser,
 } from "./api"
+import { normalizeUserFmsTypes, userFmsTypesOverlap } from "@/lib/auth/fmsAccess"
 
 function permissionKey(row: PermissionRow, action: PermissionAction) {
   return `${row.group}|${action === "list" ? row.title : `${row.title}/${action}`}`
@@ -61,24 +62,30 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
   const [permissions, setPermissions] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set())
+  const permissionsRef = useRef<Record<string, boolean>>({})
+  const changeVersionsRef = useRef(new Map<string, number>())
+  const queuedBulkActionRef = useRef<boolean | null>(null)
+  const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   const folders = useMemo(() => permissionFolders
-    .filter(folder => !user.fms_type || !folder.fmsTypes?.length || folder.fmsTypes.includes(user.fms_type as "Broiler" | "Breeder" | "Hatchery"))
-    .filter(folder => folder.rows.length), [permissionFolders, user.fms_type])
+    .filter(folder => {
+      const types = normalizeUserFmsTypes(user.fms_types, user.fms_type)
+      return types.length === 0 || !folder.fmsTypes?.length || userFmsTypesOverlap(types, folder.fmsTypes)
+    })
+    .filter(folder => folder.rows.length), [permissionFolders, user.fms_type, user.fms_types])
   const rows = useMemo<PermissionRow[]>(() => folders.flatMap(folder => folder.rows), [folders])
 
   useEffect(() => {
     let active = true
-    setLoading(true)
-    setLoadError(false)
     getManagedUserPermissions(user.auth_id)
       .then(result => {
         if (!active) return
-        setPermissions(Object.fromEntries(result.permissions.map(item => [
+        const loadedPermissions = Object.fromEntries(result.permissions.map(item => [
           `${item.group_name}|${item.title}`,
           item.is_visible,
-        ])))
+        ]))
+        permissionsRef.current = loadedPermissions
+        setPermissions(loadedPermissions)
       })
       .catch(error => {
         if (!active) return
@@ -97,34 +104,40 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
     const uniqueChanges = Array.from(new Map(changes.map(change => [change.key, change])).values())
     if (!uniqueChanges.length) return true
 
-    const previous = Object.fromEntries(uniqueChanges.map(change => [change.key, Boolean(permissions[change.key])]))
-    setPermissions(current => ({
-      ...current,
-      ...Object.fromEntries(uniqueChanges.map(change => [change.key, change.checked])),
+    const previous = Object.fromEntries(uniqueChanges.map(change => [change.key, Boolean(permissionsRef.current[change.key])]))
+    const versions = Object.fromEntries(uniqueChanges.map(change => {
+      const version = (changeVersionsRef.current.get(change.key) ?? 0) + 1
+      changeVersionsRef.current.set(change.key, version)
+      return [change.key, version]
     }))
-    setSavingKeys(current => {
-      const next = new Set(current)
-      uniqueChanges.forEach(change => next.add(change.key))
-      return next
-    })
+    const optimistic = {
+      ...permissionsRef.current,
+      ...Object.fromEntries(uniqueChanges.map(change => [change.key, change.checked])),
+    }
+    permissionsRef.current = optimistic
+    setPermissions(optimistic)
     try {
-      await setManagedUserPermissions({
-        userId: user.auth_id,
-        changes: uniqueChanges.map(change => change.payload),
-      })
+      const request = mutationQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          await setManagedUserPermissions({
+            userId: user.auth_id,
+            changes: uniqueChanges.map(change => change.payload),
+          })
+        })
+      mutationQueueRef.current = request
+      await request
       return true
     } catch (error) {
-      setPermissions(current => ({ ...current, ...previous }))
+      const rollback = Object.fromEntries(uniqueChanges
+        .filter(change => changeVersionsRef.current.get(change.key) === versions[change.key])
+        .map(change => [change.key, previous[change.key]]))
+      permissionsRef.current = { ...permissionsRef.current, ...rollback }
+      setPermissions(permissionsRef.current)
       toast.error(error instanceof Error ? error.message : "Unable to update permissions.")
       return false
-    } finally {
-      setSavingKeys(current => {
-        const next = new Set(current)
-        uniqueChanges.forEach(change => next.delete(change.key))
-        return next
-      })
     }
-  }, [permissions, user.auth_id])
+  }, [user.auth_id])
 
   const toggle = useCallback((row: PermissionRow, action: PermissionAction, checked: boolean) => {
     const key = permissionKey(row, action)
@@ -141,7 +154,7 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
 
   async function toggleColumn(folderRows: PermissionRow[], action: PermissionAction) {
     const eligible = folderRows.filter(row => row.actions.includes(action))
-    const checked = !eligible.every(row => permissions[permissionKey(row, action)])
+    const checked = !eligible.every(row => permissionsRef.current[permissionKey(row, action)])
     const changes = eligible.map(row => ({
       key: permissionKey(row, action),
       checked,
@@ -156,16 +169,17 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
 
   useImperativeHandle(ref, () => ({
     async setAll(checked: boolean) {
-      if (loading || loadError) {
-        toast.info("Wait for the selected user's permissions to finish loading.")
+      if (loading) {
+        queuedBulkActionRef.current = checked
+        toast.info(`${checked ? "Allow all" : "Remove all"} will run when permissions finish loading.`)
         return
       }
-      if (savingKeys.size) {
-        toast.info("Wait for the current permission updates to finish before using a bulk action.")
+      if (loadError) {
+        toast.error("Unable to update permissions until they can be loaded.")
         return
       }
       const changes = rows.flatMap(row => row.actions.map(action => ({ row, action })))
-        .filter(({ row, action }) => Boolean(permissions[permissionKey(row, action)]) !== checked)
+        .filter(({ row, action }) => Boolean(permissionsRef.current[permissionKey(row, action)]) !== checked)
       const changeCount = new Set(changes.map(({ row, action }) => permissionKey(row, action))).size
 
       if (!changes.length) {
@@ -184,7 +198,29 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
       })))
       if (saved) toast.success(`${checked ? "Allowed" : "Removed"} ${changeCount} permissions.`)
     },
-  }), [loading, loadError, permissions, rows, saveChanges, savingKeys.size])
+  }), [loading, loadError, rows, saveChanges])
+
+  useEffect(() => {
+    if (loading || loadError || queuedBulkActionRef.current === null) return
+    const checked = queuedBulkActionRef.current
+    queuedBulkActionRef.current = null
+    void Promise.resolve().then(() => {
+      const changes = rows.flatMap(row => row.actions.map(action => ({ row, action })))
+        .filter(({ row, action }) => Boolean(permissionsRef.current[permissionKey(row, action)]) !== checked)
+      if (!changes.length) return
+      void saveChanges(changes.map(({ row, action }) => ({
+        key: permissionKey(row, action),
+        checked,
+        payload: {
+          groupName: row.group,
+          title: action === "list" ? row.title : `${row.title}/${action}`,
+          checked,
+        },
+      }))).then(saved => {
+        if (saved) toast.success(`${checked ? "Allowed" : "Removed"} ${changes.length} permissions.`)
+      })
+    })
+  }, [loadError, loading, rows, saveChanges])
 
   if (loading) return <PermissionEditorSkeleton />
   if (loadError) return <p role="alert">Unable to load permissions. Reopen this tab to retry.</p>
@@ -210,7 +246,6 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
                     <Button
                       size="xs"
                       variant="outline"
-                      disabled={folderRows.some(row => row.actions.includes(action) && savingKeys.has(permissionKey(row, action)))}
                       onClick={() => toggleColumn(folderRows, action)}
                     >
                       {action === "list" ? "List" : action[0].toUpperCase() + action.slice(1)}
@@ -228,7 +263,6 @@ const PermissionEditor = forwardRef<PermissionEditorHandle, { user: PermissionUs
                     {eligible ? <Checkbox
                       className="border-2 border-black/40"
                       checked={permissions[key] ?? false}
-                      disabled={savingKeys.has(key)}
                       onCheckedChange={value => toggle(row, action, value === true)}
                     /> : <span className="text-muted-foreground">—</span>}
                   </td>

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Building2, Check, ShieldCheck, UserRound } from 'lucide-react'
 
 import { useGlobalContext } from '@/lib/context/GlobalContext'
@@ -37,7 +38,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PermissionEditor from '../../user-permissions/PermissionEditor'
 import { permissionFolders } from '../../user-permissions/permissionFolders'
 import type { PermissionUser } from '../../user-permissions/api'
-import { farmFmsType, listApprovedFarmAccessOptions } from '@/lib/data/repositories/farms'
+import { listApprovedFarmAccessOptions } from '@/lib/data/repositories/farms'
+import { normalizeUserFmsTypes, USER_FMS_TYPES } from '@/lib/auth/fmsAccess'
 
 type FarmOption = {
   code: string
@@ -51,13 +53,6 @@ type UserGroupOption = {
 }
 
 const normalizeFarmCode = (value: unknown) => String(value ?? '').trim()
-
-const FMS_TYPES = [
-  { code: '', name: 'None (All FMS)' },
-  { code: 'Broiler', name: 'Broiler' },
-  { code: 'Breeder', name: 'Breeder' },
-  { code: 'Hatchery', name: 'Hatchery' },
-]
 
 const USER_TYPES = [
   { code: '1', name: 'Super Admin' },
@@ -160,12 +155,8 @@ export default function Layout() {
     {
       required: Number(form.user_type ?? 3) !== 1,
       key: 'fms_type',
-      label: 'FMS Type',
-      type: 'list',
-      list: FMS_TYPES,
-      code: 'code',
-      name: 'name',
-      showNameOnly: true,
+      label: 'FMS Types',
+      type: 'fms-checkboxes',
     },
     {
       required: true,
@@ -251,11 +242,10 @@ export default function Layout() {
       setForm((prev) => ({
         ...prev,
         [key]: value,
-        ...(key === 'default_farm' ? { fms_type: farmFmsType(farmList.find(farm => farm.code === value)?.farm_type) } : {}),
         ...(key === 'user_type' ? { issuper: Number(value) === 3 ? '0' : '1' } : {}),
       }))
     },
-    [farmList]
+    []
   )
 
   const handleSubmit = async () => {
@@ -271,7 +261,10 @@ export default function Layout() {
     try {
       setLoading(true)
       if (!defaultFarms.includes(String(form.default_farm ?? ''))) throw new Error('Select a default farm from Assigned Farms.')
-      if (!farmFmsType(farmList.find(farm => farm.code === form.default_farm)?.farm_type)) throw new Error('The selected default farm has no supported FMS Type.')
+      const selectedFmsTypes = normalizeUserFmsTypes(form.fms_types, form.fms_type)
+      if (Number(form.user_type ?? 3) !== 1 && selectedFmsTypes.length === 0) {
+        throw new Error('Select at least one FMS Type.')
+      }
       const selectedFarmCodes = uniqueFarmCodes(defaultFarms)
 
       const result = await updateUserProfile(
@@ -280,6 +273,8 @@ export default function Layout() {
           auth_id: authSelected.auth_id,
           created_by: loggedInUser.id,
           issuper: form.issuper === '1' ? '1' : '0',
+          fms_types: selectedFmsTypes,
+          fms_type: selectedFmsTypes[0] ?? null,
         } as UserInsert,
         selectedFarmCodes
       )
@@ -330,6 +325,7 @@ export default function Layout() {
           ? String(profile.users_group_id)
           : '',
         user_type: String(profile?.user_type ?? 3) as unknown as number,
+        fms_types: normalizeUserFmsTypes(profile?.fms_types, profile?.fms_type),
       })
     } catch (error) {
       setSavedUser(null)
@@ -404,14 +400,34 @@ export default function Layout() {
     loading || initialLoading || tab !== 'account' || !authSelected?.id
 
   const renderField = (field: typeof fields[number]) => {
-    const value = field.key === 'fms_type'
-      ? farmFmsType(farmList.find(farm => farm.code === form.default_farm)?.farm_type) ?? ''
-      : (form as any)[field.key] || ''
+    const value = (form as any)[field.key] || ''
     const superAdminOnly = field.key === 'user_type' || field.key === 'fms_type'
-    const fieldDisabled = loading || initialLoading || field.key === 'fms_type' || (superAdminOnly && Number(loggedInProfile?.user_type ?? 3) !== 1)
+    const fieldDisabled = loading || initialLoading || (superAdminOnly && Number(loggedInProfile?.user_type ?? 3) !== 1)
     let control: ReactNode
 
-    if (field.component === 'textarea') {
+    if (field.type === 'fms-checkboxes') {
+      const selected = normalizeUserFmsTypes(form.fms_types, form.fms_type)
+      control = (
+        <div className="grid gap-2 rounded-md border border-stone-300 bg-[#fffdfb] p-2 sm:grid-cols-3">
+          {USER_FMS_TYPES.map(type => (
+            <label key={type} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm hover:bg-stone-100">
+              <Checkbox
+                checked={selected.includes(type)}
+                disabled={fieldDisabled}
+                onCheckedChange={(checked) => {
+                  const next = checked === true
+                    ? normalizeUserFmsTypes([...selected, type])
+                    : selected.filter(item => item !== type)
+                  setAccountDirty(true)
+                  setForm(prev => ({ ...prev, fms_types: next, fms_type: next[0] ?? null }))
+                }}
+              />
+              <span>{type}</span>
+            </label>
+          ))}
+        </div>
+      )
+    } else if (field.component === 'textarea') {
       control = (
         <Textarea
           className="min-h-24 border border-stone-300 bg-[#fffdfb] text-sm shadow-none focus-visible:ring-2 focus-visible:ring-stone-200"
@@ -461,7 +477,7 @@ export default function Layout() {
             setDefaultFarms(codes)
             setAccountDirty(true)
             if (!codes.includes(String(form.default_farm ?? ''))) {
-              setForm(prev => ({ ...prev, default_farm: '', fms_type: null }))
+              setForm(prev => ({ ...prev, default_farm: '' }))
             }
           }}
           className="w-full"
@@ -563,7 +579,7 @@ export default function Layout() {
 
           <TabsContent value="Permissions" className="m-0 p-4">
             <p className="mb-3 text-xs text-muted-foreground">Permissions save automatically. Save account changes before editing permissions.</p>
-            {savedUser && <PermissionEditor key={`${savedUser.auth_id}:${savedUser.fms_type}`} user={savedUser} permissionFolders={permissionFolders} />}
+            {savedUser && <PermissionEditor key={`${savedUser.auth_id}:${normalizeUserFmsTypes(savedUser.fms_types, savedUser.fms_type).join(',')}`} user={savedUser} permissionFolders={permissionFolders} />}
           </TabsContent>
         </Tabs>
       </div>

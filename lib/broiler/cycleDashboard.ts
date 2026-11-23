@@ -68,6 +68,10 @@ function movementTotal(rows: CycleMovementRecord[], kind: 'heads' | 'kg') {
   return values.some(value => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
 }
 
+function cleanupVarianceCount(rows: CycleMovementRecord[]) {
+  return rows.reduce((sum, row) => sum + Math.abs(row.varianceQuantity), 0)
+}
+
 const nullableSum = (values: (number | null)[]) => values.length && values.every(value => value !== null)
   ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null
 
@@ -112,13 +116,14 @@ export function buildingMetrics(building: DashboardCycleBuilding) {
   const feed = measuredSum(lines, 'feed')
   const deliveredHeads = movementTotal(building.deliveries, 'heads')
   const cleanupHeads = movementTotal(building.cleanups, 'heads')
+  const varianceCount = cleanupVarianceCount(building.cleanups)
   const remaining = population === null || deliveredHeads === null || cleanupHeads === null ? null
     : Math.max(0, depletion.currentLiveBirds - deliveredHeads - cleanupHeads)
   const waterValues = lines.map(line => growingWaterLiters(line, building.startingPopulation)).filter((value): value is number => value !== null)
   const closedDate = building.status === 'Closed'
     ? building.cleanups.map(row => row.date).filter(Boolean).sort().at(-1) || building.cycleClosedAt : undefined
   return {
-    startingPopulation: startingPopulation(building), population, placed, remaining, cleanupHeads,
+    startingPopulation: startingPopulation(building), population, placed, remaining, cleanupHeads, varianceCount,
     mortality: mortalityLines.length ? depletion.totalMortality : null,
     mortalityPercent: mortalityLines.length && placed !== null && placed > 0
       ? getBroilerDepletionSummary(placed, depletionLines).cumulativeMortality : null,
@@ -152,6 +157,8 @@ export function dashboardMetrics(buildings: DashboardCycleBuilding[]) {
     placed,
     thinning: nullableSum(metrics.map(metric => metric.thinning)),
     cleanupHeads: nullableSum(metrics.map(metric => metric.cleanupHeads)),
+    varianceCount: cleanupVarianceCount([...new Map(buildings.flatMap(building => building.cleanups)
+      .map(row => [row.id, row])).values()]),
     mortalityPercent: mortality !== null && placed !== null && placed > 0 ? mortality / placed * 100 : null,
     feed: nullableSum(metrics.map(metric => metric.feed)),
     water: nullableSum(metrics.map(metric => metric.water)),

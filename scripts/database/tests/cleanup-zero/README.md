@@ -3,12 +3,12 @@ Run only against a fresh disposable PostgreSQL database with `psql -v ON_ERROR_S
 1. Apply `fixture.sql`.
 2. Run `python scripts/database/tests/cleanup-zero/prepare_fixture.py <temporary-output.sql>` and apply its output. This extracts the actual centralized notification tables and dispatcher from the repository.
 3. Apply `app/brd/cu/br_cleanup_tables.sql`.
-4. Apply `app/brd/cu/allow_harvest_emptied_cleanup.sql`.
-5. Apply `app/brd/cu/save_br_cleanup_transaction.sql`.
+4. Apply `app/sql/updated/allow_harvest_emptied_cleanup.sql`.
+5. Apply `app/sql/updated/save_br_cleanup_transaction.sql`.
 6. Apply `app/sql/updated/get_cleanup_cycle_inventory_batches.sql`.
 7. Apply `assertions.sql` (its scenarios roll back).
 
-To verify the SQL Editor deployment bundle, replace steps 4 and 5 with `app/brd/cu/deploy_harvest_emptied_cleanup.sql`, apply that file a second time to check migration reapplication, then run steps 6 and 7. This checks the exact files used for deployment, including cycle-scoped inventory, zero-balance cycle closeout, and retry deduplication.
+To verify the SQL Editor deployment bundle, replace steps 4 and 5 with `app/sql/updated/deploy_harvest_emptied_cleanup.sql`, apply that file a second time to check migration reapplication, then run steps 6 and 7. This checks the exact files used for deployment, including selected-cycle persistence, cycle-scoped inventory, zero-balance cycle closeout, and retry deduplication.
 
 The fixture simplifies authentication and business tables; it does not reproduce production RLS. See `docs/broiler-cleanup-zero.md` for behavior, coverage and deployment order.
 
@@ -17,3 +17,5 @@ For reversal, apply `reversal-fixture.sql` after the base setup, then `app/brd/c
 Run `node scripts/database/tests/cleanup-zero/selection.test.cjs` for the application eligibility regression: Clean Up uses the selected farm/cycle's DOC Placement inventory, including zero balances used to close a cycle, while Harvest retains its existing behavior.
 
 Run `node scripts/database/tests/cleanup-zero/allocation.test.cjs` for the form's actual batch-selection handler: a verified selected-cycle zero balance produces a zero closeout line, while partial positive allocations remain supported.
+
+Run `node scripts/database/tests/cleanup-zero/deployment.test.cjs` to verify that both supported Clean Up SQL deployments validate and persist the selected Cycle Master ID required by authoritative zero-balance posting.

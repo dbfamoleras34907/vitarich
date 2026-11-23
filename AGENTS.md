@@ -25,6 +25,12 @@ This applies to:
 
 Avoid duplicate implementations.
 
+## Blocking Behavior
+
+Do not add blocking validation, blocking dialogs, hard stops, or other workflow blockers unless the user explicitly requests that blocking behavior.
+
+When validation or guidance is needed but blocking was not explicitly requested, prefer non-blocking feedback that allows the user to continue the workflow.
+
 Prefer shared locations such as:
 
 ```text
@@ -104,6 +110,9 @@ Avoid route-local color systems, unnecessary hard-coded grays, excessive roundin
 ### Forms and Actions
 
 * Use consistent compact label, help text, validation, and required-marker treatment.
+* Do not add decorative icons inside new text, search, select, combobox, date, or numeric fields by default.
+* Add an icon inside a field only when it provides essential meaning and the shared control already guarantees sufficient spacing for the placeholder, entered value, clear button, and validation state at every supported width.
+* If an icon touches, overlaps, obscures, or crowds the placeholder or entered value, remove the icon. Do not ship the overlap or preserve a decorative icon with route-local padding workarounds.
 * Stack form fields on phones; use aligned multi-column grids only when the available width supports them.
 * Keep primary and secondary action order consistent across list, create, edit, view, post, and settings pages.
 * Preserve visible and reachable actions on all supported widths.
@@ -144,6 +153,22 @@ app/sql/
 ```
 
 Do not add deployable or migration SQL files beside route or module source files. Move a file between these folders when its state changes. SQL test fixtures may remain in their test directories.
+
+## SQL Execution Approval
+
+Obtain the user's explicit approval before executing any SQL statement against any database.
+
+This applies to:
+
+* read-only queries such as `SELECT` and `EXPLAIN`
+* inserts, updates, deletes, backfills, and repairs
+* DDL, migrations, functions, triggers, and RPC-related SQL
+* local, disposable, development, staging, and production databases
+* SQL-based tests that connect to a database
+
+Approval must identify the target database or environment and the SQL scope to be executed. A request to create, edit, review, or prepare SQL does not by itself authorize execution.
+
+Source inspection, editing SQL files, and static validation that does not connect to or execute against a database do not require SQL execution approval.
 
 ---
 

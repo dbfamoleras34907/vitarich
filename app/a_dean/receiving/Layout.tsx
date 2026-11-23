@@ -255,7 +255,7 @@ export default function Layout() {
             <div className="mx-4 mb-4 space-y-2">
                 <HatcheryListParameters {...parameters} />
                 {!loadingFarms && farms.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No active Hatchery farms are associated with your account.</p>
+                    <p className="text-sm text-muted-foreground">No active farms are associated with your account.</p>
                 )}
             </div>
 

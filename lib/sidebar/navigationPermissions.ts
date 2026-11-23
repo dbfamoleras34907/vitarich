@@ -4,13 +4,13 @@ export function getNavigationPermissionTitle(child: { title: string; permissionT
 }
 
 export function canInsertDocument(
-  child: { url: string; insert?: boolean; newDocumentUrl?: string },
+  child: { url: string; permissionUrl?: string; insert?: boolean; newDocumentUrl?: string },
   permissions: ReadonlyArray<{ ilink?: string; is_visible: boolean }>,
   userType: number,
 ) {
   return child.insert === true &&
     Boolean(child.newDocumentUrl) &&
     (userType === 1 || permissions.some(
-      permission => permission.ilink === `${child.url}/insert` && permission.is_visible,
+      permission => permission.ilink === `${child.permissionUrl ?? child.url}/insert` && permission.is_visible,
     ))
 }

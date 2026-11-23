@@ -17,8 +17,9 @@ import {
   Search,
   UsersRound,
 } from "lucide-react";
-import SearchableCombobox from "@/components/SearchableCombobox";
 import BroilerCycleSelect from "@/components/broiler/BroilerCycleSelect";
+import { AssignedTaBadgeGroup } from "@/components/farms/AssignedTaBadgeGroup";
+import UserFarmSearchCombobox from "@/components/ui/UserFarmSearchCombobox";
 import { Button } from "@/components/ui/button";
 import {
   CompactMetric,
@@ -42,6 +43,11 @@ import { useGlobalContext } from "@/lib/context/GlobalContext";
 import { useSyncDefaultFarm } from "@/lib/farms/useDefaultFarmSelection";
 import { getUserFarms } from "@/app/admin/user/new/api";
 import { encryptData } from "@/app/utils/supabase/url-encryption";
+import {
+  listFarmAssignedUsers,
+  type FarmAssignedUser,
+} from "@/lib/data/repositories/farmAssignedUsers";
+import { USER_TYPES } from "@/lib/notifications/types";
 import {
   getFarmBuildingsForFlockCard,
   type FarmBuildingListRow,
@@ -147,6 +153,9 @@ export default function Layout() {
   const [buildings, setBuildings] = useState<FarmBuildingListRow[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState("");
+  const [assignedTas, setAssignedTas] = useState<FarmAssignedUser[]>([]);
+  const [loadingAssignedTas, setLoadingAssignedTas] = useState(false);
+  const [assignedTaError, setAssignedTaError] = useState(false);
   const [openingAction, setOpeningAction] = useState<string | null>(null);
   const [reverseTarget, setReverseTarget] = useState<FarmBuildingListRow | null>(null);
   const [reverseReason, setReverseReason] = useState("");
@@ -206,15 +215,47 @@ export default function Layout() {
     [effectiveSelectedFarmId, farms],
   );
 
-  useEffect(() => { setSelectedCycleId(""); }, [effectiveSelectedFarmId]);
+  useEffect(() => {
+    const farmId = Number(selectedFarm?.id);
+    const farmCode = String(selectedFarm?.code ?? "").trim();
 
-  const farmOptions = useMemo(
-    () => farms.map(farm => ({
-      code: String(farm.id),
-      name: farm.code ? `${farm.code} - ${farm.name ?? ""}` : farm.name ?? String(farm.id),
-    })),
-    [farms],
-  );
+    if (!Number.isSafeInteger(farmId) || farmId <= 0 || !farmCode) {
+      setAssignedTas([]);
+      setAssignedTaError(false);
+      setLoadingAssignedTas(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAssignedTas([]);
+    setAssignedTaError(false);
+    setLoadingAssignedTas(true);
+
+    listFarmAssignedUsers(
+      [{ id: farmId, code: farmCode }],
+      [USER_TYPES.ADMIN, USER_TYPES.USER],
+      { activeUsersOnly: true },
+    )
+      .then(assignments => {
+        if (!cancelled) setAssignedTas(assignments.get(farmId) ?? []);
+      })
+      .catch(error => {
+        console.error("Assigned TA lookup error:", error);
+        if (!cancelled) {
+          setAssignedTas([]);
+          setAssignedTaError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAssignedTas(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFarm]);
+
+  useEffect(() => { setSelectedCycleId(""); }, [effectiveSelectedFarmId]);
 
   const visibleBuildings = useMemo(() => {
     return [...buildings].sort(compareBuildingsByCode);
@@ -390,17 +431,14 @@ export default function Layout() {
         <div className="border-b bg-muted/25 p-3">
           <div className="grid gap-3 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)] lg:items-end">
             <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Farm</label>
-                <SearchableCombobox
-                  items={farmOptions}
-                  value={effectiveSelectedFarmId}
-                  onValueChange={setSelectedFarmId}
-                  placeholder="Select farm..."
-                  showCode
-                  className="w-full"
-                />
-              </div>
+              <UserFarmSearchCombobox
+                label="Farm"
+                required
+                farmType="BR"
+                value={effectiveSelectedFarmId}
+                onValueChange={setSelectedFarmId}
+                className="w-full"
+              />
               <BroilerCycleSelect
                 farmId={selectedFarm?.id}
                 value={selectedCycleId}
@@ -434,6 +472,13 @@ export default function Layout() {
               <div className="mt-0.5 break-words text-xs font-medium leading-4" title={value}>{value}</div>
             </div>
           ))}
+          <AssignedTaBadgeGroup
+            users={assignedTas}
+            loading={loadingAssignedTas}
+            error={assignedTaError}
+            waitingForFarm={!selectedFarm}
+            className="col-span-2 bg-card px-3 py-2 sm:col-span-4 xl:col-span-5"
+          />
         </div>
       </PageSection>
 

@@ -1,148 +1,8 @@
--- Combined Clean Up update. Prerequisites: existing Clean Up schema and current notification_system.sql.
--- Generated from allow_harvest_emptied_cleanup.sql and save_br_cleanup_transaction.sql.
--- Apply reverse_br_cleanup_transaction.sql afterward to enable reversal.
--- Run this entire file in the SQL Editor of the Supabase project used by the app.
+-- Apply notification_system.sql, app/sql/new/create_global_br_cleanup_types.sql,
+-- app/sql/new/add_br_cleanup_type_allocations.sql, and
+-- app/sql/updated/allow_harvest_emptied_cleanup.sql first.
+-- This is the authoritative reusable Clean Up save RPC deployment.
 begin;
-
-
--- Source: app/brd/cu/allow_harvest_emptied_cleanup.sql
--- Apply after br_cleanup_tables.sql and notification_system.sql.
-
--- The same persisted evidence drives form eligibility and posting validation.
-create or replace function public.get_harvest_emptied_cleanup_batches(p_flock_card_id bigint)
-returns table(item_code text, item_name text, batch_number text, warehouse_code text)
-language sql stable security invoker set search_path = public
-as $$
-  with cycle as (
-    select card.* from public.flock_card card
-    join public.farms farm on farm.id = card.farm_id
-    where card.id = p_flock_card_id and card.void = '1' and card.status = 'Saved'
-  ), origins as (
-    -- DOC Receiving can populate the consolidated ledger without origin rows.
-    -- Match the persisted cycle identity exactly; never infer a cycle from zero stock.
-    select distinct btrim(posting.item_code) as item_code, cycle.building_code as warehouse_code,
-      cycle.farm_id, cycle.start_date,
-      format('DOC:F%s:B%s:%s', cycle.farm_id, cycle.building_whse_id, btrim(cycle.cycle_no)) as batch_number
-    from cycle join public.inventory_postings posting
-      on posting.source_doc_type = 'DOC_RECEIVING_CONSOLIDATION'
-     and posting.transfer_type = 'IN' and posting.qty > 0
-     and upper(btrim(posting.warehouse_code)) = upper(btrim(cycle.building_code))
-     and upper(btrim(coalesce(posting.batch_number, posting.ref))) = upper(format('DOC:F%s:B%s:%s', cycle.farm_id, cycle.building_whse_id, btrim(cycle.cycle_no)))
-    where nullif(btrim(posting.item_code), '') is not null
-      and cycle.building_whse_id is not null and nullif(btrim(cycle.cycle_no), '') is not null
-    union
-    select distinct btrim(origin.item_code) as item_code, cycle.building_code as warehouse_code,
-      cycle.farm_id, cycle.start_date,
-      case when exists (
-        select 1 from public.inventory_postings posting
-        where posting.source_doc_type = 'DOC_RECEIVING_CONSOLIDATION' and posting.transfer_type = 'IN'
-          and upper(btrim(posting.item_code)) = upper(btrim(origin.item_code))
-          and upper(btrim(posting.warehouse_code)) = upper(btrim(cycle.building_code))
-          and upper(btrim(coalesce(posting.batch_number, posting.ref))) = upper(format('DOC:F%s:B%s:%s', cycle.farm_id, cycle.building_whse_id, btrim(cycle.cycle_no)))
-      ) then format('DOC:F%s:B%s:%s', cycle.farm_id, cycle.building_whse_id, btrim(cycle.cycle_no))
-        else btrim(origin.batch_no) end as batch_number
-    from cycle join public.flock_card_origin origin on origin.fc_id = cycle.id and origin.void = '1'
-    where nullif(btrim(origin.item_code), '') is not null and nullif(btrim(origin.batch_no), '') is not null
-  ), movements as (
-    select posting.*, origin.farm_id, origin.start_date
-    from origins origin join public.inventory_postings posting
-      on upper(btrim(posting.item_code)) = upper(origin.item_code)
-     and upper(btrim(posting.warehouse_code)) = upper(btrim(origin.warehouse_code))
-     and upper(btrim(coalesce(posting.batch_number, posting.ref))) = upper(origin.batch_number)
-  ), balances as (
-    select origin.item_code, origin.warehouse_code, origin.batch_number,
-      coalesce(sum(case when posting.transfer_type = 'OUT' then -posting.qty else posting.qty end), 0) as qty
-    from origins origin left join movements posting
-      on upper(btrim(posting.item_code)) = upper(origin.item_code)
-     and upper(btrim(coalesce(posting.batch_number, posting.ref))) = upper(origin.batch_number)
-    group by origin.item_code, origin.warehouse_code, origin.batch_number
-  ), last_movement as (
-    select * from movements where qty > 0 order by id desc limit 1
-  )
-  select balance.item_code, coalesce(item.item_name, balance.item_code), balance.batch_number, balance.warehouse_code
-  from balances balance left join public.items item on item.item_code = balance.item_code
-  where not exists (select 1 from balances where qty <> 0)
-    and exists (
-      select 1 from last_movement movement join public.br_delivery harvest
-        on harvest.id = movement.source_docentry and harvest.farm_id = movement.farm_id
-      where movement.source_doc_type = 'BR_DELIVERY' and movement.transfer_type = 'OUT'
-        and harvest.status = 'Posted' and harvest.issue_date >= movement.start_date::date
-    );
-$$;
-revoke all on function public.get_harvest_emptied_cleanup_batches(bigint) from public, anon;
-grant execute on function public.get_harvest_emptied_cleanup_batches(bigint) to authenticated;
-
-alter table public.br_cleanup_lines drop constraint if exists br_cleanup_lines_qty_check;
-alter table public.br_cleanup_lines add constraint br_cleanup_lines_qty_check check (
-  ((alt_qty >= 1 and base_qty > 0) or (alt_qty = 0 and base_qty = 0))
-  and batch_total_qty >= 0 and variance_qty >= 0
-);
-
--- Preserve the deployed posting/variance implementation and its age rules.
-do $$
-declare v_definition text;
-begin
-  select pg_get_functiondef('public.post_br_cleanup_inventory()'::regprocedure) into v_definition;
-  v_definition := replace(v_definition, chr(13), '');
-  if position('get_harvest_emptied_cleanup_batches' in v_definition) = 0 then
-    if position('Clean up requires at least one positive quantity line.' in v_definition) = 0 then
-      raise exception 'Unexpected cleanup posting function; inspect before applying the zero-harvest change.';
-    end if;
-    v_definition := replace(v_definition,
-      'and line.base_qty > 0' || chr(10) || '  ) then',
-      'and line.base_qty >= 0' || chr(10) || '  ) then');
-    v_definition := replace(v_definition, 'Clean up requires at least one positive quantity line.', 'Clean up requires at least one line.');
-    v_definition := replace(v_definition, '(line.alt_qty < 1 or line.base_qty <= 0)',
-      'not ((line.alt_qty >= 1 and line.base_qty > 0) or (line.alt_qty = 0 and line.base_qty = 0))');
-    v_definition := replace(v_definition, '  select coalesce(settings.target_cleanup_age, 0)', $guard$
-  -- Serialize with Harvest posting before reading its ledger evidence.
-  perform pg_advisory_xact_lock(hashtextextended('BR_DELIVERY_INVENTORY_POST', 0));
-  if exists (
-    select 1 from public.br_cleanup_lines line
-    where line.br_cleanup_id = new.id and line.void = '1' and line.base_qty = 0
-      and not exists (
-        select 1 from public.flock_card card
-        cross join lateral public.get_harvest_emptied_cleanup_batches(card.id) batch
-        where card.farm_id = new.farm_id
-          and card.farm_cycle_id = new.farm_cycle_id
-          and card.building_whse_id = line.from_warehouse_id
-          and upper(btrim(batch.warehouse_code)) = upper(btrim(line.from_warehouse_code))
-          and upper(batch.item_code) = upper(btrim(line.item_code))
-          and upper(batch.batch_number) = upper(btrim(line.batch_number))
-      )
-  ) then
-    raise exception 'Zero-quantity Clean Up requires a posted harvest that emptied the current cycle.';
-  end if;
-
-  select coalesce(settings.target_cleanup_age, 0)$guard$);
-    if position('get_harvest_emptied_cleanup_batches' in v_definition) = 0
-      or position('and line.base_qty >= 0' in v_definition) = 0 then
-      raise exception 'Cleanup posting patch did not match; no changes applied.';
-    end if;
-  end if;
-  -- A verified harvest closeout qualifies without a mortality-age entry.
-  -- Keep the existing age requirement for cleanup of a positive balance.
-  v_definition := replace(v_definition,
-    'where active.id is null' || chr(10) || '     or active.actual_age is null' || chr(10) || '     or active.actual_age < v_target_age',
-    'where (active.id is null or active.actual_age is null or active.actual_age < v_target_age)' || chr(10) ||
-    '    and not exists (select 1 from public.get_harvest_emptied_cleanup_batches(active.id))');
-
-  -- A zero-quantity cleanup must still leave its own inventory ledger record.
-  v_definition := replace(v_definition,
-    'and line.base_qty > 0' || chr(10) || '  group by line.item_code, line.from_warehouse_code, line.batch_number;',
-    'and line.base_qty >= 0' || chr(10) || '  group by line.item_code, line.from_warehouse_code, line.batch_number;');
-  if position('get_harvest_emptied_cleanup_batches(active.id)' in v_definition) = 0
-    or position('and line.base_qty >= 0' || chr(10) || '  group by line.item_code, line.from_warehouse_code, line.batch_number;' in v_definition) = 0 then
-    raise exception 'Cleanup closeout patch did not match; no changes applied.';
-  end if;
-  execute v_definition;
-end;
-$$;
-
-notify pgrst, 'reload schema';
-
--- Source: app/brd/cu/save_br_cleanup_transaction.sql
--- Apply notification_system.sql and allow_harvest_emptied_cleanup.sql first.
 alter table public.br_cleanup add column if not exists notification_revision bigint not null default 0;
 alter table public.br_cleanup add column if not exists notification_fingerprint text;
 
@@ -158,13 +18,20 @@ declare
   v_existing_status text;
   v_target_status text := coalesce(nullif(trim(p_document->>'status'), ''), 'Draft');
   v_farm_id bigint := nullif(p_document->>'farmId', '')::bigint;
+  v_farm_cycle_id bigint := nullif(p_document->>'farmCycleId', '')::bigint;
   v_farm_code text;
   v_farm_name text;
   v_line jsonb;
+  v_allocation jsonb;
   v_line_id bigint;
+  v_allocation_id bigint;
   v_line_no integer := 0;
+  v_allocation_no integer := 0;
+  v_cleanup_type_code text;
+  v_cleanup_type_name text;
   v_header jsonb;
   v_lines jsonb;
+  v_allocations jsonb;
   v_request_fingerprint text;
   v_existing public.br_cleanup%rowtype;
 begin
@@ -190,12 +57,141 @@ begin
     raise exception 'Clean Up requires at least one line.';
   end if;
 
+  if exists (
+    with line_groups as (
+      select
+        case when nullif(input.line->>'fromWarehouseId', '') is not null
+          then 'ID:' || (input.line->>'fromWarehouseId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'fromWarehouseCode', ''))) end as warehouse_key,
+        case when nullif(input.line->>'itemId', '') is not null
+          then 'ID:' || (input.line->>'itemId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'itemCode', ''))) end as item_key,
+        sum(coalesce((input.line->>'baseQty')::numeric, 0)) as cleaned_quantity,
+        min(coalesce((input.line->>'batchTotalQty')::numeric, 0)) as minimum_batch_total,
+        max(coalesce((input.line->>'batchTotalQty')::numeric, 0)) as maximum_batch_total,
+        max(abs(coalesce((input.line->>'varianceQty')::numeric, 0))) as maximum_variance
+      from jsonb_array_elements(p_document->'lines') input(line)
+      group by 1, 2
+    )
+    select 1
+    from line_groups line_group
+    where abs(line_group.maximum_batch_total - line_group.minimum_batch_total) > 0.000001
+       or abs(line_group.maximum_batch_total - line_group.cleaned_quantity) > 0.000001
+       or line_group.maximum_variance > 0.000001
+  ) then
+    raise exception 'Clean Up Variance is required to be Zero (0) before saving.';
+  end if;
+
+  if jsonb_typeof(p_document->'cleanupTypeAllocations') is distinct from 'array' then
+    raise exception 'Clean Up requires a valid Cleanup Type allocation list.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'cleanupTypeAllocations') input(allocation)
+    where coalesce(input.allocation->>'cleanupTypeId', '') !~ '^[0-9]+$'
+       or coalesce(input.allocation->>'quantity', '') !~ '^\d+(\.\d+)?$'
+       or nullif(btrim(input.allocation->>'remarks'), '') is null
+       or char_length(btrim(input.allocation->>'remarks')) > 500
+  ) then
+    raise exception 'Every Cleanup Type allocation requires an active type, a non-negative Quantity, and Remarks.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'cleanupTypeAllocations') input(allocation)
+    where (input.allocation->>'quantity')::numeric < 0
+       or not exists (
+         select 1
+         from public.br_cleanup_types cleanup_type
+         where cleanup_type.id = (input.allocation->>'cleanupTypeId')::bigint
+           and not cleanup_type.is_void
+       )
+  ) then
+    raise exception 'Every Cleanup Type allocation requires an active type, a non-negative Quantity, and Remarks.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'cleanupTypeAllocations') input(allocation)
+    group by
+      case when nullif(input.allocation->>'fromWarehouseId', '') is not null
+        then 'ID:' || (input.allocation->>'fromWarehouseId')
+        else 'CODE:' || upper(btrim(coalesce(input.allocation->>'fromWarehouseCode', ''))) end,
+      case when nullif(input.allocation->>'itemId', '') is not null
+        then 'ID:' || (input.allocation->>'itemId')
+        else 'CODE:' || upper(btrim(coalesce(input.allocation->>'itemCode', ''))) end,
+      (input.allocation->>'cleanupTypeId')::bigint
+    having count(*) > 1
+  ) then
+    raise exception 'Each Cleanup Type can appear only once per Clean Up line.';
+  end if;
+
+  if exists (
+    with line_groups as (
+      select
+        case when nullif(input.line->>'fromWarehouseId', '') is not null
+          then 'ID:' || (input.line->>'fromWarehouseId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'fromWarehouseCode', ''))) end as warehouse_key,
+        case when nullif(input.line->>'itemId', '') is not null
+          then 'ID:' || (input.line->>'itemId')
+          else 'CODE:' || upper(btrim(coalesce(input.line->>'itemCode', ''))) end as item_key,
+        sum(coalesce((input.line->>'altQty')::numeric, 0)) as line_quantity
+      from jsonb_array_elements(p_document->'lines') input(line)
+      group by 1, 2
+    ), allocation_groups as (
+      select
+        case when nullif(input.allocation->>'fromWarehouseId', '') is not null
+          then 'ID:' || (input.allocation->>'fromWarehouseId')
+          else 'CODE:' || upper(btrim(coalesce(input.allocation->>'fromWarehouseCode', ''))) end as warehouse_key,
+        case when nullif(input.allocation->>'itemId', '') is not null
+          then 'ID:' || (input.allocation->>'itemId')
+          else 'CODE:' || upper(btrim(coalesce(input.allocation->>'itemCode', ''))) end as item_key,
+        sum((input.allocation->>'quantity')::numeric) as allocated_quantity
+      from jsonb_array_elements(p_document->'cleanupTypeAllocations') input(allocation)
+      group by 1, 2
+    )
+    select 1
+    from line_groups line_group
+    full join allocation_groups allocation_group using (warehouse_key, item_key)
+    where line_group.warehouse_key is null
+       or abs(line_group.line_quantity - coalesce(allocation_group.allocated_quantity, 0)) > 0.000001
+  ) then
+    raise exception 'Cleanup Type Quantity must equal the Clean Up line quantity for every line.';
+  end if;
+
+  if v_farm_cycle_id is null or not exists (
+    select 1 from public.doc_farm_cycles cycle
+    where cycle.id = v_farm_cycle_id and cycle.farm_id = v_farm_id
+      and cycle.status in ('Saved', 'Past Open')
+  ) then
+    raise exception 'Clean Up requires a Current Cycle or Past Open Cycle for the selected farm.';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_document->'lines') input(line)
+    where not exists (
+      select 1 from public.flock_card card
+      where card.farm_cycle_id = v_farm_cycle_id and card.farm_id = v_farm_id
+        and card.void = '1' and card.status = 'Saved'
+        and (
+          card.building_whse_id = nullif(input.line->>'fromWarehouseId', '')::bigint
+          or upper(btrim(card.building_code)) = upper(btrim(input.line->>'fromWarehouseCode'))
+        )
+    )
+  ) then
+    raise exception 'Every Clean Up building must belong to the selected open cycle.';
+  end if;
+
   -- Serialize by document number to recover a lost create response safely.
   perform pg_advisory_xact_lock(hashtextextended('BR-CU-SAVE:' || (p_document->>'giNo'), 0));
   v_request_fingerprint := md5(jsonb_build_object(
-    'document', p_document - array['id', 'lines', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'farmCode', 'farmName'],
+    'document', p_document - array['id', 'lines', 'cleanupTypeAllocations', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'farmCode', 'farmName'],
     'lines', (select jsonb_agg(value - array['id', 'onHandQty', 'requestedAltQty', 'allocationGroupKey'] order by ord)
-      from jsonb_array_elements(p_document->'lines') with ordinality as input(value, ord))
+      from jsonb_array_elements(p_document->'lines') with ordinality as input(value, ord)),
+    'cleanupTypeAllocations', (select jsonb_agg(value - 'id' order by ord)
+      from jsonb_array_elements(p_document->'cleanupTypeAllocations') with ordinality as input(value, ord))
   )::text);
   select * into v_existing from public.br_cleanup
     where (nullif(p_document->>'id', '') is not null and id = (p_document->>'id')::bigint)
@@ -210,7 +206,11 @@ begin
     if v_existing.notification_fingerprint = v_request_fingerprint then
       return jsonb_build_object('header', to_jsonb(v_existing), 'lines',
         (select coalesce(jsonb_agg(to_jsonb(line) order by line.line_no), '[]'::jsonb)
-         from public.br_cleanup_lines line where line.br_cleanup_id = v_document_id and line.void = '1'));
+         from public.br_cleanup_lines line where line.br_cleanup_id = v_document_id and line.void = '1'),
+        'allocations',
+        (select coalesce(jsonb_agg(to_jsonb(allocation) order by allocation.allocation_no), '[]'::jsonb)
+         from public.br_cleanup_type_allocations allocation
+         where allocation.br_cleanup_id = v_document_id and allocation.void = '1'));
     end if;
     if v_existing_status <> 'Draft' then
       raise exception 'Only draft Clean Up documents can be edited or posted.';
@@ -220,6 +220,7 @@ begin
       gi_no = trim(p_document->>'giNo'),
       issue_date = (p_document->>'issueDate')::date,
       farm_id = v_farm_id,
+      farm_cycle_id = v_farm_cycle_id,
       farm_code = nullif(trim(v_farm_code), ''),
       farm_name = nullif(trim(v_farm_name), ''),
       from_warehouse_id = nullif(p_document->>'fromWarehouseId', '')::bigint,
@@ -236,6 +237,7 @@ begin
       gi_no,
       issue_date,
       farm_id,
+      farm_cycle_id,
       farm_code,
       farm_name,
       from_warehouse_id,
@@ -249,6 +251,7 @@ begin
       trim(p_document->>'giNo'),
       (p_document->>'issueDate')::date,
       v_farm_id,
+      v_farm_cycle_id,
       nullif(trim(v_farm_code), ''),
       nullif(trim(v_farm_name), ''),
       nullif(p_document->>'fromWarehouseId', '')::bigint,
@@ -356,6 +359,89 @@ begin
     end if;
   end loop;
 
+  update public.br_cleanup_type_allocations
+  set
+    allocation_no = -id,
+    void = '0',
+    updated_by = v_actor,
+    updated_at = now()
+  where br_cleanup_id = v_document_id
+    and void = '1';
+
+  for v_allocation in
+    select value from jsonb_array_elements(p_document->'cleanupTypeAllocations')
+  loop
+    v_allocation_no := v_allocation_no + 1;
+    v_allocation_id := case
+      when coalesce(v_allocation->>'id', '') ~ '^[0-9]+$' then (v_allocation->>'id')::bigint
+      else null
+    end;
+
+    select cleanup_type.code, cleanup_type.name
+    into v_cleanup_type_code, v_cleanup_type_name
+    from public.br_cleanup_types cleanup_type
+    where cleanup_type.id = (v_allocation->>'cleanupTypeId')::bigint
+      and not cleanup_type.is_void;
+
+    if not found then
+      raise exception 'Cleanup Type % is unavailable.', v_allocation->>'cleanupTypeId';
+    end if;
+
+    if v_allocation_id is not null and exists (
+      select 1
+      from public.br_cleanup_type_allocations existing_allocation
+      where existing_allocation.id = v_allocation_id
+        and existing_allocation.br_cleanup_id = v_document_id
+    ) then
+      update public.br_cleanup_type_allocations
+      set
+        allocation_no = v_allocation_no,
+        cleanup_type_id = (v_allocation->>'cleanupTypeId')::bigint,
+        cleanup_type_code = v_cleanup_type_code,
+        cleanup_type_name = v_cleanup_type_name,
+        quantity = (v_allocation->>'quantity')::numeric,
+        remarks = btrim(v_allocation->>'remarks'),
+        from_warehouse_id = nullif(v_allocation->>'fromWarehouseId', '')::bigint,
+        from_warehouse_code = nullif(btrim(v_allocation->>'fromWarehouseCode'), ''),
+        item_id = nullif(v_allocation->>'itemId', '')::bigint,
+        item_code = btrim(v_allocation->>'itemCode'),
+        void = '1',
+        updated_by = v_actor,
+        updated_at = now()
+      where id = v_allocation_id;
+    else
+      insert into public.br_cleanup_type_allocations (
+        br_cleanup_id,
+        allocation_no,
+        cleanup_type_id,
+        cleanup_type_code,
+        cleanup_type_name,
+        quantity,
+        remarks,
+        from_warehouse_id,
+        from_warehouse_code,
+        item_id,
+        item_code,
+        void,
+        created_by
+      ) values (
+        v_document_id,
+        v_allocation_no,
+        (v_allocation->>'cleanupTypeId')::bigint,
+        v_cleanup_type_code,
+        v_cleanup_type_name,
+        (v_allocation->>'quantity')::numeric,
+        btrim(v_allocation->>'remarks'),
+        nullif(v_allocation->>'fromWarehouseId', '')::bigint,
+        nullif(btrim(v_allocation->>'fromWarehouseCode'), ''),
+        nullif(v_allocation->>'itemId', '')::bigint,
+        btrim(v_allocation->>'itemCode'),
+        '1',
+        v_actor
+      );
+    end if;
+  end loop;
+
   if v_target_status = 'Posted' then
     perform pg_advisory_xact_lock(hashtextextended('BR_DELIVERY_INVENTORY_POST', 0));
 
@@ -375,6 +461,12 @@ begin
   where line.br_cleanup_id = v_document_id
     and line.void = '1';
 
+  select coalesce(jsonb_agg(to_jsonb(allocation) order by allocation.allocation_no), '[]'::jsonb)
+  into v_allocations
+  from public.br_cleanup_type_allocations allocation
+  where allocation.br_cleanup_id = v_document_id
+    and allocation.void = '1';
+
   -- One revision per completed action; the outbox write rolls back with the save.
   update public.br_cleanup
   set notification_fingerprint = v_request_fingerprint,
@@ -382,7 +474,7 @@ begin
         case when v_target_status = 'Posted' or v_existing_status is not null then 1 else 0 end
   where id = v_document_id;
 
-  return jsonb_build_object('header', v_header, 'lines', v_lines);
+  return jsonb_build_object('header', v_header, 'lines', v_lines, 'allocations', v_allocations);
 end;
 $$;
 
@@ -458,6 +550,5 @@ end;
 $patch$;
 
 notify pgrst, 'reload schema';
-
 
 commit;

@@ -7,7 +7,7 @@ import type {
   ReactNode,
   RefCallback,
 } from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { TableHead } from "@/components/ui/table";
 import {
@@ -38,24 +38,34 @@ export function CellInput({
   inputRef: RefCallback<HTMLInputElement>;
   onCommit: (value: string) => void;
   onBlur: (value: string, previousValue: string) => void;
-  onFocus: (event: FocusEvent<HTMLInputElement>) => void;
+  onFocus?: (event: FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
   placeholder?: string;
   required?: boolean;
 }) {
   const valueOnFocus = useRef(value);
+  const elementRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const input = elementRef.current;
+    if (!input || document.activeElement === input || input.value === value) return;
+
+    input.value = value;
+  }, [value]);
 
   return (
     <Input
-      key={`${id}-${value}`}
       id={id}
       name={id}
       disabled={disabled}
       placeholder={placeholder}
       required={required}
       defaultValue={value}
-      ref={inputRef}
+      ref={(input) => {
+        elementRef.current = input;
+        inputRef(input);
+      }}
       onBlur={(event) => {
         const nextValue = event.currentTarget.value;
         const previousValue = valueOnFocus.current;
@@ -67,7 +77,7 @@ export function CellInput({
       }}
       onFocus={(event) => {
         valueOnFocus.current = event.currentTarget.value;
-        onFocus(event);
+        onFocus?.(event);
       }}
       onKeyDown={onKeyDown}
       onPaste={onPaste}

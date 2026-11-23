@@ -40,10 +40,8 @@ export default function NotificationList({
         <button
           key={notification.id}
           type="button"
-          disabled
-          aria-disabled="true"
           onClick={() => onOpen(notification)}
-          className={`flex w-full cursor-default gap-3 p-3 text-left ${notification.read_at ? "bg-background" : "bg-primary/5"}`}
+          className={`flex w-full cursor-pointer gap-3 p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${notification.read_at ? "bg-background" : "bg-primary/5"}`}
         >
           <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
             <PriorityIcon priority={notification.priority} />

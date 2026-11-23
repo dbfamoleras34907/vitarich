@@ -28,14 +28,13 @@ begin
     from unnest(selected_user_ids) as selected(user_id)
     left join public.users app_user on app_user.id = selected.user_id
     where app_user.id is null
-       or coalesce(app_user.user_type, 0) not in (2, 3)
        or lower(btrim(coalesce(app_user.isactive::text, ''))) not in ('1', 'true', 'active')
   ) then
-    raise exception 'Assigned TA selections must be active Admin or User accounts.';
+    raise exception 'Assigned TA selections must be active user accounts.';
   end if;
 
-  -- Only eligible Admin/User memberships are synchronized. Historical inactive
-  -- rows and memberships for other account types are preserved.
+  -- Synchronize active accounts of every user type. Historical inactive
+  -- memberships are preserved because they are intentionally absent from the picker.
   update public.users_farms assignment
   set void = '0'
   where coalesce(btrim(assignment.void::text), '1') = '1'
@@ -48,7 +47,7 @@ begin
       select 1
       from public.users app_user
       where app_user.id = assignment.users_id
-        and app_user.user_type in (2, 3)
+        and lower(btrim(coalesce(app_user.isactive::text, ''))) in ('1', 'true', 'active')
     );
 
   foreach selected_user_id in array selected_user_ids

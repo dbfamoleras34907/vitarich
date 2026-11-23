@@ -1,6 +1,8 @@
 import type { GoodsIssueLine, GoodsIssueOnHandBatch } from '../api'
 import type { Items, WarehouseData } from '@/lib/types'
 import { parseExcelClipboard } from '@/lib/utils/parseExcelClipboard'
+import { createUuid } from '@/lib/utils/createUuid'
+import { quantityExceeds } from '@/lib/utils/quantityComparison'
 
 export const DELIVERY_COLUMNS = [
   ['#', null],
@@ -8,7 +10,7 @@ export const DELIVERY_COLUMNS = [
   ['Building', 'fromWarehouseCode'],
   ['Flock Card', null],
   ['Cycle #', null],
-  ['Age', 'harvestAge'],
+  ['Age', null],
   ['ALW g', 'averageLiveWeight'],
   ['Item', 'itemCode'],
   ['Harvest Quantity', 'requestedAltQty'],
@@ -78,7 +80,7 @@ export function deliveryNumberValue(value: string, label: string, positive = fal
 
 // Prepare the entire range before React state changes. Existing allocation groups
 // are the visible rows; a paste can grow them without dropping untouched groups.
-export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, getAllocationGroupKey, warehouses, items, getPlacementBatches, getAverageLiveWeight, getDefaultAltUom, getGroupUoms, calculateBaseQty, getBatchRuleId }: {
+export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, getAllocationGroupKey, warehouses, items, getPlacementBatches, getHarvestAge, getAverageLiveWeight, getDefaultAltUom, getGroupUoms, calculateBaseQty, getBatchRuleId }: {
   lines: GoodsIssueLine[]
   rows: DeliveryPasteRow[]
   startRow: number
@@ -87,6 +89,7 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
   warehouses: WarehouseData[]
   items: Items[]
   getPlacementBatches: (warehouse: WarehouseData) => Promise<GoodsIssueOnHandBatch[]>
+  getHarvestAge?: (line: GoodsIssueLine, deliveredDate: string) => Promise<number | null>
   getAverageLiveWeight?: (line: GoodsIssueLine, age: number) => Promise<number | null>
   getDefaultAltUom: (group: string) => string
   getGroupUoms: (group: string) => { uomCode: string }[]
@@ -113,16 +116,11 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.netLiveWeight = values.netLiveWeight ? deliveryNumberValue(values.netLiveWeight, 'Net Live Weight') : null
         if (line.netLiveWeight != null && line.netLiveWeight < 0) throw new Error('Net Live Weight cannot be negative.')
       }
+      if (values.deliveredDate !== undefined) line.deliveredDate = deliveryDateValue(values.deliveredDate)
       if (values.averageLiveWeight !== undefined) {
         line.averageLiveWeight = values.averageLiveWeight ? deliveryNumberValue(values.averageLiveWeight, 'ALW g') : null
         if (line.averageLiveWeight != null && line.averageLiveWeight < 0) throw new Error('ALW g cannot be negative.')
       }
-      if (values.harvestAge !== undefined) {
-        const harvestAge = deliveryNumberValue(values.harvestAge, 'Age')
-        if (!Number.isInteger(harvestAge) || harvestAge < 0) throw new Error('Age must be a whole number, zero or greater.')
-        line.harvestAge = harvestAge
-      }
-      if (values.deliveredDate !== undefined) line.deliveredDate = deliveryDateValue(values.deliveredDate)
       for (const key of ['tsDrNo', 'haulerName', 'plateNumber', 'liveSalesCustomerName'] as const) {
         if (values[key] !== undefined) line[key] = values[key]
       }
@@ -132,12 +130,16 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         line.destination = destination ?? ''
       }
       if (values.truckSeal !== undefined) line.truckSeal = values.truckSeal ? deliveryNumberValue(values.truckSeal, 'Truck Seal') : null
-      const shouldRefreshAverageLiveWeight = values.harvestAge !== undefined && values.averageLiveWeight === undefined
-      const inventoryKeys = ['fromWarehouseCode', 'itemCode', 'requestedAltQty', 'altUom', 'batchNumber'] as const
-      if (!inventoryKeys.some(key => values[key] !== undefined)) {
-        if (shouldRefreshAverageLiveWeight && line.harvestAge != null && getAverageLiveWeight) {
+      const refreshAutomaticAge = async () => {
+        if (!line.deliveredDate || !getHarvestAge) return
+        line.harvestAge = await getHarvestAge(line, line.deliveredDate)
+        if (values.averageLiveWeight === undefined && line.harvestAge != null && getAverageLiveWeight) {
           line.averageLiveWeight = await getAverageLiveWeight(line, line.harvestAge)
         }
+      }
+      const inventoryKeys = ['fromWarehouseCode', 'itemCode', 'requestedAltQty', 'altUom', 'batchNumber'] as const
+      if (!inventoryKeys.some(key => values[key] !== undefined)) {
+        if (values.deliveredDate !== undefined) await refreshAutomaticAge()
         visibleRows[rowIndex] = originals.map(entry => ({ ...entry, harvestAge: line.harvestAge, averageLiveWeight: line.averageLiveWeight, netLiveWeight: line.netLiveWeight, deliveredDate: line.deliveredDate, tsDrNo: line.tsDrNo, haulerName: line.haulerName, plateNumber: line.plateNumber, destination: line.destination, liveSalesCustomerName: line.liveSalesCustomerName, truckSeal: line.truckSeal }))
         continue
       }
@@ -150,16 +152,14 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
       if (matches.length !== 1) throw new Error('Building must match one eligible building in the selected farm.')
       const warehouse = matches[0]
       Object.assign(line, { fromWarehouseId: warehouse.id, fromWarehouseCode: warehouse.whse_code ?? '', fromWarehouseName: warehouse.whse_name ?? '' })
-      if (shouldRefreshAverageLiveWeight && line.harvestAge != null && getAverageLiveWeight) {
-        line.averageLiveWeight = await getAverageLiveWeight(line, line.harvestAge)
-      }
       const placement = await getPlacementBatches(warehouse)
       const allowedItems = items.filter(item => placement.some(batch => normalize(batch.itemCode) === normalize(item.item_code ?? '')))
       const buildingChanged = line.fromWarehouseCode !== original.fromWarehouseCode
-      if (buildingChanged && values.harvestAge === undefined) {
+      if (buildingChanged) {
         line.harvestAge = undefined
         line.averageLiveWeight = undefined
       }
+      if (buildingChanged || values.deliveredDate !== undefined) await refreshAutomaticAge()
       const itemValue = normalize(values.itemCode ?? (buildingChanged && !allowedItems.some(item => item.id === original.itemId) ? '' : line.itemCode))
       const matchingItems = itemValue ? allowedItems.filter(item => [item.item_code, item.item_name, `${item.item_code} - ${item.item_name}`].some(value => normalize(value ?? '') === itemValue)) : allowedItems
       if (!itemValue && matchingItems.length !== 1 && !values.batchNumber && !values.altUom) {
@@ -199,8 +199,8 @@ export async function prepareDeliveryPaste({ lines, rows, startRow, newLine, get
         if (Math.abs(selections.reduce((sum, selection) => sum + selection.qty, 0) - line.altQty) > 0.000001) throw new Error('Batch quantities must equal Harvest Quantity.')
         visibleRows[rowIndex] = selections.map(({ batch, qty }, index) => {
           const baseQty = calculateBaseQty(qty, line.altUom, line.baseUom)
-          if (baseQty > batch.onHandQty) throw new Error(`Batch ${batch.batchNumber} has insufficient on-hand quantity.`)
-          return { ...line, id: index === 0 ? line.id : crypto.randomUUID(), batchNumber: batch.batchNumber, manufacturingDate: batch.manufacturingDate, expiryDate: batch.expiryDate, altQty: qty, baseQty, onHandQty: batch.onHandQty }
+          if (quantityExceeds(baseQty, batch.onHandQty)) throw new Error(`Batch ${batch.batchNumber} has insufficient on-hand quantity.`)
+          return { ...line, id: index === 0 ? line.id : createUuid(), batchNumber: batch.batchNumber, manufacturingDate: batch.manufacturingDate, expiryDate: batch.expiryDate, altQty: qty, baseQty, onHandQty: batch.onHandQty }
         })
       } else {
         const unchangedInventory = line.fromWarehouseCode === original.fromWarehouseCode && line.itemCode === original.itemCode && line.altUom === original.altUom && line.requestedAltQty === (original.requestedAltQty ?? originals.reduce((sum, entry) => sum + entry.altQty, 0))

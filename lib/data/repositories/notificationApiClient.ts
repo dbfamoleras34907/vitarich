@@ -2,9 +2,7 @@ import { fetchWithInternetErrorNotice, readJsonResponse } from '@/lib/network/ht
 import { db } from "@/lib/Supabase/supabaseClient"
 import type {
   NotificationInboxItem,
-  NotificationOutboxHealth,
   NotificationRule,
-  NotificationRuleAffectedUsers,
   NotificationRuleAccess,
   NotificationRuleInput,
   NotificationUserGroup,
@@ -35,14 +33,7 @@ export async function getNotificationRuleSetup() {
     actor: NotificationRuleAccess
     rules: NotificationRule[]
     userGroups: NotificationUserGroup[]
-    outboxHealth: NotificationOutboxHealth
   }>("/api/admin/notifications")
-}
-
-export async function getNotificationRuleAffectedUsersRequest(ruleId: number) {
-  return request<NotificationRuleAffectedUsers>(
-    `/api/admin/notifications?ruleId=${encodeURIComponent(ruleId)}`,
-  )
 }
 
 export async function saveNotificationRuleRequest(input: NotificationRuleInput) {
@@ -83,16 +74,5 @@ export async function markNotificationsSeenRequest() {
   return request<{ success: boolean }>("/api/notifications", {
     method: "PATCH",
     body: JSON.stringify({ seen: true }),
-  })
-}
-
-export async function processPendingNotificationsRequest(options?: { retryFailedEmails?: boolean }) {
-  return request<{
-    processed: number
-    emails: { claimed: number; sent: number; failed: number; skipped: number; requeued: number }
-    accountEmails: { claimed: number; sent: number; failed: number }
-  }>("/api/notifications/process", {
-    method: "POST",
-    ...(options?.retryFailedEmails ? { body: JSON.stringify({ retryFailedEmails: true }) } : {}),
   })
 }

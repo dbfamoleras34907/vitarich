@@ -77,7 +77,7 @@ export type NotificationAffectedUser = {
   id: number
   name: string
   email: string | null
-  fmsType: FmsType | null
+  fmsTypes: FmsType[]
   userType: number
   userGroupName: string | null
   farms: NotificationAffectedFarm[]
@@ -165,5 +165,5 @@ export type NotificationEmailDelivery = {
 export type NotificationRuleAccess = {
   authId: string
   userType: number
-  fmsType: FmsType | null
+  fmsTypes: FmsType[]
 }

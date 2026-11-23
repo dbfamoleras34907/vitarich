@@ -5,12 +5,15 @@ import { addDays, parseISO } from 'date-fns'
 import { db } from '@/lib/Supabase/supabaseClient'
 import { saveDocReceivingWithSources, type ReceivingAllocation } from '@/lib/data/repositories/receivingSources'
 import { getProcessListAttributions, processListAttributionKey } from '@/lib/data/repositories/processListAttribution'
+import {
+  getBroilerCycleLabelsByFlockCardIds,
+  getBroilerCycleReferenceIds,
+} from '@/lib/data/repositories/broilerCycleReferences'
 
 export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Reversed' | 'Cancelled'
 type GoodsReceiptDbStatus = GoodsReceiptStatus | 'Received'
 
 const FUTURE_RECEIVING_DATE_MESSAGE = 'DOC Placement dates cannot be advanced/future-dated.'
-const ACTIVE_DOC_PLACEMENT_STATUSES: GoodsReceiptDbStatus[] = ['Draft', 'Posted', 'Received']
 
 const localToday = () => {
   const date = new Date()
@@ -19,29 +22,6 @@ const localToday = () => {
 }
 
 const isFutureReceivingDate = (value: string) => Boolean(value) && value > localToday()
-
-export async function getFirstDocPlacementDates(flockCardIds: number[]) {
-  const ids = Array.from(new Set(flockCardIds.filter(id => Number.isFinite(id) && id > 0)))
-  if (ids.length === 0) return {} as Record<number, string>
-
-  const result = await db
-    .from('goods_receipt_doc')
-    .select('flock_card_id, receive_date, goods_receipt!inner(status)')
-    .in('flock_card_id', ids)
-    .in('goods_receipt.status', ACTIVE_DOC_PLACEMENT_STATUSES)
-    .eq('void', '1')
-    .not('receive_date', 'is', null)
-    .order('receive_date', { ascending: true })
-
-  if (result.error) throw new Error(`Unable to load first DOC placement dates: ${result.error.message}`)
-
-  return (result.data ?? []).reduce<Record<number, string>>((dates, row) => {
-    const flockCardId = Number(row.flock_card_id ?? 0)
-    const receiveDate = String(row.receive_date ?? '').slice(0, 10)
-    if (flockCardId > 0 && receiveDate && !dates[flockCardId]) dates[flockCardId] = receiveDate
-    return dates
-  }, {})
-}
 
 export type GoodsReceiptLine = {
   sourceDispatchLineId?: number | null
@@ -119,6 +99,7 @@ export type GoodsReceipt = {
   assignedTaNames?: string[]
   assignedTaLabel?: string
   receivingSummary?: GoodsReceiptReceivingSummary
+  cycleReferences?: string[]
 }
 
 type GoodsReceiptRow = {
@@ -196,6 +177,7 @@ type GoodsReceiptListItemRow = {
 
 type GoodsReceiptListDocRow = {
   goods_reciept_id: number
+  flock_card_id: number | null
   quantity_received: number | null
   actual_received: number | null
   doa_quantity: number | null
@@ -208,6 +190,7 @@ export type GoodsReceiptListParams = {
   dateFrom?: string
   dateTo?: string
   dateField?: GoodsReceiptDateField
+  cycleNumber?: string
 }
 
 export type GoodsReceiptDateField = 'receiveDate' | 'createdDate'
@@ -305,6 +288,7 @@ const toReceiptListItem = (
   lines: GoodsReceiptListItemRow[],
   receivingSummary: GoodsReceiptReceivingSummary,
   attribution: { createdByName: string; assignedTaNames: string[]; assignedTaLabel: string },
+  cycleReferences: string[],
 ): GoodsReceipt => ({
   id: row.id,
   grNo: row.gr_no,
@@ -322,13 +306,36 @@ const toReceiptListItem = (
   createdAt: row.created_at,
   ...attribution,
   receivingSummary,
+  cycleReferences,
 })
 
-async function getDocReceivingListRows() {
-  const { data, error } = await db
+async function getDocReceivingListRows(cycleNumber?: string, farmId?: number | string) {
+  let receiptIds: number[] | null = null
+
+  if (cycleNumber?.trim()) {
+    const { flockCardIds } = await getBroilerCycleReferenceIds(cycleNumber, { farmIdentifier: farmId })
+    if (flockCardIds.length === 0) return []
+
+    const { data: matchingRows, error: matchingError } = await db
+      .from('goods_receipt_doc')
+      .select('goods_reciept_id')
+      .eq('void', '1')
+      .in('flock_card_id', flockCardIds)
+
+    if (matchingError) throw matchingError
+    receiptIds = [...new Set((matchingRows ?? []).map(row => Number(row.goods_reciept_id)))]
+      .filter(id => Number.isFinite(id) && id > 0)
+    if (receiptIds.length === 0) return []
+  }
+
+  let query = db
     .from('goods_receipt_doc')
-    .select('goods_reciept_id, quantity_received, actual_received, doa_quantity, reject_count')
+    .select('goods_reciept_id, flock_card_id, quantity_received, actual_received, doa_quantity, reject_count')
     .eq('void', '1')
+
+  if (receiptIds) query = query.in('goods_reciept_id', receiptIds)
+
+  const { data, error } = await query
 
   if (error) throw error
 
@@ -366,8 +373,9 @@ export async function getGoodsReceipts({
   dateFrom,
   dateTo,
   dateField = 'receiveDate',
+  cycleNumber,
 }: GoodsReceiptListParams = {}): Promise<GoodsReceipt[]> {
-  const docReceivingRows = await getDocReceivingListRows()
+  const docReceivingRows = await getDocReceivingListRows(cycleNumber, farmId)
   const receivingSummaries = summarizeDocReceivingRows(docReceivingRows)
   const docReceivingReceiptIds = Array.from(receivingSummaries.keys())
 
@@ -410,6 +418,9 @@ export async function getGoodsReceipts({
 
   const items = (itemRows ?? []) as GoodsReceiptListItemRow[]
   const attributions = await getProcessListAttributions(receipts)
+  const cycleLabelsByCard = await getBroilerCycleLabelsByFlockCardIds(
+    docReceivingRows.flatMap(row => row.flock_card_id == null ? [] : [Number(row.flock_card_id)]),
+  )
 
   return receipts.map(receipt =>
     toReceiptListItem(
@@ -417,6 +428,10 @@ export async function getGoodsReceipts({
       items.filter(item => item.goods_reciept_id === receipt.id),
       receivingSummaries.get(receipt.id) ?? { total: 0, good: 0, doa: 0, reject: 0, shortCount: 0 },
       attributions.get(processListAttributionKey(receipt)) ?? { createdByName: '—', assignedTaNames: [], assignedTaLabel: 'Farm unavailable' },
+      [...new Set(docReceivingRows
+        .filter(row => Number(row.goods_reciept_id) === receipt.id && row.flock_card_id != null)
+        .map(row => cycleLabelsByCard.get(Number(row.flock_card_id)))
+        .filter((label): label is string => Boolean(label)))],
     )
   )
 }

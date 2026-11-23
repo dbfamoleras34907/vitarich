@@ -1,6 +1,7 @@
 import { getProfileByAuthId } from "@/app/admin/user/api";
 import { redirect } from "next/navigation";
 import { toast } from "sonner";
+import { normalizeUserFmsTypes } from "@/lib/auth/fmsAccess";
 
 function isActiveValue(value: unknown) {
   return value === true || value === 1 || String(value).trim() === "1";
@@ -23,7 +24,7 @@ export async function checkUserActive(authId: string) {
     redirect("/logout");
   }
 
-  if (!String(user.fms_type ?? "").trim()) {
+  if (normalizeUserFmsTypes(user.fms_types, user.fms_type).length === 0) {
     toast.warning("Your account does not have an FMS type. Please contact your administrator to update it.");
   }
 

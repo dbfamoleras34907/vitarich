@@ -17,7 +17,11 @@ export function resolveFarmWarehouseAssociations(
 ): { assigned: WarehouseData[]; assignable: WarehouseData[] } {
   const assigned = new Map<number, WarehouseData>()
   for (const warehouse of warehouseRows) {
-    if (warehouse.id != null && Number(warehouse.farm_id) === farmId) {
+    if (
+      warehouse.id != null &&
+      warehouse.is_active !== false &&
+      Number(warehouse.farm_id) === farmId
+    ) {
       assigned.set(warehouse.id, warehouse)
     }
   }
@@ -33,8 +37,15 @@ export function resolveFarmWarehouseAssociations(
       : Boolean(code) && warehouse.whse_code === code)
     const warehouse = matches.length === 1 ? matches[0] : undefined
     const label = code || String(association.id ?? '[unknown]')
-    if (!warehouse || warehouse.id == null || (code && warehouse.whse_code !== code)) {
-      throw new Error(`Associated warehouse ${label} could not be matched. Check its saved ID/code and your warehouse access before editing this farm.`)
+    // A voided warehouse may be hidden by warehouse RLS/list policies while its
+    // legacy farms.associated_warehouses snapshot still exists. Treat missing or
+    // inactive rows as stale links: omit them from the edit draft so the existing
+    // farm save transaction can remove the association instead of blocking edit.
+    if (!warehouse || warehouse.id == null || warehouse.is_active === false) {
+      continue
+    }
+    if (code && warehouse.whse_code !== code) {
+      throw new Error(`Associated warehouse ${label} has a saved ID/code mismatch. Correct the conflicting association before editing this farm.`)
     }
     if (warehouse.farm_id != null && Number(warehouse.farm_id) !== farmId) {
       throw new Error(`Associated warehouse ${label} belongs to farm ${warehouse.farm_id}. Correct the conflicting assignment before editing this farm.`)

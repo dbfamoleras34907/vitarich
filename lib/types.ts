@@ -1,6 +1,6 @@
-import { ColumnDef } from '@tanstack/react-table';
-import { UUID } from 'crypto';
-import React from "react"
+import { ColumnDef } from "@tanstack/react-table";
+import { UUID } from "crypto";
+import React from "react";
 
 export type HatchClassification = {
   id: number;
@@ -21,7 +21,7 @@ export type HatchClassification = {
   jumbo: number | null;
   d_yolk: number | null;
   ttl_count: number | null;
-  is_active: boolean | null;// void 
+  is_active: boolean | null; // void
 };
 
 export type Customer = {
@@ -44,25 +44,21 @@ export type Customer = {
   auth_id: UUID | null;
 };
 export type EggStorageMngt = {
-  id: number
-  created_at: string
-  created_by: string | null
-  updated_at: string | null
-  updated_by: string | null
-  room_temp: string | null
-  egg_sto_humi: string | null
-  egg_stemp_start: string | null
-  egg_stemp_end: string | null
-  egg_shell_temp: string | null
-  egg_shell_temp_date: string | null
-  duration: number | null
-  remarks: string | null
-  is_active: boolean | null
-}
-
-
-
-
+  id: number;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+  room_temp: string | null;
+  egg_sto_humi: string | null;
+  egg_stemp_start: string | null;
+  egg_stemp_end: string | null;
+  egg_shell_temp: string | null;
+  egg_shell_temp_date: string | null;
+  duration: number | null;
+  remarks: string | null;
+  is_active: boolean | null;
+};
 
 export const usersColumn: ColumnDef<Customer>[] = [
   // { accessorKey: "id", header: "ID" },
@@ -73,10 +69,7 @@ export const usersColumn: ColumnDef<Customer>[] = [
   // { accessorKey: "gender", header: "ID" },
   // { accessorKey: "docType", header: "User Type" },
   // { accessorKey: "docStatus", header: "Status", meta: { css: "status" } },
-]
-
-
-
+];
 
 export interface UserInsert {
   auth_id: string;
@@ -100,10 +93,10 @@ export interface UserInsert {
   region?: string | null;
   archipelago?: string | null;
   fms_type?: string | null;
+  fms_types?: Array<"Broiler" | "Breeder" | "Hatchery"> | null;
   users_group_id?: string | number | null;
   user_type?: number | null;
 }
-
 
 export interface SuperUsers {
   code: string | null;
@@ -134,13 +127,11 @@ export interface UserRow {
   region?: string | null;
   archipelago?: string | null;
   fms_type?: string | null;
+  fms_types?: Array<"Broiler" | "Breeder" | "Hatchery"> | null;
   users_group_id?: string | number | null;
   user_type?: number | null;
-
 }
-export type DraftStatus = 'pending' | 'approved' | 'rejected';
-
-
+export type DraftStatus = "pending" | "approved" | "rejected";
 
 export interface DataRecordApproval {
   uid: number;
@@ -157,11 +148,10 @@ export interface DataRecordApproval {
   po_no: string;
   Attention: string;
   voyage_no: string;
-  status: DraftStatus
+  status: DraftStatus;
   checked: boolean;
   docentry: number;
   delivered_to: number | null;
-
 }
 
 export interface DocumentApproval {
@@ -174,22 +164,19 @@ export interface DocumentApproval {
   created_at: string; // ISO timestamp
 }
 
-
 export interface Warehouse {
-  id: number
-  whse_code: string | null
-  whse_name: string | null
-  full_location_code: string | null
-  fms_type: string | null
-  warehouse_type: string | null
-  subinventory_code: string | null
-  subinventory_desc: string | null
-  bin_activated: boolean
-  is_active: boolean
-  created_at: string
+  id: number;
+  whse_code: string | null;
+  whse_name: string | null;
+  full_location_code: string | null;
+  fms_type: string | null;
+  warehouse_type: string | null;
+  subinventory_code: string | null;
+  subinventory_desc: string | null;
+  bin_activated: boolean;
+  is_active: boolean;
+  created_at: string;
 }
-
-
 
 export interface WarehouseData {
   id?: number;
@@ -222,204 +209,182 @@ export interface WarehouseData {
   province?: string | null;
 }
 
-
 export interface StorageLocationData {
-  id: number
-  warehouse_id: number
-  parent_id: number | null
-  level_no: number
-  location_code: string
-  location_name: string | null
-  full_location_code: string
-  is_lowest_level: boolean
-  void: boolean
-  is_active: boolean
-  created_at: string
+  id: number;
+  warehouse_id: number;
+  parent_id: number | null;
+  level_no: number;
+  location_code: string;
+  location_name: string | null;
+  full_location_code: string;
+  is_lowest_level: boolean;
+  void: boolean;
+  is_active: boolean;
+  created_at: string;
 }
-
-
 
 export type ColumnConfig<T> = {
-  key: keyof T
-  label: string
-  sortable?: boolean
-  render?: (row: T) => React.ReactNode
-}
+  key: keyof T;
+  label: string;
+  sortable?: boolean;
+  render?: (row: T) => React.ReactNode;
+};
 
 export type DataTableAction<T> = {
-  label: string
-  variant?: 'default' | 'destructive'
-  onClick: (row: T) => void
-}
-
-
+  label: string;
+  variant?: "default" | "destructive";
+  onClick: (row: T) => void;
+};
 
 export type ApproveHatcheryDraftPayload = {
-  docentry: number
-  posting_date: string
-  temperature: string
-  humidity: string
+  docentry: number;
+  posting_date: string;
+  temperature: string;
+  humidity: string;
 
-  soldTo: string
-  Attention: string
-  po_no: string
-  voyage_no: string
-  shipped_via: string
-  dr_num: string
+  soldTo: string;
+  Attention: string;
+  po_no: string;
+  voyage_no: string;
+  shipped_via: string;
+  dr_num: string;
 
-  no_of_crates: string
-  no_of_tray: string
-  plate_no: string
-  driver: string
-  serial_no: string
+  no_of_crates: string;
+  no_of_tray: string;
+  plate_no: string;
+  driver: string;
+  serial_no: string;
 
   items: {
-    brdr_ref_no: string
-    sku: string
-    UoM: string
-    lot_no: string
-    prod_date: string
-    age: string
-    house_no: string
-    jr: number | string
-    he: number | string
-    expected_count: number
-    actual_count: number
-  }[]
-}
-
+    brdr_ref_no: string;
+    sku: string;
+    UoM: string;
+    lot_no: string;
+    prod_date: string;
+    age: string;
+    house_no: string;
+    jr: number | string;
+    he: number | string;
+    expected_count: number;
+    actual_count: number;
+  }[];
+};
 
 export type Farms = {
-  id: number
-  code: string
-  name: string
-  tin: string
-  tel: string
-  contact_person: string
-  contact_number: string
-  void: number
-  created_at: string
-  updated_at: string | null
-  address: string
-  barangay: string
-  city: string
-  province: string
-  ref: string | null
-  ref_type: string | null
-}
+  id: number;
+  code: string;
+  name: string;
+  tin: string;
+  tel: string;
+  contact_person: string;
+  contact_number: string;
+  void: number;
+  created_at: string;
+  updated_at: string | null;
+  address: string;
+  barangay: string;
+  city: string;
+  province: string;
+  ref: string | null;
+  ref_type: string | null;
+};
 
 // DMF - 27022026
 
 export type DataTableColumn = {
-  code: string
-  name: string
+  code: string;
+  name: string;
 
+  type: "text" | "input" | "number" | "date" | "checkbox" | "search" | "button";
 
-  type:
-  | "text"
-  | "input"
-  | "number"
-  | "date"
-  | "checkbox"
-  | "search"
-  | "button"
-
-
-  disabled?: boolean
-  list?: any[] | ((row: any) => any[])
+  disabled?: boolean;
+  list?: any[] | ((row: any) => any[]);
 
   // 🔥 Custom renderer
-  render?: (
-    row: Record<string, any>,
-    rowIndex: number
-  ) => React.ReactNode
-}
-
+  render?: (row: Record<string, any>, rowIndex: number) => React.ReactNode;
+};
 
 export type ChickGradingInventory = {
-  SKU: string
-  qty: number
-  ref: string
-  UoM: string
-  warehouse_code: string
-}
-
+  SKU: string;
+  qty: number;
+  ref: string;
+  UoM: string;
+  warehouse_code: string;
+};
 
 export type ReceivingListRow = {
-  id: number
-  created_at: string
-  created_by: string
-  updated_at: string | null
-  doc_date: string | null
-  dr_num: string | null
-  status: 'pending' | 'approved' | 'rejected'
-  temperature: string | null
-  humidity: string | null
-  draft_id: number | null
-  soldTo: string | null
-  Attention: string | null
-  po_no: string | null
-  voyage_no: string | null
-  shipped_via: string | null
-  no_of_crates: string | null
-  no_of_tray: string | null
-  plate_no: string | null
-  driver: string | null
-  serial_no: string | null
+  id: number;
+  created_at: string;
+  created_by: string;
+  updated_at: string | null;
+  doc_date: string | null;
+  dr_num: string | null;
+  status: "pending" | "approved" | "rejected";
+  temperature: string | null;
+  humidity: string | null;
+  draft_id: number | null;
+  soldTo: string | null;
+  Attention: string | null;
+  po_no: string | null;
+  voyage_no: string | null;
+  shipped_via: string | null;
+  no_of_crates: string | null;
+  no_of_tray: string | null;
+  plate_no: string | null;
+  driver: string | null;
+  serial_no: string | null;
 
   // item fields
-  item_id: number | null
-  brdr_ref_no: string | null
-  sku: string | null
-  UoM: string | null
-  expected_count: number | null
-  actual_count: number | null
-  lot_no: string | null
-  prod_date: string | null
-  age: string | null
-  house_no: string | null
-  jr: string | null
-  he: string | null
-  farm_id: number | null
-  farm_name: string | null
-}
-
+  item_id: number | null;
+  brdr_ref_no: string | null;
+  sku: string | null;
+  UoM: string | null;
+  expected_count: number | null;
+  actual_count: number | null;
+  lot_no: string | null;
+  prod_date: string | null;
+  age: string | null;
+  house_no: string | null;
+  jr: string | null;
+  he: string | null;
+  farm_id: number | null;
+  farm_name: string | null;
+};
 
 export type DisposalPrintRow = {
-  ds_no: string | null
-  created_at: string | null   // timestamptz → string in Supabase
-  cardname: string | null
-  contact_no: string | null
-  customer_address: string | null
-  ifrom: string | null
-  sku: string | null
-  description: string | null
-  qty: number | null
-  unit: string | null
-  firstname: string | null
-  middlename: string | null
-  lastname: string | null
-}
+  ds_no: string | null;
+  created_at: string | null; // timestamptz → string in Supabase
+  cardname: string | null;
+  contact_no: string | null;
+  customer_address: string | null;
+  ifrom: string | null;
+  sku: string | null;
+  description: string | null;
+  qty: number | null;
+  unit: string | null;
+  firstname: string | null;
+  middlename: string | null;
+  lastname: string | null;
+};
 
 export type DraftItem = {
-  source_allocations?: import('@/lib/data/repositories/receivingSources').ReceivingAllocation[]
-  id: number
-  brdr_ref_no: string
-  brdr_ref_noVx: string
-  sku: string
-  UoM: string
-  lot_no?: string
-  breed?: string
-  prod_date?: string
-  age?: string
-  house_no?: string
-  prod_date_to?: string
-  total?: number        // from API
-  actual_total?: number // user input
+  source_allocations?: import("@/lib/data/repositories/receivingSources").ReceivingAllocation[];
+  id: number;
+  brdr_ref_no: string;
+  brdr_ref_noVx: string;
+  sku: string;
+  UoM: string;
+  lot_no?: string;
+  breed?: string;
+  prod_date?: string;
+  age?: string;
+  house_no?: string;
+  prod_date_to?: string;
+  total?: number; // from API
+  actual_total?: number; // user input
 
-  isNew?: boolean
-}
-
+  isNew?: boolean;
+};
 
 export const machineObj = [
   { code: "code", name: "Machine Code", type: "text" },
@@ -427,162 +392,156 @@ export const machineObj = [
   { code: "type", name: "Type", type: "text" },
   { code: "capacity", name: "Capacity", type: "number" },
   { code: "remarks", name: "Remarks", type: "text", isLong: true },
-]
+];
 
 export type Users = {
-  id: number
-  created_at: string
-  created_by: string | null
-  updated_at: string | null
-  updated_by: string | null
-  docStatus: string | null
-  email: string | null
-  firstname: string | null
-  middlename: string | null
-  lastname: string | null
-  gender: string | null
-  phone: string | null
-  mobile: string | null
-  birthdate: string | null
-  location: string | null
-  remarks: string | null
-  auth_id: string | null
-  issuper: string
-  default_farm: string | null
-}
+  id: number;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+  docStatus: string | null;
+  email: string | null;
+  firstname: string | null;
+  middlename: string | null;
+  lastname: string | null;
+  gender: string | null;
+  phone: string | null;
+  mobile: string | null;
+  birthdate: string | null;
+  location: string | null;
+  remarks: string | null;
+  auth_id: string | null;
+  issuper: string;
+  default_farm: string | null;
+};
 
 export type DefaultFarm = {
   id: number;
   code: string;
   name: string;
-
-}
+};
 export interface ApprovalRequestCreate {
-  created_by: string
-  user_email: string
-  request_type: string
-  value_encrypted: string
-  remarks?: string
+  created_by: string;
+  user_email: string;
+  request_type: string;
+  value_encrypted: string;
+  remarks?: string;
 }
 
 export interface ApprovalRequest {
-  id: number
-  created_at: string
-  created_by: string
-  user_email: string
-  request_type: string
-  value_encrypted: string
-  remarks: string
-  status: string
-  approved_by?: string
-  approved_at?: string
+  id: number;
+  created_at: string;
+  created_by: string;
+  user_email: string;
+  request_type: string;
+  value_encrypted: string;
+  remarks: string;
+  status: string;
+  approved_by?: string;
+  approved_at?: string;
 }
 
-
 export interface UserProfileSafe {
-  id: number | null
-  created_at: string | null
-  created_by: string | null
-  updated_at: string | null
-  updated_by: string | null
+  id: number | null;
+  created_at: string | null;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
 
-  docStatus: string | null
+  docStatus: string | null;
 
-  email: string | null
-  firstname: string | null
-  middlename: string | null
-  lastname: string | null
-  gender: string | null
+  email: string | null;
+  firstname: string | null;
+  middlename: string | null;
+  lastname: string | null;
+  gender: string | null;
 
-  phone: string | null
-  mobile: string | null
-  birthdate: string | null
+  phone: string | null;
+  mobile: string | null;
+  birthdate: string | null;
 
-  location: string | null
-  remarks: string | null
+  location: string | null;
+  remarks: string | null;
 
-  auth_id: string | null
-  issuper: boolean
-  default_farm: string | null
+  auth_id: string | null;
+  issuper: boolean;
+  default_farm: string | null;
 
-  supervisor: number
+  supervisor: number;
 
-  isactive: boolean
+  isactive: boolean;
 
-  users_farms: string[]
+  users_farms: string[];
 }
 
 export type ReceivingItemRow = {
-  id: number
-  created_at: string
-  docentry: number
-  brdr_ref_no: string
-  sku: string
-  UoM: string
-  expected_count: string
-  actual_count: string
-  lot_no: string
-  prod_date: string
-  age: string
-  house_no: string
-  jr: string | null
-  he: string | null
-  total_api: string | null
-  prod_date_to: string | null
-}
+  id: number;
+  created_at: string;
+  docentry: number;
+  brdr_ref_no: string;
+  sku: string;
+  UoM: string;
+  expected_count: string;
+  actual_count: string;
+  lot_no: string;
+  prod_date: string;
+  age: string;
+  house_no: string;
+  jr: string | null;
+  he: string | null;
+  total_api: string | null;
+  prod_date_to: string | null;
+};
 
 export type ReceivingListRow2 = {
-  id: number
-  recieving_items: ReceivingItemRow[]
-}
-
-
-
+  id: number;
+  recieving_items: ReceivingItemRow[];
+};
 
 export type farm_dr_unres = {
-  dr_num: string | null
-}
+  dr_num: string | null;
+};
 
 export interface Items {
-  id: number | null
-  item_code: string | null
-  description: string | null
-  barcode: string | null
-  unit_measure: string | null
-  created_at: string | null
-  item_name: string | null
-  void: number | null
-  is_inventory_item: boolean | null
-  is_sales_item: boolean | null
-  is_purchase_item: boolean | null
-  is_delivery_item: boolean | null
-  on_hand: number | null
-  is_committed: number | null
-  on_order: number | null
-  inventory_uom: string | null
-  item_group: string | null
-  sub_item_group_id?: number | null
-  sub_item_group_level_1_id?: number | null
-  sub_item_group_level_2_id?: number | null
-  sub_item_group_level_3_id?: number | null
-  fms_group: string | null
-  manage_batch_numbers: boolean | null
-  manage_serial_numbers: boolean | null
-  batch_management_method: string | null
-  default_shelf_life_days: number | null
-  default_expiration_months: number | null
-  default_expiry_required: boolean | null
-  allow_negative_batch_stock: boolean | null
-  batch_number_series: string | null
-  min_on_hand: number | null
-  max_on_hand: number | null
-  updated_at: string | null
-  group: string | null
+  id: number | null;
+  item_code: string | null;
+  description: string | null;
+  barcode: string | null;
+  unit_measure: string | null;
+  created_at: string | null;
+  item_name: string | null;
+  void: number | null;
+  is_inventory_item: boolean | null;
+  is_sales_item: boolean | null;
+  is_purchase_item: boolean | null;
+  is_delivery_item: boolean | null;
+  on_hand: number | null;
+  is_committed: number | null;
+  on_order: number | null;
+  inventory_uom: string | null;
+  item_group: string | null;
+  sub_item_group_id?: number | null;
+  sub_item_group_level_1_id?: number | null;
+  sub_item_group_level_2_id?: number | null;
+  sub_item_group_level_3_id?: number | null;
+  fms_group: string | null;
+  manage_batch_numbers: boolean | null;
+  manage_serial_numbers: boolean | null;
+  batch_management_method: string | null;
+  default_shelf_life_days: number | null;
+  default_expiration_months: number | null;
+  default_expiry_required: boolean | null;
+  allow_negative_batch_stock: boolean | null;
+  batch_number_series: string | null;
+  min_on_hand: number | null;
+  max_on_hand: number | null;
+  updated_at: string | null;
+  group: string | null;
 }
 
-
 import { LucideIcon } from "lucide-react";
-import { RowDataKey } from './Defaults/DefaultTypes';
+import { RowDataKey } from "./Defaults/DefaultTypes";
 
 export type NavItemType = "Module" | "Report";
 
@@ -599,8 +558,7 @@ export interface NavChild extends NavPermission {
   type: NavItemType;
   title: string;
   url: string;
-  /** Reuse a stable permission title when a route has a new user-facing label. */
-  permissionTitle?: string;
+  permissionUrl?: string;
   newDocumentUrl?: string;
   hideFromNavigation?: boolean;
 
@@ -618,15 +576,13 @@ export interface NavFolder extends NavPermission {
   title: string;
   url: string;
   icon: LucideIcon;
-  fmsTypes?: Array<'Broiler' | 'Breeder' | 'Hatchery'>;
+  fmsTypes?: Array<"Broiler" | "Breeder" | "Hatchery">;
   items?: NavGroup[];
 }
 
-
-
 export type RowAction = {
-  label: string
-  icon?: React.ReactNode
-  disabled?: boolean
-  onClick: (row: RowDataKey) => void
-}
+  label: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+  onClick: (row: RowDataKey) => void;
+};

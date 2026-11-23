@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format, subMonths } from 'date-fns'
-import { CalendarPlus, ChevronDown, ChevronRight, Loader2, LockKeyhole, RefreshCw, RotateCcw, ShieldAlert } from 'lucide-react'
+import { CalendarPlus, ChevronDown, ChevronRight, Loader2, LockKeyhole, RefreshCw, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { encryptData } from '@/app/utils/supabase/url-encryption'
@@ -202,11 +202,8 @@ export default function CycleMasterLayout() {
   if (viewBlocked) {
     return (
       <main className="p-4">
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <div className="flex items-center gap-2 font-semibold">
-            <ShieldAlert className="size-4" />
-            You do not have permission to view Cycle Master.
-          </div>
+        <div className="rounded-md border bg-card p-4 text-sm text-muted-foreground">
+          Cycle Master is unavailable for this account.
         </div>
       </main>
     )

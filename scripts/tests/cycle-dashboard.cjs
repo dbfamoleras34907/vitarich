@@ -96,7 +96,7 @@ const tables = {
     { id: 305, br_delivery_id: 30, item_code: 'DOC', batch_number: 'BATCH1', base_qty: 1000, base_uom: 'HEAD', void: '0' },
   ],
   br_cleanup: [{ id: 40, farm_id: 1, gi_no: 'CU40', status: 'Posted', from_warehouse_id: 100 }],
-  br_cleanup_lines: [{ id: 400, br_cleanup_id: 40, item_code: 'DOC', batch_number: 'BATCH1', base_qty: 3, base_uom: 'HEAD', alt_qty: 3, alt_uom: 'HEAD', void: '1' }],
+  br_cleanup_lines: [{ id: 400, br_cleanup_id: 40, item_code: 'DOC', batch_number: 'BATCH1', base_qty: 3, base_uom: 'HEAD', alt_qty: 3, alt_uom: 'HEAD', variance_qty: -4, void: '1' }],
 }
 
 async function main() {
@@ -142,6 +142,7 @@ async function main() {
   }]), null, 'Draft or inactive rows do not become the latest cycle activity')
   assert.equal(metrics.population, 100)
   assert.equal(metrics.startingPopulation, 100)
+  assert.equal(metrics.varianceCount, 4, 'Cleanup variance is displayed as an absolute count')
   const openingReceipt = building.placements[0]
   const openingPopulation = {
     ...building,
@@ -215,6 +216,8 @@ async function main() {
   assert.equal(model.estimatedFcr(10, 10, 0), null)
   assert.equal(model.estimatedFcr(null, 10, 100), null)
   assert.equal(model.dashboardMetrics([building, building]).deliveredHeads, 10, 'Do not count the same delivery line twice')
+  assert.equal(model.dashboardMetrics([building, building]).varianceCount, 4, 'Do not count the same Cleanup variance line twice')
+  assert.equal(model.buildingMetrics({ ...building, cleanups: [] }).varianceCount, 0, 'Show zero when a cycle has no Cleanup variance')
   assert.equal(model.movementQuantity({ baseQuantity: 10, baseUom: 'HEAD', quantity: 10, uom: 'HEAD' }, 'kg'), null)
   assert.equal(model.calendarAge('2026-09-01', new Date('2026-09-08T16:01:00Z')), 8, 'Use Manila calendar date')
   assert.equal(model.calendarAge('', new Date()), null)
