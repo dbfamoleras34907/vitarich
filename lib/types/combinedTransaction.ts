@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 export type CombinedTransactionSaveResult = {
   id: number | null
   date: string
@@ -18,4 +20,5 @@ export type CombinedTransactionHistoryProps = {
   onDateFromChange?: (date: string) => void
   onDateToChange?: (date: string) => void
   refreshToken?: number
+  historyHeader?: ReactNode
 }

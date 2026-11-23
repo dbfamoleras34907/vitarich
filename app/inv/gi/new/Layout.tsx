@@ -2739,7 +2739,7 @@ export default function NewGoodsIssue({
       label: issueDateLabel,
       content: (
         <label className="relative">
-          <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />
+          {!isBroilerCycleIssue && <CalendarDays className="pointer-events-none absolute left-3 top-2.5 size-4" />}
           <Input
             type="date"
             value={triggeredBy === 'BR-DR' && issue.status === 'Draft' ? today() : issue.issueDate}
@@ -2749,7 +2749,7 @@ export default function NewGoodsIssue({
               setIssue(current => current ? { ...current, issueDate: date } : current)
               onTransactionDateChange?.(date)
             }}
-            className="pl-9"
+            className={isBroilerCycleIssue ? undefined : 'pl-9'}
           />
         </label>
       ),
@@ -2771,10 +2771,11 @@ export default function NewGoodsIssue({
     ...(isBroilerCycleIssue
       ? [{
           key: 'cycle',
-          label: '',
+          label: 'Cycle',
           content: (
             issue.status === 'Draft' ? (
               <BroilerCycleSelect
+                label=""
                 farmId={issue.farmId}
                 value={issue.farmCycleId == null ? '' : String(issue.farmCycleId)}
                 onValueChange={(cycleId, cycle) => setIssue(current => current ? {
@@ -2785,10 +2786,7 @@ export default function NewGoodsIssue({
                 } : current)}
               />
             ) : (
-              <div className="space-y-2">
-                <Label>Cycle</Label>
-                <Input value={issue.farmCycleMask || issue.lines[0]?.cycleMask || '-'} readOnly className="bg-muted/40" />
-              </div>
+              <Input value={issue.farmCycleMask || issue.lines[0]?.cycleMask || '-'} readOnly className="bg-muted/40" />
             )
           ),
         }]
@@ -2843,6 +2841,11 @@ export default function NewGoodsIssue({
         }]
       : []),
   ]
+  const displayedHeaderComponentList = isBroilerCycleIssue
+    ? ['gi-no', 'farm', 'issue-date', 'cycle'].flatMap(key =>
+        headerComponentList.filter(field => field.key === key),
+      )
+    : headerComponentList
 
   const Shell = embedded ? 'div' : PageShell
 
@@ -2865,7 +2868,7 @@ export default function NewGoodsIssue({
       </PageHeader>}
 
       <PageSection>
-        <GoodsIssueHeaderSection fields={headerComponentList} />
+        <GoodsIssueHeaderSection fields={displayedHeaderComponentList} balanced={isBroilerCycleIssue} />
 
         <div className="border-t p-3">
           <Tabs defaultValue="lines" className="space-y-2">

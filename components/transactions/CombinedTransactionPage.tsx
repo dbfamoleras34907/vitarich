@@ -26,6 +26,7 @@ type HistoryRenderProps = {
   onDateFromChange: (date: string) => void
   onDateToChange: (date: string) => void
   refreshToken: number
+  historyHeader: ReactNode
 }
 
 type CombinedTransactionPageProps = {
@@ -72,6 +73,15 @@ export default function CombinedTransactionPage({
     }, 0)
   }, [])
 
+  const historyHeader = (
+    <PageSectionHeader className="border-0 bg-transparent">
+      <div>
+        <PageSectionTitle id="historical-data-title">Historical Data</PageSectionTitle>
+        <PageSectionDescription>Refresh to load transactions for the selected date range.</PageSectionDescription>
+      </div>
+    </PageSectionHeader>
+  )
+
   return (
     <PageShell>
       <PageHeader>
@@ -101,16 +111,12 @@ export default function CombinedTransactionPage({
       </section>
 
       <section id="historical-data" aria-labelledby="historical-data-title" className="min-w-0 scroll-mt-3 space-y-2">
-        <PageSectionHeader className="rounded-md border bg-card">
-          <div>
-            <PageSectionTitle id="historical-data-title">Historical Data</PageSectionTitle>
-            <PageSectionDescription>Refresh to load transactions for the selected date range.</PageSectionDescription>
-          </div>
-        </PageSectionHeader>
-
         {cannotView ? (
-          <PageSection className="p-3 text-sm text-muted-foreground">
-            You do not have permission to view transaction history.
+          <PageSection>
+            {historyHeader}
+            <div className="border-t p-3 text-sm text-muted-foreground">
+              You do not have permission to view transaction history.
+            </div>
           </PageSection>
         ) : renderHistory({
           dateFrom,
@@ -118,6 +124,7 @@ export default function CombinedTransactionPage({
           onDateFromChange: setDateFrom,
           onDateToChange: setDateTo,
           refreshToken,
+          historyHeader,
         })}
       </section>
     </PageShell>

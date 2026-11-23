@@ -1,5 +1,6 @@
 import { db } from '@/lib/Supabase/supabaseClient'
 import { assertCompleteRead } from '@/lib/data/assertCompleteRead'
+import { formatPersonName } from '@/lib/utils/personName'
 
 export type FarmAssignedUser = { id: number; name: string; userType?: 1 | 2 | 3 }
 
@@ -20,10 +21,11 @@ const activeUserValue = (value: unknown) => ['1', 'true', 'active'].includes(Str
 
 const userName = (user: { id: unknown; firstname?: unknown; middlename?: unknown; lastname?: unknown }) => {
   const id = Number(user.id)
-  return [user.firstname, user.middlename, user.lastname]
+  const name = [user.firstname, user.middlename, user.lastname]
     .map(value => String(value ?? '').trim())
     .filter(Boolean)
-    .join(' ') || `User ${id}`
+    .join(' ')
+  return name ? formatPersonName(name) : `User ${id}`
 }
 
 const userTypeLabel = (userType: 1 | 2 | 3): FarmAssignableUser['userTypeLabel'] => {

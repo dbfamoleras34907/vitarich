@@ -2400,9 +2400,9 @@ export default function NewGoodsReceive({
       </PageHeader>}
 
       <PageSection className={`flex flex-col ${embedded ? '' : 'min-h-[calc(100vh-8rem)]'}`}>
-        <div className="flex flex-col items-start gap-1 p-5">
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">DOC Placement No.</label>
+        <div className="grid w-full grid-cols-2 items-start gap-2 bg-muted/30 p-3 md:grid-cols-[repeat(2,minmax(0,320px))] md:gap-0">
+          <div className="w-full max-w-[320px] space-y-2">
+            <Label>DOC Placement No.</Label>
             <div className="flex items-center gap-1">
               <Input value={receipt.grNo} readOnly className="bg-stone-50" />
               <span className={getInventoryStatusBadgeClass(receipt.status)}>
@@ -2411,8 +2411,8 @@ export default function NewGoodsReceive({
             </div>
           </div>
 
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-sm font-semibold">Farm</label>
+          <div className="w-full max-w-[320px] justify-self-end space-y-2 md:justify-self-start">
+            <Label>Farm</Label>
             <SearchableCombobox
               items={farmOptions}
               value={receipt.farmId == null ? '' : String(receipt.farmId)}

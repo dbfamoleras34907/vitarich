@@ -2,6 +2,7 @@
 
 import { saveBroilerCleanup } from '@/lib/data/repositories/brCleanup'
 import { loadBroilerIssueCycles } from '@/lib/data/repositories/broilerIssueCycles'
+import { getBroilerCycleReferenceIds } from '@/lib/data/repositories/broilerCycleReferences'
 import { getPostgresErrorMessage } from '@/lib/data/errors/postgres'
 import { quantityExceeds } from '@/lib/utils/quantityComparison'
 
@@ -513,6 +514,7 @@ type GetGoodsIssuesOptions = {
   farmIdentifier?: number | string | null
   dateFrom?: string
   dateTo?: string
+  cycleNumber?: string
 }
 
 export async function getGoodsIssues({
@@ -521,8 +523,15 @@ export async function getGoodsIssues({
   farmIdentifier,
   dateFrom,
   dateTo,
+  cycleNumber,
 }: GetGoodsIssuesOptions = {}): Promise<GoodsIssue[]> {
   const tables = getIssueTables(triggeredBy)
+  const cycleReferenceIds = usesDedicatedIssueTables(triggeredBy) && cycleNumber?.trim()
+    ? await getBroilerCycleReferenceIds(cycleNumber, { farmIdentifier })
+    : null
+
+  if (cycleReferenceIds && cycleReferenceIds.farmCycleIds.length === 0) return []
+
   let query = db
     .from(tables.header)
     .select('*')
@@ -544,6 +553,7 @@ export async function getGoodsIssues({
 
   if (dateFrom) query = query.gte('issue_date', dateFrom)
   if (dateTo) query = query.lte('issue_date', dateTo)
+  if (cycleReferenceIds) query = query.in('farm_cycle_id', cycleReferenceIds.farmCycleIds)
 
   const { data: issueRows, error: issueError } = await query
 

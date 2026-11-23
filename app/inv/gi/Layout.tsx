@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import UserFarmSearchCombobox from '@/components/ui/UserFarmSearchCombobox'
+import BroilerCycleHistoryFilter from '@/components/broiler/BroilerCycleHistoryFilter'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -146,6 +147,7 @@ export default function GoodsIssueHistory({
   onDateFromChange,
   onDateToChange,
   refreshToken,
+  historyHeader,
 }: GoodsIssueHistoryProps) {
   const config = { ...defaultConfig, ...configOverrides }
   const router = useRouter()
@@ -172,6 +174,7 @@ export default function GoodsIssueHistory({
   const [hasLoaded, setHasLoaded] = useState(false)
   const [receiptDeliveryId, setReceiptDeliveryId] = useState<number | null>(null)
   const [reversalIssue, setReversalIssue] = useState<GoodsIssue | null>(null)
+  const [cycleNumber, setCycleNumber] = useState('')
   const handledRefreshToken = useRef(refreshToken)
 
   const refresh = useCallback(async () => {
@@ -183,6 +186,7 @@ export default function GoodsIssueHistory({
         farmIdentifier: activeFarmId,
         dateFrom: config.showDateFilter ? dateFrom : undefined,
         dateTo: config.showDateFilter ? dateTo : undefined,
+        cycleNumber: ['BR-CU', 'BR-DR'].includes(config.triggeredBy) ? cycleNumber : undefined,
       })
       setIssues(config.showProcessListAttribution
         ? await attachProcessListAttributions(loadedIssues)
@@ -197,7 +201,7 @@ export default function GoodsIssueHistory({
       setHasLoaded(true)
       setLoading(false)
     }
-  }, [activeFarmId, config.showDateFilter, config.showProcessListAttribution, config.triggeredBy, dateFrom, dateTo])
+  }, [activeFarmId, config.showDateFilter, config.showProcessListAttribution, config.triggeredBy, cycleNumber, dateFrom, dateTo])
 
   useEffect(() => {
     router.prefetch(`${config.basePath}/new`)
@@ -252,10 +256,6 @@ export default function GoodsIssueHistory({
       { key: 'farmName', label: 'Farm' },
       { key: 'issueDate', label: config.triggeredBy === 'BR-DR' ? 'Posting Date' : 'Issue Date' },
       { key: 'warehouse', label: 'Warehouse' },
-      ...(['BR-CU', 'BR-DR'].includes(config.triggeredBy) ? [{
-        key: 'cycleReference', label: 'Cycle #',
-        render: (row: GoodsIssueTableRow) => <span className="whitespace-pre-line text-xs">{String(row.cycleReference)}</span>,
-      }] : []),
       { key: 'issueQty', label: 'Issue Qty', align: 'center' },
       {
         key: 'status',
@@ -279,6 +279,10 @@ export default function GoodsIssueHistory({
           ),
         },
       ] : []),
+      ...(['BR-CU', 'BR-DR'].includes(config.triggeredBy) ? [{
+        key: 'cycleReference', label: 'Cycle #',
+        render: (row: GoodsIssueTableRow) => <span className="whitespace-pre-line text-xs">{String(row.cycleReference)}</span>,
+      }] : []),
       {
         key: 'action',
         label: 'Action',
@@ -391,19 +395,23 @@ export default function GoodsIssueHistory({
 
       <div className="space-y-3">
         {(config.showFarmFilter || config.showDateFilter) && (
-          <div className={`grid gap-2 rounded-md border bg-muted/30 p-3 ${embedded
-            ? 'md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_180px_auto]'
-            : 'md:grid-cols-[minmax(220px,320px)_180px_180px]'}`}>
+          <div className={embedded ? 'space-y-2 rounded-md border bg-white dark:bg-black' : undefined}>
+            {embedded && historyHeader}
+            <div className={`grid gap-2 p-3 ${embedded
+              ? 'grid-cols-2 border-t md:grid-cols-[repeat(4,minmax(0,320px))_auto] md:gap-2'
+              : 'rounded-md border bg-muted/30 md:grid-cols-[minmax(220px,320px)_180px_180px_180px]'}`}>
             {config.showFarmFilter && (
-              <UserFarmSearchCombobox
-                label="Farm"
-                farmType="BR"
-                value={activeFarmId}
-              />
+              <div className={embedded ? 'col-start-1 row-start-1 w-full max-w-[320px] md:col-auto md:row-auto' : undefined}>
+                <UserFarmSearchCombobox
+                  label="Farm"
+                  farmType="BR"
+                  value={activeFarmId}
+                />
+              </div>
             )}
 
             {config.showDateFilter && (
-              <div className="space-y-2">
+              <div className={`space-y-2 ${embedded ? 'col-start-2 row-start-1 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : ''}`}>
                 <Label htmlFor={`${config.triggeredBy}-date-from`}>From Date</Label>
                 <Input
                   id={`${config.triggeredBy}-date-from`}
@@ -416,7 +424,7 @@ export default function GoodsIssueHistory({
             )}
 
             {config.showDateFilter && (
-              <div className="space-y-2">
+              <div className={`space-y-2 ${embedded ? 'col-start-1 row-start-2 w-full max-w-[320px] md:col-auto md:row-auto' : ''}`}>
                 <Label htmlFor={`${config.triggeredBy}-date-to`}>To Date</Label>
                 <Input
                   id={`${config.triggeredBy}-date-to`}
@@ -428,14 +436,26 @@ export default function GoodsIssueHistory({
               </div>
             )}
 
+            {['BR-CU', 'BR-DR'].includes(config.triggeredBy) && (
+              <div className={embedded ? 'col-start-2 row-start-2 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : undefined}>
+                <BroilerCycleHistoryFilter
+                  id={`${config.triggeredBy}-cycle-number`}
+                  farmIdentifier={activeFarmId}
+                  value={cycleNumber}
+                  onValueChange={setCycleNumber}
+                />
+              </div>
+            )}
+
             {embedded && (
-              <div className="flex items-end">
+              <div className="col-start-2 row-start-3 flex w-full max-w-[320px] items-end justify-end justify-self-end md:col-auto md:row-auto">
                 <Button className="w-full md:w-auto" variant="outline" size="sm" onClick={refresh} disabled={loading}>
                   <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
                   {loading ? 'Loading...' : 'Refresh'}
                 </Button>
               </div>
             )}
+            </div>
           </div>
         )}
 

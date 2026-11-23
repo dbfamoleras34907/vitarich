@@ -33,6 +33,7 @@ import {
 import DynamicTable, { Column } from '@/components/ui/DataTableV2'
 import { PageHeader, PageHeaderActions, PageShell } from '@/components/ui/page-layout'
 import DefaultFarmComboBox from '@/app/components/DefaultFarmComboBox'
+import BroilerCycleHistoryFilter from '@/components/broiler/BroilerCycleHistoryFilter'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -70,6 +71,7 @@ type GoodsReceiptTableRow = Record<string, unknown> & {
   status: string
   createdBy: string
   assignedTa: string
+  cycleReference: string
   receipt: GoodsReceipt
 }
 
@@ -81,6 +83,7 @@ export default function GoodsReceiveHistory({
   onDateFromChange,
   onDateToChange,
   refreshToken,
+  historyHeader,
 }: CombinedTransactionHistoryProps = {}) {
   const router = useRouter()
   const { setCollapsed } = useSidebar()
@@ -98,6 +101,7 @@ export default function GoodsReceiveHistory({
   const setDateFrom = onDateFromChange ?? setInternalDateFrom
   const setDateTo = onDateToChange ?? setInternalDateTo
   const [dateField, setDateField] = useState<GoodsReceiptDateField>(embedded ? 'receiveDate' : 'createdDate')
+  const [cycleNumber, setCycleNumber] = useState('')
   const [reverseTarget, setReverseTarget] = useState<GoodsReceipt | null>(null)
   const [reversing, setReversing] = useState(false)
   const handledRefreshToken = useRef(refreshToken)
@@ -111,6 +115,7 @@ export default function GoodsReceiveHistory({
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         dateField,
+        cycleNumber,
       }))
     } catch (error) {
       toast.error(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -119,7 +124,7 @@ export default function GoodsReceiveHistory({
       setHasLoaded(true)
       setLoading(false)
     }
-  }, [dateField, dateFrom, dateTo, farmId])
+  }, [cycleNumber, dateField, dateFrom, dateTo, farmId])
 
   const handleReverse = async () => {
     if (!reverseTarget?.id || reverseTarget.status !== 'Posted' || !canVoid) return
@@ -173,6 +178,7 @@ export default function GoodsReceiveHistory({
           status: receipt.status,
           createdBy: receipt.createdByName || '—',
           assignedTa: receipt.assignedTaLabel || 'Farm unavailable',
+          cycleReference: receipt.cycleReferences?.join(', ') || '—',
           receipt,
         }
       }),
@@ -210,6 +216,7 @@ export default function GoodsReceiveHistory({
       },
       { key: 'createdBy', label: 'Created by', width: 150, render: row => <span className="block max-w-36 truncate" title={row.createdBy}>{row.createdBy}</span> },
       { key: 'assignedTa', label: 'Assigned TA', width: 180, render: row => <span className="block max-w-44 truncate" title={row.assignedTa}>{row.assignedTa}</span> },
+      { key: 'cycleReference', label: 'Cycle #', render: row => <span className="text-xs">{row.cycleReference}</span> },
       {
         key: 'action',
         label: 'Action',
@@ -302,18 +309,22 @@ export default function GoodsReceiveHistory({
         </PageHeaderActions>
       </PageHeader>}
 
-      <div className="space-y-3">
-        <div className={`grid gap-2 rounded-md border bg-muted/30 p-3 ${embedded
-          ? 'md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_180px_180px_auto]'
-          : 'md:grid-cols-[minmax(220px,320px)_180px_180px_180px]'}`}>
-          <DefaultFarmComboBox
-            label="Farm"
-            value={farmId}
-            valueKey="id"
-            setValue={setFarmId}
-          />
+      <div className="space-y-3 ">
+        <div className={embedded ? 'rounded-md border bg-white dark:bg-black' : undefined}>
+          {embedded && historyHeader}
+          <div className={`grid gap-2 p-3 ${embedded
+            ? 'grid-cols-2 border-t md:grid-cols-[repeat(5,minmax(0,320px))_auto]'
+            : 'rounded-md border bg-white md:grid-cols-[minmax(220px,320px)_180px_180px_180px_180px] dark:bg-black'}`}>
+          <div className={embedded ? 'col-start-1 row-start-1 w-full max-w-[320px] md:col-auto md:row-auto' : undefined}>
+            <DefaultFarmComboBox
+              label="Farm"
+              value={farmId}
+              valueKey="id"
+              setValue={setFarmId}
+            />
+          </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-1 row-start-2 w-full max-w-[320px] md:col-auto md:row-auto' : ''}`}>
             <Label htmlFor="doc-receiving-date-from">From Date</Label>
             <Input
               id="doc-receiving-date-from"
@@ -324,7 +335,7 @@ export default function GoodsReceiveHistory({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-2 row-start-2 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : ''}`}>
             <Label htmlFor="doc-receiving-date-to">To Date</Label>
             <Input
               id="doc-receiving-date-to"
@@ -335,7 +346,7 @@ export default function GoodsReceiveHistory({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${embedded ? 'col-start-2 row-start-1 w-full max-w-[320px] justify-self-end md:col-auto md:row-auto md:justify-self-stretch' : ''}`}>
             <Label htmlFor="doc-receiving-date-field">Search Date By</Label>
             <Select value={dateField} onValueChange={value => setDateField(value as GoodsReceiptDateField)}>
               <SelectTrigger id="doc-receiving-date-field" className="w-full">
@@ -348,14 +359,24 @@ export default function GoodsReceiveHistory({
             </Select>
           </div>
 
+          <div className={embedded ? 'col-start-1 row-start-3 w-full max-w-[320px] md:col-auto md:row-auto' : undefined}>
+            <BroilerCycleHistoryFilter
+              id="doc-receiving-cycle-number"
+              farmIdentifier={farmId || null}
+              value={cycleNumber}
+              onValueChange={setCycleNumber}
+            />
+          </div>
+
           {embedded && (
-            <div className="flex items-end">
+            <div className="col-start-2 row-start-3 flex w-full max-w-[320px] items-end justify-end justify-self-end md:col-auto md:row-auto">
               <Button className="w-full md:w-auto" variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
                 {loading ? 'Loading...' : 'Refresh'}
               </Button>
             </div>
           )}
+          </div>
         </div>
 
         <DynamicTable

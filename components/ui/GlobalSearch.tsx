@@ -364,7 +364,7 @@ export default function GlobalSearch({ collapsed }: collapsed) {
         type="button"
         variant="ghost"
         onClick={() => setOpen(true)}
-        className={`relative h-9 gap-2 rounded-lg border border-border bg-background py-2 text-sm font-normal text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 ${collapsed ? "w-9 justify-center px-0" : "w-full justify-start px-3"}`}
+        className={`relative h-9 gap-2 rounded-lg border border-border bg-background py-2 text-sm font-normal text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 ${collapsed ? "w-full justify-center px-0" : "w-full justify-start px-3"}`}
         aria-label="Search menus"
       >
         <Search className="h-4 w-4" aria-hidden="true" />
