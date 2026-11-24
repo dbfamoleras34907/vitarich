@@ -2,6 +2,7 @@ create schema auth;
 
 create role anon;
 create role authenticated;
+create role service_role;
 
 create function auth.uid()
 returns uuid

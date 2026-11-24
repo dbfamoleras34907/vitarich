@@ -93,6 +93,7 @@ function ComboboxContent({
   className,
   positionerClassName,
   positionerZIndex,
+  portalContainer,
   side = "bottom",
   sideOffset = 6,
   align = "start",
@@ -106,9 +107,10 @@ function ComboboxContent({
   > & {
     positionerClassName?: string
     positionerZIndex?: number
+    portalContainer?: HTMLElement | null | React.RefObject<HTMLElement | null>
   }) {
   return (
-    <ComboboxPrimitive.Portal>
+    <ComboboxPrimitive.Portal container={portalContainer}>
       <ComboboxPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}

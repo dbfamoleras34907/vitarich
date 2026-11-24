@@ -1427,6 +1427,17 @@ export const NavFolders: NavFolder[] = [
           },
 
           {
+            id: 88,
+            type: "Module",
+            title: "Farm Assignment",
+            url: "/farm-asmgt",
+            view: true,
+            insert: false,
+            edit: true,
+            approval: false,
+          },
+
+          {
             id: 64,
             type: "Module",
             title: "Farm Setup Wizard",

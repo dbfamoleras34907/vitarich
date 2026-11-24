@@ -48,6 +48,7 @@ const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boo
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
   contentClassName?: string
+  portalContainer?: HTMLElement | null | React.RefObject<HTMLElement | null>
   wrapItemLabels?: boolean
   actionLabel?: string
   onAction?: () => void
@@ -82,6 +83,7 @@ type SingleProps = {
   contentPositionerClassName?: string
   contentPositionerZIndex?: number
   contentClassName?: string
+  portalContainer?: HTMLElement | null | React.RefObject<HTMLElement | null>
   wrapItemLabels?: boolean
   actionLabel?: string
   onAction?: () => void
@@ -425,6 +427,7 @@ export default function SearchableCombobox(props: Props) {
           anchor={anchor}
           positionerClassName={contentPositionerClassName}
           positionerZIndex={contentPositionerZIndex}
+          portalContainer={props.portalContainer}
           className={cn("rounded-lg border border-stone-200 p-0 shadow-lg", contentClassName)}
         >
           <div className="border-b border-stone-200 p-2">

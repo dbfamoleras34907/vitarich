@@ -32,7 +32,7 @@ const userTypeLabel = (userType: 1 | 2 | 3): FarmAssignableUser['userTypeLabel']
   return 'User'
 }
 
-/** Active accounts of every user type that may be assigned to a farm. */
+/** Active Admin and User accounts that may be assigned to a farm. */
 export async function listFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
   const users: FarmAssignableUserRow[] = []
   const pageSize = 500
@@ -41,7 +41,7 @@ export async function listFarmAssignableUsers(): Promise<FarmAssignableUser[]> {
     const result = await db
       .from('users')
       .select('id, firstname, middlename, lastname, user_type, isactive')
-      .in('user_type', [1, 2, 3])
+      .in('user_type', [2, 3])
       .order('id', { ascending: true })
       .range(offset, offset + pageSize - 1)
 
@@ -74,17 +74,36 @@ export async function listFarmAssignedUsers(
 ): Promise<Map<number, FarmAssignedUser[]>> {
   const assignments: { farm_id: number | null; farm_code: string | null; users_id: number }[] = []
   const users = new Map<number, FarmAssignedUser>()
+  const readAssignmentPages = async (column: 'farm_id' | 'farm_code', values: Array<number | string>) => {
+    const pageSize = 500
+    const rows: typeof assignments = []
+    let expectedCount: number | null = null
+
+    for (let offset = 0; ; offset += pageSize) {
+      const result = await db
+        .from('users_farms')
+        .select('farm_id, farm_code, users_id', { count: 'exact' })
+        .eq('void', 1)
+        .in(column, values)
+        .range(offset, offset + pageSize - 1)
+      if (result.error) throw result.error
+      expectedCount = result.count ?? expectedCount
+      const page = result.data ?? []
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+
+    assertCompleteRead({ data: rows, count: expectedCount }, 'Farm user assignments')
+    return rows
+  }
+
   for (let offset = 0; offset < farms.length; offset += 100) {
     const batch = farms.slice(offset, offset + 100)
     const results = await Promise.all([
-      db.from('users_farms').select('farm_id, farm_code, users_id', { count: 'exact' }).eq('void', 1).in('farm_id', batch.map(farm => farm.id)),
-      db.from('users_farms').select('farm_id, farm_code, users_id', { count: 'exact' }).eq('void', 1).in('farm_code', batch.map(farm => farm.code)),
+      readAssignmentPages('farm_id', batch.map(farm => farm.id)),
+      readAssignmentPages('farm_code', batch.map(farm => farm.code)),
     ])
-    for (const result of results) {
-      if (result.error) throw result.error
-      assertCompleteRead(result, 'Farm user assignments')
-      assignments.push(...(result.data ?? []))
-    }
+    assignments.push(...results.flat())
   }
   const userIds = [...new Set(assignments.map(row => Number(row.users_id)).filter(id => Number.isSafeInteger(id) && id > 0))]
   for (let offset = 0; offset < userIds.length; offset += 100) {

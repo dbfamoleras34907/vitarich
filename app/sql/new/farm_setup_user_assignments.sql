@@ -28,13 +28,14 @@ begin
     from unnest(selected_user_ids) as selected(user_id)
     left join public.users app_user on app_user.id = selected.user_id
     where app_user.id is null
+       or app_user.user_type not in (2, 3)
        or lower(btrim(coalesce(app_user.isactive::text, ''))) not in ('1', 'true', 'active')
   ) then
-    raise exception 'Assigned TA selections must be active user accounts.';
+    raise exception 'Assigned TA selections must be active Admin or User accounts.';
   end if;
 
-  -- Synchronize active accounts of every user type. Historical inactive
-  -- memberships are preserved because they are intentionally absent from the picker.
+  -- Synchronize only active Admin/User accounts. Super Admin and inactive
+  -- historical memberships are intentionally outside this assignment module.
   update public.users_farms assignment
   set void = '0'
   where coalesce(btrim(assignment.void::text), '1') = '1'
@@ -47,6 +48,7 @@ begin
       select 1
       from public.users app_user
       where app_user.id = assignment.users_id
+        and app_user.user_type in (2, 3)
         and lower(btrim(coalesce(app_user.isactive::text, ''))) in ('1', 'true', 'active')
     );
 
@@ -84,3 +86,4 @@ $$;
 revoke all on function public.sync_farm_user_assignments(bigint, text, bigint[]) from public;
 revoke all on function public.sync_farm_user_assignments(bigint, text, bigint[]) from anon;
 revoke all on function public.sync_farm_user_assignments(bigint, text, bigint[]) from authenticated;
+grant execute on function public.sync_farm_user_assignments(bigint, text, bigint[]) to service_role;

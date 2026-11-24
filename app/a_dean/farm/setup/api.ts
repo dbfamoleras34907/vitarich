@@ -242,7 +242,7 @@ export async function getFarmSetup(farmId: number): Promise<FarmSetupRecord> {
 
   const assignedUsers = await listFarmAssignedUsers(
     [{ id: farmId, code: String(farmData.farm.code ?? '').trim() }],
-    [1, 2, 3],
+    [2, 3],
     { activeUsersOnly: true },
   )
 
