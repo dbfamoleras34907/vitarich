@@ -137,12 +137,25 @@ export async function listBreederDispatchBuildings() {
   ).values()];
 }
 
-export async function listBreederDispatches() {
-  const { data, error } = await db.from(REGISTER_VIEW).select("*").order("dispatch_date", { ascending: false }).order("id", { ascending: false });
+export async function listBreederDispatches(options: { farmId: string; dateFrom: string; dateTo: string; status: string; search: string; page: number; pageSize: number }) {
+  // A stored farm code may briefly be present while the shared picker resolves it to an ID.
+  if (options.farmId && !/^\d+$/.test(options.farmId)) return { records: [] as BreederDispatchRecord[], total: 0 };
+  let query = db.from(REGISTER_VIEW).select("*", { count: "exact" });
+  if (options.farmId) query = query.eq("farm_id", Number(options.farmId));
+  if (options.dateFrom) query = query.gte("dispatch_date", options.dateFrom);
+  if (options.dateTo) query = query.lte("dispatch_date", options.dateTo);
+  if (options.status !== "All") query = query.eq("status", options.status);
+  const search = options.search.trim();
+  if (search) {
+    const pattern = `%${search.replace(/[\\%_]/g, "\\$&").replace(/"/g, '\\"')}%`;
+    query = query.or(["document_no", "farm_name", "destination", "hauler_name", "plate_number"].map((field) => `${field}.ilike."${pattern}"`).join(","));
+  }
+  const from = (options.page - 1) * options.pageSize;
+  const { data, error, count: total } = await query.order("dispatch_date", { ascending: false }).order("id", { ascending: false }).range(from, from + options.pageSize - 1);
   if (error) throw error;
 
   const records = (data ?? []) as BreederDispatchRecord[];
-  if (!records.length) return records;
+  if (!records.length) return { records, total: total ?? 0 };
 
   const { data: session, error: sessionError } = await db.auth.getSession();
   if (sessionError) throw sessionError;
@@ -159,7 +172,21 @@ export async function listBreederDispatches() {
   const result = await readJsonResponse<{ data?: Array<{ dispatch_id: number; building_names: string[] }>; error?: string }>(response, "Unable to load dispatch buildings.");
   const buildingsByDispatch = new Map((result.data ?? []).map((row) => [Number(row.dispatch_id), row.building_names]));
 
-  return records.map((record) => ({ ...record, building_names: buildingsByDispatch.get(record.id) ?? [] }));
+  return { records: records.map((record) => ({ ...record, building_names: buildingsByDispatch.get(record.id) ?? [] })), total: total ?? 0 };
+}
+
+/** Global register totals, loaded separately so they do not delay the current page. */
+export async function getBreederDispatchSummary() {
+  let posted = 0;
+  let units = 0;
+  const farms = new Set<number>();
+  for (let offset = 0; ; offset += SOURCE_PAGE_SIZE) {
+    const { data, error } = await db.from(REGISTER_VIEW).select("id, farm_id, total_qty").eq("status", "Posted").order("id").range(offset, offset + SOURCE_PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) { posted++; farms.add(Number(row.farm_id)); units += count(row.total_qty); }
+    if ((data?.length ?? 0) < SOURCE_PAGE_SIZE) break;
+  }
+  return { posted, farms: farms.size, units };
 }
 
 // Retained as the shared live-bird balance provider used by Breeder Cleanup.

@@ -3,6 +3,19 @@ import type { NotificationCatalog } from "./types";
 // 
 export const notificationCatalog: NotificationCatalog = [
   {
+    key: NOTIFICATION_MODULE_KEYS.BREEDER_INVENTORY_CORRECTION,
+    ruleActivationReady: false,
+    label: "Breeder Inventory Correction",
+    description: "Audited opening-balance corrections posted from Edit Placement.",
+    fmsTypes: ["Breeder"],
+    permissionGroup: "Breeder Masters",
+    permissionTitle: "Placement/view",
+    baseUrl: "/jmb/placement",
+    events: [
+      { key: NOTIFICATION_EVENT_KEYS.BREEDER_INVENTORY_CORRECTION.POSTED, label: "Breeder Inventory Correction Posted", description: "Successful posted placement opening-balance correction.", action: "posted", farmRouting: "document" },
+    ],
+  },
+  {
     // Enable only after breeder_transfer_transactions.sql is deployed and verified.
     ruleActivationReady: false,
     key: NOTIFICATION_MODULE_KEYS.BREEDER_TRANSFER,

@@ -128,7 +128,7 @@ begin
     m_source, m_beg, m_doa, m_reject, m_shortcount, m_remarks, m_avg_bodyw,
     remarks, cycle_id
   ) values (
-    p_transfer_date, coalesce(v_source.age_anchor_date, v_source.placement_date), '', null,
+    v_source.placement_date, coalesce(v_source.age_anchor_date, v_source.placement_date), '', null,
     v_source.farm_id, p_destination_building_id, p_destination_pen_id,
     v_source.farm_name, v_location.building_name, v_location.pen_name,
     v_source.f_source, 0, 0, 0, 0, v_source.f_remarks, v_source.f_avg_bodyw,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Ban,
@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { refreshSessionx } from "@/app/admin/user/RefreshSession";
 import BreederListParameters, {
-  isWithinDateRange,
   useBreederListParameters,
 } from "@/components/breeder/BreederListParameters";
 import { Button } from "@/components/ui/button";
@@ -52,6 +51,7 @@ import {
   canCorrectPostedBreederDispatch,
   correctPostedBreederDispatchDate,
   deleteBreederDispatchDraft,
+  getBreederDispatchSummary,
   listBreederDispatches,
   type BreederDispatchRecord,
 } from "./new/api";
@@ -79,6 +79,10 @@ export default function BreederDispatchTable() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<{ posted: number; farms: number; units: number } | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
+  const requestVersion = useRef(0);
   const [cancelRecord, setCancelRecord] = useState<BreederDispatchRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [discardRecord, setDiscardRecord] = useState<BreederDispatchRecord | null>(null);
@@ -89,51 +93,52 @@ export default function BreederDispatchTable() {
 
   useEffect(() => { void refreshSessionx(router); }, [router]);
   const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
     setError("");
     try {
-      setRecords(await attachProcessListAttributions(await listBreederDispatches()));
+      const result = await listBreederDispatches({ farmId: parameters.farmId, dateFrom: parameters.dateFrom, dateTo: parameters.dateTo, status: statusFilter, search, page, pageSize: 15 });
+      const rows = await attachProcessListAttributions(result.records);
+      if (version !== requestVersion.current) return;
+      setRecords(rows);
+      setTotal(result.total);
+      if (page > Math.max(1, Math.ceil(result.total / 15))) setPage(Math.max(1, Math.ceil(result.total / 15)));
     } catch (loadError) {
+      if (version !== requestVersion.current) return;
       console.error(loadError);
+      setRecords([]);
       setError(loadError instanceof Error ? loadError.message : "Unable to load breeder dispatches. Please refresh and try again.");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
+  }, [parameters.farmId, parameters.dateFrom, parameters.dateTo, statusFilter, search, page]);
+  const loadSummary = useCallback(async () => {
+    try { setSummary(await getBreederDispatchSummary()); setSummaryError(false); }
+    catch (summaryLoadError) { console.error(summaryLoadError); setSummary(null); setSummaryError(true); }
   }, []);
   useEffect(() => {
-    void load();
+    const versionRef = requestVersion;
+    const timer = setTimeout(() => void load(), 250);
+    return () => { clearTimeout(timer); versionRef.current++; };
+  }, [load]);
+  useEffect(() => {
+    void loadSummary();
     void canCorrectPostedBreederDispatch().then(setCanCorrectPosted).catch(() => setCanCorrectPosted(false));
     router.prefetch("/jmb/breederdispatch/new");
     router.prefetch("/jmb/breederdispatch/multiple");
-  }, [load, router]);
+  }, [loadSummary, router]);
+  useEffect(() => { setPage(1); }, [parameters.farmId, parameters.dateFrom, parameters.dateTo, statusFilter, search]);
   useEffect(() => setValue("loading_g", loading || working), [loading, setValue, working]);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return records.filter((record) => {
-      if (parameters.farmId && String(record.farm_id) !== parameters.farmId) return false;
-      if (!isWithinDateRange(record.dispatch_date, parameters.dateFrom, parameters.dateTo)) return false;
-      if (statusFilter !== "All" && record.status !== statusFilter) return false;
-      return !query || [record.document_no, record.farm_name, record.destination, record.hauler_name, record.plate_number]
-        .some((value) => String(value ?? "").toLowerCase().includes(query));
-    });
-  }, [parameters.dateFrom, parameters.dateTo, parameters.farmId, records, search, statusFilter]);
   const pageSize = 15;
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const paginatedRecords = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [currentPage, filtered]);
-  const posted = records.filter((record) => record.status === "Posted");
-  const postedUnits = posted.reduce((sum, record) => sum + Number(record.total_qty), 0);
+  const currentPage = page;
 
   async function confirmCancel() {
     if (!cancelRecord || !cancelReason.trim()) return;
     setWorking(true); setError("");
     try {
       await cancelBreederDispatch(cancelRecord.id, cancelReason);
-      setCancelRecord(null); setCancelReason(""); await load();
+      setCancelRecord(null); setCancelReason(""); await Promise.all([load(), loadSummary()]);
     } catch (cancelError) {
       setError(cancelError instanceof Error ? cancelError.message : "Unable to cancel dispatch.");
     } finally { setWorking(false); }
@@ -144,7 +149,7 @@ export default function BreederDispatchTable() {
     setWorking(true); setError("");
     try {
       await deleteBreederDispatchDraft(discardRecord.id);
-      setDiscardRecord(null); await load();
+      setDiscardRecord(null); await Promise.all([load(), loadSummary()]);
     } catch (discardError) {
       setError(discardError instanceof Error ? discardError.message : "Unable to discard draft dispatch.");
     } finally { setWorking(false); }
@@ -155,7 +160,7 @@ export default function BreederDispatchTable() {
     setWorking(true); setError("");
     try {
       await correctPostedBreederDispatchDate(correctionRecord.id, correctedDispatchDate, correctionReason);
-      setCorrectionRecord(null); setCorrectedDispatchDate(""); setCorrectionReason(""); await load();
+      setCorrectionRecord(null); setCorrectedDispatchDate(""); setCorrectionReason(""); await Promise.all([load(), loadSummary()]);
     } catch (correctionError) {
       setError(getErrorMessage(correctionError, "Unable to correct dispatch date."));
     } finally { setWorking(false); }
@@ -177,9 +182,9 @@ export default function BreederDispatchTable() {
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat icon={<ClipboardList className="size-3.5" />} label="Posted documents" value={posted.length} />
-            <Stat icon={<MapPin className="size-3.5" />} label="Farms dispatched" value={new Set(posted.map((row) => row.farm_id)).size} />
-            <Stat icon={<Bird className="size-3.5" />} label="Units dispatched" value={postedUnits} />
+            <Stat icon={<ClipboardList className="size-3.5" />} label="Posted documents" value={summary?.posted} />
+            <Stat icon={<MapPin className="size-3.5" />} label="Farms dispatched" value={summary?.farms} />
+            <Stat icon={<Bird className="size-3.5" />} label="Units dispatched" value={summary?.units} />
           </div>
         </div>
         <div className="flex flex-col gap-3 border-b p-4">
@@ -188,15 +193,16 @@ export default function BreederDispatchTable() {
             <BreederListParameters {...parameters}>
               <div className="space-y-2 lg:w-40"><Label>Status</Label><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>All</option><option>Draft</option><option>Posted</option><option>Cancelled</option></select></div>
             </BreederListParameters>
-            <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+            <Button variant="outline" onClick={() => { void load(); void loadSummary(); }} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
           </div>
         </div>
         {error ? <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+        {summaryError ? <div className="m-4 text-sm text-destructive">Unable to load dispatch totals. Refresh to try again.</div> : null}
         <Table>
           <TableHeader><TableRow><TableHead className="w-14 text-center">#</TableHead><TableHead>Date</TableHead><TableHead>Document</TableHead><TableHead>Farm</TableHead><TableHead>Building</TableHead><TableHead>Destination / transport</TableHead><TableHead className="text-right">Population</TableHead><TableHead className="text-right">Egg Laying</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Assigned TA</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading ? <TableRow><TableCell colSpan={12} className="h-32 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow> : null}
-            {!loading && paginatedRecords.map((record, index) => (
+            {!loading && records.map((record, index) => (
               <TableRow key={record.id} className={record.status === "Cancelled" ? "opacity-60" : ""}>
                 <TableCell className="text-center font-medium tabular-nums text-muted-foreground">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                 <TableCell>{formatDate(record.dispatch_date)}</TableCell>
@@ -225,10 +231,10 @@ export default function BreederDispatchTable() {
                 </TableCell>
               </TableRow>
             ))}
-            {!loading && !filtered.length ? <TableRow><TableCell colSpan={12} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
+            {!loading && !error && !records.length ? <TableRow><TableCell colSpan={12} className="h-32 text-center text-muted-foreground">No breeder dispatches found.</TableCell></TableRow> : null}
           </TableBody>
         </Table>
-        <TablePagination page={currentPage} pageSize={pageSize} totalItems={filtered.length} itemLabel="dispatches" onPageChange={setPage} />
+        <TablePagination page={currentPage} pageSize={pageSize} totalItems={total} itemLabel="dispatches" onPageChange={setPage} />
       </section>
       <Dialog open={Boolean(cancelRecord)} onOpenChange={(open) => { if (!open && !working) setCancelRecord(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Cancel breeder dispatch?</DialogTitle><DialogDescription>The reserved Population Record and Egg Laying quantities will become available for dispatch again.</DialogDescription></DialogHeader>
@@ -251,6 +257,6 @@ export default function BreederDispatchTable() {
   );
 }
 
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
-  return <div className="rounded-lg border bg-background p-3"><div className="flex items-center gap-2 text-xs text-muted-foreground">{icon}{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{Number(value).toLocaleString()}</div></div>;
+function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value?: number }) {
+  return <div className="rounded-lg border bg-background p-3"><div className="flex items-center gap-2 text-xs text-muted-foreground">{icon}{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{value == null ? "—" : value.toLocaleString()}</div></div>;
 }
