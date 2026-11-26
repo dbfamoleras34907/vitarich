@@ -7,6 +7,7 @@ const listLayout = fs.readFileSync('app/brd/fc/Layout.tsx', 'utf8')
 const growingLayout = fs.readFileSync('app/brd/fc/new/Layout.tsx', 'utf8')
 const navigationTypes = fs.readFileSync('app/brd/fc/new/flockCardTypes.ts', 'utf8')
 const placementQueries = fs.readFileSync('lib/data/queries/broilerDocPlacementDates.ts', 'utf8')
+const cleanupRepository = fs.readFileSync('lib/data/repositories/brCleanup.ts', 'utf8')
 
 test('Growing navigation carries the exact placement and farm cycle', () => {
   assert.match(listLayout, /flockCardId: building\.flockCard\?\.id \?\? null/)
@@ -15,10 +16,15 @@ test('Growing navigation carries the exact placement and farm cycle', () => {
   assert.match(navigationTypes, /farmCycleId\?: number \| string \| null/)
 })
 
-test('Growing Total birds uses posted DOC placements for the exact flock card', () => {
+test('Growing Total birds uses posted DOC placements less ordinary GI stock outs for the exact flock card', () => {
   assert.match(growingLayout, /getPostedDocPlacementAnimalQuantities\(\[requestedPlacementId\]\)/)
+  assert.match(growingLayout, /getBroilerCycleGoodsIssueOutQuantities\(farmId, requestedFarmCycleId, \[requestedPlacementId\]\)/)
+  assert.match(growingLayout, /placementQuantity - goodsIssueOutQuantity/)
   assert.match(placementQueries, /\.eq\('goods_receipt\.status', 'Posted'\)/)
   assert.match(placementQueries, /quantities\[flockCardId\].*\+ quantity/)
+  assert.match(cleanupRepository, /posting\.sourceDocType\.trim\(\)\.toUpperCase\(\) !== 'GOODS_ISSUE'/)
+  assert.match(cleanupRepository, /posting\.transferType\.trim\(\)\.toUpperCase\(\) !== 'OUT'/)
+  assert.match(cleanupRepository, /posting\.warehouseCode\.trim\(\)\.toUpperCase\(\) !== warehouseKey/)
 })
 
 test('Growing mortality inventory is restricted to the exact cycle and flock card', () => {

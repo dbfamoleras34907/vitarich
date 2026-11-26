@@ -66,7 +66,10 @@ import {
   type FlockCardLinePayload,
 } from "./api";
 import { getBuildingPlacementInventory } from "../api";
-import { getBroilerCycleInventoryBatches } from "@/lib/data/repositories/brCleanup";
+import {
+  getBroilerCycleGoodsIssueOutQuantities,
+  getBroilerCycleInventoryBatches,
+} from "@/lib/data/repositories/brCleanup";
 import { getPostedDocPlacementAnimalQuantities } from "@/lib/data/queries/broilerDocPlacementDates";
 import {
   computeColumnTotals,
@@ -1160,21 +1163,32 @@ export default function StickyTablePage({ devMode }: { devMode: boolean }) {
     if (!Number.isFinite(requestedPlacementId) || requestedPlacementId <= 0) return;
 
     let cancelled = false;
-    getPostedDocPlacementAnimalQuantities([requestedPlacementId])
-      .then(quantities => {
-        if (!cancelled && Object.hasOwn(quantities, requestedPlacementId)) {
-          setNumberOfAnimals(quantities[requestedPlacementId]);
+    const farmId = Number(requestedFarmId || selectedFarmId);
+    const hasCycleContext = Number.isFinite(farmId) && farmId > 0
+      && Number.isFinite(requestedFarmCycleId) && requestedFarmCycleId > 0;
+
+    Promise.all([
+      getPostedDocPlacementAnimalQuantities([requestedPlacementId]),
+      hasCycleContext
+        ? getBroilerCycleGoodsIssueOutQuantities(farmId, requestedFarmCycleId, [requestedPlacementId])
+        : Promise.resolve({} as Record<number, number>),
+    ])
+      .then(([placementQuantities, goodsIssueOutQuantities]) => {
+        if (!cancelled && Object.hasOwn(placementQuantities, requestedPlacementId)) {
+          const placementQuantity = Number(placementQuantities[requestedPlacementId] ?? 0);
+          const goodsIssueOutQuantity = Number(goodsIssueOutQuantities[requestedPlacementId] ?? 0);
+          setNumberOfAnimals(Math.max(placementQuantity - goodsIssueOutQuantity, 0));
         }
       })
       .catch(error => {
         console.error(error);
-        if (!cancelled) toast(`Unable to load posted DOC bird quantity: ${error instanceof Error ? error.message : "Unknown error"}`);
+        if (!cancelled) toast(`Unable to load posted DOC/GI bird quantity: ${error instanceof Error ? error.message : "Unknown error"}`);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [requestedPlacementId]);
+  }, [requestedFarmCycleId, requestedFarmId, requestedPlacementId, selectedFarmId]);
 
   useEffect(() => {
     if (saving) {
